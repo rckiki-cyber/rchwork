@@ -203,7 +203,9 @@ function goalContinuationInstruction(goal: ThreadGoal | undefined, recoveryStep?
     `- Do not call ${UPDATE_GOAL_TOOL_NAME} with status "blocked" the first time a blocker appears.`,
     '- Only use status "blocked" when the same blocking condition has repeated for at least three consecutive goal turns and meaningful progress is impossible without user input or an external change.',
     '',
-    `Do not call ${UPDATE_GOAL_TOOL_NAME} unless the goal is complete or the strict blocked audit above is satisfi
+    `Do not call ${UPDATE_GOAL_TOOL_NAME} unless the goal is complete or the strict blocked audit above is satisfied.`
+  ].join('\n')
+}
 
 const GOAL_NO_TOOL_REPEAT_SIMILARITY = 0.85
 const GOAL_NO_TOOL_REPEAT_MIN_LENGTH = 12
@@ -249,9 +251,6 @@ function charBigramCounts(text: string): Map<string, number> {
     counts.set(bigram, (counts.get(bigram) ?? 0) + 1)
   }
   return counts
-}
-ed.`
-  ].join('\n')
 }
 
 function todoContinuationInstruction(todos: ThreadTodoList | undefined): string | null {

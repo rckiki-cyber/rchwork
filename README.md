@@ -386,6 +386,26 @@ legalwork/
 
 > 每次代码更新在此追加条目，正式发布 release 时以对应版本号归档。
 
+### v0.2.4
+
+- **修复 agent-loop 系统提示回归**：`goalContinuationInstruction` 的模板字符串意外跨行包含了后续常量定义与函数源码,导致系统提示把 TypeScript 代码发给模型；已修复为正确的单句提示。
+
+### v0.2.3
+
+- **用户自装 Skill**：支持从本地文件夹或 zip 包导入 Skill 到 `~/.legalwork/skills/`,插件市场新增「用户已安装」分类与导入按钮,并带 zip 路径穿越防护。
+- **Agent 运行稳定性**：
+  - 单轮目标续传增加 32 步硬上限,防止无工具调用的空转循环
+  - SSE 文本增量改为 32ms 批量刷新,减少前端渲染压力
+  - 修复 MCP tool provider 状态覆盖问题
+  - 运行时启动增加并发去重与健康检查等待
+- **DeepSeek 兼容**：思考模式不再限制特定 host,任何支持思考的模型均可启用。
+- **诊断与配置**：内存记录仅在 capability 可用时加载;存储键从 `deepseekgui.*` 迁移到 `legalwork.*`。
+- **发布流程**：重构 GitHub Actions,使用 artifact 集中上传 release asset。
+
+### v0.2.2
+
+- **修复自动更新安装兜底逻辑**：改进 updater 在安装失败时的回退处理。
+
 ### v0.2.1
 
 - **法规知识库接入国家法律法规数据库**：`legal-external-search` 从静态站点清单升级为实时检索 [国家法律法规数据库](https://flk.npc.gov.cn)，支持多策略查询、法规详情抓取与正文 docx 下载解析。
