@@ -41,7 +41,7 @@ describe('sdd-draft-restore', () => {
     useSddDraftStore.getState().setActiveDraft(draft, '# Previous')
     const readWorkspaceFile = vi.fn().mockResolvedValue({
       ok: true,
-      path: '/tmp/app/.kunsdd/draft/123e4567-e89b-12d3-a456-426614174000/requirement.md',
+      path: '/tmp/app/.legalworksdd/draft/123e4567-e89b-12d3-a456-426614174000/requirement.md',
       content: '# Restored',
       size: 10,
       truncated: false
@@ -54,7 +54,7 @@ describe('sdd-draft-restore', () => {
 
     expect(readWorkspaceFile).toHaveBeenCalledWith({
       workspaceRoot: '/tmp/app',
-      path: '.kunsdd/draft/123e4567-e89b-12d3-a456-426614174000/requirement.md'
+      path: '.legalworksdd/draft/123e4567-e89b-12d3-a456-426614174000/requirement.md'
     })
     expect(result).toMatchObject({
       kind: 'restored',
@@ -62,7 +62,7 @@ describe('sdd-draft-restore', () => {
       draft: {
         id: draft.id,
         workspaceRoot: '/tmp/app',
-        absolutePath: '/tmp/app/.kunsdd/draft/123e4567-e89b-12d3-a456-426614174000/requirement.md'
+        absolutePath: '/tmp/app/.legalworksdd/draft/123e4567-e89b-12d3-a456-426614174000/requirement.md'
       }
     })
   })

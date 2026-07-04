@@ -19,7 +19,7 @@ set -euo pipefail
 #
 # Speed knobs:
 #   MAC_RELEASE_PARALLEL=force      force parallel arm64/x64 builds even when signing
-#   RELEASE_UPLOAD_CONCURRENCY=4    GitHub/R2 upload concurrency
+#   RELEASE_UPLOAD_CONCURRENCY=1    GitHub/R2 upload concurrency; keep DMG first in GitHub assets
 #   LEGALWORK_RUNTIME_CACHE=0   disable bundled runtime cache
 #   DEEPSEEK_GUI_RUNTIME_CACHE=0    disable bundled runtime cache (legacy)
 #
@@ -45,7 +45,7 @@ ISSUER="${ISSUER:-${APPLE_API_ISSUER:-}}"
 RELEASE_CHANNEL="${RELEASE_CHANNEL:-frontier}"
 R2_UPLOAD="${R2_UPLOAD:-false}"
 R2_PROMOTE="${R2_PROMOTE:-false}"
-RELEASE_UPLOAD_CONCURRENCY="${RELEASE_UPLOAD_CONCURRENCY:-4}"
+RELEASE_UPLOAD_CONCURRENCY="${RELEASE_UPLOAD_CONCURRENCY:-1}"
 MAC_RELEASE_PARALLEL="${MAC_RELEASE_PARALLEL:-1}"
 
 while [[ $# -gt 0 ]]; do

@@ -83,6 +83,17 @@ describe('resolveLegalworkExecutable', () => {
       dataDir: ''
     })
   })
+
+  it('runs Windows batch custom binaries through cmd.exe', () => {
+    const resolution = resolveLegalworkExecutable('/app', 'C:\\Legalwork\\legalwork.cmd', 'win32')
+
+    expect(resolution).toEqual({
+      kind: 'custom',
+      command: 'cmd.exe',
+      args: ['/d', '/s', '/c', 'C:\\Legalwork\\legalwork.cmd'],
+      dataDir: ''
+    })
+  })
 })
 
 describe('buildLegalworkServeArgs', () => {

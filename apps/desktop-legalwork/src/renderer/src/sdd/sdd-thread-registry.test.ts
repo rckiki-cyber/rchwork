@@ -10,7 +10,7 @@ import {
 } from './sdd-thread-registry'
 import type { SddDraft } from './sdd-draft-store'
 
-const SDD_THREAD_REGISTRY_KEY = 'deepseekgui.sdd.threadRegistry.v1'
+const SDD_THREAD_REGISTRY_KEY = 'legalwork.sdd.threadRegistry.v1'
 
 function createMemoryStorage(): BrowserStorageLike {
   const items = new Map<string, string>()
@@ -112,6 +112,7 @@ describe('sdd-thread-registry', () => {
       drafts: {
         valid: {
           threadId: 'thread-sdd-1',
+          threadIds: ['thread-sdd-1'],
           publicThreadIds: ['thread-sdd-1', 'unknown-thread'],
           workspaceRoot: '/tmp/app/',
           updatedAt: '2026-01-01T00:00:00.000Z'

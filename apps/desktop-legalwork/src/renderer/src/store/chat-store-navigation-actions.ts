@@ -141,7 +141,9 @@ export function createNavigationActions(
         ? await rendererRuntimeClient.reconnectRuntime()
         : await rendererRuntimeClient.getSettings({ forceRefresh: true })
       const p = getProvider()
-      await p.connect()
+      if (mode !== 'user') {
+        await p.connect()
+      }
       set({ runtimeConnection: 'ready', error: null, runtimeErrorDetail: null })
       void get().loadComposerModels()
       if (prev !== 'ready' || mode === 'user') {

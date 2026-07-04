@@ -19,6 +19,7 @@ import { readBrowserStorageItem, writeBrowserStorageItem } from '../lib/browser-
 
 const COMPOSER_MODEL_STORAGE_KEY = 'legalwork.composerModel'
 const TURN_MODEL_STORAGE_KEY = 'legalwork.turnModelLabel'
+const LEGACY_TURN_MODEL_STORAGE_KEY = 'deepseekgui.turnModelLabel'
 const CODE_WORKSPACE_ROOTS_STORAGE_KEY = 'legalwork.codeWorkspaceRoots.v1'
 export const MAX_CODE_WORKSPACE_ROOTS = 30
 export const MAX_TURN_MODEL_LABELS = 500
@@ -235,9 +236,13 @@ function defaultClawProviderLabel(provider: ClawImProvider): string {
 
 function loadTurnModelMap(): Record<string, string> {
   try {
-    const raw = readBrowserStorageItem(TURN_MODEL_STORAGE_KEY)
+    const raw = readBrowserStorageItem(TURN_MODEL_STORAGE_KEY) ?? readBrowserStorageItem(LEGACY_TURN_MODEL_STORAGE_KEY)
     if (!raw) return {}
-    return normalizeTurnModelMap(JSON.parse(raw))
+    const map = normalizeTurnModelMap(JSON.parse(raw))
+    if (!readBrowserStorageItem(TURN_MODEL_STORAGE_KEY)) {
+      saveTurnModelMap(map)
+    }
+    return map
   } catch {
     return {}
   }

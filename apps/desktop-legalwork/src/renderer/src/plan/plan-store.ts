@@ -52,6 +52,7 @@ export type GuiPlanState = {
 }
 
 const PLAN_REGISTRY_STORAGE_KEY = 'legalwork.plan.registry.v1'
+const LEGACY_PLAN_REGISTRY_STORAGE_KEY = 'deepseekgui.plan.registry.v1'
 const PLAN_PREVIEW_MODE_STORAGE_KEY = 'legalwork.plan.previewMode'
 
 function normalizeWorkspaceRoot(value: string | undefined | null): string {
@@ -138,9 +139,13 @@ function normalizePlanRegistry(raw: unknown): PersistedPlanRegistry {
 function readRegistry(storage = browserStorage()): PersistedPlanRegistry {
   if (!storage) return emptyRegistry()
   try {
-    const raw = storage.getItem(PLAN_REGISTRY_STORAGE_KEY)
+    const raw = storage.getItem(PLAN_REGISTRY_STORAGE_KEY) ?? storage.getItem(LEGACY_PLAN_REGISTRY_STORAGE_KEY)
     if (!raw) return emptyRegistry()
-    return normalizePlanRegistry(JSON.parse(raw))
+    const registry = normalizePlanRegistry(JSON.parse(raw))
+    if (!storage.getItem(PLAN_REGISTRY_STORAGE_KEY)) {
+      writeRegistry(registry, storage)
+    }
+    return registry
   } catch {
     return emptyRegistry()
   }

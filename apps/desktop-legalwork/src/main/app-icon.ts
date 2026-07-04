@@ -4,6 +4,13 @@ import { fileURLToPath } from 'node:url'
 import { nativeImage } from 'electron'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const FALLBACK_APP_ICON_DATA_URL = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#111827"/>
+  <path d="M18 18h9v22h19v8H18V18Z" fill="#ffffff"/>
+  <path d="M32 18h14v8H32v-8Z" fill="#4d6bfe"/>
+</svg>
+`)}`
 
 /**
  * 解析 Vite/Rollup 给出的资产 URL,得到一个真实可读的文件系统路径。
@@ -62,6 +69,6 @@ export function createAppIcon(source: string): Electron.NativeImage {
       '-',
       message
     )
-    return nativeImage.createEmpty()
+    return nativeImage.createFromDataURL(FALLBACK_APP_ICON_DATA_URL)
   }
 }

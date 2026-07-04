@@ -74,6 +74,8 @@ import { LEGALWORK_SYSTEM_PROMPT } from '../prompt/legalwork-system-prompt.js'
 
 const PARALLEL_READ_ONLY_TOOL_NAMES = new Set(['read', 'grep', 'find', 'ls'])
 const MAX_PARALLEL_TOOL_CALLS = 3
+const MAX_AGENT_LOOP_STEPS = 32
+const MAX_GOAL_NO_TOOL_CONTINUATIONS = 2
 const DEFAULT_COMPACTION_SUMMARY_TIMEOUT_MS = 15_000
 const DEFAULT_COMPACTION_SUMMARY_MAX_TOKENS = 1_200
 const DEFAULT_COMPACTION_SUMMARY_INPUT_MAX_BYTES = 96 * 1024
@@ -496,7 +498,7 @@ export class AgentLoop {
     turnId: string,
     signal: AbortSignal
   ): Promise<'completed' | 'failed' | 'aborted'> {
-    for (let step = 0; ; step += 1) {
+    for (let step = 0; step < MAX_AGENT_LOOP_STEPS; step += 1) {
       if (signal.aborted) return 'aborted'
       await this.drainSteering(threadId, turnId, signal)
       const stepResult = await this.modelStep(threadId, turnId, signal, step)
@@ -504,6 +506,25 @@ export class AgentLoop {
       if (stepResult === 'failed') return 'failed'
       if (stepResult === 'aborted') return 'aborted'
     }
+    const message = `Stopped turn after ${MAX_AGENT_LOOP_STEPS} model/tool steps to avoid an infinite agent loop.`
+    await this.opts.events.record({
+      kind: 'error',
+      threadId,
+      turnId,
+      message,
+      code: 'agent_loop_step_limit'
+    })
+    await this.opts.turns.applyItem(
+      threadId,
+      makeErrorItem({
+        id: this.opts.ids.next('item_error'),
+        turnId,
+        threadId,
+        message,
+        code: 'agent_loop_step_limit'
+      })
+    )
+    return 'failed'
   }
 
   private async modelStep(
@@ -978,7 +999,9 @@ export class AgentLoop {
         )
         return 'failed'
       }
-      if (stopReason === 'stop' && activeGoalInstruction) return 'continue'
+      if (stopReason === 'stop' && activeGoalInstruction && stepIndex < MAX_GOAL_NO_TOOL_CONTINUATIONS) {
+        return 'continue'
+      }
       return 'stop'
     }
     const dispatched = await this.dispatchToolCalls({

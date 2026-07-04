@@ -134,6 +134,13 @@ export const DESKTOP_COMMANDS = [
 ] as const
 export type DesktopCommand = typeof DESKTOP_COMMANDS[number]
 export type SkillSaveResult = { ok: true; path: string } | { ok: false; message: string }
+export type SkillImportResult =
+  | {
+      ok: true
+      userSkillRoot: string
+      installed: Array<{ name: string; path: string; replaced: boolean }>
+    }
+  | { ok: false; canceled?: boolean; message: string }
 export type SkillListItem = {
   id: string
   name: string
@@ -142,6 +149,7 @@ export type SkillListItem = {
   entryPath: string
   scope: 'project' | 'global' | 'builtin'
   legacy: boolean
+  userInstalled?: boolean
 }
 export type SkillListResult =
   | { ok: true; skills: SkillListItem[]; validationErrors: Array<{ root: string; message: string }> }
@@ -228,6 +236,7 @@ export type DsGuiApi = {
   pickWorkspaceDirectory: (defaultPath?: string) => Promise<WorkspacePickResult>
   listSkills: (workspaceRoot?: string) => Promise<SkillListResult>
   saveSkillFile: (rootPath: string, skillName: string, content: string) => Promise<SkillSaveResult>
+  importSkill: () => Promise<SkillImportResult>
   openSkillRoot: (rootPath: string) => Promise<PathOpenResult>
   getDeepseekConfigFile: () => Promise<LegalworkConfigFileResult>
   setDeepseekConfigFile: (content: string) => Promise<LegalworkConfigSaveResult>

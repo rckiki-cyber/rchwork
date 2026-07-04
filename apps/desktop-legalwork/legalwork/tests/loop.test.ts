@@ -870,28 +870,44 @@ describe('AgentLoop', () => {
         return { output: { done: true } }
       }
     })
-    const h = makeHarness(makeFakeModel([
-      {
-        kind: 'tool_call_complete',
-        callId: 'call_streamer',
-        toolName: 'streamer',
-        arguments: {}
-      },
-      { kind: 'completed', stopReason: 'tool_calls' },
-      { kind: 'completed', stopReason: 'stop' }
-    ]), { tools: [streamingTool] })
+    let calls = 0
+    const h = makeHarness({
+      provider: 'partial-update',
+      model: 'partial-update',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        calls += 1
+        if (calls === 1) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_streamer',
+            toolName: 'streamer',
+            arguments: {}
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [streamingTool] })
     await bootstrapThread(h)
     const status = await h.loop.runTurn(h.threadId, h.turnId)
     expect(status).toBe('completed')
     const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
-    expect(events.some((event) => event.kind === 'item_updated')).toBe(true)
     const partialUpdate = events.find(
       (event) =>
-        event.kind === 'item_updated' &&
+        (event.kind === 'item_created' || event.kind === 'item_updated') &&
         event.item.kind === 'tool_result' &&
         (event.item.output as { partial?: string }).partial === 'hello'
     )
     expect(partialUpdate).toBeDefined()
+    const result = (await h.sessionStore.loadItems(h.threadId)).find(
+      (item) => item.kind === 'tool_result' && item.callId === 'call_streamer'
+    )
+    expect(result).toMatchObject({
+      kind: 'tool_result',
+      status: 'completed',
+      output: { done: true }
+    })
   })
 
   it('waits for GUI user input tool responses and resumes the turn', async () => {
@@ -1759,7 +1775,7 @@ describe('AgentLoop', () => {
     expect(summaryRequest.contextInstructions?.join('\n')).toContain('history fold')
     expect(summaryPromptItem?.kind).toBe('user_message')
     expect(summaryPromptItem?.kind === 'user_message' ? summaryPromptItem.text : '')
-      .toContain('History excerpt to fold')
+      .toContain('需要折叠的历史摘录')
     expect(mainSummary?.kind === 'compaction' ? mainSummary.summary : '')
       .toContain('Model summary: preserve alpha.txt')
     expect(persistedSummary?.kind === 'compaction' ? persistedSummary.summary : '')

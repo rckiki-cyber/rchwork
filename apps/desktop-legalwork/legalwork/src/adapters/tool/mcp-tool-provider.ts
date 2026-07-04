@@ -153,14 +153,13 @@ export async function buildMcpToolProviders(
       const client = await clientFactory(serverId, startupServer)
       const state: McpConnectionState = {
         serverId,
-        server: startupServer,
+        server,
         client,
         clientFactory,
         nowIso,
         lastConnectedAt: nowIso()
       }
       const listed = await refreshMcpConnectionCatalog(state)
-      state.server = server
       const catalogRecords = listed.map((tool) => createMcpSearchCatalogRecord(state, tool))
       const tools = listed.map((tool) => createMcpLocalTool(state, tool))
       return {

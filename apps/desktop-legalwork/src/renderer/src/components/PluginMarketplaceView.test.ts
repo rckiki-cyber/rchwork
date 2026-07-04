@@ -332,8 +332,18 @@ describe('skillMarketplaceItemsFromDiscoveredSkills', () => {
         entryPath: '/Users/demo/.agents/skills/frontend-polish/SKILL.md',
         scope: 'global',
         legacy: true
+      },
+      {
+        id: 'legal-draft',
+        name: 'Legal Draft',
+        description: 'Draft legal documents.',
+        root: '/Users/demo/.legalwork/skills/legal-draft',
+        entryPath: '/Users/demo/.legalwork/skills/legal-draft/SKILL.md',
+        scope: 'global',
+        legacy: true,
+        userInstalled: true
       }
-    ], { project: 'Project', global: 'Global', builtin: 'Builtin' })
+    ], { project: 'Project', global: 'Global', builtin: 'Builtin', userInstalled: 'User installed' })
 
     expect(items).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -348,6 +358,11 @@ describe('skillMarketplaceItemsFromDiscoveredSkills', () => {
         title: 'Frontend Polish',
         sourceLabel: 'Global',
         category: 'frontend'
+      }),
+      expect.objectContaining({
+        id: 'legal-draft',
+        sourceLabel: 'User installed',
+        userInstalled: true
       })
     ]))
   })
@@ -363,7 +378,7 @@ describe('skillMarketplaceItemsFromDiscoveredSkills', () => {
         scope: 'global',
         legacy: true
       }
-    ], { project: 'Project', global: 'Global', builtin: 'Builtin' })
+    ], { project: 'Project', global: 'Global', builtin: 'Builtin', userInstalled: 'User installed' })
 
     expect(items[0]).toEqual(expect.objectContaining({
       id: 'bug-hunt',

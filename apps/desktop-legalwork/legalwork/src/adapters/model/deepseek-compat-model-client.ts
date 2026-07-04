@@ -346,7 +346,6 @@ export class DeepseekCompatModelClient implements ModelClient {
     })
     if (
       includeThinking &&
-      isDeepSeekHost(this.config.baseUrl) &&
       !Object.prototype.hasOwnProperty.call(body, 'thinking') &&
       isThinkingProducerModel(model)
     ) {
@@ -1955,14 +1954,14 @@ function requiresReasoningRoundTrip(
     if (resolved) {
       return resolved !== 'off' && reasoning.requestProtocol !== 'none'
     }
-    return isDeepSeekHost(baseUrl) && isThinkingProducerModel(model)
+    return isThinkingProducerModel(model)
   }
   // Thinking-mode round trip is a DeepSeek-specific protocol extension.
   // OpenAI-compat providers (OpenRouter, llama.cpp, etc.) may reject
   // or misinterpret the `thinking` field, so we only auto-enable it
   // on the official DeepSeek host. User-selected reasoningEffort still
   // forces the path (opt-in). See issue #26.
-  return isThinkingMode(effort) || (isDeepSeekHost(baseUrl) && isThinkingProducerModel(model))
+  return isThinkingMode(effort) || isThinkingProducerModel(model)
 }
 
 function isThinkingProducerModel(model: string | undefined): boolean {

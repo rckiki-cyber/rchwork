@@ -68,6 +68,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const HIDDEN_START_ARG = '--hidden'
 const startupTraceEnabled = process.env.DEEPSEEK_GUI_STARTUP_TRACE === '1'
 const startupTraceStart = Date.now()
+const RUNTIME_ENSURE_SLOW_MS = 2_500
+const RUNTIME_EXISTING_HEALTH_FAST_MS = 400
+const RUNTIME_PORT_CONFLICT_HEALTH_RECHECK_MS = 2_000
 
 function traceStartup(label: string, detail?: unknown): void {
   if (!startupTraceEnabled) return
@@ -569,27 +572,42 @@ async function ensureRuntime(settings: AppSettingsV1): Promise<void> {
   const fingerprint = runtimeFingerprint(settings)
   const pending = runtimeEnsurePromise
   if (pending) {
+    const pendingFingerprint = runtimeEnsureFingerprint
     // Wait for the in-flight ensure, then re-evaluate against the
     // fingerprint so callers don't inherit a stale result.
+    let pendingFailed = false
     try {
       await pending
     } catch {
+      pendingFailed = true
       /* fall through to retry with the current settings */
     }
-    if (runtimeEnsureFingerprint === fingerprint) return
+    if (!pendingFailed && pendingFingerprint === fingerprint) return
   }
   const task = ensureRuntimeOnce(settings)
-  runtimeEnsurePromise = task.finally(() => {
+  runtimeEnsurePromise = task
+  runtimeEnsureFingerprint = fingerprint
+  const startedAt = Date.now()
+  let failure: unknown
+  try {
+    await task
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    const durationMs = Date.now() - startedAt
+    if (failure) {
+      logWarn('runtime-ensure', 'Legalwork runtime ensure failed.', {
+        durationMs,
+        message: failure instanceof Error ? failure.message : String(failure)
+      })
+    } else if (durationMs >= RUNTIME_ENSURE_SLOW_MS) {
+      logWarn('runtime-ensure', 'Legalwork runtime ensure was slow.', { durationMs })
+    }
     if (runtimeEnsurePromise === task) {
       runtimeEnsurePromise = null
       runtimeEnsureFingerprint = null
     }
-  })
-  runtimeEnsureFingerprint = fingerprint
-  try {
-    return await task
-  } finally {
-    /* cleanup runs via the .finally above */
   }
 }
 
@@ -602,7 +620,7 @@ async function ensureLegalworkRuntime(settings: AppSettingsV1): Promise<void> {
   const runtime = getLegalworkRuntimeSettings(settings)
   const hasApiKey = Boolean(resolveConfiguredApiKey(settings))
 
-  const healthy = await waitForLegalworkHealth(settings, 2_000)
+  const healthy = await waitForLegalworkHealth(settings, RUNTIME_EXISTING_HEALTH_FAST_MS)
   if (healthy) {
     const threadApi = await probeThreadApi(settings)
     if (threadApi.ok) return
@@ -625,6 +643,12 @@ async function ensureLegalworkRuntime(settings: AppSettingsV1): Promise<void> {
   const adapter = legalworkRuntimeAdapter
   const reclaim = await adapter.reclaimPort(runtime.port)
   if (!reclaim.ok) {
+    const lateHealthy = await waitForLegalworkHealth(settings, RUNTIME_PORT_CONFLICT_HEALTH_RECHECK_MS)
+    if (lateHealthy) {
+      const threadApi = await probeThreadApi(settings)
+      if (threadApi.ok) return
+      throw runtimeJsonError(threadApi.error, threadApi.message)
+    }
     throw runtimeJsonError('runtime_port_conflict', reclaim.message)
   }
   try {
@@ -695,11 +719,6 @@ function createWindow(options: { suppressInitialShow?: boolean } = {}): void {
     mainWindow = null
   })
   const webContentsId = mainWindow.webContents.id
-  const stopWindowSse = (): void => {
-    stopRuntimeSseForWebContents(webContentsId)
-  }
-  mainWindow.on('restore', stopWindowSse)
-  mainWindow.on('show', stopWindowSse)
   mainWindow.webContents.on('destroyed', () => {
     stopRuntimeSseForWebContents(webContentsId)
   })
@@ -1001,19 +1020,21 @@ app.whenReady().then(async () => {
     stopAllRuntimeSse()
   })
   powerMonitor.on('resume', () => {
-    stopAllRuntimeSse()
+    void store.load()
+      .then((settings) => ensureRuntime(settings))
+      .catch((err) => {
+        console.warn('[legalwork] runtime resume warmup failed:', err)
+      })
   })
+
+  if (resolveConfiguredApiKey(initial) && getLegalworkRuntimeSettings(initial).autoStart) {
+    void ensureRuntime(initial).catch((err) => {
+      console.warn('[legalwork] startup runtime warmup failed:', err)
+    })
+  }
 
   createWindow({ suppressInitialShow: shouldStartHidden(initial) })
   traceStartup('createWindow:returned')
-
-  if (resolveConfiguredApiKey(initial) && getLegalworkRuntimeSettings(initial).autoStart) {
-    setTimeout(() => {
-      void ensureRuntime(initial).catch((err) => {
-        console.warn('[legalwork] startup runtime warmup failed:', err)
-      })
-    }, 250)
-  }
 
   void pruneOnStartup().catch((err) => {
     console.warn('[legalwork] prune logs:', err)
@@ -1044,6 +1065,7 @@ app.whenReady().then(async () => {
 }
 
 app.on('window-all-closed', () => {
+  if (process.platform === 'darwin' && !isQuitting) return
   void stopManagedRuntimes().catch((error) => {
     console.warn('[legalwork] failed to stop Legalwork runtime:', error)
   })

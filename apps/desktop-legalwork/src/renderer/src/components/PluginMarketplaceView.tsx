@@ -10,7 +10,8 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Settings
+  Settings,
+  Upload
 } from 'lucide-react'
 import {
   joinFsPath,
@@ -68,6 +69,7 @@ type MarketplaceItem = {
   statusTone?: 'default' | 'success' | 'warning' | 'error'
   category?: PluginCategory
   systemManaged?: boolean
+  userInstalled?: boolean
   configurable?: boolean
   needsToken?: boolean
   mcpConfig?: (workspaceRoot: string) => JsonRecord
@@ -516,7 +518,7 @@ function groupMarketplaceItemsByCategory(items: MarketplaceItem[]): Array<{ cate
 
 export function skillMarketplaceItemsFromDiscoveredSkills(
   skills: SkillListItem[],
-  labels: { project: string; global: string; builtin: string }
+  labels: { project: string; global: string; builtin: string; userInstalled: string }
 ): MarketplaceItem[] {
   return sortMarketplaceItems(skills.map((skill) => ({
     id: skill.id,
@@ -525,9 +527,11 @@ export function skillMarketplaceItemsFromDiscoveredSkills(
     description: skill.description ?? skill.root,
     group: 'personal' as const,
     sourceLabel:
+      skill.userInstalled ? labels.userInstalled :
       skill.scope === 'builtin' ? labels.builtin :
       skill.scope === 'project' ? labels.project : labels.global,
     systemManaged: skill.scope === 'builtin',
+    userInstalled: skill.userInstalled === true,
     category: inferCategoryFromText([
       skill.id,
       skill.name,
@@ -1078,7 +1082,8 @@ export function PluginMarketplaceView(): ReactElement {
     () => skillMarketplaceItemsFromDiscoveredSkills(discoveredSkills, {
       project: t('pluginSkillSourceProject'),
       global: t('pluginSkillSourceGlobal'),
-      builtin: t('pluginSkillSourceBuiltin')
+      builtin: t('pluginSkillSourceBuiltin'),
+      userInstalled: t('pluginSkillSourceUserInstalled')
     }),
     [discoveredSkills, t]
   )
@@ -1109,6 +1114,7 @@ export function PluginMarketplaceView(): ReactElement {
   )
 
   const isInstalled = useCallback((item: Pick<MarketplaceItem, 'kind' | 'id'>): boolean => {
+    if ('userInstalled' in item && item.userInstalled) return true
     if ('group' in item && item.group === 'personal') return true
     const catalogItem = RECOMMENDED_ITEMS.find((candidate) => candidate.kind === item.kind && candidate.id === item.id)
     if (catalogItem?.systemManaged) return true
@@ -1147,11 +1153,14 @@ export function PluginMarketplaceView(): ReactElement {
   }, [activeKind, filter, isInstalled, marketplaceItems, query, t])
 
   const builtInItems = visibleItems.filter((item) => item.systemManaged)
+  const userInstalledItems = activeKind === 'skill'
+    ? visibleItems.filter((item) => item.kind === 'skill' && item.userInstalled)
+    : []
   const recommendedItems = visibleItems.filter((item) => !item.systemManaged && !isInstalled(item))
   const personalItems = visibleItems.filter((item) =>
     item.group === 'personal' ||
     (!item.systemManaged && isInstalled(item) && !discoveredSkillIds.has(item.id) && !discoveredMcpIds.has(item.id))
-  )
+  ).filter((item) => !item.userInstalled)
   const mcpRuntimeOverlay = useMemo(
     () => buildMcpMarketplaceOverlay({
       runtimeInfo,
@@ -1316,6 +1325,31 @@ export function PluginMarketplaceView(): ReactElement {
     }
   }
 
+  const importSkill = async (): Promise<void> => {
+    setBusyId('skill:import')
+    setNotice(null)
+    try {
+      const result = await window.dsGui.importSkill()
+      if (!result.ok) {
+        if (!result.canceled) setNotice({ tone: 'error', message: result.message })
+        return
+      }
+      await refreshSkillList()
+      const names = result.installed.map((item) => item.name).join(', ')
+      setNotice({
+        tone: 'success',
+        message: t('pluginSkillImported', {
+          count: result.installed.length,
+          names: names || result.userSkillRoot
+        })
+      })
+    } catch (e) {
+      setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const renderConfigPanel = (item: MarketplaceItem): ReactNode => {
     if (item.id === 'pkulaw') {
       return (
@@ -1453,6 +1487,15 @@ export function PluginMarketplaceView(): ReactElement {
             </button>
             <button
               type="button"
+              onClick={() => void importSkill()}
+              disabled={busyId === 'skill:import'}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-ds-userbubble px-3 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busyId === 'skill:import' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {t('pluginSkillImport')}
+            </button>
+            <button
+              type="button"
               onClick={() => void refreshSkillList()}
               disabled={skillListLoading}
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-ds-border bg-ds-card px-3 text-[13px] font-medium text-ds-ink shadow-sm transition hover:bg-ds-hover disabled:cursor-not-allowed disabled:opacity-60"
@@ -1509,6 +1552,20 @@ export function PluginMarketplaceView(): ReactElement {
             title={t('pluginBuiltIn')}
             emptyText={t('pluginNoResults')}
             items={builtInItems}
+            busyId={busyId}
+            isInstalled={isInstalled}
+            onAdd={addItem}
+            configuringItemId={configuringItemId}
+            renderConfig={renderConfigPanel}
+            t={t}
+          />
+        ) : null}
+
+        {activeKind === 'skill' ? (
+          <PluginSection
+            title={t('pluginUserInstalled')}
+            emptyText={t('pluginUserInstalledEmpty')}
+            items={userInstalledItems}
             busyId={busyId}
             isInstalled={isInstalled}
             onAdd={addItem}

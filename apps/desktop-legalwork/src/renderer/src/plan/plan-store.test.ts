@@ -7,7 +7,7 @@ import {
   useGuiPlanStore
 } from './plan-store'
 
-const PLAN_REGISTRY_STORAGE_KEY = 'deepseekgui.plan.registry.v1'
+const PLAN_REGISTRY_STORAGE_KEY = 'legalwork.plan.registry.v1'
 
 function createMemoryStorage(): Storage {
   const items = new Map<string, string>()
@@ -81,10 +81,12 @@ describe('plan-store', () => {
       },
       plans: {
         valid: {
+          id: 'valid',
           workspaceRoot: '/tmp/valid/',
           threadId: 'thread-a',
           relativePath: '.deepseekgui/plan/draft.md',
           sourceRequest: 'draft',
+          featureName: 'draft',
           createdAt: '2026-01-01T00:00:00.000Z'
         },
         invalid: {

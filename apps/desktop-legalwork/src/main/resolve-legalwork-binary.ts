@@ -46,9 +46,14 @@ function isNodeScript(path: string): boolean {
   return /\.(?:cjs|mjs|js)$/i.test(path)
 }
 
+function isWindowsBatchScript(path: string): boolean {
+  return /\.(?:bat|cmd)$/i.test(path)
+}
+
 export function resolveLegalworkExecutable(
   appRoot: string,
-  userBinaryPath: string
+  userBinaryPath: string,
+  platform: NodeJS.Platform = process.platform
 ): LegalworkBinaryResolution {
   const trimmed = userBinaryPath?.trim() ?? ''
   if (trimmed) {
@@ -66,6 +71,14 @@ export function resolveLegalworkExecutable(
         kind: 'node-script',
         command: process.execPath,
         args: [trimmed],
+        dataDir: ''
+      }
+    }
+    if (platform === 'win32' && isWindowsBatchScript(trimmed)) {
+      return {
+        kind: 'custom',
+        command: 'cmd.exe',
+        args: ['/d', '/s', '/c', trimmed],
         dataDir: ''
       }
     }

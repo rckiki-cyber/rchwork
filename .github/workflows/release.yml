@@ -105,15 +105,14 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.MAC_API_ISSUER }}
         run: npm run dist:mac
 
-      - name: Upload macOS assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        working-directory: ${{ env.WORKING_DIRECTORY }}
-        run: |
-          gh release upload "${{ needs.create-release.outputs.tag_name }}" \
-            dist/legalwork-*-mac-* \
-            dist/latest-mac.yml \
-            --clobber --repo "${{ github.repository }}"
+      - name: Upload macOS build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-assets
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/dist/legalwork-*-mac-*
+            ${{ env.WORKING_DIRECTORY }}/dist/latest-mac.yml
+          if-no-files-found: error
 
   build-windows:
     name: Build Windows
@@ -160,17 +159,15 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
         run: npm run dist:win
 
-      - name: Upload Windows assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        working-directory: ${{ env.WORKING_DIRECTORY }}
-        shell: bash
-        run: |
-          gh release upload "${{ needs.create-release.outputs.tag_name }}" \
-            dist/legalwork-*-win-*.exe \
-            dist/legalwork-*-win-*.exe.blockmap \
-            dist/latest.yml \
-            --clobber --repo "${{ github.repository }}"
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-assets
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/dist/legalwork-*-win-*.exe
+            ${{ env.WORKING_DIRECTORY }}/dist/legalwork-*-win-*.exe.blockmap
+            ${{ env.WORKING_DIRECTORY }}/dist/latest.yml
+          if-no-files-found: error
 
   build-linux:
     name: Build Linux
@@ -199,19 +196,67 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run dist -- --linux AppImage --x64
 
-      - name: Upload Linux assets
+      - name: Upload Linux build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-assets
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/dist/legalwork-*.AppImage
+            ${{ env.WORKING_DIRECTORY }}/dist/latest-linux.yml
+          if-no-files-found: error
+
+  upload-release-assets:
+    name: Upload release assets
+    needs: [create-release, build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Upload assets in user-facing order
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
         run: |
-          gh release upload "${{ needs.create-release.outputs.tag_name }}" \
-            dist/legalwork-*.AppImage \
-            dist/latest-linux.yml \
-            --clobber --repo "${{ github.repository }}"
+          set -euo pipefail
+          upload_matching() {
+            local label="$1"
+            shift
+            local files=()
+            local pattern
+
+            shopt -s nullglob
+            for pattern in "$@"; do
+              files+=( ${pattern} )
+            done
+            shopt -u nullglob
+
+            if [[ ${#files[@]} -eq 0 ]]; then
+              echo "Missing release asset: ${label}" >&2
+              exit 1
+            fi
+
+            for file in "${files[@]}"; do
+              echo "Uploading ${label}: ${file}"
+              gh release upload "${{ needs.create-release.outputs.tag_name }}" "${file}" \
+                --clobber --repo "${{ github.repository }}"
+            done
+          }
+
+          # GitHub shows only the first few assets before collapsing the list, so put DMG installers first.
+          upload_matching "macOS Apple Silicon DMG" "macos-assets/legalwork-*-mac-arm64.dmg"
+          upload_matching "macOS Intel DMG" "macos-assets/legalwork-*-mac-x64.dmg"
+          upload_matching "Windows x64 installer" "windows-assets/legalwork-*-win-x64.exe"
+          upload_matching "Linux AppImage" "linux-assets/legalwork-*.AppImage"
+          upload_matching "macOS auto-update zip" "macos-assets/legalwork-*-mac-*.zip"
+          upload_matching "Windows 32-bit installer" "windows-assets/legalwork-*-win-ia32.exe"
+          upload_matching "macOS auto-update blockmap" "macos-assets/legalwork-*-mac-*.blockmap"
+          upload_matching "Windows auto-update blockmap" "windows-assets/legalwork-*-win-*.exe.blockmap"
+          upload_matching "update metadata" "macos-assets/latest-mac.yml" "windows-assets/latest.yml" "linux-assets/latest-linux.yml"
 
   publish-release:
     name: Publish release
-    needs: [create-release, build-macos, build-windows, build-linux]
+    needs: [create-release, upload-release-assets]
     runs-on: ubuntu-latest
     steps:
       - name: Publish release

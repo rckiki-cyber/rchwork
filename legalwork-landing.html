@@ -2719,6 +2719,7 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
                         <li>SQLite 结构化存储</li>
                         <li>JSONL 日志记录</li>
                         <li>长期记忆系统</li>
+                        <li>RAG 技术路线</li>
                         <li>线程管理与 Fork</li>
                     </ul>
                 </div>
@@ -3027,7 +3028,11 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
         function findReleaseAsset(platformKey) {
             const profile = platformProfiles[platformKey];
             if (!profile?.matcher) return null;
-            return releaseData?.assets?.find(asset => profile.matcher.test(asset.name)) || null;
+            const assets = releaseData?.assets?.filter(asset => profile.matcher.test(asset.name)) || [];
+            if (/^mac-/.test(platformKey)) {
+                return assets.find(asset => /\.dmg$/i.test(asset.name)) || assets[0] || null;
+            }
+            return assets[0] || null;
         }
 
         function getTotalDownloadCount() {

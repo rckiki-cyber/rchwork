@@ -14,7 +14,7 @@ import {
   rememberTurnModel
 } from './chat-store-helpers'
 
-const TURN_MODEL_STORAGE_KEY = 'deepseekgui.turnModelLabel'
+const TURN_MODEL_STORAGE_KEY = 'legalwork.turnModelLabel'
 
 function createMemoryStorage(): Storage {
   const items = new Map<string, string>()

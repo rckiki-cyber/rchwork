@@ -131,12 +131,23 @@ function getCategories(highlights) {
 function getInstallAssets(assets) {
   return (Array.isArray(assets) ? assets : [])
     .filter((asset) => /\.(dmg|zip|exe|AppImage)$/i.test(asset.name || ''))
+    .sort((a, b) => getAssetPriority(a.name) - getAssetPriority(b.name))
     .map((asset) => ({
       name: asset.name,
       browser_download_url: asset.browser_download_url,
       download_count: asset.download_count || 0,
       size: asset.size || 0,
     }));
+}
+
+function getAssetPriority(name) {
+  const value = String(name || '');
+  if (/mac-.*\.dmg$/i.test(value)) return 0;
+  if (/win-x64\.exe$/i.test(value)) return 1;
+  if (/mac-.*\.zip$/i.test(value)) return 2;
+  if (/win-ia32\.exe$/i.test(value)) return 3;
+  if (/\.AppImage$/i.test(value)) return 4;
+  return 5;
 }
 
 async function fetchReleases() {

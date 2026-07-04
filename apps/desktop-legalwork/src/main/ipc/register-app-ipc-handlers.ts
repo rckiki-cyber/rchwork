@@ -125,7 +125,7 @@ import {
   setHistoryBaseDir
 } from '../services/document-history-service'
 import { copyWriteDocumentAsRichText, exportWriteDocument } from '../services/write-export-service'
-import { listGuiSkills } from '../services/skill-service'
+import { importGuiSkillFromPath, listGuiSkills } from '../services/skill-service'
 
 type GuiUpdaterModule = typeof import('../gui-updater')
 
@@ -1028,6 +1028,29 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     const request = parseIpcPayload('skill:list', skillListPayloadSchema, payload)
     const settings = await store.load()
     return listGuiSkills(settings, request.workspaceRoot)
+  })
+
+  ipcMain.handle('skill:import', async () => {
+    const options: Electron.OpenDialogOptions = {
+      title: '导入 Skill 文件夹或 zip',
+      properties: ['openFile', 'openDirectory', 'dontAddToRecent'],
+      filters: [
+        { name: 'Skill zip', extensions: ['zip'] },
+        { name: 'All files', extensions: ['*'] }
+      ]
+    }
+    const mainWindow = getMainWindow()
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled) {
+      return { ok: false as const, canceled: true as const, message: '已取消导入。' }
+    }
+    const sourcePath = result.filePaths[0]
+    if (!sourcePath) {
+      return { ok: false as const, message: '未选择 Skill 文件夹或 zip。' }
+    }
+    return importGuiSkillFromPath(sourcePath)
   })
 
   ipcMain.handle('skill:open-root', async (_, rootPath: unknown) => {

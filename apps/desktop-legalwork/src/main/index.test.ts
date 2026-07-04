@@ -47,6 +47,7 @@ describe('app icon loader', () => {
     fsMock.readFileSync.mockReset()
     // 让 mock 在被调用时返回非 undefined 的 NativeImage 占位符
     createFromBuffer.mockReturnValue({ isEmpty: () => false } as unknown as Electron.NativeImage)
+    createFromDataURL.mockReturnValue({ isEmpty: () => false } as unknown as Electron.NativeImage)
     createEmpty.mockReturnValue({ isEmpty: () => true } as unknown as Electron.NativeImage)
     mod = await import('./app-icon')
   })
@@ -111,7 +112,7 @@ describe('app icon loader', () => {
       expect(icon).toBeDefined()
     })
 
-    it('falls back to nativeImage.createEmpty when readFileSync throws', () => {
+    it('falls back to an embedded non-empty icon when readFileSync throws', () => {
       fsMock.readFileSync.mockImplementation(() => {
         throw new Error('ENOENT: no such file')
       })
@@ -119,9 +120,11 @@ describe('app icon loader', () => {
       // 故意指向一个不存在的路径
       const icon = mod.createAppIcon('chunks/missing.png')
 
-      expect(createEmpty).toHaveBeenCalledTimes(1)
+      expect(createFromDataURL).toHaveBeenCalledTimes(1)
+      expect(String(createFromDataURL.mock.calls[0]?.[0])).toMatch(/^data:image\/svg\+xml/)
       expect(createFromBuffer).not.toHaveBeenCalled()
       expect(createFromPath).not.toHaveBeenCalled()
+      expect(createEmpty).not.toHaveBeenCalled()
       expect(icon).toBeDefined()
     })
   })

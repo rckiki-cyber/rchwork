@@ -209,8 +209,8 @@ describe('FloatingComposer model controls', () => {
       })
     )
 
-    expect(html).toContain('Auto')
-    expect(html).toContain('High')
+    expect(html).toContain('自动')
+    expect(html).toContain('高')
   })
 
   it('shows the active provider model when auto resolves to Kimi Code', () => {
@@ -471,7 +471,7 @@ describe('FloatingComposer capability controls', () => {
 
     expect(html).toContain('Openspec Apply Change')
     expect(html).toContain('Implement tasks from an OpenSpec change')
-    expect(html).toContain('Project')
+    expect(html).toContain('项目')
     expect(html).toContain('/skill:openspec-apply-change')
   })
 
@@ -584,7 +584,7 @@ describe('FloatingComposer capability controls', () => {
         onRemoveAttachment: () => undefined
       })
     )
-    expect(html).toContain('More actions')
+    expect(html).toContain('更多操作')
     expect(html).not.toContain('Attach image')
     expect(html).toContain('shot.png')
   })
@@ -612,8 +612,8 @@ describe('FloatingComposer capability controls', () => {
     )
 
     expect(html).toContain('deepseek-v4-pro')
-    expect(html).toContain('Stop')
-    expect(html).not.toContain('Stop and discard')
+    expect(html).toContain('停止')
+    expect(html).not.toContain('停止并丢弃')
     expect(html).not.toContain('lucide-trash-2')
     expect(html).not.toContain('lucide-zap')
     expect(html).not.toContain('Default (thread)')
@@ -634,9 +634,9 @@ describe('FloatingComposer capability controls', () => {
     )
 
     expect(html).toContain('deepseek-v4-pro')
-    expect(html).toContain('Ultra')
-    expect(html).toContain('Model and reasoning settings')
-    expect(html).not.toContain('>Auto<')
+    expect(html).toContain('超高')
+    expect(html).toContain('模型与推理设置')
+    expect(html).not.toContain('>自动<')
     expect(html).not.toContain('<option value=""></option>')
     expect(html).not.toContain('Default (thread)')
   })
@@ -656,8 +656,8 @@ describe('FloatingComposer capability controls', () => {
     )
 
     expect(html).toContain('deepseek-v4-flash')
-    expect(html).toContain('High')
-    expect(html).toContain('Model and reasoning settings')
+    expect(html).toContain('高')
+    expect(html).toContain('模型与推理设置')
     expect(html).toContain('aria-haspopup="menu"')
     expect(html).not.toContain('<input')
   })
@@ -684,8 +684,8 @@ describe('FloatingComposer capability controls', () => {
         webAccessAvailable: false
       })
     )
-    expect(html).toContain('title="Plan"')
-    expect(html).toContain('>Plan</span>')
+    expect(html).toContain('title="计划"')
+    expect(html).toContain('>计划</span>')
   })
 
   it('renders image attachment thumbnails when a local preview is available', () => {
@@ -751,8 +751,8 @@ describe('FloatingComposer capability controls', () => {
     )
 
     expect(html).toContain('src/App.tsx')
-    expect(html).toContain('Remove file reference')
-    expect(html).toContain('aria-label="Send"')
-    expect(html).not.toContain('aria-label="Send" disabled=""')
+    expect(html).toContain('移除文件引用')
+    expect(html).toContain('aria-label="发送"')
+    expect(html).not.toContain('aria-label="发送" disabled=""')
   })
 })

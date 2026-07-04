@@ -1,11 +1,15 @@
+import { execFile } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
-import { readdir, readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { basename, dirname, join, resolve } from 'node:path'
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { promisify } from 'node:util'
 import type { AppSettingsV1 } from '../../shared/app-settings'
 import { expandHomePath } from './workspace-service'
 
 export type GuiSkillScope = 'project' | 'global' | 'builtin'
+const execFileAsync = promisify(execFile)
+export const USER_INSTALLED_SKILL_ROOT = join(homedir(), '.legalwork', 'skills')
 
 function isPackagedApp(): boolean {
   try {
@@ -51,6 +55,7 @@ export type GuiSkillSummary = {
   entryPath: string
   scope: GuiSkillScope
   legacy: boolean
+  userInstalled?: boolean
 }
 
 export type GuiSkillListResult =
@@ -61,6 +66,18 @@ export type GuiSkillRoot = {
   path: string
   scope: GuiSkillScope
 }
+
+export type GuiSkillImportResult =
+  | {
+      ok: true
+      userSkillRoot: string
+      installed: Array<{
+        name: string
+        path: string
+        replaced: boolean
+      }>
+    }
+  | { ok: false; message: string }
 
 const SKILL_PACKAGE_SCAN_DEPTH = 5
 
@@ -85,7 +102,7 @@ export async function guiSkillRootsForRuntime(
   ])
   const globalRoots: string[] = [
     join(homedir(), '.agents', 'skills'),
-    join(homedir(), '.legalwork', 'skills'),
+    USER_INSTALLED_SKILL_ROOT,
     ...await discoverCodexPluginSkillRoots(),
     ...await discoverComputerWideSkillRoots()
   ]
@@ -134,6 +151,57 @@ export async function listGuiSkills(
       ok: true,
       skills: dedupeSkills(skills),
       validationErrors
+    }
+  } catch (error) {
+    return { ok: false, message: errorMessage(error) }
+  }
+}
+
+export async function importGuiSkillFromPath(
+  sourcePath: string,
+  targetRoot = USER_INSTALLED_SKILL_ROOT
+): Promise<GuiSkillImportResult> {
+  try {
+    const source = resolve(expandHomePath(sourcePath))
+    if (!source || !existsSync(source)) {
+      return { ok: false, message: '请选择有效的 Skill 文件夹或 zip 文件。' }
+    }
+
+    const sourceStat = await stat(source)
+    let tempDir = ''
+    const importRoot = sourceStat.isDirectory()
+      ? source
+      : isZipFile(source)
+        ? await extractSkillZip(source).then((dir) => {
+            tempDir = dir
+            return dir
+          })
+        : ''
+
+    if (!importRoot) {
+      return { ok: false, message: '仅支持 Skill 文件夹或 .zip 文件。' }
+    }
+
+    try {
+      const skillDirs = await importSkillCandidates(importRoot)
+      if (skillDirs.length === 0) {
+        return { ok: false, message: '未找到 SKILL.md 或 skill.json。' }
+      }
+
+      await mkdir(targetRoot, { recursive: true })
+      const installed = []
+      for (const skillDir of skillDirs) {
+        installed.push(await installSkillDirectory(skillDir, targetRoot))
+      }
+      return {
+        ok: true,
+        userSkillRoot: targetRoot,
+        installed
+      }
+    } finally {
+      if (tempDir) {
+        await rm(tempDir, { recursive: true, force: true })
+      }
     }
   } catch (error) {
     return { ok: false, message: errorMessage(error) }
@@ -314,7 +382,105 @@ async function loadSkillSummary(root: string, scope: GuiSkillScope): Promise<Gui
     root,
     entryPath: join(root, entry),
     scope,
-    legacy
+    legacy,
+    ...(isUserInstalledSkillPath(root) ? { userInstalled: true } : {})
+  }
+}
+
+async function importSkillCandidates(root: string): Promise<string[]> {
+  if (isSkillPackageDirectory(root)) return [root]
+  return packageCandidates(root, SKILL_PACKAGE_SCAN_DEPTH)
+}
+
+function isSkillPackageDirectory(root: string): boolean {
+  return existsSync(join(root, 'SKILL.md')) || existsSync(join(root, 'skill.json'))
+}
+
+function isZipFile(path: string): boolean {
+  return extname(path).toLowerCase() === '.zip'
+}
+
+async function installSkillDirectory(source: string, targetRoot: string): Promise<{ name: string; path: string; replaced: boolean }> {
+  const name = validateSkillDirectoryName(basename(source))
+  const target = join(targetRoot, name)
+  let replaced = false
+
+  if (existsSync(target)) {
+    const [sourceReal, targetReal] = await Promise.all([
+      realpath(source).catch(() => source),
+      realpath(target).catch(() => target)
+    ])
+    if (comparablePath(sourceReal) === comparablePath(targetReal)) {
+      return { name, path: target, replaced: false }
+    }
+    await rm(target, { recursive: true, force: true })
+    replaced = true
+  }
+
+  await cp(source, target, {
+    recursive: true,
+    force: true,
+    dereference: false,
+    filter: shouldImportPath
+  })
+  return { name, path: target, replaced }
+}
+
+function validateSkillDirectoryName(name: string): string {
+  const value = name.trim()
+  if (!value || value === '.' || value === '..' || value.includes('/') || value.includes('\\') || value.includes('\0')) {
+    throw new Error(`无效的 Skill 文件夹名称：${name}`)
+  }
+  return value
+}
+
+function shouldImportPath(path: string): boolean {
+  const name = basename(path)
+  return name !== 'node_modules' && name !== '__pycache__' && name !== '.git'
+}
+
+async function extractSkillZip(zipPath: string): Promise<string> {
+  const target = await mkdtemp(join(tmpdir(), 'legalwork-skill-import-'))
+  try {
+    await ensureSafeZipEntries(zipPath)
+    if (process.platform === 'win32') {
+      await execFileAsync('powershell.exe', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force',
+        zipPath,
+        target
+      ], { timeout: 120_000 })
+    } else {
+      await execFileAsync('unzip', ['-q', zipPath, '-d', target], { timeout: 120_000 })
+    }
+    return target
+  } catch (error) {
+    await rm(target, { recursive: true, force: true })
+    throw error
+  }
+}
+
+async function ensureSafeZipEntries(zipPath: string): Promise<void> {
+  const output = process.platform === 'win32'
+    ? await execFileAsync('powershell.exe', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        '[Reflection.Assembly]::LoadWithPartialName("System.IO.Compression.FileSystem") | Out-Null; [IO.Compression.ZipFile]::OpenRead($args[0]).Entries | ForEach-Object { $_.FullName }',
+        zipPath
+      ], { encoding: 'utf8', timeout: 30_000 })
+    : await execFileAsync('unzip', ['-Z1', zipPath], { encoding: 'utf8', timeout: 30_000 })
+  for (const line of output.stdout.split(/\r?\n/)) {
+    const entry = line.trim()
+    if (!entry) continue
+    const parts = entry.split(/[\\/]+/)
+    if (isAbsolute(entry) || entry.includes('\0') || parts.includes('..')) {
+      throw new Error('zip 中包含不安全路径。')
+    }
   }
 }
 
@@ -453,6 +619,13 @@ function uniqueStrings(values: string[]): string[] {
 
 function comparablePath(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/+$/g, '').toLowerCase()
+}
+
+function isUserInstalledSkillPath(path: string): boolean {
+  const root = comparablePath(USER_INSTALLED_SKILL_ROOT)
+  const value = comparablePath(resolve(path))
+  const rel = relative(root, value)
+  return value === root || (rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel))
 }
 
 function errorMessage(error: unknown): string {

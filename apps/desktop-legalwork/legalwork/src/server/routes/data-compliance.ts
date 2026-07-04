@@ -248,6 +248,7 @@ export async function getDataComplianceInputFile(
 export function buildDataComplianceWebRoot(options: { appRoot: string; isPackaged: boolean; cwd?: string }): string {
   const bundleRoot = 'vendor/data-compliance-review-codex/data-compliance-web'
   const candidates = [
+    options.appRoot,
     join(options.appRoot, bundleRoot),
     join(options.appRoot, 'app.asar.unpacked', bundleRoot),
     join(options.appRoot, '..', bundleRoot),

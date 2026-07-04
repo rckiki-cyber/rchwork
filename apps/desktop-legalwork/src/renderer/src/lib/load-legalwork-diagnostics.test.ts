@@ -38,4 +38,28 @@ describe('loadLegalworkDiagnostics', () => {
     expect(loaded.memoryRecords).toBeUndefined()
     expect(loaded.errors).toEqual(['Memory: memory store is unavailable'])
   })
+
+  it('does not load memory records when runtime reports memory disabled', async () => {
+    const runtimeInfo = {
+      pid: 42,
+      capabilities: {
+        memory: { status: 'disabled', enabled: false, available: false }
+      }
+    } as any
+    const toolDiagnostics = { providers: [{ id: 'builtin' }], mcpServers: [] } as any
+    const provider = {
+      getRuntimeInfo: async () => runtimeInfo,
+      getToolDiagnostics: async () => toolDiagnostics,
+      listMemories: async () => {
+        throw new Error('memory store is unavailable')
+      }
+    }
+
+    const loaded = await loadLegalworkDiagnostics(provider, { workspace: '/tmp/project' })
+
+    expect(loaded.runtimeInfo).toBe(runtimeInfo)
+    expect(loaded.toolDiagnostics).toBe(toolDiagnostics)
+    expect(loaded.memoryRecords).toEqual([])
+    expect(loaded.errors).toEqual([])
+  })
 })

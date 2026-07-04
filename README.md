@@ -1,6 +1,27 @@
 # LegalWork — 法律人工智能工作台
 
 <p align="center">
+  <a href="https://github.com/sunyifeisb-art/legalwork/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/sunyifeisb-art/legalwork?style=flat-square&logo=github"></a>
+  <a href="https://github.com/sunyifeisb-art/legalwork/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/sunyifeisb-art/legalwork?style=flat-square&logo=github"></a>
+  <a href="https://github.com/sunyifeisb-art/legalwork/actions/workflows/release.yml"><img alt="Release workflow" src="https://img.shields.io/github/actions/workflow/status/sunyifeisb-art/legalwork/release.yml?branch=main&style=flat-square&label=release"></a>
+  <a href="https://github.com/sunyifeisb-art/legalwork/actions/workflows/legalwork-update.yml"><img alt="Update workflow" src="https://img.shields.io/github/actions/workflow/status/sunyifeisb-art/legalwork/legalwork-update.yml?branch=main&style=flat-square&label=website%20changelog"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-111827?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <img alt="Skill library" src="https://img.shields.io/badge/%E6%8A%80%E8%83%BD%E6%80%BB%E5%BA%93-1345-111827?style=flat-square">
+  <img alt="Core legal AI skills" src="https://img.shields.io/badge/%E6%A0%B8%E5%BF%83%E6%B3%95%E5%BE%8B%E6%8A%80%E8%83%BD-75-2563eb?style=flat-square">
+  <img alt="Extended skill store" src="https://img.shields.io/badge/%E6%89%A9%E5%B1%95%E6%8A%80%E8%83%BD%E5%95%86%E5%BA%97-1252-9333ea?style=flat-square">
+  <img alt="Knowledge base files" src="https://img.shields.io/badge/%E6%B3%95%E8%A7%84%E7%9F%A5%E8%AF%86%E5%BA%93-326%20files-16a34a?style=flat-square">
+  <img alt="OCR engines" src="https://img.shields.io/badge/OCR-PaddleOCR%20%2B%20Tesseract-f97316?style=flat-square">
+  <img alt="Redaction" src="https://img.shields.io/badge/PDF%E8%84%B1%E6%95%8F-%E5%83%8F%E7%B4%A0%E7%BA%A7%E6%B6%82%E9%BB%91-7c3aed?style=flat-square">
+  <img alt="External law source" src="https://img.shields.io/badge/%E6%9D%83%E5%A8%81%E6%B3%95%E6%BA%90-flk.npc.gov.cn-b91c1c?style=flat-square">
+  <img alt="Desktop app" src="https://img.shields.io/badge/%E6%A1%8C%E9%9D%A2%E7%AB%AF-Electron%20%2B%20React-0ea5e9?style=flat-square">
+  <img alt="Agent runtime" src="https://img.shields.io/badge/Agent%E8%BF%90%E8%A1%8C%E6%97%B6-HTTP%2FSSE%20%2B%20MCP-475569?style=flat-square">
+  <img alt="Platforms" src="https://img.shields.io/badge/%E5%8F%91%E5%B8%83-macOS%20%7C%20Windows%20%7C%20Linux-111827?style=flat-square">
+</p>
+
+<p align="center">
   <img src="docs/images/legalwork-main-interface.png" alt="LegalWork 主界面截图" width="100%">
 </p>
 
@@ -9,9 +30,9 @@
 
 ## ✨ 功能全景
 
-### 🧠 69 项法律 AI 技能（Skills）
+### 🧠 75 项核心法律 AI 技能 + 1252 项扩展技能
 
-LegalWork 内置了覆盖法律工作全流程的 AI 技能库，按领域分类：
+LegalWork 根目录内置 75 项覆盖法律工作全流程的核心技能，并通过 `skills/awesome-legal-aiagent-skills/` 扩展 1252 项可选技能包。核心法律技能按领域分类：
 
 #### 📊 案件分析与推理
 | 技能 | 说明 |
@@ -235,7 +256,7 @@ result = pipeline.process_text(
 - **模型集成**：支持 DeepSeek 等 API 兼容模型
 - **MCP 协议支持**：集成 MCP 工具服务器
 - **缓存优化**：Cache-first 架构，LRU/TTL 缓存
-- **技能集成**：支持调用上述 69 项法律 AI 技能
+- **技能集成**：支持调用上述 75 项核心法律 AI 技能，并可接入 1252 项扩展技能包
 - **记忆系统**：长期记忆存储与检索
 - **知识检索**：RAG 知识库检索
 - **附件处理**：图片上传与处理
@@ -318,14 +339,15 @@ legalwork/
 │   ├── intake.py             #   文件读取
 │   └── output.py             #   结果输出
 │
-├── skills/                   # 69 项法律 AI 技能
+├── skills/                   # 核心法律技能 + 扩展技能商店
 │   ├── legal-case-analysis/  #   案情分析
 │   ├── fact_extraction/      #   事实抽取
 │   ├── evidence_evaluation/  #   证据评估
 │   ├── document_drafting/    #   文书起草
 │   ├── legal_research/       #   法律研究
 │   ├── compliance_review/    #   合规审查
-│   ├── ...                   #   （共 69 项）
+│   ├── awesome-legal-aiagent-skills/
+│   ├── ...                   #   核心 75 项，扩展 1252 项
 │
 ├── case_system/              # 案件管理系统
 │

@@ -3,6 +3,7 @@ import type {
   ChatBlock,
   NormalizedThread,
   ReviewTarget,
+  ThreadDeltaEvent,
   ThreadEventSink,
   ThreadListOptions,
   ThreadUsageSnapshot,
@@ -75,6 +76,8 @@ function createSseStreamId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `sse-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+const SSE_DELTA_FLUSH_MS = 32
+
 function readRuntimeError(body: string, fallback: string): RuntimeError {
   return parseRuntimeErrorBody(body, fallback)
 }
@@ -85,6 +88,18 @@ function readRuntimeJson<T>(body: string, fallback: string): T {
   } catch {
     throw runtimeErrorToError({ code: 'unknown', message: fallback })
   }
+}
+
+function deltaFromRuntimeEvent(event: CoreRuntimeEventJson): ThreadDeltaEvent | null {
+  const text = event.item?.text ?? ''
+  if (!text) return null
+  if (event.kind === 'assistant_text_delta') {
+    return { text, kind: 'agent_message', seq: event.seq }
+  }
+  if (event.kind === 'assistant_reasoning_delta') {
+    return { text, kind: 'agent_reasoning', seq: event.seq }
+  }
+  return null
 }
 
 /**
@@ -717,9 +732,28 @@ export class LegalworkRuntimeProvider implements AgentProvider {
     await new Promise<void>(async (resolve) => {
       let settled = false
       const pendingDispatches = new Set<Promise<void>>()
+      let pendingDeltas: ThreadDeltaEvent[] = []
+      let deltaFlushTimer: ReturnType<typeof setTimeout> | null = null
+      const clearDeltaTimer = (): void => {
+        if (deltaFlushTimer === null) return
+        clearTimeout(deltaFlushTimer)
+        deltaFlushTimer = null
+      }
+      const flushDeltas = (): void => {
+        clearDeltaTimer()
+        if (pendingDeltas.length === 0) return
+        const deltas = pendingDeltas
+        pendingDeltas = []
+        sink.onDeltas(deltas)
+      }
+      const scheduleDeltaFlush = (): void => {
+        if (deltaFlushTimer !== null) return
+        deltaFlushTimer = setTimeout(flushDeltas, SSE_DELTA_FLUSH_MS)
+      }
       const finish = (): void => {
         if (settled) return
         settled = true
+        flushDeltas()
         offData()
         offEnd()
         offErr()
@@ -729,6 +763,14 @@ export class LegalworkRuntimeProvider implements AgentProvider {
       const offData = rendererRuntimeClient.onSseEvent(({ streamId: sid, data }) => {
         if (sid !== streamId) return
         const event = data && typeof data === 'object' ? (data as CoreRuntimeEventJson) : {}
+        const delta = deltaFromRuntimeEvent(event)
+        if (delta) {
+          pendingDeltas.push(delta)
+          scheduleDeltaFlush()
+          return
+        }
+        flushDeltas()
+        if (settled) return
         if (typeof event.seq === 'number') {
           sink.onSeq(event.seq)
         }
@@ -741,6 +783,8 @@ export class LegalworkRuntimeProvider implements AgentProvider {
       })
       const offErr = rendererRuntimeClient.onSseError(({ streamId: sid, message, status }) => {
         if (sid !== streamId) return
+        flushDeltas()
+        if (settled) return
         sink.onError(new Error(message ?? `sse error ${status ?? ''}`))
         finish()
       })

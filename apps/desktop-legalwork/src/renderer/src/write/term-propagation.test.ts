@@ -72,8 +72,8 @@ describe('write term propagation', () => {
   })
 
   it('propagates canonical casing after an incremental case edit', () => {
-    const content = 'legalwork works. deepseek gui should follow. deepseek api should not.'
-    const seedFrom = content.indexOf('legalwork')
+    const content = 'DeepSeek gui works. deepseek gui should follow. deepseek api should not.'
+    const seedFrom = content.indexOf('DeepSeek')
 
     const changes = buildWriteCanonicalTermPropagationChanges(content, {
       from: seedFrom,
@@ -83,7 +83,7 @@ describe('write term propagation', () => {
     })
 
     expect(applyChanges(content, changes)).toBe(
-      'legalwork works. legalwork should follow. deepseek api should not.'
+      'DeepSeek gui works. DeepSeek gui should follow. deepseek api should not.'
     )
   })
 })

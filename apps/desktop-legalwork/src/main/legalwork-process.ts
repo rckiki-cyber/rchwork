@@ -46,6 +46,7 @@ import { guiSkillRootsForRuntime, normalizeSkillRootPath } from './services/skil
 
 let child: ChildProcess | null = null
 let childLogCapture: LegalworkChildLogCapture | null = null
+let childStartupPromise: Promise<void> | null = null
 let lastResolvedBinary: string | null = null
 const LEGALWORK_READY_PREFIX = 'LEGALWORK_READY '
 const LEGALWORK_STARTUP_TIMEOUT_MS = 60_000
@@ -227,6 +228,17 @@ export function isLegalworkChildRunning(): boolean {
 }
 
 export async function startLegalworkChild(settings: AppSettingsV1): Promise<void> {
+  if (childStartupPromise) return childStartupPromise
+  const task = startLegalworkChildOnce(settings)
+  childStartupPromise = task
+  try {
+    await task
+  } finally {
+    if (childStartupPromise === task) childStartupPromise = null
+  }
+}
+
+async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
   const runtime = resolveLegalworkRuntimeSettings(settings)
   if (isLegalworkChildRunning()) return
   if (!runtime.autoStart) return
@@ -348,6 +360,7 @@ export async function syncGuiManagedLegalworkConfig(
   const attachments = objectValue(capabilities.attachments)
   const web = objectValue(capabilities.web)
   const skills = objectValue(capabilities.skills)
+  const memory = objectValue(capabilities.memory)
   const storage = storageConfigForRuntime(runtime.storage)
   const mcpSearch = runtime.mcpSearch
   const skillCapability = await skillCapabilityConfigForRuntime(skills, options?.scheduleMcp?.settings)
@@ -375,6 +388,10 @@ export async function syncGuiManagedLegalworkConfig(
         ...web,
         enabled: web.enabled === false ? false : true,
         fetchEnabled: web.fetchEnabled === false ? false : true
+      },
+      memory: {
+        ...memory,
+        enabled: memory.enabled === false ? false : true
       },
       skills: skillCapability,
       mcp: {

@@ -53,6 +53,7 @@ function installDsGui(overrides: Partial<Window['dsGui']>): void {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   rendererRuntimeClient.invalidateSettings()
   vi.unstubAllGlobals()
 })
@@ -612,7 +613,85 @@ describe('LegalworkRuntimeProvider', () => {
     )
   })
 
-  it('maps Legalwork SSE deltas into the thread event sink', async () => {
+  it('batches Legalwork SSE deltas before the next non-delta event', async () => {
+    let onData: ((payload: { streamId: string; data: unknown }) => void) | null = null
+    const ac = new AbortController()
+    const sink: ThreadEventSink = {
+      onSeq: vi.fn(),
+      onDeltas: vi.fn(() => ac.abort()),
+      onUserMessage: vi.fn(),
+      onTool: vi.fn(),
+      onCompaction: vi.fn(),
+      onApproval: vi.fn(),
+      onUserInput: vi.fn(),
+      onUserInputStatus: vi.fn(),
+      onGoal: vi.fn(),
+      onTodos: vi.fn(),
+      onTurnComplete: vi.fn(),
+      onError: vi.fn()
+    }
+    installDsGui({
+      onSseEvent: vi.fn((handler) => {
+        onData = handler
+        return () => undefined
+      }),
+      startSse: vi.fn(async (_threadId, _sinceSeq, streamId) => {
+        queueMicrotask(() => {
+          const sid = streamId ?? 'stream-1'
+          onData?.({
+            streamId: sid,
+            data: {
+              kind: 'assistant_text_delta',
+              seq: 3,
+              item: {
+                id: 'item_text',
+                turnId: 'turn_1',
+                threadId: 'thr_1',
+                role: 'assistant',
+                status: 'running',
+                createdAt: 't1',
+                kind: 'assistant_text',
+                text: 'he'
+              }
+            }
+          })
+          onData?.({
+            streamId: sid,
+            data: {
+              kind: 'assistant_text_delta',
+              seq: 4,
+              item: {
+                id: 'item_text',
+                turnId: 'turn_1',
+                threadId: 'thr_1',
+                role: 'assistant',
+                status: 'running',
+                createdAt: 't1',
+                kind: 'assistant_text',
+                text: 'llo'
+              }
+            }
+          })
+          onData?.({
+            streamId: sid,
+            data: { kind: 'turn_completed', seq: 5 }
+          })
+        })
+        return { streamId: streamId ?? 'stream-1' }
+      })
+    })
+    const provider = new LegalworkRuntimeProvider()
+    await provider.subscribeThreadEvents('thr_1', 2, sink, ac.signal)
+    expect(sink.onSeq).not.toHaveBeenCalledWith(3)
+    expect(sink.onDeltas).toHaveBeenCalledTimes(1)
+    expect(sink.onDeltas).toHaveBeenCalledWith([
+      { text: 'he', kind: 'agent_message', seq: 3 },
+      { text: 'llo', kind: 'agent_message', seq: 4 }
+    ])
+  })
+
+  it('flushes batched SSE deltas on a short timer when the stream keeps running', async () => {
+    vi.useFakeTimers()
     let onData: ((payload: { streamId: string; data: unknown }) => void) | null = null
     const ac = new AbortController()
     const sink: ThreadEventSink = {
@@ -639,17 +718,17 @@ describe('LegalworkRuntimeProvider', () => {
           onData?.({
             streamId: streamId ?? 'stream-1',
             data: {
-              kind: 'assistant_text_delta',
-              seq: 3,
+              kind: 'assistant_reasoning_delta',
+              seq: 8,
               item: {
-                id: 'item_text',
+                id: 'item_reasoning',
                 turnId: 'turn_1',
                 threadId: 'thr_1',
                 role: 'assistant',
                 status: 'running',
                 createdAt: 't1',
-                kind: 'assistant_text',
-                text: 'he'
+                kind: 'assistant_reasoning',
+                text: 'thinking'
               }
             }
           })
@@ -658,9 +737,15 @@ describe('LegalworkRuntimeProvider', () => {
       })
     })
     const provider = new LegalworkRuntimeProvider()
-    await provider.subscribeThreadEvents('thr_1', 2, sink, ac.signal)
-    expect(sink.onSeq).toHaveBeenCalledWith(3)
-    expect(sink.onDeltas).toHaveBeenCalledWith([{ text: 'he', kind: 'agent_message', seq: 3 }])
+    const task = provider.subscribeThreadEvents('thr_1', 0, sink, ac.signal)
+    await Promise.resolve()
+    await vi.advanceTimersByTimeAsync(32)
+    await task
+
+    expect(sink.onDeltas).toHaveBeenCalledWith([
+      { text: 'thinking', kind: 'agent_reasoning', seq: 8 }
+    ])
+    vi.useRealTimers()
   })
 
   it('auto-approves approval requests when policy is auto', async () => {

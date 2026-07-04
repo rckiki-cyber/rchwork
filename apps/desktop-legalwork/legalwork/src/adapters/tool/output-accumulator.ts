@@ -113,6 +113,7 @@ function looksLikeHanUtf16LeWithoutNuls(buffer: Buffer): boolean {
 function chooseOutputEncoding(buffer: Buffer, final: boolean): OutputTextEncoding | null {
   if (startsWithUtf16LeBom(buffer) || looksLikeUtf16Le(buffer)) return 'utf-16le'
   if (startsWithUtf8Bom(buffer)) return 'utf-8'
+  if (buffer.includes(0x0a) || buffer.includes(0x0d)) return 'utf-8'
   if (buffer.length >= 32 || final) return 'utf-8'
   return null
 }

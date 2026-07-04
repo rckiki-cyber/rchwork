@@ -36,6 +36,8 @@ const api = {
     ipcRenderer.invoke('skill:list', { workspaceRoot }),
   saveSkillFile: (rootPath, skillName, content) =>
     ipcRenderer.invoke('skill:save-file', { rootPath, skillName, content }),
+  importSkill: () =>
+    ipcRenderer.invoke('skill:import'),
   openSkillRoot: (rootPath) =>
     ipcRenderer.invoke('skill:open-root', rootPath),
   getDeepseekConfigFile: () =>

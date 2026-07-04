@@ -25,7 +25,7 @@ vi.mock('electron', () => ({
 
 let tempRoot: string | null = null
 
-function createSettings(binaryPath: string): AppSettingsV1 {
+function createSettings(binaryPath: string, port = 8899): AppSettingsV1 {
   return {
     version: 1,
     locale: 'en',
@@ -34,7 +34,7 @@ function createSettings(binaryPath: string): AppSettingsV1 {
     provider: defaultModelProviderSettings(),
     agents: {
       legalwork: {
-        ...defaultLegalworkRuntimeSettings(8899),
+        ...defaultLegalworkRuntimeSettings(port),
         binaryPath,
         autoStart: true
       }
@@ -56,6 +56,18 @@ function writeScript(name: string, content: string): string {
   const path = join(tempRoot, name)
   writeFileSync(path, content, 'utf8')
   return path
+}
+
+async function findFreeTcpPort(): Promise<number> {
+  const server = createServer()
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => resolve())
+  })
+  const address = server.address() as AddressInfo
+  const port = address.port
+  await new Promise<void>((resolve) => server.close(() => resolve()))
+  return port
 }
 
 async function readLegalworkLog(): Promise<string> {
@@ -85,40 +97,68 @@ afterEach(async () => {
 
 describe('startLegalworkChild', () => {
   it('waits for the explicit Legalwork ready marker before resolving', async () => {
+    const port = await findFreeTcpPort()
     const script = writeScript(
       'ready-child.js',
       [
         "setTimeout(() => {",
-        "  process.stdout.write('LEGALWORK_READY ' + JSON.stringify({ service: 'legalwork', mode: 'serve', port: 8899 }) + '\\n')",
+        `  process.stdout.write('LEGALWORK_READY ' + JSON.stringify({ service: 'legalwork', mode: 'serve', port: ${port} }) + '\\n')`,
         "}, 50)",
         "setInterval(() => {}, 1_000)"
       ].join('\n')
     )
     const module = await import('./legalwork-process')
-    await expect(module.startLegalworkChild(createSettings(script))).resolves.toBeUndefined()
+    await expect(module.startLegalworkChild(createSettings(script, port))).resolves.toBeUndefined()
     expect(module.isLegalworkChildRunning()).toBe(true)
     await module.stopLegalworkChildAndWait()
     const logText = await readLegalworkLog()
     expect(logText).toContain('LEGALWORK_READY')
-    expect(logText).toContain('ready marker received on port 8899')
+    expect(logText).toContain(`ready marker received on port ${port}`)
+  })
+
+  it('shares an in-flight startup between concurrent callers', async () => {
+    const port = await findFreeTcpPort()
+    const script = writeScript(
+      'slow-ready-child.js',
+      [
+        "setTimeout(() => {",
+        `  process.stdout.write('LEGALWORK_READY ' + JSON.stringify({ service: 'legalwork', mode: 'serve', port: ${port} }) + '\\n')`,
+        "}, 120)",
+        "setInterval(() => {}, 1_000)"
+      ].join('\n')
+    )
+    const module = await import('./legalwork-process')
+    const first = module.startLegalworkChild(createSettings(script, port))
+    let secondResolved = false
+    const second = module.startLegalworkChild(createSettings(script, port)).then(() => {
+      secondResolved = true
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 40))
+
+    expect(secondResolved).toBe(false)
+    await expect(Promise.all([first, second])).resolves.toBeDefined()
+    expect(module.isLegalworkChildRunning()).toBe(true)
+    await module.stopLegalworkChildAndWait()
   })
 
   it('rejects when the child exits before reporting ready', async () => {
+    const port = await findFreeTcpPort()
     const script = writeScript(
       'exit-child.js',
       [
-        "process.stderr.write('bind failed on port 8899\\n')",
+        `process.stderr.write('bind failed on port ${port}\\n')`,
         'setTimeout(() => process.exit(23), 20)'
       ].join('\n')
     )
     const module = await import('./legalwork-process')
-    await expect(module.startLegalworkChild(createSettings(script))).rejects.toThrow(
-      /Legalwork exited during startup with code 23[\s\S]*bind failed on port 8899/
+    await expect(module.startLegalworkChild(createSettings(script, port))).rejects.toThrow(
+      new RegExp(`Legalwork exited during startup with code 23[\\s\\S]*bind failed on port ${port}`)
     )
     expect(module.isLegalworkChildRunning()).toBe(false)
     await module.stopLegalworkChildAndWait()
     const logText = await readLegalworkLog()
-    expect(logText).toContain('bind failed on port 8899')
+    expect(logText).toContain(`bind failed on port ${port}`)
     expect(logText).toContain('exited with code 23')
   })
 })
@@ -217,6 +257,7 @@ describe('syncGuiManagedLegalworkConfig', () => {
       'application/pdf'
     ]))
     expect(parsed.capabilities.web).toMatchObject({ enabled: true, fetchEnabled: true })
+    expect(parsed.capabilities.memory).toMatchObject({ enabled: true })
     expect(parsed.capabilities.mcp.search).toMatchObject({ enabled: false, mode: 'auto' })
   })
 
@@ -644,6 +685,28 @@ describe('syncGuiManagedLegalworkConfig', () => {
       fetchEnabled: false,
       searchEnabled: true,
       provider: 'custom-search'
+    })
+  })
+
+  it('does not override an explicitly disabled memory capability', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const configPath = join(tempRoot, 'config.json')
+    writeFileSync(configPath, JSON.stringify({
+      capabilities: {
+        memory: {
+          enabled: false,
+          maxInjectedRecords: 3
+        }
+      }
+    }), 'utf8')
+    const module = await import('./legalwork-process')
+
+    await module.syncGuiManagedLegalworkConfig(tempRoot, defaultLegalworkRuntimeSettings())
+
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
+    expect(parsed.capabilities.memory).toMatchObject({
+      enabled: false,
+      maxInjectedRecords: 3
     })
   })
 })

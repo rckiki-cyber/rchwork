@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -11,7 +11,7 @@ import {
   defaultWriteSettings,
   type AppSettingsV1
 } from '../../shared/app-settings'
-import { listGuiSkills } from './skill-service'
+import { importGuiSkillFromPath, listGuiSkills } from './skill-service'
 
 describe('skill-service', () => {
   let tempRoot = ''
@@ -130,6 +130,35 @@ describe('skill-service', () => {
       scope: 'project',
       legacy: true
     }))
+  })
+
+  it('imports a local Skill folder into the user Skill root', async () => {
+    const sourceRoot = join(tempRoot, 'source-skill')
+    const targetRoot = join(tempRoot, 'user-skills')
+    await mkdir(sourceRoot, { recursive: true })
+    await writeFile(join(sourceRoot, 'SKILL.md'), [
+      '---',
+      'name: Source Skill',
+      'description: Imported from disk.',
+      '---',
+      '',
+      'Use this imported workflow.'
+    ].join('\n'), 'utf8')
+
+    const result = await importGuiSkillFromPath(sourceRoot, targetRoot)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.userSkillRoot).toBe(targetRoot)
+    expect(result.installed).toEqual([
+      expect.objectContaining({
+        name: 'source-skill',
+        path: join(targetRoot, 'source-skill'),
+        replaced: false
+      })
+    ])
+    await expect(readFile(join(targetRoot, 'source-skill', 'SKILL.md'), 'utf8'))
+      .resolves.toContain('Imported from disk.')
   })
 
   function createSettings(workspaceRoot: string): AppSettingsV1 {

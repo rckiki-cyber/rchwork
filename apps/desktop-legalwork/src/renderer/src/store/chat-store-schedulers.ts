@@ -5,6 +5,7 @@ let startupRuntimeProbeTimer: ReturnType<typeof setTimeout> | null = null
 let busyWatchdogTimer: ReturnType<typeof setTimeout> | null = null
 let busyRecoveryAttempts = 0
 let turnCompletionPollTimer: ReturnType<typeof setInterval> | null = null
+const STARTUP_RUNTIME_PROBE_DELAY_MS = 150
 
 type BusyWatchdogOptions = {
   timeoutMs: number
@@ -35,7 +36,7 @@ export function scheduleStartupRuntimeProbe(get: ChatStoreGet): void {
   startupRuntimeProbeTimer = setTimeout(() => {
     startupRuntimeProbeTimer = null
     void get().probeRuntime('background')
-  }, 900)
+  }, STARTUP_RUNTIME_PROBE_DELAY_MS)
 }
 
 export function clearBusyWatchdog(): void {
