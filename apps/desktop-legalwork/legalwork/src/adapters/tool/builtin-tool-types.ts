@@ -104,6 +104,7 @@ export type BuiltinToolName =
   | 'load_skill'
   | 'refresh_skills'
   | 'install_skill'
+  | 'request_document_preferences'
 export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'read',
   'bash',
@@ -116,7 +117,8 @@ export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'search_skills',
   'load_skill',
   'refresh_skills',
-  'install_skill'
+  'install_skill',
+  'request_document_preferences'
 ])
 export type ToolName = BuiltinToolName
 export const allToolNames: Set<ToolName> = allBuiltinToolNames

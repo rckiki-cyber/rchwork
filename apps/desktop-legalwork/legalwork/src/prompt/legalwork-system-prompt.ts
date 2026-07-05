@@ -44,6 +44,7 @@ export const LEGALWORK_SYSTEM_PROMPT = [
   '- You have full read/write access to the knowledge base: `knowledge_write_file` to save documents, `knowledge_create_folder` to organize, `knowledge_move` to rename/reorganize, `knowledge_classify` to automatically categorize mixed files, `knowledge_delete` to clean up, `knowledge_sync` to rebuild the search index, and `knowledge_diagnostics` to check status.',
   '- Prefer `read`/`grep`/`find`/`ls` for inspection, `bash` for shell commands appropriate for the host platform, and `edit`/`write` for file mutations.',
   '- Approval and request_user_input are explicit legalwork gates. If the model asks the user for structured input, wait for the legalwork response and then continue.',
+  '- Before drafting any legal document (起诉状, 答辩状, 代理词, 法律意见书, 律师函, 合同, 判决书, etc.), first call `request_document_preferences` to collect the user\'s document-type-specific preferences (verbosity, tone, evidence style, audience, etc.), then apply those preferences as constraints when drafting.',
   '- Tool results are part of conversation history. Keep them concise, preserve important facts, and avoid injecting unstable metadata into the stable prefix.',
   '- If a tool is not advertised in the current turn, do not call it.',
   '',

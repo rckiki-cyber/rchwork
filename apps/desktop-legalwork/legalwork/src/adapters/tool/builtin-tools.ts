@@ -10,6 +10,7 @@ import { createEditLocalTool, createWriteLocalTool } from './builtin-file-tools.
 import { createReadLocalTool } from './builtin-read-tool.js'
 import { createDataComplianceLocalTool } from './builtin-data-compliance-tool.js'
 import { createFindLocalTool, createGrepLocalTool, createLsLocalTool } from './builtin-search-tools.js'
+import { createRequestDocumentPreferencesTool } from './builtin-document-preference-tools.js'
 import {
   createRefreshSkillsTool,
   createInstallSkillTool,
@@ -53,6 +54,8 @@ export function createBuiltinLocalTool(
       return createLoadSkillTool(options.skillTools)
     case 'install_skill':
       return createInstallSkillTool(options.skillTools)
+    case 'request_document_preferences':
+      return createRequestDocumentPreferencesTool()
   }
 }
 
@@ -83,6 +86,7 @@ export function buildBuiltinLocalTools(options: BuiltinLocalToolsOptions = {}): 
     tools.push(createRefreshSkillsTool(options.skillTools))
     tools.push(createInstallSkillTool(options.skillTools))
   }
+  tools.push(createRequestDocumentPreferencesTool())
   return tools
 }
 
@@ -131,7 +135,8 @@ export function buildBuiltinLocalToolRecord(
     search_skills: createSearchSkillsTool(options.skillTools),
     load_skill: createLoadSkillTool(options.skillTools),
     refresh_skills: createRefreshSkillsTool(options.skillTools),
-    install_skill: createInstallSkillTool(options.skillTools)
+    install_skill: createInstallSkillTool(options.skillTools),
+    request_document_preferences: createRequestDocumentPreferencesTool()
   }
 }
 
