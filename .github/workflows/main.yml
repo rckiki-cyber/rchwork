@@ -76,8 +76,12 @@ jobs:
       - uses: actions/download-artifact@v4
       - name: Upload to Release
         run: |
-          gh release view ${{ github.ref_name }} --repo ${{ github.repository }} >/dev/null 2>&1 || \
-            gh release create ${{ github.ref_name }} --repo ${{ github.repository }} --generate-notes
+          git tag -l --format='%(contents:body)' ${{ github.ref_name }} > /tmp/tag-notes.txt
+          if gh release view ${{ github.ref_name }} --repo ${{ github.repository }} >/dev/null 2>&1; then
+            gh release edit ${{ github.ref_name }} --repo ${{ github.repository }} --notes-file /tmp/tag-notes.txt
+          else
+            gh release create ${{ github.ref_name }} --repo ${{ github.repository }} --notes-file /tmp/tag-notes.txt
+          fi
           gh release upload ${{ github.ref_name }} \
             mac-builds/*.dmg win-builds/*.exe linux-builds/*.AppImage \
             --repo ${{ github.repository }} --clobber

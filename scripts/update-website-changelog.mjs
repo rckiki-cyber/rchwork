@@ -36,6 +36,27 @@ const cumulativeReleaseOverrides = {
       '下载页和产品介绍页更新，展示新版界面截图和更完整的功能说明。'
     ],
   },
+  'v0.2.3': {
+    summary: '新增用户自装 Skill 能力，并对 Agent 运行稳定性、模型兼容性和发布流程做了多项改进。',
+    categories: ['插件市场', 'Agent 运行', '模型兼容', '修复优化'],
+    highlights: [
+      '用户自装 Skill：可以从本地文件夹或 zip 包导入 Skill，插件市场会单独展示「用户已安装」分类。',
+      'Agent 运行更稳定：目标续传单轮增加 32 步上限，避免模型无工具调用时空转。',
+      '对话渲染更流畅：SSE 文本增量改为 32ms 批量刷新，减少前端渲染压力。',
+      'MCP 状态修复：修复 tool provider 中 server 对象被错误覆盖的问题。',
+      'DeepSeek 兼容增强：思考模式不再限制特定 host，支持更多模型开启思考能力。',
+      '运行时启动更稳健：增加并发去重和健康检查等待，减少启动失败。',
+      '诊断与配置优化：内存记录仅在 capability 可用时加载，存储键统一迁移到 legalwork.*。'
+    ],
+  },
+  'v0.2.4': {
+    summary: '修复 v0.2.3 中 agent-loop 系统提示包含源码的回归问题。',
+    categories: ['修复优化', 'Agent 运行'],
+    highlights: [
+      '修复 agent-loop 系统提示回归：goalContinuationInstruction 的模板字符串意外把常量定义和函数源码包含进提示，已修复为正常文案。',
+      '补全 README 中 v0.2.2 / v0.2.3 / v0.2.4 的更新记录。'
+    ],
+  },
 };
 
 function normalizeReleaseLine(line) {
@@ -171,7 +192,7 @@ function shapeRelease(release) {
   if (override) {
     return {
       tag_name: release.tag_name,
-      name: `${release.name || release.tag_name} 累计更新`,
+      name: override.baseline ? `${release.name || release.tag_name} 累计更新` : (release.name || release.tag_name),
       published_at: release.published_at,
       html_url: release.html_url,
       prerelease: Boolean(release.prerelease),
