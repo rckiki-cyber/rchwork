@@ -107,7 +107,8 @@ export type DataComplianceSubmitPayload = {
   file?: {
     name: string
     type?: string
-    dataBase64: string
+    dataBase64?: string
+    filePath?: string
   }
 }
 export type DataComplianceDownloadResult =
@@ -115,6 +116,15 @@ export type DataComplianceDownloadResult =
   | { ok: false; message: string }
 export type WorkspacePickResult = { canceled: boolean; path: string | null }
 export type PathOpenResult = { ok: boolean; message?: string }
+export type KnowledgeUploadFileResult =
+  | { ok: true; path: string; sizeBytes: number }
+  | { ok: false; message: string }
+export type AttachmentFileUploadPayload = {
+  name: string
+  mimeType?: string
+  threadId?: string
+  workspace?: string
+}
 export const DESKTOP_COMMANDS = [
   'undo',
   'redo',
@@ -204,6 +214,7 @@ export type DsGuiApi = {
   platform: string
   getSettings: () => Promise<AppSettingsV1>
   setSettings: (partial: AppSettingsPatch) => Promise<AppSettingsV1>
+  getLocalFilePath: (file: File) => string
   runtimeRequest: (path: string, method?: string, body?: string) => Promise<RuntimeRequestResult>
   reconnectRuntime: () => Promise<AppSettingsV1>
   getDataComplianceStatus: () => Promise<DataComplianceStatus>
@@ -334,6 +345,8 @@ export type DsGuiApi = {
   runDesktopCommand: (command: DesktopCommand) => Promise<void>
   openExternal: (url: string) => Promise<void>
   openKnowledgeFile: (path: string) => Promise<PathOpenResult>
+  uploadKnowledgeFile: (file: File, targetPath: string) => Promise<KnowledgeUploadFileResult>
+  uploadAttachmentFile: (file: File, payload: AttachmentFileUploadPayload) => Promise<RuntimeRequestResult>
   showTurnCompleteNotification: (
     payload: TurnCompleteNotificationPayload
   ) => Promise<SystemNotificationResult>

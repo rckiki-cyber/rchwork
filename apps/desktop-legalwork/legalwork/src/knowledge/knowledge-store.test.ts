@@ -45,6 +45,38 @@ describe('FileKnowledgeStore', () => {
     }
   })
 
+  it('indexes files larger than the old upload-size guard', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-large-'))
+    const sourceRoot = join(root, 'knowledge-base')
+    const indexRoot = join(root, 'index')
+    try {
+      await mkdir(sourceRoot, { recursive: true })
+      await writeFile(
+        join(sourceRoot, 'large.md'),
+        `${'背景材料\n'.repeat(300_000)}\n超大文件索引特征词\n`,
+        { encoding: 'utf8' }
+      )
+
+      const store = new FileKnowledgeStore({
+        rootDir: indexRoot,
+        sourceRoots: [sourceRoot],
+        nowIso: () => '2026-06-13T00:00:00.000Z'
+      })
+
+      const sync = await store.sync()
+      expect(sync.documentCount).toBe(1)
+
+      const hits = await store.search({
+        query: '超大文件索引特征词',
+        limit: 5,
+        includeContent: true
+      })
+      expect(hits[0]?.content).toContain('超大文件索引特征词')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('classifies managed files into category folders and refreshes retrieval index', async () => {
     const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-classify-'))
     const indexRoot = join(root, 'index')

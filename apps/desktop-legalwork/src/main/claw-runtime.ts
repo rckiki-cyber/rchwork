@@ -194,9 +194,11 @@ export class ClawRuntime {
         body: JSON.stringify({ title: options.title.trim() })
       })
     }
-    let thread: ThreadRecordJson | null = existingThreadId ? { id: existingThreadId } : await createThread()
+    let thread: ThreadRecordJson | null = existingThreadId
+      ? await this.resolveReusableThread(settings, existingThreadId, createThread, options)
+      : await createThread()
     if (!thread) return { ok: false, message: 'Failed to create thread.' }
-    if (!existingThreadId) patchThreadTitle(thread)
+    if (!existingThreadId || thread.id !== existingThreadId) patchThreadTitle(thread)
 
     const runtimePrompt = buildClawRuntimePrompt(settings, options.prompt, { channel: options.channel })
     const displayText = options.displayText?.trim() || parseClawUserPromptForDisplay(options.prompt).text
@@ -255,6 +257,84 @@ export class ClawRuntime {
     )
   }
 
+  private async resolveReusableThread(
+    settings: AppSettingsV1,
+    threadId: string,
+    createThread: () => Promise<ThreadRecordJson | null>,
+    options: RunPromptOptions
+  ): Promise<ThreadRecordJson | null> {
+    if (options.source !== 'im') return { id: threadId }
+    const detailRes = await this.deps.runtimeRequest(
+      settings,
+      `/v1/threads/${encodeURIComponent(threadId)}`,
+      { method: 'GET' }
+    )
+    if (!detailRes.ok) {
+      if (isMissingThreadResult(detailRes)) {
+        this.deps.logError('claw-runtime', 'Configured IM thread was missing; creating a replacement thread.', {
+          threadId,
+          channelId: options.channel?.id,
+          source: options.source
+        })
+        return createThread()
+      }
+      return { id: threadId }
+    }
+
+    const detail = JSON.parse(detailRes.body) as ThreadDetailJson
+    const runningTurns = (Array.isArray(detail.turns) ? detail.turns : [])
+      .filter((turn) => isRunningStatus(turn.status))
+    if (runningTurns.length === 0) return { id: threadId }
+
+    for (const turn of runningTurns) {
+      await this.interruptRuntimeTurn(settings, threadId, turn.id, {
+        discard: true,
+        reason: 'stale-im-turn-before-next-message',
+        channelId: options.channel?.id
+      })
+    }
+    this.deps.logError('claw-runtime', 'Configured IM thread still had running turns; creating a replacement thread.', {
+      threadId,
+      runningTurnIds: runningTurns.map((turn) => turn.id),
+      channelId: options.channel?.id,
+      source: options.source
+    })
+    return createThread()
+  }
+
+  private async interruptRuntimeTurn(
+    settings: AppSettingsV1,
+    threadId: string,
+    turnId: string,
+    context: { discard?: boolean; reason: string; channelId?: string }
+  ): Promise<void> {
+    try {
+      const result = await this.deps.runtimeRequest(
+        settings,
+        `/v1/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/interrupt`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ discard: context.discard ?? true })
+        }
+      )
+      if (!result.ok) {
+        this.deps.logError('claw-runtime', 'Failed to interrupt Legalwork turn.', {
+          ...context,
+          threadId,
+          turnId,
+          message: runtimeErrorMessage(result, 'Failed to interrupt turn.')
+        })
+      }
+    } catch (error) {
+      this.deps.logError('claw-runtime', 'Failed to interrupt Legalwork turn.', {
+        ...context,
+        threadId,
+        turnId,
+        message: errorMessage(error)
+      })
+    }
+  }
+
   private async waitForAssistantResult(
     settings: AppSettingsV1,
     threadId: string,
@@ -266,7 +346,7 @@ export class ClawRuntime {
     let lastText = ''
     let lastDetail: ThreadDetailJson | null = null
     while (Date.now() < deadline) {
-      await sleep(1_500)
+      await sleep(Math.max(0, Math.min(1_500, deadline - Date.now())))
       const detailRes = await this.deps.runtimeRequest(
         settings,
         `/v1/threads/${encodeURIComponent(threadId)}`,
@@ -294,11 +374,14 @@ export class ClawRuntime {
         }
       }
     }
-    if (lastText && lastDetail) {
-      return {
-        text: lastText,
-        files: latestGeneratedFiles(lastDetail, { turnId, workspaceRoot })
-      }
+    const timedOutTurn = lastDetail && Array.isArray(lastDetail.turns)
+      ? lastDetail.turns.find((turn) => turn.id === turnId)
+      : undefined
+    if (timedOutTurn && isRunningStatus(timedOutTurn.status)) {
+      await this.interruptRuntimeTurn(settings, threadId, turnId, {
+        discard: true,
+        reason: 'im-response-timeout'
+      })
     }
     throw new Error('Timed out waiting for agent response.')
   }

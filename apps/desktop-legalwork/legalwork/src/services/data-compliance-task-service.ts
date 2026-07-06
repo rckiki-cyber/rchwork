@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
-  appendFileSync,
   createReadStream,
+  createWriteStream,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -11,11 +11,12 @@ import {
   rmSync,
   writeFileSync
 } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, extname, isAbsolute, join, relative as pathRelative, resolve } from 'node:path'
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { dirname, extname, isAbsolute, join, normalize, relative as pathRelative, resolve } from 'node:path'
 import { Readable } from 'node:stream'
 
 const DATA_COMPLIANCE_VENV_DIR_NAME = 'python-venv'
+const MIN_DATA_COMPLIANCE_PYTHON = { major: 3, minor: 10 }
 
 function resolveDataComplianceVenvDir(dataDir: string): string {
   return join(dataDir, 'data-compliance', DATA_COMPLIANCE_VENV_DIR_NAME)
@@ -25,6 +26,23 @@ function resolveDataComplianceVenvPython(venvDir: string, platform?: NodeJS.Plat
   return (platform ?? process.platform) === 'win32'
     ? join(venvDir, 'Scripts', 'python.exe')
     : join(venvDir, 'bin', 'python')
+}
+
+export function parsePythonVersionOutput(output: string): { major: number; minor: number; patch: number } | null {
+  const match = /Python\s+(\d+)\.(\d+)(?:\.(\d+))?/.exec(output.trim())
+  if (!match) return null
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3] ?? 0)
+  }
+}
+
+export function isSupportedDataCompliancePythonVersion(output: string): boolean {
+  const version = parsePythonVersionOutput(output)
+  if (!version) return false
+  if (version.major !== MIN_DATA_COMPLIANCE_PYTHON.major) return version.major > MIN_DATA_COMPLIANCE_PYTHON.major
+  return version.minor >= MIN_DATA_COMPLIANCE_PYTHON.minor
 }
 
 export type DataComplianceTaskStatus = 'pending' | 'running' | 'completed' | 'failed'
@@ -67,7 +85,8 @@ export type DataComplianceCreateTaskInput = {
   file?: {
     name: string
     type?: string
-    dataBase64: string
+    dataBase64?: string
+    filePath?: string
   }
 }
 
@@ -178,6 +197,19 @@ function safeFilename(name: string): string {
   return `${safeStem}${suffix.toLowerCase() || '.txt'}`
 }
 
+/** Verify that a resolved path stays inside a root directory. */
+function isInsideDir(candidate: string, rootDir: string): boolean {
+  const resolvedCandidate = resolve(candidate)
+  const resolvedRoot = resolve(rootDir)
+  if (resolvedCandidate === resolvedRoot) return true
+  const rel = pathRelative(resolvedRoot, resolvedCandidate)
+  return !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+function isValidTaskId(taskId: string): boolean {
+  return /^[a-f0-9]{10}$/.test(taskId)
+}
+
 export class DataComplianceTaskService {
   private readonly tasksDir: string
   private readonly venvDir: string
@@ -199,9 +231,18 @@ export class DataComplianceTaskService {
     return resolveDataComplianceVenvPython(this.venvDir, process.platform)
   }
 
+  private standalonePythonPath(): string {
+    const root = join(dirname(this.venvDir), 'python-standalone')
+    return process.platform === 'win32'
+      ? join(root, 'python.exe')
+      : join(root, 'bin', 'python3')
+  }
+
   private resolvePythonExecutable(): string | null {
     const venvPython = this.venvPythonPath()
     if (this.canRunPython(venvPython)) return venvPython
+    const standalonePython = this.standalonePythonPath()
+    if (this.canRunPython(standalonePython)) return standalonePython
 
     const explicitCandidates = [
       process.env.COMPLIANCEAI_PYTHON,
@@ -233,20 +274,23 @@ export class DataComplianceTaskService {
       const result = spawnSync(command, ['--version'], {
         env: buildDataCompliancePythonEnv(),
         shell: false,
-        stdio: 'ignore'
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe']
       })
-      return result.status === 0
+      return result.status === 0 &&
+        isSupportedDataCompliancePythonVersion(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
     } catch {
       return false
     }
   }
 
   async checkEnvironment(): Promise<DataComplianceEnvironmentCheckResult> {
+    this.pythonBin = this.resolvePythonExecutable()
     if (!this.pythonBin) {
       return {
         ok: false,
-        reason: '未找到 Python 解释器',
-        fix: '请安装 Python 3 并确保 python3 在 PATH 中，或在设置中指定 PYTHON 环境变量。'
+        reason: '未找到 Python 3.10+ 解释器',
+        fix: '请点击“重试”让 legalwork 自动安装内置 Python 3.11，或手动安装 Python 3.10 及以上版本。'
       }
     }
 
@@ -267,7 +311,7 @@ export class DataComplianceTaskService {
       return {
         ok: false,
         reason: `Python 环境准备失败: ${message}`,
-        fix: '请确认已安装 Python 3，并检查网络是否允许安装数据合规依赖。'
+        fix: '请点击“重试”让 legalwork 自动重建数据合规 Python 环境，并检查网络是否允许下载依赖。'
       }
     }
 
@@ -423,13 +467,16 @@ export class DataComplianceTaskService {
     let originalFilename: string | undefined
     let storedFilename: string | undefined
 
-    if (input.file?.dataBase64) {
+    if (input.file?.filePath || input.file?.dataBase64) {
       const name = safeFilename(input.file.name || 'upload')
       storedFilename = `${taskId}_${name}`
       originalFilename = input.file.name || name
-      const buffer = Buffer.from(input.file.dataBase64, 'base64')
       inputPath = join(taskDir, storedFilename)
-      await writeFile(inputPath, buffer)
+      if (input.file.filePath) {
+        await copyFile(input.file.filePath, inputPath)
+      } else {
+        await writeFile(inputPath, Buffer.from(input.file.dataBase64 ?? '', 'base64'))
+      }
       inputType = 'file'
     } else if (input.inputText?.trim()) {
       const suffix = mode === 'review' && reviewType === 'code' ? 'code.txt' : 'txt'
@@ -499,6 +546,8 @@ export class DataComplianceTaskService {
 
     const logPath = join(this.logDir, 'data-compliance-worker.log')
     await mkdir(dirname(logPath), { recursive: true })
+    const logOut = createWriteStream(logPath, { flags: 'a' })
+    const logErr = createWriteStream(logPath, { flags: 'a' })
 
     const child = spawn(
       python,
@@ -512,39 +561,47 @@ export class DataComplianceTaskService {
           LEGALWORK_API_KEY: process.env.LEGALWORK_API_KEY ?? '',
           DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? ''
         },
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', logOut, logErr]
       }
     )
     this.runningChildren.set(taskId, child)
 
-    child.stdout?.on('data', (chunk) => {
-      // Worker stdout goes to log only
-      try {
-        appendFileSync(logPath, `[stdout ${taskId}] ${String(chunk)}`)
-      } catch {
-        // ignore
-      }
-    })
-    child.stderr?.on('data', (chunk) => {
-      try {
-        appendFileSync(logPath, `[stderr ${taskId}] ${String(chunk)}`)
-      } catch {
-        // ignore
-      }
-    })
-
-    // Poll task_state.json while worker runs
+    // Poll task_state.json while worker runs; cap total polling time to avoid
+    // leaking intervals if the worker process hangs.
+    const POLL_INTERVAL_MS = 1000
+    const MAX_POLL_MINUTES = 30
+    let polls = 0
+    const maxPolls = (MAX_POLL_MINUTES * 60 * 1000) / POLL_INTERVAL_MS
+    let failed = false
+    const markFailed = async (message: string): Promise<void> => {
+      if (failed) return
+      failed = true
+      await this.failTask(taskId, message)
+    }
     const pollInterval = setInterval(async () => {
+      polls += 1
       const latest = await this.readTaskState(taskId)
       if (latest && latest.status !== 'pending' && latest.status !== 'running') {
         clearInterval(pollInterval)
+        return
       }
-    }, 1000)
+      if (polls >= maxPolls) {
+        clearInterval(pollInterval)
+        child.kill('SIGTERM')
+        await markFailed('Worker 运行超过 30 分钟，已强制终止')
+      }
+    }, POLL_INTERVAL_MS)
 
     return new Promise((resolve) => {
-      child.on('exit', async (code) => {
+      const cleanup = (): void => {
         clearInterval(pollInterval)
         this.runningChildren.delete(taskId)
+        logOut.end()
+        logErr.end()
+      }
+
+      child.on('exit', async (code) => {
+        cleanup()
         if (code !== 0) {
           const errorPath = join(taskDir, 'worker_error.json')
           let message = `worker 退出码 ${code ?? 'unknown'}`
@@ -555,16 +612,15 @@ export class DataComplianceTaskService {
           } catch {
             // ignore
           }
-          await this.failTask(taskId, message)
+          await markFailed(message)
         } else {
           await this.finalizeTask(taskId)
         }
         resolve()
       })
       child.on('error', async (error) => {
-        clearInterval(pollInterval)
-        this.runningChildren.delete(taskId)
-        await this.failTask(taskId, error.message)
+        cleanup()
+        await markFailed(error.message)
         resolve()
       })
     })
@@ -621,10 +677,9 @@ export class DataComplianceTaskService {
   }
 
   async deleteTask(taskId: string): Promise<boolean> {
+    if (!isValidTaskId(taskId)) return false
     const taskDir = this.taskDir(taskId)
-    const resolved = resolve(taskDir)
-    const rootResolved = resolve(this.tasksDir)
-    if (!resolved.startsWith(rootResolved + '/') && resolved !== rootResolved) {
+    if (!isInsideDir(taskDir, this.tasksDir)) {
       return false
     }
     const child = this.runningChildren.get(taskId)
@@ -641,6 +696,7 @@ export class DataComplianceTaskService {
   }
 
   resolveFilePath(taskId: string, fileKey: DataComplianceFileKey): { path: string; filename: string } | null {
+    if (!isValidTaskId(taskId)) return null
     const taskDir = this.taskDir(taskId)
     const state = this.readTaskStateSync(taskId)
     if (!state) return null
@@ -651,6 +707,7 @@ export class DataComplianceTaskService {
 
     if (!mapping) return null
     const absolutePath = resolve(taskDir, mapping.relativePath)
+    if (!isInsideDir(absolutePath, taskDir)) return null
     if (!existsSync(absolutePath)) return null
     return { path: absolutePath, filename: mapping.downloadName }
   }

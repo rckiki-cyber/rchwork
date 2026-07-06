@@ -1,5 +1,8 @@
 import type { ReactElement, ReactNode } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
+import { AstryxButton } from './astryx/AstryxButton'
+import { AstryxInput } from './astryx/AstryxInput'
+import { AstryxToggle } from './astryx/AstryxToggle'
 
 export type InlineNotice = {
   tone: 'success' | 'error' | 'info'
@@ -30,31 +33,32 @@ export function SecretInput({
   className?: string
 }): ReactElement {
   return (
-    <div
-      className={`flex w-full min-w-0 items-stretch overflow-hidden rounded-xl bg-ds-card shadow-sm ${className} ${
-        invalid
-          ? 'border border-amber-300 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-200'
-          : 'border border-ds-border focus-within:border-accent/40 focus-within:ring-1 focus-within:ring-accent/30'
-      }`}
-    >
-      <input
-        type={visible ? 'text' : 'password'}
-        autoComplete={autoComplete}
-        placeholder={placeholder}
-        className="min-w-0 flex-1 bg-transparent px-3 py-2 text-[14px] text-ds-ink focus:outline-none"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      <button
-        type="button"
-        aria-label={visible ? hideLabel : showLabel}
-        title={visible ? hideLabel : showLabel}
-        onClick={onToggleVisibility}
-        className="shrink-0 border-l border-ds-border-muted px-3 text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
-      >
-        {visible ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
-      </button>
-    </div>
+    <AstryxInput
+      type={visible ? 'text' : 'password'}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      autoComplete={autoComplete}
+      className={className}
+      invalid={invalid}
+      endAdornment={
+        <AstryxButton
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          aria-label={visible ? hideLabel : showLabel}
+          title={visible ? hideLabel : showLabel}
+          onClick={onToggleVisibility}
+        >
+          {visible ? (
+            <EyeOff className="h-4 w-4" strokeWidth={1.75} />
+          ) : (
+            <Eye className="h-4 w-4" strokeWidth={1.75} />
+          )}
+        </AstryxButton>
+      }
+    />
   )
 }
 
@@ -66,13 +70,9 @@ export function SectionJumpButton({
   onClick: () => void
 }): ReactElement {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-full border border-ds-border bg-ds-card px-3 py-1.5 text-[12px] font-medium text-ds-muted shadow-sm transition hover:bg-ds-hover hover:text-ds-ink"
-    >
+    <AstryxButton variant="ghost" size="sm" onClick={onClick}>
       {label}
-    </button>
+    </AstryxButton>
   )
 }
 
@@ -141,9 +141,7 @@ export function SettingRow({
           <p className="mt-0.5 text-[13px] leading-relaxed text-ds-muted">{description}</p>
         ) : null}
       </div>
-      <div className={`w-full min-w-0 ${wideControl ? '' : 'sm:max-w-[420px]'}`}>
-        {control}
-      </div>
+      <div className={`w-full min-w-0 ${wideControl ? '' : 'sm:max-w-[420px]'}`}>{control}</div>
     </div>
   )
 }
@@ -157,25 +155,5 @@ export function Toggle({
   onChange: (v: boolean) => void
   disabled?: boolean
 }): ReactElement {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-disabled={disabled}
-      disabled={disabled}
-      onClick={() => {
-        if (!disabled) onChange(!checked)
-      }}
-      className={`relative h-7 w-12 shrink-0 rounded-full transition ${
-        checked ? 'bg-emerald-500' : 'bg-ds-faint'
-      } ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
-    >
-      <span
-        className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
-          checked ? 'left-6' : 'left-0.5'
-        }`}
-      />
-    </button>
-  )
+  return <AstryxToggle checked={checked} onChange={onChange} disabled={disabled} />
 }

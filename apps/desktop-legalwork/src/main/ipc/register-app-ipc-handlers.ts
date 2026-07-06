@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
 import {
   type AppSettingsPatch,
@@ -45,6 +45,7 @@ import {
   gitBranchPayloadSchema,
   guiUpdateChannelSchema,
   knowledgeOpenFilePayloadSchema,
+  knowledgeUploadFilePayloadSchema,
   logErrorPayloadSchema,
   notificationPayloadSchema,
   openEditorPathPayloadSchema,
@@ -450,14 +451,19 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       const dataDir = resolveLegalworkDataDir(runtime)
       const venvDir = resolveDataComplianceVenvDir(dataDir)
       const venvPython = resolveDataComplianceVenvPython(venvDir)
+      const standalonePython = process.platform === 'win32'
+        ? join(dataDir, 'data-compliance', 'python-standalone', 'python.exe')
+        : join(dataDir, 'data-compliance', 'python-standalone', 'bin', 'python3')
       const webRoot = resolveDataComplianceWebRootCandidates()
         .find((candidate) => existsSync(join(candidate, 'requirements.txt'))) ??
         resolveDataComplianceWebRootCandidates()[0]
       const requirementsPath = join(webRoot, 'requirements.txt')
 
       // 1. Detect Python
-      sendProgress({ step: 'detecting', percent: 5, message: '正在检测 Python 环境…' })
-      let pythonCmd = await resolvePythonForCompliance()
+      sendProgress({ step: 'detecting', percent: 5, message: '正在检测 Python 3.10+ 环境…' })
+      let pythonCmd = existsSync(standalonePython) && await isSupportedPythonExecutable(standalonePython)
+        ? standalonePython
+        : await resolvePythonForCompliance()
 
       // Windows: auto-download and install Python if not found.
       if (!pythonCmd && process.platform === 'win32') {
@@ -476,12 +482,16 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         sendProgress({
           step: 'error',
           percent: 0,
-          message: '未找到 Python 3，自动安装失败。请检查网络连接后重试，或手动安装 Python 3 并确保其在 PATH 中。'
+          message: '未找到 Python 3.10+，自动安装失败。请检查网络连接后重试，或手动安装 Python 3.10 及以上版本。'
         })
         return false
       }
 
       // 2. Create venv if needed
+      if (existsSync(venvPython) && !(await isSupportedPythonExecutable(venvPython))) {
+        sendProgress({ step: 'venv', percent: 34, message: '检测到旧版 Python 虚拟环境，正在重建…' })
+        rmSync(venvDir, { recursive: true, force: true })
+      }
       if (!existsSync(venvPython)) {
         sendProgress({ step: 'venv', percent: 35, message: '正在创建 Python 虚拟环境…' })
         mkdirSync(venvDir, { recursive: true })
@@ -706,8 +716,8 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       throw new Error('Python 解压后未找到可执行文件')
     }
     const verify = await runCommand(pythonPath, ['--version'])
-    if (verify.exitCode !== 0) {
-      throw new Error(`Python 验证失败: ${verify.stderr || verify.stdout}`)
+    if (verify.exitCode !== 0 || !isSupportedDataCompliancePythonVersion(`${verify.stdout}\n${verify.stderr}`)) {
+      throw new Error(`Python 验证失败，需要 Python 3.10+，当前输出: ${verify.stderr || verify.stdout || '未知'}`)
     }
 
     sendProgress({ step: 'detecting', percent: 34, message: 'Python 已就绪' })
@@ -1419,6 +1429,41 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       }
     }
   })
+  ipcMain.handle('knowledge:upload-file', async (_, payload: unknown) => {
+    const { sourcePath, targetPath } = parseIpcPayload(
+      'knowledge:upload-file',
+      knowledgeUploadFilePayloadSchema,
+      payload
+    )
+    try {
+      const result = await runtimeRequest(
+        `/v1/knowledge/file/absolute-path?path=${encodeURIComponent(targetPath)}`,
+        'GET'
+      )
+      if (!result.ok) {
+        return { ok: false as const, message: result.body || `请求失败：${result.status}` }
+      }
+      const parsed = JSON.parse(result.body) as { absolute?: string; path?: string }
+      if (!parsed.absolute) {
+        return { ok: false as const, message: '无法解析知识库目标路径' }
+      }
+      await mkdir(dirname(parsed.absolute), { recursive: true })
+      if (sourcePath !== parsed.absolute) {
+        await copyFile(sourcePath, parsed.absolute)
+      }
+      const info = await stat(parsed.absolute)
+      return {
+        ok: true as const,
+        path: parsed.path ?? targetPath,
+        sizeBytes: info.size
+      }
+    } catch (error) {
+      return {
+        ok: false as const,
+        message: error instanceof Error ? error.message : String(error)
+      }
+    }
+  })
   ipcMain.handle('notification:turn-complete', async (_, payload: unknown) =>
     showTurnCompleteNotification(
       parseIpcPayload('notification:turn-complete', notificationPayloadSchema, payload)
@@ -1470,7 +1515,30 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
   })
 }
 
-/** Resolve a Python 3 executable available on the system for data compliance */
+export function parsePythonVersionOutput(output: string): { major: number; minor: number; patch: number } | null {
+  const match = /Python\s+(\d+)\.(\d+)(?:\.(\d+))?/.exec(output.trim())
+  if (!match) return null
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3] ?? 0)
+  }
+}
+
+export function isSupportedDataCompliancePythonVersion(output: string): boolean {
+  const version = parsePythonVersionOutput(output)
+  if (!version) return false
+  if (version.major !== 3) return version.major > 3
+  return version.minor >= 10
+}
+
+async function isSupportedPythonExecutable(command: string, env?: NodeJS.ProcessEnv): Promise<boolean> {
+  const result = await runCommand(command, ['--version'], { env })
+  return result.exitCode === 0 &&
+    isSupportedDataCompliancePythonVersion(`${result.stdout}\n${result.stderr}`)
+}
+
+/** Resolve a Python 3.10+ executable available on the system for data compliance */
 async function resolvePythonForCompliance(env?: NodeJS.ProcessEnv): Promise<string | null> {
   const candidates = process.platform === 'win32'
     ? ['python', 'python3', 'py']
@@ -1478,8 +1546,7 @@ async function resolvePythonForCompliance(env?: NodeJS.ProcessEnv): Promise<stri
 
   for (const candidate of candidates) {
     try {
-      const result = await runCommand(candidate, ['--version'], { env })
-      if (result.exitCode === 0 && result.stdout?.includes('Python 3')) {
+      if (await isSupportedPythonExecutable(candidate, env)) {
         return candidate
       }
     } catch {

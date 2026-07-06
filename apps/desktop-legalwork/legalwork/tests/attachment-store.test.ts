@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -71,7 +71,7 @@ describe('Attachment store and multimodal input', () => {
     })
   })
 
-  it('stores non-image files and still rejects disallowed MIME, size, and image dimensions', async () => {
+  it('stores non-image files and does not reject by size or image dimensions', async () => {
     await expect(createStore().create({
       name: 'notes.txt',
       data: Buffer.from('hello'),
@@ -91,16 +91,16 @@ describe('Attachment store and multimodal input', () => {
     await expect(createStore({ maxImageBytes: 10 }).create({
       name: 'large.png',
       data: png(1, 1)
-    })).rejects.toThrow(/byte limit/)
+    })).resolves.toMatchObject({ name: 'large.png', mimeType: 'image/png' })
 
     await expect(createStore({ maxImageDimension: 4 }).create({
       name: 'huge.png',
       data: png(5, 1)
-    })).rejects.toThrow(/dimension/)
+    })).resolves.toMatchObject({ name: 'huge.png', mimeType: 'image/png', width: 5 })
 
     await expect(createStore({ textFallbackMaxBase64Bytes: 4 }).create({
       name: 'fallback-large.png',
-      data: png(1, 1),
+      data: png(1, 2),
       textFallback: {
         dataBase64: 'abcdefgh',
         mimeType: 'image/png',
@@ -108,7 +108,10 @@ describe('Attachment store and multimodal input', () => {
         width: 1,
         height: 1
       }
-    })).rejects.toThrow(/fallback image exceeds/)
+    })).resolves.toMatchObject({
+      name: 'fallback-large.png',
+      textFallback: { dataBase64: 'abcdefgh' }
+    })
   })
 
   it('serves authenticated upload, metadata, content, and diagnostics routes', async () => {
@@ -170,6 +173,43 @@ describe('Attachment store and multimodal input', () => {
       })
     )
     expect(await readJson(diagnostics)).toMatchObject({ enabled: true, count: 1 })
+  })
+
+  it('serves authenticated file-path attachment uploads without base64 payloads', async () => {
+    const h = buildHarness()
+    h.runtime.attachmentStore = createStore()
+    const sourcePath = join(dir, 'evidence.pdf')
+    await writeFile(sourcePath, Buffer.from('%PDF large evidence'))
+
+    const upload = await dispatchRequest(
+      h.router,
+      new Request('http://localhost/v1/attachments/from-file', {
+        method: 'POST',
+        headers: { authorization: 'Bearer tok-1', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'evidence.pdf',
+          mimeType: 'application/pdf',
+          sourcePath,
+          threadId: 'thr_1'
+        })
+      })
+    )
+    expect(upload.status).toBe(201)
+    const payload = await readJson(upload) as { attachment: { id: string; byteSize: number; mimeType: string } }
+    expect(payload.attachment).toMatchObject({
+      byteSize: 19,
+      mimeType: 'application/pdf'
+    })
+
+    const content = await dispatchRequest(
+      h.router,
+      new Request(`http://localhost/v1/attachments/${payload.attachment.id}/content?thread_id=thr_1`, {
+        headers: { authorization: 'Bearer tok-1' }
+      })
+    )
+    expect(await readJson(content)).toMatchObject({
+      dataBase64: Buffer.from('%PDF large evidence').toString('base64')
+    })
   })
 
   it('resolves image attachments for vision models and text fallbacks for text-only models', async () => {

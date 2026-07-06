@@ -582,6 +582,22 @@ export class LegalworkRuntimeProvider implements AgentProvider {
     ).attachment
   }
 
+  async uploadAttachmentFile(file: File, input: {
+    name: string
+    mimeType?: string
+    threadId?: string
+    workspace?: string
+  }): Promise<CoreAttachmentMetadataJson> {
+    const response = await window.dsGui.uploadAttachmentFile(file, input)
+    if (!response.ok) {
+      throw runtimeErrorToError(readRuntimeError(response.body, 'attachment upload failed'))
+    }
+    return readRuntimeJson<CoreAttachmentUploadResponseJson>(
+      response.body,
+      'runtime returned an invalid attachment upload response'
+    ).attachment
+  }
+
   async getAttachmentDiagnostics(): Promise<CoreAttachmentDiagnosticsJson> {
     const response = await rendererRuntimeClient.runtimeRequest(LEGALWORK_ATTACHMENT_DIAGNOSTICS_PATH, 'GET')
     if (!response.ok) {

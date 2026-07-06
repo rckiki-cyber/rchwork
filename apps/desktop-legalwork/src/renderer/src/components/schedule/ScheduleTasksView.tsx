@@ -34,6 +34,14 @@ import {
 } from '@shared/app-settings'
 import { rendererRuntimeClient } from '../../agent/runtime-client'
 import { formatWorkspacePickerError } from '../../lib/format-workspace-picker-error'
+import { AstryxBadge } from '../astryx/AstryxBadge'
+import { AstryxButton } from '../astryx/AstryxButton'
+import { AstryxIconButton } from '../astryx/AstryxIconButton'
+import { AstryxInput } from '../astryx/AstryxInput'
+import { AstryxSelect } from '../astryx/AstryxSelect'
+import { AstryxSegmentButton, AstryxSegmentGroup } from '../astryx/AstryxSegmentButton'
+import { AstryxTextarea } from '../astryx/AstryxTextarea'
+import { AstryxToggle } from '../astryx/AstryxToggle'
 import { SidebarTitlebarToggleButton } from '../sidebar/SidebarPrimitives'
 import { ScheduleDefaultsDialog } from './ScheduleDefaultsDialog'
 
@@ -195,11 +203,11 @@ function formatDateTime(value: string, fallback: string): string {
   return date.toLocaleString()
 }
 
-function statusTone(status: ScheduledTaskV1['lastStatus']): string {
-  if (status === 'running') return 'bg-amber-500/15 text-amber-900 dark:text-amber-100'
-  if (status === 'success') return 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-100'
-  if (status === 'error') return 'bg-red-500/15 text-red-700 dark:text-red-100'
-  return 'bg-ds-subtle text-ds-muted'
+function statusVariant(status: ScheduledTaskV1['lastStatus']): 'default' | 'warning' | 'success' | 'error' {
+  if (status === 'running') return 'warning'
+  if (status === 'success') return 'success'
+  if (status === 'error') return 'error'
+  return 'default'
 }
 
 export function ScheduleTasksView({
@@ -418,32 +426,33 @@ export function ScheduleTasksView({
               {t('scheduleSubtitle')}
             </p>
             <div className="flex items-center gap-2">
-              <select
+              <AstryxSelect
                 value={filter}
                 onChange={(event) => setFilter(event.target.value as TaskFilter)}
-                className="rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[13px] text-ds-ink shadow-sm outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/25"
-              >
-                {SCHEDULE_FILTERS.map((item) => (
-                  <option key={item} value={item}>{t(`scheduleFilter_${item}`)}</option>
-                ))}
-              </select>
-              <button
-                type="button"
+                options={SCHEDULE_FILTERS.map((item) => ({
+                  value: item,
+                  label: t(`scheduleFilter_${item}`)
+                }))}
+                className="w-auto"
+              />
+              <AstryxButton
+                variant="secondary"
+                size="icon"
                 onClick={() => setSettingsDialogOpen(true)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-ds-border bg-ds-card text-ds-muted shadow-sm transition hover:bg-ds-hover hover:text-ds-ink"
                 title={t('scheduleDefaultsTitle')}
                 aria-label={t('scheduleDefaultsTitle')}
               >
                 <MoreHorizontal className="h-4 w-4" strokeWidth={1.8} />
-              </button>
-              <button
-                type="button"
+              </AstryxButton>
+              <AstryxButton
+                variant="default"
+                size="md"
                 onClick={openCreateDialog}
-                className="inline-flex items-center gap-2 rounded-xl bg-ds-userbubble px-4 py-2 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90"
+                className="bg-ds-userbubble text-ds-userbubbleFg font-semibold hover:opacity-90"
               >
                 <Plus className="h-4 w-4" strokeWidth={2} />
                 {t('scheduleNewTask')}
-              </button>
+              </AstryxButton>
             </div>
           </div>
 
@@ -454,18 +463,11 @@ export function ScheduleTasksView({
                 {t('scheduleAwakeNotice')}
               </span>
             </div>
-            <label className="flex shrink-0 items-center gap-2 text-[13px] font-medium text-ds-muted">
-              {t('scheduleKeepAwake')}
-              <input
-                type="checkbox"
-                checked={Boolean(schedule?.keepAwake)}
-                onChange={(event) => void toggleKeepAwake(event.target.checked)}
-                className="sr-only"
-              />
-              <span className={`relative h-5 w-9 rounded-full transition ${schedule?.keepAwake ? 'bg-ds-ink' : 'bg-ds-border-strong'}`}>
-                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${schedule?.keepAwake ? 'left-[18px]' : 'left-0.5'}`} />
-              </span>
-            </label>
+            <AstryxToggle
+              checked={Boolean(schedule?.keepAwake)}
+              onChange={(value) => void toggleKeepAwake(value)}
+              label={t('scheduleKeepAwake')}
+            />
           </div>
 
           {loading ? (
@@ -494,9 +496,9 @@ export function ScheduleTasksView({
                           <h2 className="truncate text-[15px] font-semibold text-ds-ink">
                             {task.title || t('scheduleUntitled')}
                           </h2>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(task.lastStatus)}`}>
+                          <AstryxBadge variant={statusVariant(task.lastStatus)}>
                             {running ? t('scheduleStatus_running') : t(`scheduleStatus_${task.lastStatus}`)}
-                          </span>
+                          </AstryxBadge>
                         </div>
                         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-ds-faint">
                           <span>{scheduleTaskSummary(task, t)}</span>
@@ -507,55 +509,42 @@ export function ScheduleTasksView({
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         {lastThreadId ? (
-                          <button
-                            type="button"
+                          <AstryxIconButton
                             onClick={() => onOpenThread?.(lastThreadId)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
                             title={t('scheduleOpenLastThread')}
                             aria-label={t('scheduleOpenLastThread')}
                           >
                             <MessageSquare className="h-4 w-4" strokeWidth={1.8} />
-                          </button>
+                          </AstryxIconButton>
                         ) : null}
-                        <button
-                          type="button"
+                        <AstryxIconButton
                           onClick={() => void runTask(task.id)}
                           disabled={running}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink disabled:cursor-not-allowed disabled:opacity-45"
                           title={t('scheduleRunNow')}
                           aria-label={t('scheduleRunNow')}
                         >
                           <Play className="h-4 w-4" strokeWidth={1.8} />
-                        </button>
-                        <button
-                          type="button"
+                        </AstryxIconButton>
+                        <AstryxIconButton
                           onClick={() => openEditDialog(task)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
                           title={t('scheduleEditTask')}
                           aria-label={t('scheduleEditTask')}
                         >
                           <PencilLine className="h-4 w-4" strokeWidth={1.8} />
-                        </button>
-                        <button
-                          type="button"
+                        </AstryxIconButton>
+                        <AstryxIconButton
                           onClick={() => void deleteTask(task.id)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ds-muted transition hover:bg-red-500/10 hover:text-red-600"
+                          className="hover:bg-red-500/10 hover:text-red-600"
                           title={t('scheduleDeleteTask')}
                           aria-label={t('scheduleDeleteTask')}
                         >
                           <Trash2 className="h-4 w-4" strokeWidth={1.8} />
-                        </button>
-                        <label className="ml-1 inline-flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={task.enabled}
-                            onChange={(event) => void updateTask(task.id, { enabled: event.target.checked })}
-                            className="sr-only"
-                          />
-                          <span className={`relative h-5 w-9 rounded-full transition ${task.enabled ? 'bg-ds-ink' : 'bg-ds-border-strong'}`}>
-                            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${task.enabled ? 'left-[18px]' : 'left-0.5'}`} />
-                          </span>
-                        </label>
+                        </AstryxIconButton>
+                        <AstryxToggle
+                          checked={task.enabled}
+                          onChange={(value) => void updateTask(task.id, { enabled: value })}
+                          aria-label={t('scheduleTaskEnabled')}
+                        />
                       </div>
                     </div>
                     {task.lastMessage ? (
@@ -702,14 +691,14 @@ function ScheduleTaskDialog({
               <label className="grid gap-2">
                 <FieldLabel required>{t('scheduleTaskName')}</FieldLabel>
                 <div className="relative">
-                  <input
+                  <AstryxInput
                     value={draft.title}
                     maxLength={50}
                     onChange={(event) => updateDraft({ title: event.target.value })}
                     placeholder={t('scheduleTaskNamePlaceholder')}
-                    className="h-10 w-full rounded-xl border border-ds-border bg-ds-main/55 px-3 pr-14 text-[14px] text-ds-ink outline-none transition placeholder:text-ds-faint focus:border-accent/45 focus:ring-2 focus:ring-accent/15"
+                    className="w-full"
                   />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-ds-faint">
+                  <span className="pointer-events-none absolute right-3 top-[34px] text-[12px] text-ds-faint">
                     {draft.title.length}/50
                   </span>
                 </div>
@@ -718,12 +707,12 @@ function ScheduleTaskDialog({
               <label className="grid gap-2">
                 <FieldLabel required>{t('scheduleTaskPrompt')}</FieldLabel>
                 <div className="relative">
-                  <textarea
+                  <AstryxTextarea
                     value={draft.prompt}
                     maxLength={8_000}
                     onChange={(event) => updateDraft({ prompt: event.target.value })}
                     placeholder={t('scheduleTaskPromptPlaceholder')}
-                    className="min-h-[108px] w-full resize-y rounded-xl border border-ds-border bg-ds-main/55 px-3 py-3 pb-8 text-[14px] leading-6 text-ds-ink outline-none transition placeholder:text-ds-faint focus:border-accent/45 focus:ring-2 focus:ring-accent/15"
+                    className="w-full"
                   />
                   <span className="pointer-events-none absolute bottom-3 right-3 text-[12px] text-ds-faint">
                     {promptCount}/8000
@@ -739,30 +728,26 @@ function ScheduleTaskDialog({
               <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
                 <label className="grid gap-2">
                   <FieldLabel required>{t('scheduleModel')}</FieldLabel>
-                  <select
+                  <AstryxSelect
                     value={draft.model}
                     onChange={(event) => updateDraft({ model: event.target.value })}
-                    className="h-10 w-full rounded-xl border border-ds-border bg-ds-main/55 px-3 text-[14px] text-ds-ink outline-none transition focus:border-accent/45 focus:ring-2 focus:ring-accent/15"
-                  >
-                    {SCHEDULE_MODEL_IDS.map((model) => (
-                      <option key={model} value={model}>{model}</option>
-                    ))}
-                  </select>
+                    options={SCHEDULE_MODEL_IDS.map((model) => ({ value: model, label: model }))}
+                  />
                 </label>
 
                 <div className="grid gap-2">
                   <FieldLabel>{t('scheduleReasoning')}</FieldLabel>
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                  <AstryxSegmentGroup className="grid grid-cols-3 sm:grid-cols-6">
                     {SCHEDULE_REASONING_OPTIONS.map((effort) => (
-                      <SegmentButton
+                      <AstryxSegmentButton
                         key={effort}
                         selected={draft.reasoningEffort === effort}
                         onClick={() => updateDraft({ reasoningEffort: effort })}
                       >
                         {scheduleReasoningLabel(effort, t)}
-                      </SegmentButton>
+                      </AstryxSegmentButton>
                     ))}
-                  </div>
+                  </AstryxSegmentGroup>
                 </div>
               </div>
             </ScheduleDialogSection>
@@ -774,17 +759,17 @@ function ScheduleTaskDialog({
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
                 <div className="grid gap-2">
                   <FieldLabel required>{t('scheduleRunAt')}</FieldLabel>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <AstryxSegmentGroup className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {SCHEDULE_KIND_OPTIONS.map((kind) => (
-                      <SegmentButton
+                      <AstryxSegmentButton
                         key={kind}
                         selected={draft.schedule.kind === kind}
                         onClick={() => updateSchedule({ kind })}
                       >
                         {t(`scheduleKind_${kind}`)}
-                      </SegmentButton>
+                      </AstryxSegmentButton>
                     ))}
-                  </div>
+                  </AstryxSegmentGroup>
                 </div>
 
                 {draft.schedule.kind === 'daily' ? (
@@ -799,23 +784,21 @@ function ScheduleTaskDialog({
                 ) : draft.schedule.kind === 'at' ? (
                   <label className="grid gap-2">
                     <FieldLabel>{t('scheduleAtTime')}</FieldLabel>
-                    <input
+                    <AstryxInput
                       type="datetime-local"
                       value={dateTimeLocalValueFromIso(draft.schedule.atTime)}
                       onChange={(event) => updateSchedule({ atTime: isoFromDateTimeLocalValue(event.target.value) })}
-                      className="h-10 w-full rounded-xl border border-ds-border bg-ds-main/55 px-3 text-[14px] text-ds-ink outline-none transition focus:border-accent/45 focus:ring-2 focus:ring-accent/15"
                     />
                   </label>
                 ) : draft.schedule.kind === 'interval' ? (
                   <label className="grid gap-2">
                     <FieldLabel>{t('scheduleEveryMinutes')}</FieldLabel>
-                    <input
+                    <AstryxInput
                       type="number"
                       min={1}
                       max={10080}
                       value={draft.schedule.everyMinutes}
                       onChange={(event) => updateSchedule({ everyMinutes: Number(event.target.value) })}
-                      className="h-10 w-full rounded-xl border border-ds-border bg-ds-main/55 px-3 text-[14px] text-ds-ink outline-none transition focus:border-accent/45 focus:ring-2 focus:ring-accent/15"
                     />
                   </label>
                 ) : (
@@ -834,39 +817,49 @@ function ScheduleTaskDialog({
                 <label className="grid gap-2">
                   <FieldLabel>{t('scheduleWorkspace')}</FieldLabel>
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_138px]">
-                    <input
+                    <AstryxInput
                       value={draft.workspaceRoot}
                       onChange={(event) => updateDraft({ workspaceRoot: event.target.value })}
                       placeholder={t('scheduleWorkspacePlaceholder')}
-                      className="h-10 w-full rounded-xl border border-ds-border bg-ds-main/55 px-3 text-[14px] text-ds-ink outline-none transition placeholder:text-ds-faint focus:border-accent/45 focus:ring-2 focus:ring-accent/15"
                     />
-                    <button
-                      type="button"
+                    <AstryxButton
+                      variant="secondary"
+                      size="md"
                       onClick={onPickWorkspace}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-ds-border bg-ds-card px-3 text-[13px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
+                      className="h-10"
                     >
                       <FolderOpen className="h-4 w-4" strokeWidth={1.75} />
                       {draft.workspaceRoot.trim() ? t('changeWorkspace') : t('selectWorkspace')}
-                    </button>
+                    </AstryxButton>
                   </div>
                 </label>
 
                 <div className="grid gap-2">
                   <FieldLabel>{t('scheduleTaskEnabled')}</FieldLabel>
-                  <button
-                    type="button"
+                  <div
+                    role="switch"
+                    aria-checked={draft.enabled}
+                    tabIndex={0}
                     onClick={() => updateDraft({ enabled: !draft.enabled })}
-                    className="flex h-10 items-center justify-between gap-3 rounded-xl border border-ds-border bg-ds-main/55 px-3 text-[13px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
-                    aria-pressed={draft.enabled}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        updateDraft({ enabled: !draft.enabled })
+                      }
+                    }}
+                    className="flex h-10 cursor-pointer items-center justify-between gap-3 rounded-xl border border-ds-border bg-ds-main/55 px-3 text-[13px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
                   >
                     <span className="inline-flex min-w-0 items-center gap-2">
                       <Power className="h-4 w-4 shrink-0" strokeWidth={1.8} />
                       <span className="truncate">{t('scheduleTaskEnabled')}</span>
                     </span>
-                    <span className={`relative h-5 w-9 shrink-0 rounded-full transition ${draft.enabled ? 'bg-ds-ink' : 'bg-ds-border-strong'}`}>
-                      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${draft.enabled ? 'left-[18px]' : 'left-0.5'}`} />
-                    </span>
-                  </button>
+                    <AstryxToggle
+                      checked={draft.enabled}
+                      onChange={(value) => updateDraft({ enabled: value })}
+                      onClick={(event) => event.stopPropagation()}
+                      aria-label={t('scheduleTaskEnabled')}
+                    />
+                  </div>
                 </div>
               </div>
             </ScheduleDialogSection>
@@ -880,28 +873,22 @@ function ScheduleTaskDialog({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-ds-border-muted bg-ds-card px-6 py-3">
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className="inline-flex h-8 items-center gap-2 rounded-xl px-3 text-[13px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
-          >
+          <AstryxButton variant="ghost" size="sm" onClick={onOpenSettings}>
             <MoreHorizontal className="h-4 w-4" strokeWidth={1.8} />
             {t('scheduleAdvancedSettings')}
-          </button>
+          </AstryxButton>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-8 rounded-xl border border-ds-border bg-ds-card px-4 text-[13px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
-            >
+            <AstryxButton variant="secondary" size="sm" onClick={onClose}>
               {t('cancel')}
-            </button>
-            <button
+            </AstryxButton>
+            <AstryxButton
+              variant="default"
+              size="sm"
               type="submit"
-              className="h-8 rounded-xl bg-ds-userbubble px-5 text-[13px] font-semibold text-ds-userbubbleFg transition hover:opacity-90"
+              className="bg-ds-userbubble text-ds-userbubbleFg font-semibold hover:opacity-90"
             >
               {t('confirm')}
-            </button>
+            </AstryxButton>
           </div>
         </div>
       </form>
@@ -946,30 +933,6 @@ function FieldLabel({
   )
 }
 
-function SegmentButton({
-  selected,
-  onClick,
-  children
-}: {
-  selected: boolean
-  onClick: () => void
-  children: ReactNode
-}): ReactElement {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-9 min-w-0 rounded-xl border px-2.5 text-[12.5px] font-semibold transition ${
-        selected
-          ? 'border-accent/45 bg-accent/10 text-ds-ink shadow-sm'
-          : 'border-ds-border bg-ds-main/55 text-ds-muted hover:bg-ds-hover hover:text-ds-ink'
-      }`}
-    >
-      <span className="block truncate">{children}</span>
-    </button>
-  )
-}
-
 function ScheduleTimePicker({
   value,
   onChange,
@@ -980,30 +943,21 @@ function ScheduleTimePicker({
   t: (key: string, values?: Record<string, unknown>) => string
 }): ReactElement {
   const [hour, minute] = splitTimeOfDay(value)
-  const selectClass = 'h-10 w-full rounded-xl border border-ds-border bg-ds-main/55 px-3 text-[14px] text-ds-ink outline-none transition focus:border-accent/45 focus:ring-2 focus:ring-accent/15'
 
   return (
     <div className="grid grid-cols-2 gap-2">
-      <select
+      <AstryxSelect
         value={hour}
         onChange={(event) => onChange(`${event.target.value}:${minute}`)}
-        className={selectClass}
+        options={TIME_HOURS.map((item) => ({ value: item, label: item }))}
         aria-label={t('scheduleTimeHour')}
-      >
-        {TIME_HOURS.map((item) => (
-          <option key={item} value={item}>{item}</option>
-        ))}
-      </select>
-      <select
+      />
+      <AstryxSelect
         value={minute}
         onChange={(event) => onChange(`${hour}:${event.target.value}`)}
-        className={selectClass}
+        options={TIME_MINUTES.map((item) => ({ value: item, label: item }))}
         aria-label={t('scheduleTimeMinute')}
-      >
-        {TIME_MINUTES.map((item) => (
-          <option key={item} value={item}>{item}</option>
-        ))}
-      </select>
+      />
     </div>
   )
 }

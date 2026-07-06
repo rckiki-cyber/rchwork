@@ -34,7 +34,8 @@ import {
   attachmentDiagnostics,
   getAttachmentContent,
   getAttachmentMetadata,
-  uploadAttachment
+  uploadAttachment,
+  uploadAttachmentFromFile
 } from './attachments.js'
 import {
   createMemory,
@@ -128,6 +129,10 @@ export function buildRouter(runtime: ServerRuntime): Router {
   router.add('POST', '/v1/attachments', async (request) => {
     if (!authorize(request, runtime)) return ERRORS.unauthorized()
     return uploadAttachment(runtime.attachmentStore, request)
+  })
+  router.add('POST', '/v1/attachments/from-file', async (request) => {
+    if (!authorize(request, runtime)) return ERRORS.unauthorized()
+    return uploadAttachmentFromFile(runtime.attachmentStore, request)
   })
   router.add('GET', '/v1/attachments/diagnostics', async (request) => {
     if (!authorize(request, runtime)) return ERRORS.unauthorized()

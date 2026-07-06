@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Copy, FolderOpen } from 'lucide-react'
+import { AstryxButton } from './astryx/AstryxButton'
 
 export function RuntimeBanner({
   message,
@@ -66,10 +67,11 @@ export function RuntimeBanner({
           </p>
           <div className="flex shrink-0 items-center gap-2">
             {hasDetail ? (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] font-medium text-amber-900/80 transition hover:bg-amber-50/70 dark:text-amber-100 dark:hover:bg-amber-900/30"
+              <AstryxButton
+                variant="ghost"
+                size="sm"
                 onClick={() => setDetailsOpen((value) => !value)}
+                className="text-amber-900/80 hover:bg-amber-50/70 hover:text-amber-900 dark:text-amber-100 dark:hover:bg-amber-900/30"
               >
                 {detailsOpen ? (
                   <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
@@ -77,24 +79,26 @@ export function RuntimeBanner({
                   <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} />
                 )}
                 {t('runtimeErrorDetails')}
-              </button>
+              </AstryxButton>
             ) : null}
             {!runtimeReady ? (
               <>
-                <button
-                  type="button"
-                  className="rounded-lg border border-amber-300/70 bg-white px-3 py-1 text-[12px] font-medium text-amber-950 transition hover:bg-amber-100/80 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                <AstryxButton
+                  variant="outline"
+                  size="sm"
                   onClick={onRetryConnection}
+                  className="border-amber-300/70 bg-white text-amber-950 hover:bg-amber-100/80 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-100 dark:hover:bg-amber-900/40"
                 >
                   {t('retryConnection')}
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg px-3 py-1 text-[12px] font-medium text-amber-900/80 transition hover:bg-amber-50/70 dark:text-amber-100 dark:hover:bg-amber-900/30"
+                </AstryxButton>
+                <AstryxButton
+                  variant="ghost"
+                  size="sm"
                   onClick={onOpenSettings}
+                  className="text-amber-900/80 hover:bg-amber-50/70 hover:text-amber-900 dark:text-amber-100 dark:hover:bg-amber-900/30"
                 >
                   {t('openSettings')}
-                </button>
+                </AstryxButton>
               </>
             ) : null}
           </div>
@@ -106,14 +110,15 @@ export function RuntimeBanner({
               {cleanedLogPath}
             </code>
             {onOpenLogDir ? (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] font-medium text-amber-900/85 transition hover:bg-amber-50/70 dark:text-amber-100 dark:hover:bg-amber-900/30"
+              <AstryxButton
+                variant="ghost"
+                size="sm"
                 onClick={() => void openLogDir()}
+                className="h-auto px-2 py-0.5 text-amber-900/85 hover:bg-amber-50/70 hover:text-amber-900 dark:text-amber-100 dark:hover:bg-amber-900/30"
               >
                 <FolderOpen className="h-3.5 w-3.5" strokeWidth={2} />
                 {t('windowsMenuOpenLogDir')}
-              </button>
+              </AstryxButton>
             ) : null}
             {logOpenError ? (
               <span className="text-red-700 dark:text-red-300">{logOpenError}</span>
@@ -126,14 +131,15 @@ export function RuntimeBanner({
               <span className="text-[12px] font-semibold text-amber-950 dark:text-amber-100">
                 {t('runtimeErrorTechnicalDetails')}
               </span>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium text-amber-900/80 transition hover:bg-amber-100/70 dark:text-amber-100 dark:hover:bg-amber-900/40"
+              <AstryxButton
+                variant="ghost"
+                size="sm"
                 onClick={() => void copyDetails()}
+                className="text-amber-900/80 hover:bg-amber-100/70 hover:text-amber-900 dark:text-amber-100 dark:hover:bg-amber-900/40"
               >
                 <Copy className="h-3.5 w-3.5" strokeWidth={2} />
                 {copied ? t('copySuccess') : t('copyDetails')}
-              </button>
+              </AstryxButton>
             </div>
             <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-amber-950 dark:text-amber-100">
               {detailText}

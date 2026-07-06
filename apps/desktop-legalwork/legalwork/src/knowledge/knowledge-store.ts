@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, extname, join, normalize, relative, resolve, sep } from 'node:path'
 import { extractDocumentText, EXTRACTABLE_EXTENSIONS } from './text-extractor.js'
 import type {
   KnowledgeClassifyRequest,
@@ -89,7 +89,6 @@ const MANAGED_FILE_EXTENSIONS = new Set([
   '.7z'
 ])
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', 'out', '.next', '.vite'])
-const DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024
 const DEFAULT_MAX_FILES = 1500
 const CHUNK_SIZE = 2400
 const CHUNK_OVERLAP = 240
@@ -131,6 +130,13 @@ export class FileKnowledgeStore implements KnowledgeStore {
 
   /** Resolve a relative path inside managedRoot, preventing directory escape. */
   private resolveManaged(relativePath: string): string {
+    if (!relativePath || relativePath === '.' || relativePath === '..') {
+      throw new Error(`Invalid knowledge path: "${relativePath}"`)
+    }
+    const normalized = normalize(relativePath)
+    if (normalized === '..' || normalized.startsWith(`..${sep}`)) {
+      throw new Error(`Path "${relativePath}" escapes managed root`)
+    }
     const absolute = resolve(join(this.managedRoot, relativePath))
     const managedRoot = resolve(this.managedRoot)
     if (absolute !== managedRoot && !absolute.startsWith(`${managedRoot}${sep}`)) {
@@ -314,10 +320,6 @@ export class FileKnowledgeStore implements KnowledgeStore {
       const root = roots.find((candidate) => isInside(filePath, candidate)) ?? roots[0] ?? resolve('.')
       try {
         const info = await stat(filePath)
-        if (info.size > DEFAULT_MAX_FILE_BYTES) {
-          skippedCount += 1
-          continue
-        }
         const ext = extname(filePath).toLowerCase()
         const content = TEXT_EXTENSIONS.has(ext)
           ? normalizeText(await readFile(filePath, 'utf8'))
@@ -762,6 +764,7 @@ function normalizeRelativePath(path: string): string {
 }
 
 function normalizeText(text: string): string {
+  // eslint-disable-next-line no-control-regex
   return text.replace(/\r\n/g, '\n').replace(/\u0000/g, '')
 }
 

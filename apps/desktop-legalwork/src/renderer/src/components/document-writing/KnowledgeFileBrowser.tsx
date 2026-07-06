@@ -18,8 +18,7 @@ import {
   LEGALWORK_KNOWLEDGE_DELETE_FILE_PATH,
   LEGALWORK_KNOWLEDGE_MOVE_PATH,
   LEGALWORK_KNOWLEDGE_READ_FILE_PATH,
-  LEGALWORK_KNOWLEDGE_TREE_PATH,
-  LEGALWORK_KNOWLEDGE_WRITE_FILE_PATH
+  LEGALWORK_KNOWLEDGE_TREE_PATH
 } from '../../../../shared/legalwork-endpoints'
 
 type TreeNode = {
@@ -206,12 +205,8 @@ export function KnowledgeFileBrowser({ onRefresh }: { onRefresh?: () => void }):
     try {
       for (let i = 0; i < files.length; i += 1) {
         const file = files[i]
-        const content = await file.text()
-        await requestJson(LEGALWORK_KNOWLEDGE_WRITE_FILE_PATH, 'POST', {
-          path: file.name,
-          content,
-          encoding: 'utf8'
-        })
+        const result = await window.dsGui.uploadKnowledgeFile(file, file.name)
+        if (!result.ok) throw new Error(result.message)
       }
       void loadTree()
       onRefresh?.()

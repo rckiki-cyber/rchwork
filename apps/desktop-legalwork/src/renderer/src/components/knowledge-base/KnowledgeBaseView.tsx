@@ -40,8 +40,7 @@ import {
   LEGALWORK_KNOWLEDGE_READ_FILE_PATH,
   LEGALWORK_KNOWLEDGE_RETRIEVE_PATH,
   LEGALWORK_KNOWLEDGE_SYNC_PATH,
-  LEGALWORK_KNOWLEDGE_TREE_PATH,
-  LEGALWORK_KNOWLEDGE_WRITE_FILE_PATH
+  LEGALWORK_KNOWLEDGE_TREE_PATH
 } from '../../../../shared/legalwork-endpoints'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
@@ -267,18 +266,6 @@ function flattenNodes(nodes: TreeNode[]): TreeNode[] {
     if (node.kind === 'folder') result.push(...flattenNodes(node.children ?? []))
   }
   return result
-}
-
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const value = String(reader.result ?? '')
-      resolve(value.includes(',') ? value.slice(value.indexOf(',') + 1) : value)
-    }
-    reader.onerror = () => reject(reader.error ?? new Error('读取文件失败'))
-    reader.readAsDataURL(file)
-  })
 }
 
 type PreviewFile = {
@@ -682,12 +669,8 @@ export function KnowledgeBaseView(): ReactElement {
       for (let i = 0; i < files.length; i += 1) {
         const file = files[i]
         const relative = fileRelativePath(file)
-        const content = await readFileAsBase64(file)
-        await requestJson(LEGALWORK_KNOWLEDGE_WRITE_FILE_PATH, 'POST', {
-          path: joinKnowledgePath(currentPath, relative),
-          content,
-          encoding: 'base64'
-        })
+        const result = await window.dsGui.uploadKnowledgeFile(file, joinKnowledgePath(currentPath, relative))
+        if (!result.ok) throw new Error(result.message)
         setUploading({ done: i + 1, total: files.length })
       }
       await loadTree()

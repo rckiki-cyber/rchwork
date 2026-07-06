@@ -440,6 +440,12 @@ export interface AgentProvider {
     threadId?: string
     workspace?: string
   }): Promise<CoreAttachmentMetadataJson>
+  uploadAttachmentFile?(file: File, input: {
+    name: string
+    mimeType?: string
+    threadId?: string
+    workspace?: string
+  }): Promise<CoreAttachmentMetadataJson>
   getAttachmentContent?(
     attachmentId: string,
     options?: { threadId?: string; workspace?: string }

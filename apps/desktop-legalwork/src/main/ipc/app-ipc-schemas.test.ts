@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   clawImInstallPollPayloadSchema,
+  dataComplianceSubmitPayloadSchema,
   isSafeOpenExternalUrl,
+  knowledgeUploadFilePayloadSchema,
   runtimeRequestPayloadSchema,
   scheduleTaskFromTextPayloadSchema,
   settingsPatchSchema,
@@ -134,6 +136,34 @@ describe('app-ipc-schemas', () => {
       path: '/v1/knowledge/file?path=%E8%AE%BA%E6%96%87%2Fa.pdf',
       method: 'DELETE'
     }).path).toBe('/v1/knowledge/file?path=%E8%AE%BA%E6%96%87%2Fa.pdf')
+  })
+
+  it('accepts knowledge upload file payloads', () => {
+    expect(knowledgeUploadFilePayloadSchema.parse({
+      sourcePath: ' /tmp/source.pdf ',
+      targetPath: ' 案例/source.pdf '
+    })).toEqual({
+      sourcePath: '/tmp/source.pdf',
+      targetPath: '案例/source.pdf'
+    })
+  })
+
+  it('accepts data compliance file-path submit payloads', () => {
+    expect(dataComplianceSubmitPayloadSchema.parse({
+      mode: 'review',
+      file: {
+        name: 'large.pdf',
+        type: 'application/pdf',
+        filePath: ' /tmp/large.pdf '
+      }
+    })).toMatchObject({
+      mode: 'review',
+      file: {
+        name: 'large.pdf',
+        type: 'application/pdf',
+        filePath: '/tmp/large.pdf'
+      }
+    })
   })
 
   it('accepts skill list payloads with an optional workspace root', () => {

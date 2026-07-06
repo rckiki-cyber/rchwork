@@ -464,6 +464,13 @@ describe('ClawRuntime', () => {
     const logError = vi.fn()
     const onTurnStarted = vi.fn()
     const runtimeRequest = vi.fn(async (_settings, path, init) => {
+      if (path === '/v1/threads/thr_missing' && init?.method === 'GET') {
+        return {
+          ok: false,
+          status: 404,
+          body: JSON.stringify({ code: 'not_found', message: 'thread not found: thr_missing' })
+        }
+      }
       if (path === '/v1/threads/thr_missing/turns') {
         return {
           ok: false,
@@ -971,6 +978,231 @@ describe('ClawRuntime', () => {
       reply: 'final result'
     })
     expect(getCount).toBe(2)
+  })
+
+  it('interrupts a timed-out WeChat turn instead of returning partial text', async () => {
+    const settings = buildSettings()
+    settings.claw.im.enabled = true
+    settings.claw.im.responseTimeoutMs = 10
+    settings.claw.channels = [buildChannel({
+      provider: 'weixin' as const,
+      id: 'channel_weixin',
+      label: 'WeChat',
+      threadId: '',
+      conversations: []
+    })]
+    const { store } = mutableSettingsStore(settings)
+    const runtimeRequest = vi.fn(async (_settings, path, init) => {
+      if (path === '/v1/threads' && init?.method === 'POST') {
+        return { ok: true, status: 201, body: JSON.stringify({ id: 'thr_weixin' }) }
+      }
+      if (path === '/v1/threads/thr_weixin' && init?.method === 'PATCH') {
+        return { ok: true, status: 200, body: '{}' }
+      }
+      if (path === '/v1/threads/thr_weixin/turns' && init?.method === 'POST') {
+        return { ok: true, status: 202, body: JSON.stringify({ turnId: 'turn_timeout' }) }
+      }
+      if (path === '/v1/threads/thr_weixin' && init?.method === 'GET') {
+        return {
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            id: 'thr_weixin',
+            status: 'running',
+            turns: [
+              {
+                id: 'turn_timeout',
+                status: 'running',
+                items: [{ kind: 'assistant_text', text: 'unfinished analysis' }]
+              }
+            ]
+          })
+        }
+      }
+      if (path === '/v1/threads/thr_weixin/turns/turn_timeout/interrupt' && init?.method === 'POST') {
+        return { ok: true, status: 200, body: JSON.stringify({ status: 'aborted' }) }
+      }
+      throw new Error(`unexpected path ${path}`)
+    })
+    const runtime = createClawRuntime({
+      store: store as never,
+      runtimeRequest: runtimeRequest as never,
+      logError: () => undefined,
+      createScheduledTaskFromText: vi.fn(async () => ({ kind: 'noop' as const }))
+    })
+    const body = JSON.stringify({
+      text: 'run a long analysis',
+      provider: 'weixin',
+      channelId: 'channel_weixin',
+      chatId: 'wx_user_1',
+      messageId: 'wx_msg_1',
+      senderId: 'wx_user_1',
+      senderName: 'Alice'
+    })
+    const req = {
+      method: 'POST',
+      url: settings.claw.im.path,
+      headers: {},
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(body)
+      }
+    }
+    let status = 0
+    let responseBody = ''
+    const res = {
+      writeHead: vi.fn((nextStatus: number) => {
+        status = nextStatus
+      }),
+      end: vi.fn((payload: string) => {
+        responseBody = payload
+      })
+    }
+
+    await (runtime as unknown as {
+      handleWebhook: (request: typeof req, response: typeof res) => Promise<void>
+    }).handleWebhook(req, res)
+
+    expect(status).toBe(500)
+    expect(JSON.parse(responseBody)).toMatchObject({
+      ok: false,
+      message: 'Timed out waiting for agent response.'
+    })
+    expect(runtimeRequest).toHaveBeenCalledWith(
+      settings,
+      '/v1/threads/thr_weixin/turns/turn_timeout/interrupt',
+      { method: 'POST', body: JSON.stringify({ discard: true }) }
+    )
+  })
+
+  it('starts a replacement WeChat thread when the mapped thread still has a running turn', async () => {
+    const settings = buildSettings()
+    settings.claw.im.enabled = true
+    settings.claw.im.responseTimeoutMs = 2_000
+    settings.claw.channels = [buildChannel({
+      provider: 'weixin' as const,
+      id: 'channel_weixin',
+      label: 'WeChat',
+      threadId: 'thr_old',
+      conversations: [buildConversation({
+        chatId: 'wx_user_1',
+        latestMessageId: 'wx_previous',
+        senderId: 'wx_user_1',
+        senderName: 'Alice',
+        localThreadId: 'thr_old'
+      })]
+    })]
+    const { current, store } = mutableSettingsStore(settings)
+    const logError = vi.fn()
+    const runtimeRequest = vi.fn(async (_settings, path, init) => {
+      if (path === '/v1/threads/thr_old' && init?.method === 'GET') {
+        return {
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            id: 'thr_old',
+            status: 'running',
+            turns: [
+              {
+                id: 'turn_stale',
+                status: 'running',
+                items: [{ kind: 'assistant_text', text: 'old unfinished result' }]
+              }
+            ]
+          })
+        }
+      }
+      if (path === '/v1/threads/thr_old/turns/turn_stale/interrupt' && init?.method === 'POST') {
+        return { ok: true, status: 200, body: JSON.stringify({ status: 'aborted' }) }
+      }
+      if (path === '/v1/threads' && init?.method === 'POST') {
+        return { ok: true, status: 201, body: JSON.stringify({ id: 'thr_replacement' }) }
+      }
+      if (path === '/v1/threads/thr_replacement' && init?.method === 'PATCH') {
+        return { ok: true, status: 200, body: '{}' }
+      }
+      if (path === '/v1/threads/thr_replacement/turns' && init?.method === 'POST') {
+        return { ok: true, status: 202, body: JSON.stringify({ turnId: 'turn_current' }) }
+      }
+      if (path === '/v1/threads/thr_replacement' && init?.method === 'GET') {
+        return {
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            id: 'thr_replacement',
+            status: 'idle',
+            turns: [
+              {
+                id: 'turn_current',
+                status: 'completed',
+                items: [{ kind: 'assistant_text', text: 'fresh answer' }]
+              }
+            ]
+          })
+        }
+      }
+      throw new Error(`unexpected path ${path}`)
+    })
+    const runtime = createClawRuntime({
+      store: store as never,
+      runtimeRequest: runtimeRequest as never,
+      logError,
+      createScheduledTaskFromText: vi.fn(async () => ({ kind: 'noop' as const }))
+    })
+    const body = JSON.stringify({
+      text: 'new question',
+      provider: 'weixin',
+      channelId: 'channel_weixin',
+      chatId: 'wx_user_1',
+      messageId: 'wx_msg_2',
+      senderId: 'wx_user_1',
+      senderName: 'Alice'
+    })
+    const req = {
+      method: 'POST',
+      url: settings.claw.im.path,
+      headers: {},
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(body)
+      }
+    }
+    let status = 0
+    let responseBody = ''
+    const res = {
+      writeHead: vi.fn((nextStatus: number) => {
+        status = nextStatus
+      }),
+      end: vi.fn((payload: string) => {
+        responseBody = payload
+      })
+    }
+
+    await (runtime as unknown as {
+      handleWebhook: (request: typeof req, response: typeof res) => Promise<void>
+    }).handleWebhook(req, res)
+
+    expect(status).toBe(200)
+    expect(JSON.parse(responseBody)).toMatchObject({
+      ok: true,
+      threadId: 'thr_replacement',
+      turnId: 'turn_current',
+      reply: 'fresh answer'
+    })
+    expect(runtimeRequest).not.toHaveBeenCalledWith(
+      settings,
+      '/v1/threads/thr_old/turns',
+      expect.anything()
+    )
+    expect(current().claw.channels[0].threadId).toBe('thr_replacement')
+    expect(current().claw.channels[0].conversations[0].localThreadId).toBe('thr_replacement')
+    expect(logError).toHaveBeenCalledWith(
+      'claw-runtime',
+      'Configured IM thread still had running turns; creating a replacement thread.',
+      expect.objectContaining({
+        threadId: 'thr_old',
+        runningTurnIds: ['turn_stale'],
+        channelId: 'channel_weixin'
+      })
+    )
   })
 
   it('does not return a previous WeChat session reply for a new turn', async () => {

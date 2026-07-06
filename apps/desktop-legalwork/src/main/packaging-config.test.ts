@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,6 +19,29 @@ function tempRoot(): string {
 function touch(path: string): void {
   mkdirSync(join(path, '..'), { recursive: true })
   writeFileSync(path, '{}\n', 'utf8')
+}
+
+function writeInfoPlist(path: string): void {
+  mkdirSync(join(path, '..'), { recursive: true })
+  writeFileSync(path, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>CFBundleName</key>
+    <string>legalwork</string>
+    <key>NSCameraUsageDescription</key>
+    <string>This app needs access to the camera</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>This app needs access to the microphone</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>This app needs access to Bluetooth</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>This app needs access to the photo library</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>This app needs write access to the photo library</string>
+  </dict>
+</plist>
+`, 'utf8')
 }
 
 function createMacPackContext(root: string): {
@@ -89,6 +112,12 @@ describe('electron-builder Legalwork packaging', () => {
   })
 
   it('includes data compliance resources in the packaged app', () => {
+    expect(builderConfig.extraResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        from: 'vendor/ocr-runtime',
+        to: 'ocr-runtime'
+      })
+    ]))
     expect(builderConfig.files).toEqual(expect.arrayContaining([
       'vendor/data-compliance-review-codex/data-compliance-web/**/*',
       'vendor/data-compliance-review-codex/projects/data-compliance-ai-project-kit/**/*',
@@ -137,6 +166,31 @@ describe('electron-builder Legalwork packaging', () => {
     }
 
     expect(() => afterPack._internals.validateBundledDataComplianceRuntime(context)).not.toThrow()
+  })
+
+  it('removes unused macOS privacy permission prompts from app and helper plists', () => {
+    if (process.platform !== 'darwin' || !existsSync('/usr/libexec/PlistBuddy')) return
+
+    const root = tempRoot()
+    const context = createMacPackContext(root)
+    const appBundle = afterPack._internals.appBundlePath(context)
+    const mainPlist = join(appBundle, 'Contents/Info.plist')
+    const helperPlist = join(
+      appBundle,
+      'Contents/Frameworks/legalwork Helper.app/Contents/Info.plist'
+    )
+    writeInfoPlist(mainPlist)
+    writeInfoPlist(helperPlist)
+
+    expect(afterPack._internals.macInfoPlistPaths(context)).toEqual([helperPlist, mainPlist].sort())
+
+    afterPack._internals.stripUnnecessaryMacPermissions(context)
+
+    for (const plist of [mainPlist, helperPlist]) {
+      const content = readFileSync(plist, 'utf8')
+      expect(content).toContain('CFBundleName')
+      expect(content).not.toMatch(/NS(PhotoLibrary|Camera|Microphone|Bluetooth)/)
+    }
   })
 
   it('runs npm through cmd.exe during Windows afterPack hooks', () => {

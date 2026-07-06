@@ -93,6 +93,11 @@ module.exports = {
       from: '../../skills',
       to: 'skills',
       filter: ['**/*', '!__pycache__/**/*', '!_gen_skill.py', '!_tmp_gen.py']
+    },
+    {
+      from: 'vendor/ocr-runtime',
+      to: 'ocr-runtime',
+      filter: ['**/*']
     }
   ],
   files: [

@@ -181,7 +181,7 @@ describe('image attachment upload preparation', () => {
       textFallbackMaxBase64Bytes: 4,
       textFallbackMaxImageDimension: 32,
       textFallbackPreferredMimeType: 'image/webp'
-    }, encoder)).rejects.toThrow(/text fallback limits/)
+    }, encoder)).rejects.toThrow(/text-only model fallback/)
   })
 
   it('encodes large array buffers without relying on one giant string conversion', () => {

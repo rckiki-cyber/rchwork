@@ -121,10 +121,10 @@ export async function prepareImageAttachmentUpload(
           await encoder(file, textFallbackOptions)
         ]
   if (!uploadImage) {
-    throw new Error('Image could not be compressed within the upload limits.')
+    throw new Error('Image could not be prepared for model input.')
   }
   if (!textFallback) {
-    throw new Error('Image could not be compressed within the text fallback limits.')
+    throw new Error('Image could not be prepared for text-only model fallback.')
   }
 
   return {
@@ -280,7 +280,7 @@ function resolvePreferredMimeType(capabilities: ImageAttachmentUploadCapabilitie
     : capabilities.allowedMimeTypes[0]!
 }
 
-function resolveAttachmentMimeType(file: File): string {
+export function resolveAttachmentMimeType(file: File): string {
   const declared = file.type.trim()
   if (declared) return declared
   const lowerName = file.name.toLowerCase()

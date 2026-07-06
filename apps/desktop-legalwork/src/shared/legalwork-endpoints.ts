@@ -22,6 +22,8 @@ export const LEGALWORK_SKILLS_TEMPLATE = '/v1/skills'
 
 export const LEGALWORK_ATTACHMENTS_PATH = '/v1/attachments'
 export const LEGALWORK_ATTACHMENTS_TEMPLATE = '/v1/attachments'
+export const LEGALWORK_ATTACHMENTS_FROM_FILE_PATH = '/v1/attachments/from-file'
+export const LEGALWORK_ATTACHMENTS_FROM_FILE_TEMPLATE = '/v1/attachments/from-file'
 export const LEGALWORK_ATTACHMENT_DIAGNOSTICS_PATH = '/v1/attachments/diagnostics'
 export const LEGALWORK_ATTACHMENT_DIAGNOSTICS_TEMPLATE = '/v1/attachments/diagnostics'
 export const LEGALWORK_ATTACHMENT_TEMPLATE = '/v1/attachments/{id}'

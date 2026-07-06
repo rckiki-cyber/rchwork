@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -95,6 +95,18 @@ describe('registerAppIpcHandlers', () => {
       handler?.({}, { agents: { legalwork: { mysteryFlag: true } } })
     ).rejects.toThrow(/Invalid payload for settings:set/)
     expect(applySettingsPatch).not.toHaveBeenCalled()
+  })
+
+  it('requires Python 3.10 or newer for data compliance installs', async () => {
+    const {
+      isSupportedDataCompliancePythonVersion,
+      parsePythonVersionOutput
+    } = await import('./register-app-ipc-handlers')
+
+    expect(parsePythonVersionOutput('Python 3.11.9')).toEqual({ major: 3, minor: 11, patch: 9 })
+    expect(isSupportedDataCompliancePythonVersion('Python 3.9.18')).toBe(false)
+    expect(isSupportedDataCompliancePythonVersion('Python 3.10.0')).toBe(true)
+    expect(isSupportedDataCompliancePythonVersion('Python 3.11.9')).toBe(true)
   })
 
   it('passes valid settings patches through to applySettingsPatch', async () => {
@@ -224,6 +236,41 @@ describe('registerAppIpcHandlers', () => {
       )
       expect(existsSync(configPath)).toBe(false)
       expect(onLegalworkMcpConfigWritten).not.toHaveBeenCalled()
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('copies selected files into the resolved knowledge target path', async () => {
+    const { registerAppIpcHandlers } = await import('./register-app-ipc-handlers')
+    const tempRoot = mkdtempSync(join(tmpdir(), 'knowledge-upload-ipc-'))
+    const sourcePath = join(tempRoot, 'source.pdf')
+    const targetPath = join(tempRoot, 'managed', 'cases', 'source.pdf')
+    writeFileSync(sourcePath, 'pdf bytes')
+    const runtimeRequest = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: JSON.stringify({ path: 'cases/source.pdf', absolute: targetPath })
+    }))
+
+    try {
+      registerAppIpcHandlers(registerOptions({ runtimeRequest: runtimeRequest as never }))
+
+      await expect(
+        handlers.get('knowledge:upload-file')?.({}, {
+          sourcePath,
+          targetPath: 'cases/source.pdf'
+        })
+      ).resolves.toEqual({
+        ok: true,
+        path: 'cases/source.pdf',
+        sizeBytes: 9
+      })
+      expect(readFileSync(targetPath, 'utf8')).toBe('pdf bytes')
+      expect(runtimeRequest).toHaveBeenCalledWith(
+        '/v1/knowledge/file/absolute-path?path=cases%2Fsource.pdf',
+        'GET'
+      )
     } finally {
       rmSync(tempRoot, { recursive: true, force: true })
     }

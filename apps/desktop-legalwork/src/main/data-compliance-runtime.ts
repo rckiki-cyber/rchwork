@@ -1,6 +1,6 @@
-import { spawn, execSync, type ChildProcess } from 'node:child_process'
-import { existsSync, createWriteStream } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { spawn, spawnSync, execSync, type ChildProcess } from 'node:child_process'
+import { existsSync, createWriteStream, rmSync } from 'node:fs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, delimiter } from 'node:path'
 import { app } from 'electron'
 import type { AppSettingsV1 } from '../shared/app-settings'
@@ -39,13 +39,56 @@ export type DataComplianceSubmitPayload = {
   file?: {
     name: string
     type?: string
-    dataBase64: string
+    dataBase64?: string
+    filePath?: string
   }
 }
 
 const PORT = 5100
 const BUNDLED_WEB_ROOT = join('vendor', 'data-compliance-review-codex', 'data-compliance-web')
 const DEPENDENCY_MARKER = '.legalwork-deps-installed'
+const MIN_PYTHON_VERSION = { major: 3, minor: 10 }
+const REQUIRED_PYTHON_IMPORTS = [
+  'flask',
+  'docx',
+  'pypdf',
+  'openai',
+  'presidio_analyzer',
+  'presidio_anonymizer',
+  'spacy',
+  'thinc',
+  'pandas',
+  'openpyxl',
+  'xlrd',
+  'odf',
+  'pptx',
+  'fitz',
+  'PIL',
+  'pytesseract'
+]
+const COMMON_BINARY_DIRS = [
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  '/usr/bin',
+  '/bin'
+]
+
+export function parsePythonVersionOutput(output: string): { major: number; minor: number; patch: number } | null {
+  const match = output.match(/Python\s+(\d+)\.(\d+)(?:\.(\d+))?/)
+  if (!match) return null
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3] ?? 0)
+  }
+}
+
+export function isSupportedDataCompliancePythonVersion(output: string): boolean {
+  const version = parsePythonVersionOutput(output)
+  if (!version) return false
+  if (version.major > MIN_PYTHON_VERSION.major) return true
+  return version.major === MIN_PYTHON_VERSION.major && version.minor >= MIN_PYTHON_VERSION.minor
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -74,21 +117,171 @@ function pythonExecutable(webRoot: string): string {
   return join(webRoot, 'venv', 'bin', 'python')
 }
 
-function findSystemPython(): string {
-  return process.env.PYTHON || process.env.PYTHON3 || 'python3'
+function canRunSupportedPython(command: string, env: NodeJS.ProcessEnv = appendPathForPython()): boolean {
+  if (!command.trim()) return false
+  if (command.includes(' ') && !existsSync(command)) return false
+  try {
+    const result = spawnSync(command, ['--version'], {
+      env,
+      shell: false,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    return result.status === 0 &&
+      isSupportedDataCompliancePythonVersion(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
+  } catch {
+    return false
+  }
 }
 
-function appendPathForPython(): NodeJS.ProcessEnv {
-  const extra = [
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
-    '/usr/bin',
-    '/bin'
+function findSystemPython(env: NodeJS.ProcessEnv = appendPathForPython()): string {
+  const explicit = [process.env.COMPLIANCEAI_PYTHON, process.env.PYTHON, process.env.PYTHON3]
+    .filter((candidate): candidate is string => Boolean(candidate?.trim()))
+  const candidates = process.platform === 'win32'
+    ? [...explicit, 'python', 'python3', 'py']
+    : [...explicit, 'python3', 'python']
+
+  for (const candidate of candidates) {
+    if (canRunSupportedPython(candidate, env)) return candidate
+  }
+
+  throw new Error('未找到 Python 3.10+ 解释器。请重新运行安装，让 legalwork 自动安装内置 Python 3.11。')
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+function platformOcrTags(): string[] {
+  const platformAliases: Record<string, string> = {
+    darwin: 'mac',
+    win32: 'win',
+    linux: 'linux'
+  }
+  const platform = process.platform
+  const arch = process.arch
+  const system = platformAliases[platform] ?? platform
+  return [`${platform}-${arch}`, `${system}-${arch}`, system]
+}
+
+function uniqueExistingDirs(paths: string[]): string[] {
+  return [...new Set(paths.filter((path) => path && existsSync(path)))]
+}
+
+function ocrRuntimeRoots(baseRoots: Array<string | undefined>): string[] {
+  const candidates: string[] = []
+  for (const root of baseRoots) {
+    if (!root) continue
+    candidates.push(
+      join(root, 'ocr-runtime'),
+      join(root, 'vendor', 'ocr-runtime'),
+      join(dirname(root), 'ocr-runtime')
+    )
+  }
+  return uniqueExistingDirs(candidates)
+}
+
+function ocrRuntimeBinDirs(roots: string[]): string[] {
+  const dirs: string[] = []
+  for (const root of roots) {
+    for (const tag of platformOcrTags()) {
+      dirs.push(join(root, tag, 'bin'), join(root, 'bin', tag))
+    }
+    dirs.push(join(root, 'bin'))
+  }
+  return uniqueExistingDirs(dirs)
+}
+
+function ocrRuntimeTessdataDirs(roots: string[]): string[] {
+  const dirs: string[] = []
+  for (const root of roots) {
+    for (const tag of platformOcrTags()) {
+      dirs.push(join(root, tag, 'share', 'tessdata'), join(root, tag, 'tessdata'))
+    }
+    dirs.push(join(root, 'share', 'tessdata'), join(root, 'tessdata'))
+  }
+  return uniqueExistingDirs(dirs)
+}
+
+function findTesseractCommand(binDirs: string[]): string | undefined {
+  const executable = process.platform === 'win32' ? 'tesseract.exe' : 'tesseract'
+  for (const dir of binDirs) {
+    const candidate = join(dir, executable)
+    if (existsSync(candidate)) return candidate
+  }
+  return undefined
+}
+
+function resolveTesseractCommand(env: NodeJS.ProcessEnv): string | undefined {
+  if (env.LEGALWORK_TESSERACT_CMD && existsSync(env.LEGALWORK_TESSERACT_CMD)) {
+    return env.LEGALWORK_TESSERACT_CMD
+  }
+  try {
+    const command = process.platform === 'win32'
+      ? 'where tesseract'
+      : 'command -v tesseract'
+    const output = execSync(command, {
+      encoding: 'utf8',
+      env,
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0]
+    return output || undefined
+  } catch {
+    return undefined
+  }
+}
+
+function canRunTesseract(env: NodeJS.ProcessEnv): boolean {
+  const command = resolveTesseractCommand(env)
+  if (!command) return false
+  try {
+    execSync(`${shellQuote(command)} --version`, {
+      encoding: 'utf8',
+      env,
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function findHomebrewExecutable(env: NodeJS.ProcessEnv): string | undefined {
+  const candidates = [
+    '/opt/homebrew/bin/brew',
+    '/usr/local/bin/brew'
   ]
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+  try {
+    const output = execSync('command -v brew', {
+      encoding: 'utf8',
+      env,
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim()
+    return output || undefined
+  } catch {
+    return undefined
+  }
+}
+
+function appendPathForPython(baseRoots: Array<string | undefined> = []): NodeJS.ProcessEnv {
+  const roots = ocrRuntimeRoots([
+    ...baseRoots,
+    process.resourcesPath,
+    process.cwd()
+  ])
+  const ocrBinDirs = ocrRuntimeBinDirs(roots)
+  const tesseractCmd = findTesseractCommand(ocrBinDirs)
+  const tessdataDir = ocrRuntimeTessdataDirs(roots)[0]
   const current = process.env.PATH ?? ''
   return {
     ...process.env,
-    PATH: [current, ...extra].filter(Boolean).join(delimiter)
+    ...(roots[0] ? { LEGALWORK_OCR_ROOT: roots[0] } : {}),
+    ...(tesseractCmd ? { LEGALWORK_TESSERACT_CMD: tesseractCmd } : {}),
+    ...(tessdataDir && !process.env.TESSDATA_PREFIX ? { TESSDATA_PREFIX: tessdataDir } : {}),
+    PATH: [current, ...ocrBinDirs, ...COMMON_BINARY_DIRS].filter(Boolean).join(delimiter)
   }
 }
 
@@ -118,6 +311,7 @@ async function runCommand(
 export class DataComplianceRuntime {
   private child: ChildProcess | null = null
   private ensurePromise: Promise<DataComplianceStatus> | null = null
+  private ensureAbortController: AbortController | null = null
   private installing = false
   private resolvedWebRoot: string | null = null
 
@@ -181,14 +375,33 @@ export class DataComplianceRuntime {
 
   async ensure(): Promise<DataComplianceStatus> {
     if (!this.ensurePromise) {
+      this.ensureAbortController = new AbortController()
       this.ensurePromise = this.ensureInternal().finally(() => {
         this.ensurePromise = null
+        this.ensureAbortController = null
       })
     }
     return this.ensurePromise
   }
 
   async stop(): Promise<void> {
+    // Cancel any in-flight ensure cycle so it does not try to start a child
+    // after we have requested shutdown.
+    this.ensureAbortController?.abort()
+    this.ensureAbortController = null
+
+    if (this.ensurePromise) {
+      try {
+        await Promise.race([
+          this.ensurePromise,
+          new Promise<void>((resolve) => setTimeout(resolve, 2000))
+        ])
+      } catch {
+        // ignore
+      }
+      this.ensurePromise = null
+    }
+
     if (!this.child) return
     const child = this.child
     this.child = null
@@ -264,7 +477,9 @@ export class DataComplianceRuntime {
       form.set('output_format', payload.outputFormat.trim())
     }
     if (payload.file) {
-      const bytes = Buffer.from(payload.file.dataBase64, 'base64')
+      const bytes = payload.file.filePath
+        ? await readFile(payload.file.filePath)
+        : Buffer.from(payload.file.dataBase64 ?? '', 'base64')
       const blob = new Blob([bytes], { type: payload.file.type || 'application/octet-stream' })
       form.set('file', blob, payload.file.name || 'upload')
     }
@@ -285,6 +500,15 @@ export class DataComplianceRuntime {
 
   private async ensureInternal(): Promise<DataComplianceStatus> {
     console.log('[data-compliance-runtime] ensureInternal start, webRoot:', this.webRoot)
+    if (this.ensureAbortController?.signal.aborted) {
+      return {
+        ok: false,
+        running: false,
+        installing: false,
+        baseUrl: this.baseUrl,
+        message: '数据合规运行时已停止。'
+      }
+    }
     if (!existsSync(this.webRoot)) {
       console.error('[data-compliance-runtime] webRoot does not exist:', this.webRoot)
       return this.status()
@@ -300,9 +524,27 @@ export class DataComplianceRuntime {
     try {
       console.log('[data-compliance-runtime] ensuring python env...')
       await this.ensurePythonEnvironment()
+      if (this.ensureAbortController?.signal.aborted) {
+        return {
+          ok: false,
+          running: false,
+          installing: false,
+          baseUrl: this.baseUrl,
+          message: '数据合规运行时已停止。'
+        }
+      }
       console.log('[data-compliance-runtime] starting process...')
       await this.startProcess()
       for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (this.ensureAbortController?.signal.aborted) {
+          return {
+            ok: false,
+            running: false,
+            installing: false,
+            baseUrl: this.baseUrl,
+            message: '数据合规运行时已停止。'
+          }
+        }
         if (await this.probe()) {
           return {
             ok: true,
@@ -343,31 +585,83 @@ export class DataComplianceRuntime {
 
   private async ensurePythonEnvironment(): Promise<void> {
     const python = pythonExecutable(this.webRoot)
+    const venvRoot = join(this.webRoot, 'venv')
     const marker = join(this.webRoot, DEPENDENCY_MARKER)
     const logPath = join(this.logDir, 'data-compliance-runtime.log')
+    const env = appendPathForPython([this.webRoot, this.projectRoot])
+    if (existsSync(python) && !canRunSupportedPython(python, env)) {
+      rmSync(venvRoot, { recursive: true, force: true })
+      rmSync(marker, { force: true })
+    }
     if (!existsSync(python)) {
       this.installing = true
       try {
-        await runCommand(findSystemPython(), ['-m', 'venv', 'venv'], {
+        await runCommand(findSystemPython(env), ['-m', 'venv', 'venv'], {
           cwd: this.webRoot,
-          logPath
+          logPath,
+          env
         })
       } finally {
         this.installing = false
       }
     }
-    if (!existsSync(marker)) {
+    if (!canRunSupportedPython(python, env)) {
+      throw new Error('数据合规虚拟环境不是 Python 3.10+，无法安装依赖。')
+    }
+    if (!existsSync(marker) || !(await this.hasRequiredPythonPackages(python, env))) {
       this.installing = true
       try {
         await runCommand(python, ['-m', 'pip', 'install', '-r', 'requirements.txt'], {
           cwd: this.webRoot,
-          logPath
+          logPath,
+          env
         })
         await writeFile(marker, new Date().toISOString(), 'utf-8')
       } finally {
         this.installing = false
       }
     }
+    await this.ensureOcrRuntime(logPath)
+  }
+
+  private async hasRequiredPythonPackages(python: string, env: NodeJS.ProcessEnv): Promise<boolean> {
+    const script = REQUIRED_PYTHON_IMPORTS.map((pkg) => `import ${pkg}`).join('\n')
+    try {
+      await runCommand(python, ['-c', script], {
+        cwd: this.webRoot,
+        logPath: join(this.logDir, 'data-compliance-runtime.log'),
+        env
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  private async ensureOcrRuntime(logPath: string): Promise<void> {
+    const env = appendPathForPython([this.webRoot, this.projectRoot])
+    if (canRunTesseract(env)) return
+
+    if (process.platform === 'darwin') {
+      const brew = findHomebrewExecutable(env)
+      if (brew) {
+        this.installing = true
+        try {
+          await runCommand(brew, ['install', 'tesseract', 'tesseract-lang'], {
+            cwd: this.webRoot,
+            logPath,
+            env
+          })
+        } finally {
+          this.installing = false
+        }
+        if (canRunTesseract(appendPathForPython([this.webRoot, this.projectRoot]))) return
+      }
+    }
+
+    throw new Error(
+      'OCR 组件未就绪：未找到可运行的 Tesseract 引擎。请在发布包中内置 ocr-runtime，或确保安装流程已自动安装 Tesseract。'
+    )
   }
 
   private async startProcess(): Promise<void> {
@@ -399,13 +693,26 @@ export class DataComplianceRuntime {
     const child = spawn(pythonExecutable(this.webRoot), ['server_entry.py', '--port', String(PORT)], {
       cwd: this.webRoot,
       env: {
-        ...appendPathForPython(),
+        ...appendPathForPython([this.webRoot, this.projectRoot]),
         ...agentEnv,
         COMPLIANCEAI_PYTHON: pythonExecutable(this.webRoot),
         COMPLIANCEAI_LOG_PATH: logPath
       },
       stdio: ['ignore', 'pipe', 'pipe']
     })
+
+    // If ensure was aborted while we were spawning, kill the new child
+    // immediately so it does not outlive the requested shutdown.
+    if (this.ensureAbortController?.signal.aborted) {
+      try {
+        child.kill('SIGTERM')
+      } catch {
+        // ignore
+      }
+      log.end()
+      return
+    }
+
     child.stdout?.pipe(log, { end: false })
     child.stderr?.pipe(log, { end: false })
     child.on('exit', () => {

@@ -3,6 +3,7 @@ import {
   LEGALWORK_APPROVAL_TEMPLATE,
   LEGALWORK_ATTACHMENT_CONTENT_TEMPLATE,
   LEGALWORK_ATTACHMENT_DIAGNOSTICS_TEMPLATE,
+  LEGALWORK_ATTACHMENTS_FROM_FILE_TEMPLATE,
   LEGALWORK_ATTACHMENTS_TEMPLATE,
   LEGALWORK_ATTACHMENT_TEMPLATE,
   LEGALWORK_HEALTH_TEMPLATE,
@@ -65,7 +66,6 @@ const MAX_SKILL_FILE_BYTES = 1_000_000
 const MAX_CONFIG_FILE_BYTES = 2_000_000
 const MAX_DEVICE_CODE_LENGTH = 8_192
 const MAX_EDITOR_COMPLETION_TEXT = 200_000
-const MAX_DATA_COMPLIANCE_FILE_BYTES = 40 * 1024 * 1024
 
 const SAFE_OPEN_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:'])
 
@@ -116,6 +116,7 @@ const ENDPOINTS: readonly EndpointTemplate[] = [
   compileEndpoint(LEGALWORK_RUNTIME_TOOLS_TEMPLATE, ['GET']),
   compileEndpoint(LEGALWORK_SKILLS_TEMPLATE, ['GET']),
   compileEndpoint(LEGALWORK_ATTACHMENTS_TEMPLATE, ['POST']),
+  compileEndpoint(LEGALWORK_ATTACHMENTS_FROM_FILE_TEMPLATE, ['POST']),
   compileEndpoint(LEGALWORK_ATTACHMENT_DIAGNOSTICS_TEMPLATE, ['GET']),
   compileEndpoint(LEGALWORK_ATTACHMENT_TEMPLATE, ['GET']),
   compileEndpoint(LEGALWORK_ATTACHMENT_CONTENT_TEMPLATE, ['GET']),
@@ -232,10 +233,13 @@ export const dataComplianceSubmitPayloadSchema = z.object({
   file: z.object({
     name: z.string().trim().min(1).max(500),
     type: z.string().trim().max(200).optional(),
-    dataBase64: z.string().max(Math.ceil(MAX_DATA_COMPLIANCE_FILE_BYTES * 1.4))
+    dataBase64: z.string().optional(),
+    filePath: z.string().trim().min(1).max(MAX_PATH_LENGTH).optional()
   }).strict().optional()
 }).strict().refine((payload) => Boolean(payload.file || payload.inputText?.trim()), {
   message: 'file or input text is required'
+}).refine((payload) => !payload.file || Boolean(payload.file.dataBase64 || payload.file.filePath), {
+  message: 'file data or file path is required'
 })
 
 export const dataComplianceDownloadFilePayloadSchema = z.object({
@@ -817,6 +821,11 @@ export const shellOpenExternalUrlSchema = trimmedString(MAX_URL_LENGTH).refine(
 
 export const knowledgeOpenFilePayloadSchema = z.object({
   path: trimmedString(MAX_PATH_LENGTH)
+}).strict()
+
+export const knowledgeUploadFilePayloadSchema = z.object({
+  sourcePath: trimmedString(MAX_PATH_LENGTH),
+  targetPath: trimmedString(MAX_PATH_LENGTH)
 }).strict()
 
 export const notificationPayloadSchema = z

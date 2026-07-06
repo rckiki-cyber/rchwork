@@ -58,7 +58,12 @@ import { useWorkbenchLayout } from './workbench-layout'
 import { useWorkbenchPlanController } from './workbench-plan-controller'
 import type { DataComplianceSection, DesensitizeSection } from './data-compliance/DataCompliancePanel'
 import { useLegalResearch } from './legal-research/useLegalResearch'
-import { prepareAttachmentUpload, prepareImageAttachmentUpload } from '../lib/image-attachment-upload'
+import {
+  isImageFile,
+  prepareAttachmentUpload,
+  prepareImageAttachmentUpload,
+  resolveAttachmentMimeType
+} from '../lib/image-attachment-upload'
 import { isChatAttachmentUploadEnabled } from '../lib/attachment-upload-availability'
 import { normalizeWorkspaceRoot } from '../lib/workspace-path'
 import { useKeyboardShortcutSettings } from '../lib/keyboard-shortcut-settings'
@@ -361,6 +366,21 @@ export function Workbench(): ReactElement {
   const [runtimeInfo, setRuntimeInfo] = useState<CoreRuntimeInfoJson | null>(null)
   const [runtimeSkills, setRuntimeSkills] = useState<CoreRuntimeSkillJson[]>([])
   const [composerAttachments, setComposerAttachments] = useState<AttachmentReference[]>([])
+  const composerAttachmentsRef = useRef<AttachmentReference[]>([])
+
+  useEffect(() => {
+    composerAttachmentsRef.current = composerAttachments
+  }, [composerAttachments])
+
+  useEffect(() => {
+    return () => {
+      for (const attachment of composerAttachmentsRef.current) {
+        if (attachment.previewUrl) {
+          URL.revokeObjectURL(attachment.previewUrl)
+        }
+      }
+    }
+  }, [])
   const legalResearch = useLegalResearch()
   const [composerFileReferences, setComposerFileReferences] = useState<ComposerFileReference[]>([])
   const [attachmentUploadBusy, setAttachmentUploadBusy] = useState(false)
@@ -757,7 +777,15 @@ export function Workbench(): ReactElement {
     runtimeInfo?.capabilities.web.search.available === true
 
   const clearComposerAttachments = (): void => {
-    setComposerAttachments([])
+    setComposerAttachments((current) => {
+      for (const attachment of current) {
+        if (attachment.previewUrl) {
+          URL.revokeObjectURL(attachment.previewUrl)
+          attachment.previewUrl = undefined
+        }
+      }
+      return []
+    })
   }
 
   const clearComposerFileReferences = (): void => {
@@ -784,7 +812,10 @@ export function Workbench(): ReactElement {
   const handlePickAttachments = async (files: File[]): Promise<void> => {
     if (!files.length || !attachmentUploadEnabled) return
     const provider = getProvider()
-    if (typeof provider.uploadAttachment !== 'function') {
+    if (
+      typeof provider.uploadAttachment !== 'function' &&
+      typeof provider.uploadAttachmentFile !== 'function'
+    ) {
       setAttachmentUploadError(t('composerAttachmentUnavailable'))
       return
     }
@@ -799,22 +830,33 @@ export function Workbench(): ReactElement {
       }
       const uploaded: AttachmentReference[] = []
       for (const file of files) {
-        const prepared = await prepareAttachmentUpload(file, attachmentCapabilities)
-        const attachment = await provider.uploadAttachment({
-          name: file.name || 'attachment',
-          mimeType: prepared.mimeType,
-          dataBase64: prepared.dataBase64,
-          textFallback: prepared.textFallback,
-          ...(activeThreadId ? { threadId: activeThreadId } : {}),
-          ...(workspace ? { workspace } : {})
-        })
+        const mimeType = resolveAttachmentMimeType(file)
+        const prepared = typeof provider.uploadAttachmentFile === 'function'
+          ? null
+          : await prepareAttachmentUpload(file, attachmentCapabilities)
+        const attachment = typeof provider.uploadAttachmentFile === 'function'
+          ? await provider.uploadAttachmentFile(file, {
+            name: file.name || 'attachment',
+            mimeType,
+            ...(activeThreadId ? { threadId: activeThreadId } : {}),
+            ...(workspace ? { workspace } : {})
+          })
+          : await provider.uploadAttachment!({
+            name: file.name || 'attachment',
+            mimeType: prepared!.mimeType,
+            dataBase64: prepared!.dataBase64,
+            textFallback: prepared!.textFallback,
+            ...(activeThreadId ? { threadId: activeThreadId } : {}),
+            ...(workspace ? { workspace } : {})
+          })
         uploaded.push({
           id: attachment.id,
           name: attachment.name,
           mimeType: attachment.mimeType,
           width: attachment.width,
           height: attachment.height,
-          ...(prepared.previewUrl ? { previewUrl: prepared.previewUrl } : {})
+          ...(prepared?.previewUrl ? { previewUrl: prepared.previewUrl } : {}),
+          ...(!prepared && isImageFile(file) ? { previewUrl: URL.createObjectURL(file) } : {})
         })
       }
       if (uploaded.length > 0) {
@@ -834,7 +876,14 @@ export function Workbench(): ReactElement {
   }
 
   const removeComposerAttachment = (id: string): void => {
-    setComposerAttachments((current) => current.filter((attachment) => attachment.id !== id))
+    setComposerAttachments((current) => {
+      const removed = current.find((attachment) => attachment.id === id)
+      if (removed?.previewUrl) {
+        URL.revokeObjectURL(removed.previewUrl)
+        removed.previewUrl = undefined
+      }
+      return current.filter((attachment) => attachment.id !== id)
+    })
   }
 
   const handlePasteClipboardImage = async (options: { silentNoImage?: boolean } = {}): Promise<void> => {

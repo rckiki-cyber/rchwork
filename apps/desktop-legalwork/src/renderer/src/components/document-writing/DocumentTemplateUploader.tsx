@@ -22,6 +22,7 @@ type Props = {
 }
 
 const ALLOWED_EXTENSIONS = ['.docx', '.pdf', '.txt', '.md']
+const MAX_TEMPLATE_FILE_BYTES = 10 * 1024 * 1024 // 10 MiB
 
 function getFileExt(name: string): string {
   const dot = name.lastIndexOf('.')
@@ -83,7 +84,7 @@ export function DocumentTemplateUploader({
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
       return t('documentWritingUploadInvalidType')
     }
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_TEMPLATE_FILE_BYTES) {
       return t('documentWritingUploadTooLarge')
     }
     return null

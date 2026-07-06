@@ -1,4 +1,5 @@
-import { AttachmentUploadRequest } from '../../contracts/attachments.js'
+import { readFile } from 'node:fs/promises'
+import { AttachmentFileUploadRequest, AttachmentUploadRequest } from '../../contracts/attachments.js'
 import type { AttachmentStore } from '../../attachments/attachment-store.js'
 import { jsonResponse, type JsonResponse } from '../response.js'
 import { readJsonBody } from '../read-json-body.js'
@@ -18,6 +19,30 @@ export async function uploadAttachment(
       name: parsed.data.name,
       mimeType: parsed.data.mimeType,
       data: Buffer.from(parsed.data.dataBase64, 'base64'),
+      textFallback: parsed.data.textFallback,
+      threadId: parsed.data.threadId,
+      workspace: parsed.data.workspace
+    })
+    return jsonResponse({ attachment }, 201)
+  } catch (error) {
+    return ERRORS.attachmentValidation(errorMessage(error))
+  }
+}
+
+export async function uploadAttachmentFromFile(
+  store: AttachmentStore | undefined,
+  request: Request
+): Promise<JsonResponse | Response> {
+  if (!store) return ERRORS.unavailable('attachment store is unavailable')
+  const body = await readJsonBody(request)
+  if (!body.ok) return body.response
+  const parsed = AttachmentFileUploadRequest.safeParse(body.value)
+  if (!parsed.success) return ERRORS.attachmentValidation('invalid attachment file upload body', parsed.error.issues)
+  try {
+    const attachment = await store.create({
+      name: parsed.data.name,
+      mimeType: parsed.data.mimeType,
+      data: await readFile(parsed.data.sourcePath),
       textFallback: parsed.data.textFallback,
       threadId: parsed.data.threadId,
       workspace: parsed.data.workspace

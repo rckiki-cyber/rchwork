@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { DsGuiApi } from '../shared/ds-gui-api'
 
 const api = {
@@ -6,6 +6,7 @@ const api = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (partial) =>
     ipcRenderer.invoke('settings:set', partial),
+  getLocalFilePath: (file) => webUtils.getPathForFile(file),
   runtimeRequest: (path, method, body) =>
     ipcRenderer.invoke('runtime:request', { path, method, body }),
   reconnectRuntime: () => ipcRenderer.invoke('runtime:reconnect'),
@@ -180,6 +181,24 @@ const api = {
     ipcRenderer.invoke('desktop:command', command),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   openKnowledgeFile: (path) => ipcRenderer.invoke('knowledge:open-file', { path }),
+  uploadKnowledgeFile: (file, targetPath) => {
+    const sourcePath = webUtils.getPathForFile(file)
+    if (!sourcePath) {
+      return Promise.resolve({ ok: false as const, message: '无法读取所选文件路径' })
+    }
+    return ipcRenderer.invoke('knowledge:upload-file', { sourcePath, targetPath })
+  },
+  uploadAttachmentFile: (file, payload) => {
+    const sourcePath = webUtils.getPathForFile(file)
+    if (!sourcePath) {
+      return Promise.resolve({ ok: false, status: 400, body: '无法读取所选文件路径' })
+    }
+    return ipcRenderer.invoke('runtime:request', {
+      path: '/v1/attachments/from-file',
+      method: 'POST',
+      body: JSON.stringify({ ...payload, sourcePath })
+    })
+  },
   showTurnCompleteNotification: (payload) => ipcRenderer.invoke('notification:turn-complete', payload),
   getAppVersion: () => ipcRenderer.invoke('app:version'),
   getGuiUpdateState: () => ipcRenderer.invoke('gui:update-state'),

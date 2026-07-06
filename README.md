@@ -386,6 +386,19 @@ legalwork/
 
 > 每次代码更新在此追加条目，正式发布 release 时以对应版本号归档。
 
+### v0.2.5
+
+- **修复文本提取器严重缺陷**：`text-extractor.ts` 中的正则表达式被 NUL 字节污染为 `/./g`，导致 PDF/Word/Excel/OCR 提取的文本全部清空；已修复为正确的控制/零宽字符过滤。
+- **数据合规运行时生命周期加固**：新增 `AbortController` 取消机制，`stop()` 与 `ensure()` 之间不再产生死锁或僵尸进程。
+- **路径遍历防护**：`attachment-store`、`knowledge-store`、`data-compliance-task-service` 均增加目录逃逸校验，拒绝非法 ID 与 `../` 路径。
+- **前端表单与附件修复**：
+  - `AstryxButton` 正确支持 `type="submit"`
+  - `ScheduleTasksView` 中 toggle 外层改为可聚焦的 `role="switch"` 容器，恢复整行点击并消除按钮嵌套
+  - `Workbench` 中 `URL.createObjectURL` 生成的 blob URL 在附件移除/清空/组件卸载时正确释放
+- **恢复大文件前端保护**：数据合规面板 50MB、文书模板上传 10MB 上限及对应 i18n 提示。
+- **Agent 线程中断串行化**：`claw-runtime` 中复用 IM thread 前先顺序中断 stale turns，避免并发导致状态混乱。
+- **Worker 子进程稳定性**：`data-compliance-task-service` 将 stdout/stderr 直接重定向到日志文件流，避免 pipe 缓冲区死锁；轮询增加 30 分钟上限并在超时后标记任务失败。
+
 ### v0.2.4
 
 - **修复 agent-loop 系统提示回归**：`goalContinuationInstruction` 的模板字符串意外跨行包含了后续常量定义与函数源码,导致系统提示把 TypeScript 代码发给模型；已修复为正确的单句提示。

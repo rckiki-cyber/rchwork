@@ -1,5 +1,6 @@
 import type { ChangeEvent, DragEvent as ReactDragEvent, MouseEvent, ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AlertCircle,
   AudioLines,
@@ -77,6 +78,7 @@ type ReviewType = 'document' | 'code'
 type Notice = { tone: 'info' | 'error' | 'success'; text: string }
 
 const FALLBACK_API_BASE = ''
+const MAX_DATA_COMPLIANCE_BASE64_FILE_BYTES = 50 * 1024 * 1024 // 50 MiB
 
 const sectionMeta: Record<DataComplianceSection, { title: string; kicker: string }> = {
   review: { title: '合规审查', kicker: '文档、代码与数据处理链路风险识别' },
@@ -276,8 +278,6 @@ function FileTypeIcon({ fileName, className = 'h-5 w-5' }: { fileName: string; c
   return <File className={`${className} text-slate-300`} strokeWidth={1.6} />
 }
 
-const LARGE_FILE_THRESHOLD_BYTES = 20 * 1024 * 1024
-
 function readFileChunkAsBase64(file: File, start: number, end: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -294,6 +294,14 @@ function readFileChunkAsBase64(file: File, start: number, end: number): Promise<
 }
 
 async function fileToPayload(file: File): Promise<DataComplianceSubmitPayload['file']> {
+  const filePath = window.dsGui?.getLocalFilePath?.(file)
+  if (filePath) {
+    return {
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      filePath
+    }
+  }
   const chunkSize = 1024 * 1024 // 1 MiB
   const chunks: string[] = []
   for (let offset = 0; offset < file.size; offset += chunkSize) {
@@ -339,7 +347,7 @@ async function requestJson<T>(
 
 async function submitViaFallback(payload: DataComplianceSubmitPayload): Promise<DataComplianceRequestResult> {
   const form = new FormData()
-  if (payload.file) {
+  if (payload.file?.dataBase64) {
     const bytes = Uint8Array.from(atob(payload.file.dataBase64), (char) => char.charCodeAt(0))
     form.set('file', new Blob([bytes], { type: payload.file.type || 'application/octet-stream' }), payload.file.name)
   }
@@ -1210,6 +1218,7 @@ export function DataCompliancePanel({
   modeScope?: SubmitMode
   desensitizeKind?: DesensitizeKind
 }): ReactElement {
+  const { t } = useTranslation('common')
   const workspaceRoot = useChatStore((s) => s.workspaceRoot)
   const [reviewType, setReviewType] = useState<ReviewType>('document')
   const [documentName, setDocumentName] = useState('')
@@ -1480,13 +1489,6 @@ export function DataCompliancePanel({
       setNotice({ tone: 'error', text: '请先上传文件或输入待处理文本。' })
       return
     }
-    if (file && file.size > LARGE_FILE_THRESHOLD_BYTES) {
-      setNotice({
-        tone: 'error',
-        text: `文件过大（${(file.size / 1024 / 1024).toFixed(1)} MB），建议先压缩、拆分或仅粘贴关键文本，以免前端卡死。`
-      })
-      return
-    }
     setBusy(true)
     setNotice(null)
     progressDismissedRef.current = false
@@ -1506,6 +1508,13 @@ export function DataCompliancePanel({
         message: '正在提交到后台队列…',
         percent: 8
       })
+      if (
+        file &&
+        file.size > MAX_DATA_COMPLIANCE_BASE64_FILE_BYTES &&
+        !window.dsGui?.getLocalFilePath?.(file)
+      ) {
+        throw new Error(t('dataComplianceFileTooLarge'))
+      }
       const filePayload = file ? await fileToPayload(file) : undefined
       const payload: DataComplianceSubmitPayload = {
         mode,

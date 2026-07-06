@@ -27,6 +27,14 @@ export interface AttachmentStore {
   diagnostics(): Promise<AttachmentDiagnostics>
 }
 
+const ATTACHMENT_ID_RE = /^att_[a-f0-9]{24}$/
+
+function validateAttachmentId(id: string): void {
+  if (!ATTACHMENT_ID_RE.test(id)) {
+    throw new Error(`invalid attachment id: ${id}`)
+  }
+}
+
 export class FileAttachmentStore implements AttachmentStore {
   constructor(
     private readonly options: {
@@ -52,15 +60,6 @@ export class FileAttachmentStore implements AttachmentStore {
     }
     if (!mimeTypeAllowed(mimeType, this.options.config.allowedMimeTypes)) {
       throw new Error(`attachment MIME type is not allowed: ${mimeType}`)
-    }
-    if (input.data.byteLength > this.options.config.maxImageBytes) {
-      throw new Error(`attachment exceeds ${this.options.config.maxImageBytes} byte limit`)
-    }
-    if (image) {
-      const maxDimension = Math.max(image.width ?? 0, image.height ?? 0)
-      if (maxDimension > this.options.config.maxImageDimension) {
-        throw new Error(`image exceeds ${this.options.config.maxImageDimension}px dimension limit`)
-      }
     }
     if (input.textFallback) validateTextFallback(input.textFallback, this.options.config)
     const hash = createHash('sha256').update(input.data).digest('hex')
@@ -100,6 +99,7 @@ export class FileAttachmentStore implements AttachmentStore {
 
   async get(id: string): Promise<AttachmentMetadata | null> {
     try {
+      validateAttachmentId(id)
       return AttachmentMetadataSchema.parse(JSON.parse(await readFile(this.metadataPath(id), 'utf8')))
     } catch {
       return null
@@ -107,6 +107,7 @@ export class FileAttachmentStore implements AttachmentStore {
   }
 
   async resolveContent(id: string, scope: { threadId?: string; workspace?: string }): Promise<AttachmentContent> {
+    validateAttachmentId(id)
     const metadata = await this.get(id)
     if (!metadata) throw new Error(`attachment not found: ${id}`)
     if (!isAuthorized(metadata, scope)) throw new Error(`attachment is not authorized for this turn: ${id}`)
@@ -177,13 +178,6 @@ function isAuthorized(metadata: AttachmentMetadata, scope: { threadId?: string; 
 function validateTextFallback(fallback: AttachmentTextFallback, config: AttachmentsCapabilityConfig): void {
   if (!mimeTypeAllowed(fallback.mimeType, config.allowedMimeTypes)) {
     throw new Error(`fallback attachment MIME type is not allowed: ${fallback.mimeType}`)
-  }
-  if (Buffer.byteLength(fallback.dataBase64, 'utf8') > config.textFallbackMaxBase64Bytes) {
-    throw new Error(`fallback image exceeds ${config.textFallbackMaxBase64Bytes} base64 byte limit`)
-  }
-  const maxDimension = Math.max(fallback.width ?? 0, fallback.height ?? 0)
-  if (maxDimension > config.textFallbackMaxImageDimension) {
-    throw new Error(`fallback image exceeds ${config.textFallbackMaxImageDimension}px dimension limit`)
   }
 }
 

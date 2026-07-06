@@ -57,7 +57,7 @@ type JsonCreateTaskBody = {
   reviewType?: 'document' | 'code'
   outputDir?: string
   outputFormat?: 'md' | 'docx' | 'txt'
-  file?: { name: string; type?: string; dataBase64: string }
+  file?: { name: string; type?: string; dataBase64?: string; filePath?: string }
 }
 
 function normalizeCreateTaskInput(
@@ -78,7 +78,8 @@ function normalizeCreateTaskInput(
       ? {
           name: body.file.name,
           type: body.file.type,
-          dataBase64: body.file.dataBase64
+          dataBase64: body.file.dataBase64,
+          filePath: body.file.filePath
         }
       : undefined
   }

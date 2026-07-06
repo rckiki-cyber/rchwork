@@ -36,6 +36,16 @@ export const AttachmentUploadRequest = z.object({
 }).strict()
 export type AttachmentUploadRequest = z.infer<typeof AttachmentUploadRequest>
 
+export const AttachmentFileUploadRequest = z.object({
+  name: z.string().min(1),
+  mimeType: z.string().min(1).optional(),
+  sourcePath: z.string().min(1),
+  textFallback: AttachmentTextFallback.optional(),
+  threadId: z.string().min(1).optional(),
+  workspace: z.string().min(1).optional()
+}).strict()
+export type AttachmentFileUploadRequest = z.infer<typeof AttachmentFileUploadRequest>
+
 export const AttachmentUploadResponse = z.object({
   attachment: AttachmentMetadata
 }).strict()

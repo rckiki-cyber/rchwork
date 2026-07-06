@@ -1,5 +1,5 @@
 const { execFileSync } = require('node:child_process')
-const { existsSync, rmSync } = require('node:fs')
+const { existsSync, readdirSync, rmSync, statSync } = require('node:fs')
 const { join } = require('node:path')
 
 const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
@@ -151,23 +151,60 @@ function maybeAdhocSignMacApp(context) {
   )
 }
 
+function findInfoPlists(root) {
+  if (!existsSync(root)) return []
+  const results = []
+  const stack = [root]
+  while (stack.length > 0) {
+    const current = stack.pop()
+    let entries
+    try {
+      entries = readdirSync(current, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      const path = join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(path)
+      } else if (entry.isFile() && entry.name === 'Info.plist') {
+        results.push(path)
+      }
+    }
+  }
+  return results.sort()
+}
+
+function macInfoPlistPaths(context) {
+  const appBundle = appBundlePath(context)
+  if (!existsSync(appBundle)) return []
+  try {
+    if (!statSync(appBundle).isDirectory()) return []
+  } catch {
+    return []
+  }
+  return findInfoPlists(appBundle)
+}
+
 function stripUnnecessaryMacPermissions(context) {
   if (normalizePlatform(context.electronPlatformName) !== 'darwin') {
     return
   }
-  const infoPlist = join(appBundlePath(context), 'Contents', 'Info.plist')
-  if (!existsSync(infoPlist)) {
-    console.warn(`[after-pack] Info.plist not found, skip permission cleanup: ${infoPlist}`)
+  const infoPlists = macInfoPlistPaths(context)
+  if (infoPlists.length === 0) {
+    console.warn(`[after-pack] Info.plist not found, skip permission cleanup: ${appBundlePath(context)}`)
     return
   }
-  for (const key of MAC_UNUSED_PERMISSION_KEYS) {
-    try {
-      execFileSync('/usr/libexec/PlistBuddy', ['-c', `Delete :${key}`, infoPlist], {
-        stdio: 'ignore'
-      })
-      console.log(`[after-pack] Removed unused Info.plist permission key: ${key}`)
-    } catch {
-      // Key absent — nothing to remove.
+  for (const infoPlist of infoPlists) {
+    for (const key of MAC_UNUSED_PERMISSION_KEYS) {
+      try {
+        execFileSync('/usr/libexec/PlistBuddy', ['-c', `Delete :${key}`, infoPlist], {
+          stdio: 'ignore'
+        })
+        console.log(`[after-pack] Removed unused Info.plist permission key: ${key} from ${infoPlist}`)
+      } catch {
+        // Key absent — nothing to remove.
+      }
     }
   }
 }
@@ -188,6 +225,8 @@ exports._internals = {
   packedResourcesDir,
   unpackedAppRoot,
   npmCommand,
+  findInfoPlists,
+  macInfoPlistPaths,
   prunePackedLegalworkDependencies,
   validateBundledLegalworkRuntime,
   validateBundledDataComplianceRuntime,
