@@ -225,7 +225,8 @@ export async function createLegalworkServeRuntime(
   const knowledgeStore = new FileKnowledgeStore({
     rootDir: join(options.dataDir, 'knowledge'),
     sourceRoots: defaultKnowledgeSourceRoots(options.dataDir),
-    nowIso
+    nowIso,
+    model: modelClient
   })
   const explicitWebRoot = process.env.LEGALWORK_COMPLIANCE_WEB_ROOT
   const webRootOverride =

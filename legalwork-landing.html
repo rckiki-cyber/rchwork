@@ -3044,11 +3044,15 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
             let total = 0;
             for (const release of allReleases) {
                 if (!Array.isArray(release.assets)) continue;
+                let installAssetsInRelease = 0;
                 for (const asset of release.assets) {
                     if (matchers.some(m => m.test(asset.name))) {
                         total += asset.download_count || 0;
+                        installAssetsInRelease += 1;
                     }
                 }
+                // 每次版本更新时，该版本的每个平台安装包都计入一次更新下载
+                total += installAssetsInRelease;
             }
             return total;
         }

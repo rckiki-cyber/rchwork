@@ -19,4 +19,13 @@ describe('OpenAI-compatible provider URLs', () => {
       'https://api.kimi.com/coding/v1/chat/completions'
     )
   })
+
+  it('keeps LongCat under its OpenAI-compatible /openai/v1 path', () => {
+    expect(upstreamOpenAiChatCompletionsUrl('https://api.longcat.chat/openai/v1')).toBe(
+      'https://api.longcat.chat/openai/v1/chat/completions'
+    )
+    expect(upstreamOpenAiModelsUrl('https://api.longcat.chat/openai/v1')).toBe(
+      'https://api.longcat.chat/openai/v1/models'
+    )
+  })
 })

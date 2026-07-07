@@ -1048,6 +1048,26 @@ pre {
   --work-logo-glow: rgba(59, 130, 246, 0.28);
 }
 
+.ds-work-logo-brand-mimo {
+  --work-logo-water: rgba(255, 105, 0, 0.3);
+  --work-logo-water-soft: rgba(255, 105, 0, 0.14);
+  --work-logo-water-glint: rgba(255, 196, 77, 0.18);
+  --work-logo-wave-crest: rgba(255, 105, 0, 0.32);
+  --work-logo-splash-strong: rgba(255, 105, 0, 0.54);
+  --work-logo-shadow-color: rgba(255, 105, 0, 0.22);
+  --work-logo-glow: rgba(255, 105, 0, 0.3);
+}
+
+.ds-work-logo-brand-longcat {
+  --work-logo-water: rgba(245, 158, 11, 0.3);
+  --work-logo-water-soft: rgba(245, 158, 11, 0.14);
+  --work-logo-water-glint: rgba(45, 212, 191, 0.18);
+  --work-logo-wave-crest: rgba(245, 158, 11, 0.32);
+  --work-logo-splash-strong: rgba(245, 158, 11, 0.54);
+  --work-logo-shadow-color: rgba(245, 158, 11, 0.22);
+  --work-logo-glow: rgba(245, 158, 11, 0.3);
+}
+
 .ds-work-logo-brand-custom {
   --work-logo-water: rgba(100, 116, 139, 0.28);
   --work-logo-water-soft: rgba(100, 116, 139, 0.13);
@@ -1161,6 +1181,14 @@ img.ds-model-brand-dot {
 
 .ds-model-brand-doubao {
   background: linear-gradient(135deg, #2563eb, #db2777);
+}
+
+.ds-model-brand-mimo {
+  background: linear-gradient(135deg, #ff6900, #facc15);
+}
+
+.ds-model-brand-longcat {
+  background: linear-gradient(135deg, #0f172a, #f59e0b);
 }
 
 .ds-model-brand-custom {
@@ -1591,6 +1619,10 @@ img.ds-model-brand-dot {
   transform: scale(1.06);
 }
 
+.ds-work-logo.is-active .ds-work-logo-symbol {
+  animation: ds-model-brand-breathe 1800ms ease-in-out infinite;
+}
+
 .ds-work-logo-md .ds-work-logo-symbol {
   font-size: 9px;
 }
@@ -1730,6 +1762,29 @@ img.ds-model-brand-dot {
     background-position:
       calc(100% + var(--shine-size) * 2.4) 0,
       0 0;
+  }
+}
+
+@keyframes ds-model-brand-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 5px 12px var(--work-logo-glow),
+      inset 0 1px 0 rgba(255, 255, 255, 0.54);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow:
+      0 7px 18px var(--work-logo-glow),
+      0 0 0 3px var(--work-logo-water-soft),
+      inset 0 1px 0 rgba(255, 255, 255, 0.58);
+    transform: scale(1.035);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-work-logo.is-active .ds-work-logo-symbol {
+    animation: none;
   }
 }
 

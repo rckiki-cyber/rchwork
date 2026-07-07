@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import type { GuiUpdateInfo, GuiUpdateProgress } from '@shared/gui-update'
-import { AlertCircle, CheckCircle2, Download, Github, Loader2, RefreshCw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Download, Github, Loader2, Megaphone, RefreshCw } from 'lucide-react'
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
@@ -91,6 +91,8 @@ export function GuiUpdateControl({
         : null
   const canDownload = Boolean(info?.ok && info.hasUpdate && !info.manualOnly && !downloaded)
   const canInstall = Boolean(info?.ok && downloaded)
+  const shouldShowHighlights = Boolean(info?.ok && (info.hasUpdate || downloaded))
+  const releaseHighlights = info?.ok ? (info.releaseHighlights ?? []) : []
 
   const panelClass =
     tone === 'error'
@@ -120,6 +122,27 @@ export function GuiUpdateControl({
           </div>
         </div>
       </div>
+      {shouldShowHighlights ? (
+        <div className="mt-2 rounded-xl border border-ds-border bg-ds-card px-3 py-2.5 text-ds-ink shadow-sm">
+          <div className="flex items-center gap-1.5 text-[12px] font-semibold text-ds-ink">
+            <Megaphone className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+            <span>{t('guiUpdateHighlightsTitle')}</span>
+          </div>
+          {releaseHighlights.length ? (
+            <ul className="mt-1.5 space-y-1 pl-5 text-[12px] leading-5 text-ds-muted">
+              {releaseHighlights.map((item) => (
+                <li key={item} className="list-disc break-words">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-1.5 break-words text-[12px] leading-5 text-ds-muted">
+              {t('guiUpdateHighlightsEmpty')}
+            </div>
+          )}
+        </div>
+      ) : null}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"

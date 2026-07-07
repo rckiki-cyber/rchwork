@@ -3,6 +3,21 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { FileKnowledgeStore } from './knowledge-store.js'
+import type { ModelClient, ModelRequest, ModelStreamChunk } from '../ports/model-client.js'
+
+class StaticClassifierModel implements ModelClient {
+  readonly provider = 'test'
+  readonly model = 'test-classifier'
+  requests: ModelRequest[] = []
+
+  constructor(private readonly response: string) {}
+
+  async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
+    this.requests.push(request)
+    yield { kind: 'assistant_text_delta', text: this.response }
+    yield { kind: 'completed', stopReason: 'stop' }
+  }
+}
 
 describe('FileKnowledgeStore', () => {
   it('syncs local files and searches Chinese legal terms', async () => {
@@ -116,6 +131,64 @@ describe('FileKnowledgeStore', () => {
       expect(hits[0]?.relativePath).toBe('合同协议/供应商合同审查.md')
       expect(hits[0]?.category).toBe('合同协议')
       expect(hits[0]?.rankReason).toBeTruthy()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('uses the model and file content when classifying managed files', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-model-classify-'))
+    const indexRoot = join(root, 'index')
+    const model = new StaticClassifierModel('{"category":"论文","reason":"正文是学术论文"}')
+    try {
+      const store = new FileKnowledgeStore({
+        rootDir: indexRoot,
+        sourceRoots: [],
+        nowIso: () => '2026-06-13T00:00:00.000Z',
+        model
+      })
+
+      await store.writeFile({
+        path: '未命名资料.md',
+        content: '摘要：本文研究个人信息保护中的告知同意规则。\n关键词：个人信息保护；告知同意\n参考文献：[1] 民法典。',
+        encoding: 'utf8'
+      })
+
+      const result = await store.classify({ paths: ['未命名资料.md'] })
+
+      expect(result.moved[0]?.destPath).toBe('论文/未命名资料.md')
+      expect(result.moved[0]?.reason).toBe('正文是学术论文')
+      expect(model.requests).toHaveLength(1)
+      const classifierMessage = model.requests[0]?.history[0]
+      expect(classifierMessage?.kind).toBe('user_message')
+      expect(classifierMessage?.kind === 'user_message' ? classifierMessage.text : '').toContain('告知同意规则')
+      expect(model.requests[0]?.responseFormat).toBe('json_object')
+      expect(model.requests[0]?.temperature).toBe(0)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('falls back to content-aware classification when no model is configured', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-content-classify-'))
+    const indexRoot = join(root, 'index')
+    try {
+      const store = new FileKnowledgeStore({
+        rootDir: indexRoot,
+        sourceRoots: [],
+        nowIso: () => '2026-06-13T00:00:00.000Z'
+      })
+
+      await store.writeFile({
+        path: '材料.md',
+        content: '摘要：本文围绕劳动争议案件中的举证责任展开研究。\n关键词：劳动争议；举证责任\n参考文献：最高人民法院司法解释。',
+        encoding: 'utf8'
+      })
+
+      const result = await store.classify({ paths: ['材料.md'] })
+
+      expect(result.moved[0]?.destPath).toBe('论文/材料.md')
+      expect(result.moved[0]?.reason).toBe('正文包含论文结构')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

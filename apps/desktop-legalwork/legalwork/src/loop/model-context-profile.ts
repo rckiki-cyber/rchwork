@@ -82,6 +82,8 @@ const DEFAULT_MODEL_INPUT_MODALITIES: readonly ModelInputModality[] = ['text']
 const DEFAULT_MODEL_OUTPUT_MODALITIES: readonly ModelInputModality[] = ['text']
 const DEFAULT_MODEL_MESSAGE_PARTS: readonly ModelMessagePartSupport[] = ['text']
 const KIMI_CODE_CONTEXT_WINDOW_TOKENS = 262_144
+const MIMO_V25_CONTEXT_WINDOW_TOKENS = 128_000
+const LONGCAT_2_CONTEXT_WINDOW_TOKENS = 1_000_000
 
 export const MODEL_CONTEXT_PROFILES: readonly ModelContextProfile[] = [
   deepseekV4Profile('deepseek-v4-pro', ['deepseek-v4-pro']),
@@ -91,7 +93,10 @@ export const MODEL_CONTEXT_PROFILES: readonly ModelContextProfile[] = [
     'deepseek-chat',
     'deepseek-reasoner'
   ]),
-  kimiCodeProfile()
+  kimiCodeProfile(),
+  mimoV25Profile('mimo-v2.5-pro', ['mimo-v2.5-pro'], false),
+  mimoV25Profile('mimo-v2.5', ['mimo-v2.5'], true),
+  longCatProfile()
 ]
 
 export function resolveModelContextProfile(
@@ -188,6 +193,43 @@ function kimiCodeProfile(): ModelContextProfile {
       defaultEffort: 'medium',
       requestProtocol: 'openai-chat-completions'
     }
+  }
+}
+
+function mimoV25Profile(
+  canonicalModel: string,
+  modelIds: readonly string[],
+  imageInput: boolean
+): ModelContextProfile {
+  return {
+    canonicalModel,
+    modelIds,
+    contextWindowTokens: MIMO_V25_CONTEXT_WINDOW_TOKENS,
+    softThreshold: Math.floor(MIMO_V25_CONTEXT_WINDOW_TOKENS * DEEPSEEK_V4_SOFT_THRESHOLD_RATIO),
+    hardThreshold: Math.floor(MIMO_V25_CONTEXT_WINDOW_TOKENS * DEEPSEEK_V4_HARD_THRESHOLD_RATIO),
+    inputModalities: imageInput ? ['text', 'image'] : DEFAULT_MODEL_INPUT_MODALITIES,
+    outputModalities: DEFAULT_MODEL_OUTPUT_MODALITIES,
+    supportsToolCalling: true,
+    messageParts: imageInput ? ['text', 'image_url'] : DEFAULT_MODEL_MESSAGE_PARTS,
+    reasoning: {
+      supportedEfforts: ['off', 'low', 'medium', 'high'],
+      defaultEffort: 'medium',
+      requestProtocol: 'mimo-chat-completions'
+    }
+  }
+}
+
+function longCatProfile(): ModelContextProfile {
+  return {
+    canonicalModel: 'LongCat-2.0',
+    modelIds: ['longcat-2.0'],
+    contextWindowTokens: LONGCAT_2_CONTEXT_WINDOW_TOKENS,
+    softThreshold: Math.floor(LONGCAT_2_CONTEXT_WINDOW_TOKENS * DEEPSEEK_V4_SOFT_THRESHOLD_RATIO),
+    hardThreshold: Math.floor(LONGCAT_2_CONTEXT_WINDOW_TOKENS * DEEPSEEK_V4_HARD_THRESHOLD_RATIO),
+    inputModalities: DEFAULT_MODEL_INPUT_MODALITIES,
+    outputModalities: DEFAULT_MODEL_OUTPUT_MODALITIES,
+    supportsToolCalling: true,
+    messageParts: DEFAULT_MODEL_MESSAGE_PARTS
   }
 }
 

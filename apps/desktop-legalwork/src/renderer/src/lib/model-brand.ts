@@ -40,6 +40,10 @@ export function modelBrandGlyph(brand: ModelBrand): string {
       return 'Q'
     case 'doubao':
       return 'D'
+    case 'mimo':
+      return 'Mi'
+    case 'longcat':
+      return 'LC'
     case 'custom':
       return 'AI'
   }

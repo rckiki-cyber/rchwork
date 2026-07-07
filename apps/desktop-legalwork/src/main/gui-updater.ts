@@ -14,10 +14,14 @@ import type {
 } from '../shared/gui-update'
 import { nextGuiUpdateCheckDelay } from '../shared/gui-update-schedule'
 import { DEFAULT_GUI_UPDATE_CHANNEL, normalizeGuiUpdateChannel } from '../shared/gui-update'
+import { logInfo, logWarn } from './logger'
 
 const DEFAULT_R2_PUBLIC_BASE_URL = 'https://legalwork.local/api/r2'
 const DEFAULT_R2_RELEASE_PREFIX = 'legalwork'
 const { autoUpdater } = electronUpdater
+const updaterLifecycleEvents = autoUpdater as typeof autoUpdater & {
+  on(event: 'before-quit-for-update', listener: () => void): typeof autoUpdater
+}
 
 let initialized = false
 let getMainWindow: (() => BrowserWindow | null) | null = null
@@ -32,11 +36,15 @@ let configuredFeedUrl = ''
 let getSelectedChannel: (() => GuiUpdateChannel | Promise<GuiUpdateChannel>) | null = null
 let beforeInstallUpdate: (() => void | Promise<void>) | null = null
 let beforeQuitAndInstallUpdate: (() => void) | null = null
+let afterQuitAndInstallAbortUpdate: (() => void) | null = null
 let beforeInstallUpdatePromise: Promise<void> | null = null
 let backgroundCheckTimer: NodeJS.Timeout | null = null
 let backgroundCheckPromise: Promise<void> | null = null
+let installExitWatchTimer: NodeJS.Timeout | null = null
 
 const GUI_UPDATE_SCHEDULE_FILE = 'gui-update-schedule.json'
+const GUI_UPDATE_INSTALL_EXIT_TIMEOUT_MS = 12_000
+const MAX_RELEASE_HIGHLIGHTS = 5
 
 function trimSlashes(value: string): string {
   return value.replace(/^\/+|\/+$/g, '')
@@ -207,6 +215,158 @@ function parseYamlScalar(source: string, key: string): string {
   return match?.[1]?.trim() ?? ''
 }
 
+function hasCjk(value: string): boolean {
+  return /[\u3400-\u9fff]/.test(value)
+}
+
+function cleanReleaseLine(line: string): string {
+  return line
+    .replace(/\[([^\]]+)\]\((?:https?:\/\/)?[^)]+\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '')
+    .replace(/^\s*\[[ xX]\]\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function looksLikeTechnicalReleaseLine(line: string): boolean {
+  if (!line || /^https?:\/\//i.test(line)) return true
+  if (/^(full changelog|compare|automated release|release artifacts?|assets?)\b/i.test(line)) return true
+  if (/^(commits?|sha|checksum|blockmap|latest[-\w]*\.ya?ml)\b/i.test(line)) return true
+  if (/\b(commit|sha256|sha512|blockmap|package-lock|pnpm-lock|yarn.lock|tsconfig|eslint|prettier)\b/i.test(line)) {
+    return true
+  }
+  if (/\b(TypeScript|electron-builder|workflow|CI|refactor|chore|deps?|dependencies|build script)\b/i.test(line)) {
+    return true
+  }
+  if (/^(bump|merge pull request|build|ci|chore|refactor|docs?)\b/i.test(line)) return true
+  return false
+}
+
+function humanizeEnglishReleaseLine(line: string): string {
+  const text = line.replace(/^release\s+v?\d+(?:\.\d+)*(?:\s*[-:]\s*)?/i, '').trim()
+  const lower = text.toLowerCase()
+  const isFix = /\b(fix|fixed|bugfix|bug|crash|failed|failure|fallback)\b/.test(lower)
+
+  if (/auto[- ]?update|updater|update install|update fallback/.test(lower)) {
+    return isFix ? '修复了应用更新与安装流程的稳定性问题。' : '应用更新与安装流程有改进。'
+  }
+  if (/settings?|preferences?/.test(lower)) {
+    return isFix ? '修复了设置页相关的使用问题。' : '设置页体验有改进。'
+  }
+  if (/sidebar|badge/.test(lower) && /update/.test(lower)) {
+    return '侧边栏会提示可用的新版本。'
+  }
+  if (/knowledge[- ]?base|regulation|legal research/.test(lower)) {
+    return '法律检索、法规资料或知识库内容有更新。'
+  }
+  if (/plugin|skill|marketplace/.test(lower)) {
+    return '插件技能相关功能有更新。'
+  }
+  if (/data compliance|redaction|desensiti[sz]e/.test(lower)) {
+    return isFix ? '修复了数据合规与脱敏流程中的使用问题。' : '数据合规与脱敏流程有改进。'
+  }
+  if (/chat|thread|conversation|workspace/.test(lower)) {
+    return isFix ? '修复了对话工作台相关的使用问题。' : '对话工作台体验有改进。'
+  }
+  if (/attachment|upload|file/.test(lower)) {
+    return isFix ? '修复了附件和文件处理中的使用问题。' : '附件和文件处理体验有改进。'
+  }
+  if (/document|write|writing|template/.test(lower)) {
+    return '文书写作、模板或文档处理能力有更新。'
+  }
+  if (/download page|landing|website/.test(lower)) {
+    return '下载页和产品介绍内容有更新。'
+  }
+  if (/windows|macos|mac|linux|installer|install/.test(lower)) {
+    return isFix ? '修复了桌面端安装和启动方面的问题。' : '桌面端安装和启动体验有改进。'
+  }
+
+  return text
+}
+
+function normalizeReleaseHighlight(line: string): string | null {
+  const cleaned = cleanReleaseLine(line)
+  if (!cleaned || looksLikeTechnicalReleaseLine(cleaned)) return null
+  if (/^v?\d+(?:\.\d+){1,3}$/i.test(cleaned)) return null
+  if (/^(legalwork\s+)?v?\d+(?:\.\d+){1,3}\b/i.test(cleaned)) return null
+  if (/^(更新内容|本次更新|更新日志|what'?s new|changes?|release notes?)[:：]?$/i.test(cleaned)) return null
+  const normalized = hasCjk(cleaned) ? cleaned : humanizeEnglishReleaseLine(cleaned)
+  if (!normalized || looksLikeTechnicalReleaseLine(normalized)) return null
+  return normalized.replace(/[。.]?$/, '。')
+}
+
+function releaseTextParts(raw: unknown): string[] {
+  if (!raw) return []
+  if (typeof raw === 'string') return [raw]
+  if (Array.isArray(raw)) {
+    return raw.flatMap((item) => {
+      if (typeof item === 'string') return [item]
+      if (item && typeof item === 'object' && 'note' in item) {
+        return [String((item as { note?: unknown }).note ?? '')]
+      }
+      return []
+    })
+  }
+  return []
+}
+
+function buildReleaseHighlights(...parts: unknown[]): string[] {
+  const seen = new Set<string>()
+  const highlights: string[] = []
+  for (const part of parts.flatMap(releaseTextParts)) {
+    const lines = part.split(/\r?\n/)
+    for (const line of lines) {
+      const normalized = normalizeReleaseHighlight(line)
+      if (!normalized || seen.has(normalized)) continue
+      seen.add(normalized)
+      highlights.push(normalized)
+      if (highlights.length >= MAX_RELEASE_HIGHLIGHTS) return highlights
+    }
+  }
+  return highlights
+}
+
+type GithubReleasePayload = {
+  tag_name?: string
+  name?: string
+  body?: string
+  published_at?: string
+  prerelease?: boolean
+}
+
+async function fetchGithubReleaseHighlights(version: string): Promise<string[]> {
+  const repo = resolveGithubOwnerRepo()
+  if (!repo) return []
+
+  const cleanVersion = version.trim().replace(/^v/i, '')
+  for (const tag of [`v${cleanVersion}`, cleanVersion]) {
+    try {
+      const res = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': `legalwork/${app.getVersion()}`
+        }
+      })
+      if (!res.ok) continue
+      const release = (await res.json()) as GithubReleasePayload
+      return buildReleaseHighlights(release.name, release.body)
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+async function enrichGuiInfoWithGithubRelease(
+  info: Extract<GuiUpdateInfo, { ok: true }>
+): Promise<Extract<GuiUpdateInfo, { ok: true }>> {
+  if (info.releaseHighlights?.length) return info
+  const releaseHighlights = await fetchGithubReleaseHighlights(info.latestVersion)
+  return releaseHighlights.length ? { ...info, releaseHighlights } : info
+}
+
 function unsupportedMessage(): string {
   return 'Automatic updates are not supported for this build. Use the download page instead.'
 }
@@ -251,6 +411,8 @@ function sanitizeUpdaterError(raw: string, channel: GuiUpdateChannel): string {
 
 function toGuiInfo(updateInfo: UpdateInfo, hasUpdate: boolean, manualOnly = false): Extract<GuiUpdateInfo, { ok: true }> {
   const latestVersion = updateInfo.version.trim()
+  const extra = updateInfo as UpdateInfo & { releaseName?: unknown; releaseNotes?: unknown }
+  const releaseHighlights = buildReleaseHighlights(extra.releaseName, extra.releaseNotes)
   return {
     ok: true,
     currentVersion: app.getVersion(),
@@ -258,6 +420,7 @@ function toGuiInfo(updateInfo: UpdateInfo, hasUpdate: boolean, manualOnly = fals
     hasUpdate,
     releaseUrl: releaseUrlForVersion(latestVersion),
     releaseDate: updateInfo.releaseDate,
+    ...(releaseHighlights.length ? { releaseHighlights } : {}),
     channel: configuredChannel,
     manualOnly,
     downloaded
@@ -269,6 +432,45 @@ function emitGuiUpdateState(state: GuiUpdateState): void {
   const win = getMainWindow?.()
   if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return
   win.webContents.send('gui:update-state', state)
+}
+
+function clearInstallExitWatch(): void {
+  if (!installExitWatchTimer) return
+  clearTimeout(installExitWatchTimer)
+  installExitWatchTimer = null
+}
+
+function abortQuitAndInstall(logMessage: string, detail?: unknown): void {
+  afterQuitAndInstallAbortUpdate?.()
+  logWarn('gui-update', logMessage, detail)
+}
+
+function startInstallExitWatch(): void {
+  clearInstallExitWatch()
+  installExitWatchTimer = setTimeout(() => {
+    installExitWatchTimer = null
+    if (lastState.status !== 'installing') return
+
+    const message =
+      'legalwork did not quit after starting the update installer. Quit legalwork completely and reopen it, or install the update from the download page.'
+    abortQuitAndInstall('GUI update installer did not trigger application quit in time.', {
+      version: lastInfo?.latestVersion,
+      channel: lastInfo?.channel
+    })
+    emitGuiUpdateState({
+      status: 'error',
+      info: lastInfo ?? undefined,
+      message,
+      code: 'install_failed'
+    })
+  }, GUI_UPDATE_INSTALL_EXIT_TIMEOUT_MS)
+}
+
+function markInstallQuitStarted(): void {
+  if (lastState.status === 'installing') {
+    logInfo('gui-update', 'Application quit started for GUI update installation.')
+  }
+  clearInstallExitWatch()
 }
 
 function runBeforeInstallUpdate(): Promise<void> {
@@ -407,6 +609,8 @@ async function checkGithubApiUpdate(channel: GuiUpdateChannel): Promise<GuiUpdat
   try {
     let tagName: string | undefined
     let releaseDate: string | undefined
+    let releaseName: string | undefined
+    let releaseBody: string | undefined
 
     if (channel === 'stable') {
       const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
@@ -416,9 +620,11 @@ async function checkGithubApiUpdate(channel: GuiUpdateChannel): Promise<GuiUpdat
         }
       })
       if (!res.ok) return null
-      const release = (await res.json()) as { tag_name?: string; published_at?: string }
+      const release = (await res.json()) as GithubReleasePayload
       tagName = release.tag_name
       releaseDate = release.published_at
+      releaseName = release.name
+      releaseBody = release.body
     } else {
       const res = await fetch(`https://api.github.com/repos/${repo}/releases`, {
         headers: {
@@ -427,15 +633,18 @@ async function checkGithubApiUpdate(channel: GuiUpdateChannel): Promise<GuiUpdat
         }
       })
       if (!res.ok) return null
-      const releases = (await res.json()) as Array<{ prerelease: boolean; tag_name: string; published_at?: string }>
+      const releases = (await res.json()) as GithubReleasePayload[]
       const pre = releases.find((r) => r.prerelease)
       if (!pre) return null
       tagName = pre.tag_name
       releaseDate = pre.published_at
+      releaseName = pre.name
+      releaseBody = pre.body
     }
 
     if (!tagName) return null
     const latestVersion = tagName.trim().replace(/^v/i, '')
+    const releaseHighlights = buildReleaseHighlights(releaseName, releaseBody)
     const info: Extract<GuiUpdateInfo, { ok: true }> = {
       ok: true,
       currentVersion,
@@ -443,6 +652,7 @@ async function checkGithubApiUpdate(channel: GuiUpdateChannel): Promise<GuiUpdat
       hasUpdate: isVersionGreater(latestVersion, currentVersion),
       releaseUrl: releaseUrlForVersion(latestVersion),
       releaseDate,
+      ...(releaseHighlights.length ? { releaseHighlights } : {}),
       channel,
       manualOnly: true,
       downloaded: false
@@ -490,6 +700,7 @@ async function checkManualUpdate(
         channel
       }
     }
+    const releaseHighlights = await fetchGithubReleaseHighlights(latestVersion)
     const info: Extract<GuiUpdateInfo, { ok: true }> = {
       ok: true,
       currentVersion,
@@ -497,6 +708,7 @@ async function checkManualUpdate(
       hasUpdate: isVersionGreater(latestVersion, currentVersion),
       releaseUrl: releaseUrlForVersion(latestVersion),
       releaseDate: parseYamlScalar(text, 'releaseDate'),
+      ...(releaseHighlights.length ? { releaseHighlights } : {}),
       channel,
       manualOnly: true,
       downloaded: false
@@ -544,12 +756,14 @@ export function initializeGuiUpdater(
   windowGetter: () => BrowserWindow | null,
   channelGetter?: () => GuiUpdateChannel | Promise<GuiUpdateChannel>,
   beforeInstall?: () => void | Promise<void>,
-  beforeQuitAndInstall?: () => void
+  beforeQuitAndInstall?: () => void,
+  afterQuitAndInstallAbort?: () => void
 ): void {
   getMainWindow = windowGetter
   getSelectedChannel = channelGetter ?? null
   beforeInstallUpdate = beforeInstall ?? null
   beforeQuitAndInstallUpdate = beforeQuitAndInstall ?? null
+  afterQuitAndInstallAbortUpdate = afterQuitAndInstallAbort ?? null
   if (initialized) return
   initialized = true
 
@@ -578,6 +792,12 @@ export function initializeGuiUpdater(
     const info = toGuiInfo(updateInfo, true)
     lastInfo = info
     emitGuiUpdateState({ status: 'available', info })
+    void enrichGuiInfoWithGithubRelease(info).then((enriched) => {
+      if (lastInfo?.latestVersion !== enriched.latestVersion) return
+      if (lastState.status !== 'available') return
+      lastInfo = enriched
+      emitGuiUpdateState({ status: 'available', info: enriched })
+    })
   })
 
   autoUpdater.on('update-not-available', (updateInfo: UpdateInfo) => {
@@ -585,6 +805,12 @@ export function initializeGuiUpdater(
     const info = toGuiInfo(updateInfo, false)
     lastInfo = info
     emitGuiUpdateState({ status: 'not_available', info })
+    void enrichGuiInfoWithGithubRelease(info).then((enriched) => {
+      if (lastInfo?.latestVersion !== enriched.latestVersion) return
+      if (lastState.status !== 'not_available') return
+      lastInfo = enriched
+      emitGuiUpdateState({ status: 'not_available', info: enriched })
+    })
   })
 
   autoUpdater.on('download-progress', (progress: ProgressInfo) => {
@@ -596,6 +822,12 @@ export function initializeGuiUpdater(
     const info = toGuiInfo(event, true)
     lastInfo = info
     emitGuiUpdateState({ status: 'downloaded', info })
+    void enrichGuiInfoWithGithubRelease(info).then((enriched) => {
+      if (lastInfo?.latestVersion !== enriched.latestVersion) return
+      if (lastState.status !== 'downloaded') return
+      lastInfo = { ...enriched, downloaded: true }
+      emitGuiUpdateState({ status: 'downloaded', info: lastInfo })
+    })
   })
 
   autoUpdater.on('error', (error) => {
@@ -615,10 +847,18 @@ export function initializeGuiUpdater(
   })
 
   nativeAutoUpdater?.on?.('before-quit-for-update', () => {
+    markInstallQuitStarted()
     void runBeforeInstallUpdate().catch((error) => {
       console.warn('[legalwork updater] failed to stop runtimes before update quit:', error)
     })
   })
+
+  updaterLifecycleEvents.on('before-quit-for-update', () => {
+    markInstallQuitStarted()
+  })
+
+  app.on('before-quit', markInstallQuitStarted)
+  app.on('will-quit', markInstallQuitStarted)
 
   void scheduleNextBackgroundCheck()
 }
@@ -637,7 +877,9 @@ export async function checkGuiUpdate(channel?: GuiUpdateChannel): Promise<GuiUpd
     if (!result) {
       return checkManualUpdate(selectedChannel, 'not_configured')
     }
-    const info = toGuiInfo(result.updateInfo, result.isUpdateAvailable)
+    const info = await enrichGuiInfoWithGithubRelease(
+      toGuiInfo(result.updateInfo, result.isUpdateAvailable)
+    )
     lastInfo = info
     emitGuiUpdateState(info.hasUpdate ? { status: 'available', info } : { status: 'not_available', info })
     return info
@@ -716,10 +958,14 @@ export async function installGuiUpdate(): Promise<GuiUpdateInstallResult> {
     emitGuiUpdateState({ status: 'installing', info: lastInfo ?? undefined })
     await runBeforeInstallUpdate()
     beforeQuitAndInstallUpdate?.()
+    startInstallExitWatch()
+    logInfo('gui-update', 'Calling quitAndInstall for GUI update.')
     autoUpdater.quitAndInstall(false, true)
     return { ok: true }
   } catch (e) {
+    clearInstallExitWatch()
     const message = e instanceof Error ? e.message : String(e)
+    abortQuitAndInstall('GUI update installation failed before quitAndInstall.', { message })
     emitGuiUpdateState({ status: 'error', info: lastInfo ?? undefined, message, code: 'install_failed' })
     return {
       ok: false,

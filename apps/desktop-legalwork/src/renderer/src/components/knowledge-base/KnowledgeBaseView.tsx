@@ -23,13 +23,13 @@ import {
   PanelRightClose,
   RefreshCw,
   Search,
-  Send,
   Sparkles,
   Square,
   Trash2,
   Upload,
   X
 } from 'lucide-react'
+import { SendIcon } from '../icons/SendIcon'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
 import {
@@ -1159,7 +1159,7 @@ ${question.trim()}
               disabled={classifying || visibleNodes.length === 0}
               onClick={() => void classifyPaths([])}
               className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-ds-border bg-ds-card px-3 text-[13px] font-medium text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)] disabled:opacity-50"
-              title="按文件类型与名称线索智能分类当前列表"
+              title="读取正文并调用模型分类当前列表"
             >
               <Sparkles className={`h-3.5 w-3.5 ${classifying ? 'animate-pulse' : ''}`} strokeWidth={1.8} />
               <span>{classifying ? '整理中' : '智能分类'}</span>
@@ -1617,7 +1617,7 @@ ${question.trim()}
                   disabled={chatSending || !chatInput.trim()}
                   className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[var(--ds-accent)] text-white transition hover:opacity-90 disabled:opacity-50"
                 >
-                  <Send className="h-4 w-4" strokeWidth={1.8} />
+                  <SendIcon className="h-4 w-4" />
                 </button>
               </div>
             </div>

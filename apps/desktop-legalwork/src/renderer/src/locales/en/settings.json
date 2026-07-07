@@ -445,6 +445,8 @@
   "guiUpdateDownloadProgress": "{{transferred}} / {{total}}, {{speed}}/s",
   "guiUpdateDownloaded": "Update {{version}} downloaded",
   "guiUpdateDownloadedDesc": "Restart the app to install the new version.",
+  "guiUpdateHighlightsTitle": "What's new",
+  "guiUpdateHighlightsEmpty": "Detailed release notes have not synced yet. Open the download page to view them.",
   "guiUpdateInstalling": "Restarting to install update…",
   "guiUpdateCheck": "Check for updates",
   "guiUpdateDownload": "Download update",

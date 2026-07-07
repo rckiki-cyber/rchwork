@@ -29,7 +29,6 @@ import {
   PlayCircle,
   RotateCcw,
   SearchCode,
-  Send,
   Sparkles,
   Square,
   Target,
@@ -40,6 +39,7 @@ import { useTranslation } from 'react-i18next'
 import type { ModelProviderModelGroup } from '@shared/ds-gui-api'
 import type { WorkspaceEntry } from '@shared/workspace-file'
 import type { AttachmentReference, ReviewTarget } from '../../agent/types'
+import { SendIcon } from '../icons/SendIcon'
 import { useChatStore } from '../../store/chat-store'
 import { normalizeWorkspaceRoot } from '../../lib/workspace-path'
 import {
@@ -1838,7 +1838,7 @@ export function FloatingComposer({
                 aria-label={primaryActionLabel}
                 title={primaryActionLabel}
               >
-                <Send className="h-4 w-4" strokeWidth={2.2} />
+                <SendIcon className="h-4 w-4" />
               </button>
             </div>
           </div>

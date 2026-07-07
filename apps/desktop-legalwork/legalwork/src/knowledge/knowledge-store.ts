@@ -3,6 +3,8 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, normalize, relative, resolve, sep } from 'node:path'
 import { extractDocumentText, EXTRACTABLE_EXTENSIONS } from './text-extractor.js'
+import { makeUserItem } from '../domain/item.js'
+import type { ModelClient, ModelRequest, ModelStreamChunk } from '../ports/model-client.js'
 import type {
   KnowledgeClassifyRequest,
   KnowledgeClassifyResult,
@@ -94,6 +96,24 @@ const CHUNK_SIZE = 2400
 const CHUNK_OVERLAP = 240
 const RERANK_POOL_SIZE = 80
 const MAX_PER_DOCUMENT = 2
+const CLASSIFY_TEXT_LIMIT = 6000
+const CLASSIFY_MODEL_TIMEOUT_MS = 18_000
+
+const DEFAULT_CLASSIFICATION_CATEGORIES = [
+  '论文',
+  '调研报告',
+  '合同协议',
+  '诉讼仲裁',
+  '案例判例',
+  '法规规范',
+  '模板范本',
+  '会议记录',
+  '音视频',
+  '图片资料',
+  '表格数据',
+  '压缩包',
+  '其他资料'
+]
 
 type ScoredChunk = {
   chunk: KnowledgeChunk
@@ -111,6 +131,8 @@ export class FileKnowledgeStore implements KnowledgeStore {
       sourceRoots?: string[]
       nowIso?: () => string
       managedRoot?: string
+      model?: ModelClient
+      classifyModel?: string
     }
   ) {
     // Default managed root: {rootDir}/files
@@ -268,10 +290,19 @@ export class FileKnowledgeStore implements KnowledgeStore {
     const moved: KnowledgeClassifyResult['moved'] = []
     const skipped: KnowledgeClassifyResult['skipped'] = []
     const uniqueFiles = [...new Set(files)]
+    const candidateCategories = await this.classificationCategories(targetRoot)
     for (const absolute of uniqueFiles) {
       const relPath = relative(this.managedRoot, absolute).replaceAll('\\', '/')
       const name = basename(absolute)
-      const classification = classifyKnowledgeFile(name, relPath)
+      const textPreview = await this.readClassificationText(absolute)
+      const fallbackClassification = classifyKnowledgeFile(name, relPath, textPreview)
+      const classification = await this.classifyWithModel({
+        relativePath: relPath,
+        name,
+        textPreview,
+        candidateCategories,
+        fallback: fallbackClassification
+      })
       const currentFolder = dirname(relPath).replaceAll('\\', '/')
       const destFolder = joinKnowledgeRelative(targetRoot, classification.category)
       if (currentFolder === destFolder) {
@@ -453,6 +484,164 @@ export class FileKnowledgeStore implements KnowledgeStore {
   private now(): string {
     return this.options.nowIso?.() ?? new Date().toISOString()
   }
+
+  private async classificationCategories(targetRoot: string): Promise<string[]> {
+    const folders = await directChildFolders(targetRoot ? this.resolveManaged(targetRoot) : this.managedRoot)
+    return uniqueCategories([...folders, ...DEFAULT_CLASSIFICATION_CATEGORIES])
+  }
+
+  private async readClassificationText(absolute: string): Promise<string> {
+    const ext = extname(absolute).toLowerCase()
+    try {
+      const content = TEXT_EXTENSIONS.has(ext)
+        ? await readFile(absolute, 'utf8')
+        : EXTRACTABLE_EXTENSIONS.has(ext)
+          ? await extractDocumentText(absolute)
+          : ''
+      return normalizeText(content).slice(0, CLASSIFY_TEXT_LIMIT)
+    } catch {
+      return ''
+    }
+  }
+
+  private async classifyWithModel(input: {
+    relativePath: string
+    name: string
+    textPreview: string
+    candidateCategories: string[]
+    fallback: KnowledgeClassification
+  }): Promise<KnowledgeClassification> {
+    const model = this.options.model
+    if (!model || !input.textPreview.trim()) return input.fallback
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), CLASSIFY_MODEL_TIMEOUT_MS)
+    try {
+      const turnId = `knowledge_classify_${hashId(input.relativePath)}`
+      const request: ModelRequest = {
+        threadId: 'knowledge-classifier',
+        turnId,
+        model: this.options.classifyModel ?? model.model,
+        systemPrompt: KNOWLEDGE_CLASSIFIER_SYSTEM_PROMPT,
+        prefix: [],
+        history: [
+          makeUserItem({
+            id: `${turnId}_user`,
+            threadId: 'knowledge-classifier',
+            turnId,
+            text: buildKnowledgeClassifierPrompt(input)
+          })
+        ],
+        tools: [],
+        abortSignal: controller.signal,
+        stream: false,
+        maxTokens: 220,
+        temperature: 0,
+        responseFormat: 'json_object',
+        reasoningEffort: 'off'
+      }
+      const raw = await collectModelText(model.stream(request), controller.signal)
+      const parsed = parseModelClassification(raw, input.candidateCategories)
+      if (!parsed) return input.fallback
+      return parsed
+    } catch {
+      return input.fallback
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+}
+
+type KnowledgeClassification = {
+  category: string
+  reason: string
+}
+
+const KNOWLEDGE_CLASSIFIER_SYSTEM_PROMPT = [
+  '你是法律知识库文件分类器。',
+  '必须根据文件正文的实质内容分类，文件名和扩展名只能作为辅助。',
+  '只能输出紧凑 JSON，不要输出 Markdown。',
+  '格式：{"category":"候选目录名","reason":"20字内中文理由"}。'
+].join('')
+
+function buildKnowledgeClassifierPrompt(input: {
+  relativePath: string
+  name: string
+  textPreview: string
+  candidateCategories: string[]
+  fallback: KnowledgeClassification
+}): string {
+  return [
+    `候选目录：${input.candidateCategories.join('、')}`,
+    `文件路径：${input.relativePath}`,
+    `文件名：${input.name}`,
+    `规则兜底分类：${input.fallback.category}（${input.fallback.reason}）`,
+    '分类要求：优先选择候选目录；只有正文确实无法归入候选目录时，才使用“其他资料”。',
+    '正文预览：',
+    input.textPreview || '(无可读取正文)'
+  ].join('\n')
+}
+
+async function collectModelText(stream: AsyncIterable<ModelStreamChunk>, abortSignal: AbortSignal): Promise<string> {
+  let text = ''
+  for await (const chunk of stream) {
+    if (abortSignal.aborted) break
+    if (chunk.kind === 'assistant_text_delta') text += chunk.text
+    if (chunk.kind === 'error') throw new Error(chunk.message)
+  }
+  return text.trim()
+}
+
+function parseModelClassification(raw: string, candidateCategories: string[]): KnowledgeClassification | null {
+  const json = extractFirstJsonObject(raw)
+  if (!json) return null
+  try {
+    const value = JSON.parse(json) as { category?: unknown; reason?: unknown }
+    const category = normalizeModelCategory(
+      typeof value.category === 'string' ? value.category : '',
+      candidateCategories
+    )
+    if (!category || !candidateCategories.includes(category)) return null
+    const reason = typeof value.reason === 'string' && value.reason.trim()
+      ? value.reason.trim().slice(0, 80)
+      : '模型根据正文分类'
+    return { category, reason }
+  } catch {
+    return null
+  }
+}
+
+function normalizeModelCategory(category: string, candidateCategories: string[]): string {
+  const normalized = normalizeCategory(category)
+  if (candidateCategories.includes(normalized)) return normalized
+  const aliases: Record<string, string> = {
+    研究报告: '调研报告',
+    调查报告: '调研报告',
+    法律法规: '法规规范',
+    法规: '法规规范',
+    案例: '案例判例',
+    判例: '案例判例',
+    合同: '合同协议',
+    协议: '合同协议',
+    诉讼材料: '诉讼仲裁',
+    仲裁材料: '诉讼仲裁',
+    模板: '模板范本',
+    范本: '模板范本',
+    音频: '音视频',
+    视频: '音视频',
+    图片: '图片资料',
+    表格: '表格数据',
+    资料: '其他资料'
+  }
+  const alias = aliases[normalized]
+  return alias && candidateCategories.includes(alias) ? alias : normalized
+}
+
+function extractFirstJsonObject(raw: string): string | null {
+  const start = raw.indexOf('{')
+  const end = raw.lastIndexOf('}')
+  if (start < 0 || end <= start) return null
+  return raw.slice(start, end + 1)
 }
 
 export function defaultKnowledgeSourceRoots(dataDir?: string): string[] {
@@ -535,6 +724,14 @@ async function collectManagedFiles(managedRoot: string, absolute: string): Promi
     }
   }
   return files
+}
+
+async function directChildFolders(absolute: string): Promise<string[]> {
+  const entries = await readdir(absolute, { withFileTypes: true }).catch(() => [])
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => normalizeCategory(entry.name))
+    .filter(Boolean)
 }
 
 function chunkDocument(document: KnowledgeDocument, content: string): KnowledgeChunk[] {
@@ -719,7 +916,7 @@ const STOP_WORDS = new Set([
 function inferCategory(filePath: string, relativePath: string, content: string): string {
   const folder = dirname(relativePath).replaceAll('\\', '/')
   if (folder && folder !== '.') return folder
-  return classifyKnowledgeFile(basename(filePath), `${relativePath}\n${content.slice(0, 2000)}`).category
+  return classifyKnowledgeFile(basename(filePath), relativePath, content.slice(0, 2000)).category
 }
 
 function inferTags(filePath: string, relativePath: string, content: string, category: string, keywords: string[]): string[] {
@@ -733,13 +930,39 @@ function inferTags(filePath: string, relativePath: string, content: string, cate
   return [...tags].filter(Boolean).slice(0, 20)
 }
 
-function classifyKnowledgeFile(name: string, relativePath: string): { category: string; reason: string } {
+function classifyKnowledgeFile(name: string, relativePath: string, content = ''): KnowledgeClassification {
   const ext = extname(name).toLowerCase()
   const haystack = `${relativePath}/${name}`.toLowerCase()
+  const contentHaystack = content.toLowerCase()
+  if (/摘要|关键词|参考文献|文献综述|开题报告|毕业论文|学位论文|journal|thesis|dissertation/.test(contentHaystack)) {
+    return { category: '论文', reason: '正文包含论文结构' }
+  }
+  if (/调研|研究报告|访谈|问卷|行业分析|现状分析|可行性研究|尽职调查|research report|survey/.test(contentHaystack)) {
+    return { category: '调研报告', reason: '正文包含调研报告线索' }
+  }
+  if (/合同|协议|条款|违约责任|解除条件|付款条款|履行期限|contract|agreement/.test(contentHaystack)) {
+    return { category: '合同协议', reason: '正文包含合同条款线索' }
+  }
+  if (/起诉状|答辩状|上诉状|仲裁申请|证据目录|质证意见|庭审笔录|诉讼请求|litigation/.test(contentHaystack)) {
+    return { category: '诉讼仲裁', reason: '正文包含争议解决线索' }
+  }
+  if (/本院认为|裁判要旨|指导案例|判决如下|裁定如下|案号|case/.test(contentHaystack)) {
+    return { category: '案例判例', reason: '正文包含裁判案例线索' }
+  }
+  if (/民法典|公司法|劳动法|刑法|行政法规|司法解释|法律条文|条例|办法|个人信息保护法|个人信息处理者|敏感个人信息|单独同意|regulation/.test(contentHaystack)) {
+    return { category: '法规规范', reason: '正文包含法规规范线索' }
+  }
+  if (/模板|范本|填写说明|示范文本|sample|template/.test(contentHaystack)) {
+    return { category: '模板范本', reason: '正文包含模板线索' }
+  }
+  if (/会议纪要|会议记录|参会人员|会议时间|meeting minutes/.test(contentHaystack)) {
+    return { category: '会议记录', reason: '正文包含会议记录线索' }
+  }
   if (['.mp3', '.m4a', '.wav', '.aac', '.flac', '.ogg'].includes(ext)) return { category: '音视频', reason: '音频格式' }
   if (['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext)) return { category: '图片资料', reason: '图片格式' }
   if (['.xls', '.xlsx', '.csv', '.tsv'].includes(ext)) return { category: '表格数据', reason: '表格格式' }
   if (['.zip', '.rar', '.7z'].includes(ext)) return { category: '压缩包', reason: '压缩文件' }
+  if (/论文|thesis|paper|dissertation/.test(haystack)) return { category: '论文', reason: '文件名包含论文线索' }
   if (/模板|范本|样本|sample|template/.test(haystack)) return { category: '模板范本', reason: '文件名包含模板线索' }
   if (/合同|协议|条款|nda|contract|agreement/.test(haystack)) return { category: '合同协议', reason: '文件名包含合同线索' }
   if (/起诉|答辩|上诉|仲裁|诉讼|证据|庭审|pleading|litigation/.test(haystack)) return { category: '诉讼仲裁', reason: '文件名包含争议解决线索' }
@@ -748,6 +971,22 @@ function classifyKnowledgeFile(name: string, relativePath: string): { category: 
   if (/调研|研究|报告|memo|research/.test(haystack)) return { category: '调研报告', reason: '文件名包含调研报告线索' }
   if (/会议|纪要|记录|meeting/.test(haystack)) return { category: '会议记录', reason: '文件名包含会议线索' }
   return { category: '其他资料', reason: '默认分类' }
+}
+
+function uniqueCategories(categories: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const category of categories) {
+    const normalized = normalizeCategory(category)
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    result.push(normalized)
+  }
+  return result
+}
+
+function normalizeCategory(category: string): string {
+  return normalizeRelativePath(category).split('/').at(-1)?.trim().slice(0, 40) ?? ''
 }
 
 function joinKnowledgeRelative(base: string, child: string): string {

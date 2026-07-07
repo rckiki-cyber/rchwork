@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Xiaomi MiMo">
+  <rect width="64" height="64" rx="15" fill="#ff6900"/>
+  <path fill="#fff" d="M15 23.5c0-4.7 3.8-8.5 8.5-8.5h17c4.7 0 8.5 3.8 8.5 8.5V49h-8V24.7c0-1-.8-1.7-1.7-1.7h-3.8v26h-7.1V23h-3.8c-1 0-1.7.8-1.7 1.7V49H15V23.5Z"/>
+  <circle cx="32" cy="12" r="3" fill="#fff"/>
+</svg>

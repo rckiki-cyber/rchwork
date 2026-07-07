@@ -6,7 +6,9 @@ import byteDanceLogo from '../../../../asset/img/model-logos/bytedance.svg'
 import customLogo from '../../../../asset/img/model-logos/custom.svg'
 import glmLogo from '../../../../asset/img/model-logos/glm.png'
 import kimiLogo from '../../../../asset/img/model-logos/kimi.png'
+import longcatLogo from '../../../../asset/img/model-logos/longcat.svg'
 import minimaxLogo from '../../../../asset/img/model-logos/minimax.svg'
+import mimoLogo from '../../../../asset/img/model-logos/mimo.svg'
 import openaiLogo from '../../../../asset/img/model-logos/openai.svg'
 import type { ModelBrand } from '../../lib/model-brand'
 
@@ -20,6 +22,8 @@ const MODEL_BRAND_LOGOS: Record<ModelBrand, string> = {
   minimax: minimaxLogo,
   qwen: alibabaLogo,
   doubao: byteDanceLogo,
+  mimo: mimoLogo,
+  longcat: longcatLogo,
   custom: customLogo
 }
 

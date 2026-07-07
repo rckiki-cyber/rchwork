@@ -445,6 +445,8 @@
   "guiUpdateDownloadProgress": "{{transferred}} / {{total}}，{{speed}}/s",
   "guiUpdateDownloaded": "更新 {{version}} 已下载",
   "guiUpdateDownloadedDesc": "重启应用后将安装新版本。",
+  "guiUpdateHighlightsTitle": "本次更新",
+  "guiUpdateHighlightsEmpty": "暂未同步到本次更新的详细说明，请打开下载页查看发布说明。",
   "guiUpdateInstalling": "正在重启并安装更新…",
   "guiUpdateCheck": "检查更新",
   "guiUpdateDownload": "下载更新",

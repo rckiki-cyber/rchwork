@@ -7,12 +7,11 @@ import {
   File,
   FileCode2,
   Loader2,
-  Send,
   Trash2,
+  Wrench,
   X
 } from 'lucide-react'
-import * as pdfjsLib from 'pdfjs-dist'
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
+import { SendIcon } from '../icons/SendIcon'
 import {
   LEGALWORK_KNOWLEDGE_EXTRACT_TEXT_PATH,
   LEGALWORK_KNOWLEDGE_READ_FILE_PATH,
@@ -20,13 +19,16 @@ import {
   legalworkThreadTurnsPath,
   legalworkThreadTurnPath
 } from '../../../../shared/legalwork-endpoints'
+import { getLegalworkRuntimeSettings } from '../../../../shared/app-settings'
 import { useChatStore } from '../../store/chat-store'
 import { AnimatedWorkLogo } from '../chat/AnimatedWorkLogo'
+import { AssistantMarkdown } from '../chat/AssistantMarkdown'
+import { FloatingComposerModelPicker } from '../chat/FloatingComposerModelPicker'
 import { ModelBrandIcon } from '../chat/ModelBrandIcon'
+import { LegalworkRuntimeProvider } from '../../agent/legalwork-runtime'
+import type { ThreadEventSink } from '../../agent/types'
 import { brandForModel } from '../../lib/model-brand'
 import type { KnowledgeTreeNode } from './types'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
 // ── Helpers (copied from KnowledgeBaseView to keep this file self-contained) ──
 
@@ -118,123 +120,46 @@ function fileTypeLabel(node: KnowledgeTreeNode): string {
   return ext.toUpperCase()
 }
 
-// ── PDF Preview component ──
-
-type PdfRenderedPage = {
-  pageNumber: number
-  width: number
-  height: number
-  dataUrl: string
-}
-
-const PDF_RENDER_TIMEOUT_MS = 20000
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs)
-    promise.then(
-      (value) => {
-        window.clearTimeout(timeout)
-        resolve(value)
-      },
-      (error: unknown) => {
-        window.clearTimeout(timeout)
-        reject(error)
-      }
-    )
-  })
-}
-
-function PdfPreview({ base64Content, fileName }: { base64Content: string; fileName: string }): ReactElement {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [pages, setPages] = useState<PdfRenderedPage[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    async function load(): Promise<void> {
-      setLoading(true)
-      setError(null)
-      try {
-        const pdf = await withTimeout(
-          pdfjsLib.getDocument({ data: base64ToBytes(base64Content), cMapUrl: undefined }).promise,
-          PDF_RENDER_TIMEOUT_MS,
-          'PDF 加载超时'
-        )
-        if (cancelled) return
-        const rendered: PdfRenderedPage[] = []
-        for (let i = 1; i <= pdf.numPages; i += 1) {
-          if (cancelled) return
-          const page = await pdf.getPage(i)
-          const viewport = page.getViewport({ scale: 1.5 })
-          const canvas = document.createElement('canvas')
-          canvas.width = viewport.width
-          canvas.height = viewport.height
-          const context = canvas.getContext('2d')
-          if (!context) throw new Error('无法创建 PDF 预览画布')
-          await page.render({ canvas, canvasContext: context, viewport }).promise
-          rendered.push({
-            pageNumber: i,
-            width: viewport.width,
-            height: viewport.height,
-            dataUrl: canvas.toDataURL('image/png')
-          })
-        }
-        if (!cancelled) setPages(rendered)
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'PDF 预览渲染失败')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    void load()
-    return () => { cancelled = true }
-  }, [base64Content])
-
-  if (error) {
-    return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-[13px] text-red-500">{error}</div>
-    )
-  }
-
+function PdfPreview({
+  objectUrl,
+  extractedText,
+  fileName
+}: {
+  objectUrl?: string
+  extractedText?: string
+  fileName: string
+}): ReactElement {
   return (
-    <div ref={containerRef} className="flex h-full flex-col items-center gap-4 overflow-auto p-4">
-      {loading ? (
-        <div className="flex items-center gap-2 py-12 text-[13px] text-[var(--ds-muted)]">
-          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.8} />
-          正在渲染 {fileName} …
-        </div>
+    <div className="h-full min-h-0 bg-white dark:bg-[#101010]">
+      {objectUrl ? (
+        <iframe
+          src={objectUrl}
+          title={fileName}
+          className="h-full w-full border-0"
+          sandbox="allow-same-origin"
+        />
       ) : (
-        pages.map((page) => (
-          <div key={page.pageNumber} className="w-full max-w-[800px] overflow-hidden rounded-[8px] border border-ds-border shadow-sm">
-            <div className="flex items-center justify-between bg-ds-card px-4 py-1.5 text-[11px] text-[var(--ds-muted)]">
-              <span>第 {page.pageNumber} 页</span>
-            </div>
-            <img src={page.dataUrl} alt={`第 ${page.pageNumber} 页`} className="block w-full" />
-          </div>
-        ))
+        <DocumentPreview text={extractedText ?? ''} fileName={fileName} />
       )}
     </div>
   )
-}
-
-function base64ToBytes(base64Content: string): Uint8Array {
-  const byteString = atob(base64Content)
-  const bytes = new Uint8Array(byteString.length)
-  for (let i = 0; i < byteString.length; i += 1) {
-    bytes[i] = byteString.charCodeAt(i)
-  }
-  return bytes
 }
 
 // ── Chat message types ──
 
 type ChatMessage = {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'reasoning' | 'tool'
   content: string
   timestamp: number
+  status?: string
+}
+
+type KnowledgeToolMessageInput = {
+  itemId: string
+  status?: string
+  summary?: string
+  toolKind?: string
 }
 
 type FileContent = {
@@ -242,6 +167,7 @@ type FileContent = {
   encoding: 'utf8' | 'base64'
   objectUrl?: string
   type: PreviewType
+  extractedText?: string
 }
 
 // ── Document text extraction preview component ──
@@ -282,6 +208,8 @@ type KnowledgeRetrievalResult = {
   latencyMs: number
 }
 
+const knowledgeRuntimeProvider = new LegalworkRuntimeProvider()
+
 // ── Main component ──
 
 type Props = {
@@ -297,7 +225,11 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
+  const [liveReasoning, setLiveReasoning] = useState('')
+  const [liveAssistant, setLiveAssistant] = useState('')
+  const [runtimeModel, setRuntimeModel] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const chatAbortRef = useRef<AbortController | null>(null)
 
   // Load file content on mount
   useEffect(() => {
@@ -324,6 +256,32 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
           if (!cancelled) setFileLoading(false)
           return
         }
+        if (type === 'pdf') {
+          const data = await requestJson<{ path: string; content: string; encoding: 'utf8' | 'base64' }>(
+            `${LEGALWORK_KNOWLEDGE_READ_FILE_PATH}?path=${encodeURIComponent(node.path)}&encoding=base64`
+          )
+          const extracted = await requestJson<{ path: string; text: string; extension: string }>(
+            `${LEGALWORK_KNOWLEDGE_EXTRACT_TEXT_PATH}?path=${encodeURIComponent(node.path)}`
+          ).catch(() => null)
+          if (cancelled) return
+          let objectUrl: string | undefined
+          if (data.content) {
+            try {
+              objectUrl = buildObjectUrl(node, data.content)
+            } catch {
+              objectUrl = undefined
+            }
+          }
+          setFileContent({
+            content: data.content,
+            encoding: data.encoding,
+            objectUrl,
+            type,
+            extractedText: extracted?.text ?? ''
+          })
+          if (!cancelled) setFileLoading(false)
+          return
+        }
         if (type === 'document') {
           // Extract plain text from pdf/docx/xlsx via the runtime
           try {
@@ -338,7 +296,7 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
           if (!cancelled) setFileLoading(false)
           return
         }
-        const isBinary = type === 'pdf' || type === 'image' || type === 'audio'
+        const isBinary = type === 'image' || type === 'audio'
         const data = await requestJson<{ path: string; content: string; encoding: 'utf8' | 'base64' }>(
           `${LEGALWORK_KNOWLEDGE_READ_FILE_PATH}?path=${encodeURIComponent(node.path)}${isBinary ? '&encoding=base64' : ''}`
         )
@@ -366,7 +324,7 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
   // Auto-scroll chat to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, liveAssistant, liveReasoning])
 
   // Cleanup object URL on unmount
   useEffect(() => {
@@ -374,6 +332,10 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
       if (fileContent?.objectUrl) URL.revokeObjectURL(fileContent.objectUrl)
     }
   }, [fileContent])
+
+  useEffect(() => {
+    return () => chatAbortRef.current?.abort()
+  }, [])
 
   const openInSystemApp = useCallback(async (): Promise<void> => {
     try {
@@ -385,9 +347,63 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
   }, [node.path])
 
   // ── AI Chat: RAG-based Q&A ──
-  const composerModel = useChatStore((s) => s.composerModel)
-  const composerModelGroups = useChatStore((s) => s.composerModelGroups)
-  const modelBrand = brandForModel(composerModel, composerModelGroups)
+  const {
+    composerModel,
+    composerPickList,
+    composerModelGroups,
+    setComposerModel,
+    loadComposerModels
+  } = useChatStore((s) => ({
+    composerModel: s.composerModel,
+    composerPickList: s.composerPickList,
+    composerModelGroups: s.composerModelGroups,
+    setComposerModel: s.setComposerModel,
+    loadComposerModels: s.loadComposerModels
+  }))
+  const activeModel = composerModel.trim() || 'auto'
+  const effectiveModel =
+    activeModel && activeModel !== 'auto'
+      ? activeModel
+      : runtimeModel.trim() || activeModel
+  const modelBrand = brandForModel(effectiveModel, composerModelGroups)
+
+  useEffect(() => {
+    void loadComposerModels()
+  }, [loadComposerModels])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.dsGui.getSettings().then((settings) => {
+      if (cancelled) return
+      setRuntimeModel(getLegalworkRuntimeSettings(settings).model)
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
+
+  const pushOrUpdateToolMessage = useCallback((tool: KnowledgeToolMessageInput): void => {
+    const id = `tool_${tool.itemId}`
+    setMessages((prev) => {
+      const content = tool.summary || tool.toolKind || '工具调用'
+      const existingIndex = prev.findIndex((msg) => msg.id === id)
+      if (existingIndex < 0) {
+        return [...prev, {
+          id,
+          role: 'tool',
+          content,
+          status: tool.status,
+          timestamp: Date.now()
+        }]
+      }
+      const next = [...prev]
+      next[existingIndex] = {
+        ...next[existingIndex],
+        content,
+        status: tool.status,
+        timestamp: Date.now()
+      }
+      return next
+    })
+  }, [])
 
   // Poll for turn completion
   const pollTurnCompletion = useCallback(async (threadId: string, turnId: string, maxPolls = 120): Promise<string> => {
@@ -430,6 +446,9 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
 
   const sendMessage = useCallback(async (question: string): Promise<void> => {
     if (!question.trim() || sending) return
+    chatAbortRef.current?.abort()
+    const abort = new AbortController()
+    chatAbortRef.current = abort
     const userMsg: ChatMessage = {
       id: `user_${Date.now()}`,
       role: 'user',
@@ -440,6 +459,8 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
     setInput('')
     setSending(true)
     setChatError(null)
+    setLiveReasoning('')
+    setLiveAssistant('')
 
     try {
       const retrievalQuery = `${question.trim()} ${node.name} ${node.path}`
@@ -489,7 +510,7 @@ ${question.trim()}
         {
           workspace,
           title: `知识库：${node.name}`,
-          model: composerModel || 'deepseek-chat',
+          model: effectiveModel,
           mode: 'agent'
         }
       )
@@ -503,21 +524,101 @@ ${question.trim()}
       )
       const turnId = turnResponse.turnId
 
+      let streamedAssistant = ''
+      let streamedReasoning = ''
+      await new Promise<void>((resolve, reject) => {
+        let settled = false
+        const settle = (error?: Error): void => {
+          if (settled) return
+          settled = true
+          if (!abort.signal.aborted) abort.abort()
+          if (error) reject(error)
+          else resolve()
+        }
+        const sink: ThreadEventSink = {
+          onSeq: () => undefined,
+          onDeltas: (deltas) => {
+            for (const delta of deltas) {
+              if (delta.kind === 'agent_reasoning') {
+                streamedReasoning += delta.text
+                setLiveReasoning(streamedReasoning)
+              } else {
+                streamedAssistant += delta.text
+                setLiveAssistant(streamedAssistant)
+              }
+            }
+          },
+          onUserMessage: () => undefined,
+          onTool: pushOrUpdateToolMessage,
+          onCompaction: (ev) => {
+            pushOrUpdateToolMessage({
+              itemId: ev.itemId,
+              status: ev.status,
+              summary: ev.summary
+            })
+          },
+          onApproval: (req) => {
+            pushOrUpdateToolMessage({
+              itemId: req.approvalId,
+              status: 'running',
+              summary: req.summary
+            })
+          },
+          onUserInput: (req) => {
+            pushOrUpdateToolMessage({
+              itemId: req.requestId,
+              status: 'running',
+              summary: req.questions.map((q) => q.question).join(' · ') || '等待用户输入'
+            })
+          },
+          onUserInputStatus: (ev) => {
+            pushOrUpdateToolMessage({
+              itemId: ev.itemId,
+              status: ev.status === 'submitted' ? 'success' : 'error',
+              summary: ev.status === 'submitted' ? '用户输入已提交' : '用户输入已取消'
+            })
+          },
+          onGoal: () => undefined,
+          onTodos: () => undefined,
+          onTurnComplete: () => settle(),
+          onError: (err) => settle(err)
+        }
+        void knowledgeRuntimeProvider.subscribeThreadEvents(threadId, 0, sink, abort.signal).then(
+          () => settle(),
+          (error: unknown) => settle(error instanceof Error ? error : new Error(String(error)))
+        )
+      })
+
       // Step 6: Poll for completion (poll the specific turn, not the whole thread)
+      // after SSE closes so final persisted text can fill any missed early deltas.
       const assistantMsg = await pollTurnCompletion(threadId, turnId)
+      const finalReasoning = streamedReasoning.trim()
+      if (finalReasoning) {
+        setMessages((prev) => [...prev, {
+          id: `reasoning_${Date.now()}`,
+          role: 'reasoning',
+          content: streamedReasoning,
+          timestamp: Date.now()
+        }])
+      }
 
       setMessages((prev) => [...prev, {
         id: `ai_${Date.now()}`,
         role: 'assistant',
-        content: assistantMsg,
+        content: assistantMsg || streamedAssistant || '（AI 未返回任何内容）',
         timestamp: Date.now()
       }])
+      setLiveReasoning('')
+      setLiveAssistant('')
     } catch (err) {
-      setChatError(err instanceof Error ? err.message : 'AI 响应失败')
+      if (chatAbortRef.current === abort) {
+        setChatError(err instanceof Error ? err.message : 'AI 响应失败')
+      }
     } finally {
+      if (chatAbortRef.current === abort) chatAbortRef.current = null
       setSending(false)
     }
-  }, [fileContent, node, sending, composerModel, pollTurnCompletion])
+  }, [effectiveModel, fileContent, node, pollTurnCompletion, pushOrUpdateToolMessage, sending])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -527,8 +628,13 @@ ${question.trim()}
   }, [input, sendMessage])
 
   const clearChat = useCallback((): void => {
+    chatAbortRef.current?.abort()
+    chatAbortRef.current = null
     setMessages([])
     setChatError(null)
+    setLiveReasoning('')
+    setLiveAssistant('')
+    setSending(false)
   }, [])
 
   // ── Render ──
@@ -594,8 +700,12 @@ ${question.trim()}
             </div>
           ) : (
             <div className="min-h-0 flex-1 overflow-auto">
-              {fileContent.type === 'pdf' && fileContent.content ? (
-                <PdfPreview base64Content={fileContent.content} fileName={node.name} />
+              {fileContent.type === 'pdf' ? (
+                <PdfPreview
+                  objectUrl={fileContent.objectUrl}
+                  extractedText={fileContent.extractedText}
+                  fileName={node.name}
+                />
               ) : fileContent.type === 'image' && fileContent.objectUrl ? (
                 <div className="flex h-full items-center justify-center p-4">
                   <img
@@ -646,24 +756,35 @@ ${question.trim()}
 
         {/* AI Chat Panel */}
         <aside className="flex h-full w-[340px] min-w-[300px] flex-col border-l border-ds-border bg-ds-card">
-          <div className="flex h-12 shrink-0 items-center justify-between border-b border-ds-border px-4">
-            <div className="flex items-center gap-2">
+          <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-ds-border px-4 py-2">
+            <div className="flex min-w-0 items-center gap-2">
               <ModelBrandIcon brand={modelBrand} className="h-5 w-5" />
               <span className="text-[13px] font-medium text-[var(--ds-ink)]">AI 对话</span>
             </div>
-            {messages.length > 0 ? (
-              <button
-                type="button"
-                onClick={clearChat}
-                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)]"
-                title="清空对话"
-              >
-                <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
-              </button>
-            ) : null}
+            <div className="flex min-w-0 shrink-0 items-center gap-1.5">
+              <FloatingComposerModelPicker
+                compact
+                mode="combobox"
+                composerModel={effectiveModel}
+                composerPickList={composerPickList}
+                composerModelGroups={composerModelGroups}
+                canChangeModel={!sending}
+                onComposerModelChange={setComposerModel}
+              />
+              {messages.length > 0 || liveAssistant || liveReasoning ? (
+                <button
+                  type="button"
+                  onClick={clearChat}
+                  className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)]"
+                  title="清空对话"
+                >
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
+                </button>
+              ) : null}
+            </div>
           </div>
 
-          {messages.length === 0 && !sending ? (
+          {messages.length === 0 && !sending && !liveAssistant && !liveReasoning ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
               <AnimatedWorkLogo active brand={modelBrand} phase="lead" size="md" />
               <div className="text-[13px] font-medium text-[var(--ds-ink)]">关于此文件提问</div>
@@ -678,19 +799,42 @@ ${question.trim()}
                   key={msg.id}
                   className={`mb-4 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  {msg.role === 'assistant' ? (
+                  {msg.role !== 'user' ? (
                     <div className="mr-2 mt-1 shrink-0">
-                      <ModelBrandIcon brand={modelBrand} className="h-5 w-5" />
+                      {msg.role === 'tool' ? (
+                        <Wrench className="h-5 w-5 text-[var(--ds-muted)]" strokeWidth={1.7} />
+                      ) : (
+                        <ModelBrandIcon brand={modelBrand} className="h-5 w-5" />
+                      )}
                     </div>
                   ) : null}
                   <div
                     className={`max-w-[85%] rounded-[12px] px-4 py-2.5 text-[13px] leading-relaxed ${
                       msg.role === 'user'
                         ? 'bg-[var(--ds-accent)] text-white'
+                        : msg.role === 'reasoning'
+                          ? 'border border-ds-border bg-ds-card/70 text-[var(--ds-muted)]'
+                          : msg.role === 'tool'
+                            ? 'border border-ds-border bg-ds-card/70 text-[var(--ds-muted)]'
                         : 'border border-ds-border bg-[var(--ds-main)] text-[var(--ds-ink)]'
                     }`}
                   >
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                    {msg.role === 'assistant' || msg.role === 'reasoning' ? (
+                      <AssistantMarkdown
+                        text={msg.content}
+                        streaming={false}
+                        className="ds-markdown ds-chat-answer break-words"
+                      />
+                    ) : msg.role === 'tool' ? (
+                      <div className="flex items-center gap-2">
+                        {msg.status === 'running' ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" strokeWidth={1.8} />
+                        ) : null}
+                        <span className="min-w-0 flex-1 break-words">{msg.content}</span>
+                      </div>
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                    )}
                     <div
                       className={`mt-1 text-[10px] ${
                         msg.role === 'user' ? 'text-white/60' : 'text-[var(--ds-muted)]'
@@ -704,6 +848,36 @@ ${question.trim()}
                   </div>
                 </div>
               ))}
+
+              {liveReasoning ? (
+                <div className="mb-4 flex justify-start">
+                  <div className="mr-2 mt-1 shrink-0">
+                    <AnimatedWorkLogo active brand={modelBrand} phase="trail" size="sm" />
+                  </div>
+                  <div className="max-w-[85%] rounded-[12px] border border-ds-border bg-ds-card/70 px-4 py-2.5 text-[13px] leading-relaxed text-[var(--ds-muted)]">
+                    <AssistantMarkdown
+                      text={liveReasoning}
+                      streaming
+                      className="ds-markdown ds-chat-answer break-words"
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {liveAssistant ? (
+                <div className="mb-4 flex justify-start">
+                  <div className="mr-2 mt-1 shrink-0">
+                    <ModelBrandIcon brand={modelBrand} className="h-5 w-5" />
+                  </div>
+                  <div className="max-w-[85%] rounded-[12px] border border-ds-border bg-[var(--ds-main)] px-4 py-2.5 text-[13px] leading-relaxed text-[var(--ds-ink)]">
+                    <AssistantMarkdown
+                      text={liveAssistant}
+                      streaming
+                      className="ds-markdown ds-chat-answer break-words"
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               {sending ? (
                 <div className="mb-4 flex justify-start">
@@ -745,7 +919,7 @@ ${question.trim()}
                 disabled={sending || !input.trim()}
                 className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[var(--ds-accent)] text-white transition hover:opacity-90 disabled:opacity-50"
               >
-                <Send className="h-4 w-4" strokeWidth={1.8} />
+                <SendIcon className="h-4 w-4" />
               </button>
             </div>
           </div>

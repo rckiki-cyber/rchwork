@@ -209,6 +209,12 @@ function prepareToQuitForGuiUpdate(): void {
   managedRuntimesStoppedForQuit = true
 }
 
+function abortQuitForGuiUpdate(): void {
+  isQuitting = false
+  isQuittingForGuiUpdate = false
+  managedRuntimesStoppedForQuit = false
+}
+
 async function loadGuiUpdaterModule(): Promise<GuiUpdaterModule> {
   if (!guiUpdaterModulePromise) {
     guiUpdaterModulePromise = import('./gui-updater')
@@ -218,7 +224,8 @@ async function loadGuiUpdaterModule(): Promise<GuiUpdaterModule> {
             () => mainWindow,
             async () => (await store.load()).guiUpdate.channel,
             stopManagedRuntimesForQuit,
-            prepareToQuitForGuiUpdate
+            prepareToQuitForGuiUpdate,
+            abortQuitForGuiUpdate
           )
           guiUpdaterInitialized = true
         }

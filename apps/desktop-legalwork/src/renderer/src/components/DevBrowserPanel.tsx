@@ -10,10 +10,10 @@ import {
   PanelRightClose,
   Plus,
   RefreshCw,
-  Send,
   Sparkles,
   X
 } from 'lucide-react'
+import { SendIcon } from './icons/SendIcon'
 import type { ChatBlock } from '../agent/types'
 import {
   DEFAULT_DEV_PREVIEW_URL,
@@ -488,7 +488,7 @@ export function DevBrowserPanel({
               aria-label={t('browserOpen')}
               title={t('browserOpen')}
             >
-              <Send className="h-3.5 w-3.5" strokeWidth={1.8} />
+              <SendIcon className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"

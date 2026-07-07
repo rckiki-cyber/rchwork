@@ -238,6 +238,31 @@ describe('FloatingComposer model controls', () => {
     expect(html).toContain('ds-model-brand-kimi-code')
     expect(html).not.toContain('ds-model-brand-deepseek')
   })
+
+  it.each([
+    ['mimo', 'mimo-v2.5-pro', 'ds-model-brand-mimo'],
+    ['longcat', 'LongCat-2.0', 'ds-model-brand-longcat']
+  ] as const)('renders the %s model brand in the picker', (providerId, modelId, brandClass) => {
+    const html = renderToStaticMarkup(
+      createElement(FloatingComposerModelPicker, {
+        compact: false,
+        mode: 'select',
+        composerModel: modelId,
+        composerPickList: ['auto', modelId],
+        composerModelGroups: [
+          { providerId, label: providerId, modelIds: [modelId] }
+        ],
+        composerReasoningEffort: 'medium',
+        canChangeModel: true,
+        onComposerModelChange: () => undefined,
+        onComposerReasoningEffortChange: () => undefined
+      })
+    )
+
+    expect(html).toContain(modelId)
+    expect(html).toContain(brandClass)
+    expect(html).not.toContain('ds-model-brand-custom')
+  })
 })
 
 describe('FloatingComposer image transfer helpers', () => {

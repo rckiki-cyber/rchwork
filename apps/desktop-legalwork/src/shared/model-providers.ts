@@ -8,6 +8,8 @@ export type ModelProviderBrand =
   | 'minimax'
   | 'qwen'
   | 'doubao'
+  | 'mimo'
+  | 'longcat'
   | 'custom'
 
 export type BuiltinModelProviderPreset = {
@@ -86,6 +88,24 @@ export const BUILTIN_MODEL_PROVIDER_PRESETS: BuiltinModelProviderPreset[] = [
     endpointFormat: 'chat_completions'
   },
   {
+    id: 'mimo',
+    name: 'Xiaomi MiMo',
+    region: 'cn',
+    baseUrl: 'https://api.xiaomimimo.com/v1',
+    models: ['mimo-v2.5-pro', 'mimo-v2.5'],
+    apiKeyPlaceholder: 'mimo-...',
+    endpointFormat: 'chat_completions'
+  },
+  {
+    id: 'longcat',
+    name: 'LongCat',
+    region: 'cn',
+    baseUrl: 'https://api.longcat.chat/openai/v1',
+    models: ['LongCat-2.0'],
+    apiKeyPlaceholder: 'sk-...',
+    endpointFormat: 'chat_completions'
+  },
+  {
     id: 'openai',
     name: 'GPT / OpenAI',
     region: 'global',
@@ -127,6 +147,8 @@ export function inferModelProviderBrand(providerId: string | undefined, modelId:
   if (model.includes('minimax') || model.includes('abab')) return 'minimax'
   if (model.includes('qwen') || model.includes('qwq')) return 'qwen'
   if (model.includes('doubao') || model.includes('volc')) return 'doubao'
+  if (model.includes('mimo') || model.includes('xiaomi')) return 'mimo'
+  if (model.includes('longcat') || model.includes('meituan')) return 'longcat'
   return 'custom'
 }
 

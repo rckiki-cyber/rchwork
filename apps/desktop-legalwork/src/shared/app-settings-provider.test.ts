@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BUILTIN_MODEL_PROVIDER_PRESETS,
   computeLegalworkRuntimeCredentialPatch,
   defaultClawSettings,
   defaultLegalworkRuntimeSettings,
@@ -75,6 +76,31 @@ describe('model provider settings', () => {
     expect(runtime.apiKey).toBe('sk-kimi')
     expect(runtime.baseUrl).toBe('https://api.kimi.com/coding/v1')
     expect(runtime.endpointFormat).toBe('messages')
+  })
+
+  it.each([
+    ['mimo', 'mimo-v2.5-pro', 'https://api.xiaomimimo.com/v1'],
+    ['longcat', 'LongCat-2.0', 'https://api.longcat.chat/openai/v1']
+  ] as const)('resolves the built-in %s provider profile', (providerId, model, baseUrl) => {
+    const base = settings()
+    base.provider.providers = base.provider.providers.map((provider) =>
+      provider.id === providerId
+        ? { ...provider, apiKey: `sk-${providerId}` }
+        : provider
+    )
+    base.agents.legalwork = {
+      ...base.agents.legalwork,
+      providerId,
+      model
+    }
+
+    const runtime = resolveLegalworkRuntimeSettings(base)
+    const preset = BUILTIN_MODEL_PROVIDER_PRESETS.find((item) => item.id === providerId)
+
+    expect(preset?.models).toContain(model)
+    expect(runtime.apiKey).toBe(`sk-${providerId}`)
+    expect(runtime.baseUrl).toBe(baseUrl)
+    expect(runtime.endpointFormat).toBe('chat_completions')
   })
 
   it('resolves endpoint format from a custom provider profile', () => {
