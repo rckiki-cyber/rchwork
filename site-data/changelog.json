@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-07T15:03:52.783Z",
+  "generated_at": "2026-07-08T13:42:10.196Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
@@ -8,18 +8,24 @@
       "published_at": "2026-07-07T15:03:34Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.2.6",
       "prerelease": false,
-      "summary": "本次更新包括：修复优化。",
+      "summary": "本次更新包括：法规知识库、对话体验、修复优化。",
       "highlights": [
-        "LegalWork 0.2.6 已上线，安装后即可使用这一版的新能力与体验优化。"
+        "使用体验更新：从 v0.2.3 到 v0.2.6 的更新内容：",
+        "使用体验更新：v0.2.6",
+        "使用体验更新：发送图标视觉升级：统一替换为新的实心纸飞机 SendIcon，覆盖主输入框、知识库问答、文件预览问答、开发者浏览器等发送按钮。",
+        "修复了使用中的稳定性问题：知识库 PDF 预览修复：移除 pdfjs-dist canvas 渲染链路，改用 iframe 加载 Blob URL，解决 Electron 中 PDF 页面空白的问题。",
+        "知识库 AI 智能分类增强：新增基于文件名规则 + 文本内容正则 + 模型智能判断的文件自动分类。"
       ],
       "categories": [
+        "法规知识库",
+        "对话体验",
         "修复优化"
       ],
       "assets": [
         {
           "name": "legalwork-0.2.6-mac-arm64.dmg",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.2.6/legalwork-0.2.6-mac-arm64.dmg",
-          "download_count": 0,
+          "download_count": 3,
           "size": 189405437
         },
         {
@@ -31,7 +37,7 @@
         {
           "name": "legalwork-0.2.6-win-x64.exe",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.2.6/legalwork-0.2.6-win-x64.exe",
-          "download_count": 0,
+          "download_count": 11,
           "size": 155756787
         },
         {
@@ -89,7 +95,7 @@
         {
           "name": "legalwork-0.2.5-win-x64.exe",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.2.5/legalwork-0.2.5-win-x64.exe",
-          "download_count": 15,
+          "download_count": 16,
           "size": 155744811
         },
         {
