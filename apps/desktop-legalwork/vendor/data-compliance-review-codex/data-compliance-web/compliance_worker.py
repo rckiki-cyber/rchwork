@@ -29,6 +29,7 @@ import json
 import os
 import sys
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 
@@ -39,6 +40,8 @@ if str(WEB_DIR) not in sys.path:
     sys.path.insert(0, str(WEB_DIR))
 
 import worker_core as core
+from scripts.preprocess_input import normalize as normalize_extracted_text
+from scripts.preprocess_input import read_text as read_input_text
 
 
 def log(message: str) -> None:
@@ -63,6 +66,65 @@ def write_worker_error(output_dir: Path, message: str, detail: str) -> None:
         )
     except Exception:
         pass
+
+
+def load_batch_files(payload: dict, input_path: Path) -> list[dict]:
+    files = payload.get('input_files')
+    if isinstance(files, list) and files:
+        return [item for item in files if isinstance(item, dict)]
+    manifest_path = Path(payload.get('input_manifest_path') or input_path)
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+            manifest_files = manifest.get('files')
+            if isinstance(manifest_files, list):
+                return [item for item in manifest_files if isinstance(item, dict)]
+        except Exception:
+            return []
+    return []
+
+
+def build_batch_review_input(payload: dict, input_path: Path, output_dir: Path) -> Path:
+    batch_files = load_batch_files(payload, input_path)
+    if not batch_files:
+        raise RuntimeError('批量任务缺少可处理的文件清单')
+
+    combined_parts: list[str] = []
+    failures: list[dict] = []
+    for index, item in enumerate(batch_files, start=1):
+        file_path = Path(str(item.get('path') or ''))
+        display_name = str(item.get('name') or file_path.name or f'文件 {index}')
+        try:
+            raw = read_input_text(str(file_path), '')
+            text = normalize_extracted_text(raw)
+            if not text:
+                raise RuntimeError('未提取到可审查文本')
+            combined_parts.append(
+                f'\n\n===== 批量材料 {index}: {display_name} =====\n'
+                f'来源路径: {file_path}\n\n{text}'
+            )
+        except Exception as exc:
+            failures.append({
+                'name': display_name,
+                'path': str(file_path),
+                'error': str(exc)
+            })
+
+    if not combined_parts:
+        detail = '; '.join(f"{item['name']}: {item['error']}" for item in failures)
+        raise RuntimeError(f'批量 OCR/文本提取全部失败：{detail}')
+
+    if failures:
+        failure_path = output_dir / 'batch_extract_failures.json'
+        failure_path.write_text(json.dumps(failures, ensure_ascii=False, indent=2), encoding='utf-8')
+        combined_parts.append(
+            '\n\n===== 批量材料提取失败清单 =====\n'
+            + '\n'.join(f"- {item['name']}: {item['error']}" for item in failures)
+        )
+
+    combined_path = output_dir / 'batch_review_input.txt'
+    combined_path.write_text('\n'.join(combined_parts).strip(), encoding='utf-8')
+    return combined_path
 
 
 def main() -> int:
@@ -106,6 +168,8 @@ def main() -> int:
 
     document_name = payload.get('document_name') or '未命名任务'
     input_path_str = payload.get('input_path') or ''
+    input_manifest_path = payload.get('input_manifest_path') or ''
+    input_files = payload.get('input_files') if isinstance(payload.get('input_files'), list) else []
     input_type = payload.get('input_type') or 'file'
     review_type = payload.get('review_type') or 'document'
     output_dir_raw = payload.get('output_dir') or ''
@@ -122,26 +186,60 @@ def main() -> int:
         local_regulation_db=WEB_DIR.parent / 'projects' / 'data-compliance-ai-project-kit' / 'knowledge-base' / 'local-regulations.sqlite3',
     )
     core.ensure_directories()
+    core.ensure_task_loaded(task_id)
+
+    core.ensure_task_loaded(task_id)
+    existing_task = core.tasks.get(task_id, {})
+    core.tasks[task_id] = {
+        **existing_task,
+        'id': task_id,
+        'document_name': document_name,
+        'product_type': 'desensitize' if args.command == 'desensitize' else 'review',
+        'review_type': review_type if args.command == 'review' else None,
+        'input_type': input_type,
+        'input_path': input_path_str,
+        'input_manifest_path': input_manifest_path or existing_task.get('input_manifest_path'),
+        'input_files': input_files or existing_task.get('input_files'),
+        'output_dir': output_dir_raw or existing_task.get('output_dir'),
+        'output_format': output_format or existing_task.get('output_format'),
+        'status': 'running',
+        'created_at': existing_task.get('created_at') or datetime.now().isoformat(),
+    }
+    core.save_task_state(task_id)
 
     input_path = Path(input_path_str)
     is_text = input_type == 'text'
+    is_batch = input_type == 'batch'
 
     try:
         if args.command == 'review':
+            if is_batch:
+                input_path = build_batch_review_input(payload, input_path, output_dir)
+                is_text = True
             if review_type == 'code':
                 core.run_code_review_pipeline(task_id, input_path, document_name, is_text)
             else:
                 core.run_review_pipeline(task_id, input_path, document_name, is_text)
         elif args.command == 'desensitize':
             validated_output_dir = core.validate_output_dir(output_dir_raw)
-            core.run_desensitize_pipeline(
-                task_id,
-                input_path,
-                document_name,
-                is_text,
-                validated_output_dir,
-                output_format=output_format,
-            )
+            if is_batch:
+                core.run_desensitize_pipeline(
+                    task_id,
+                    input_path,
+                    document_name,
+                    False,
+                    validated_output_dir,
+                    output_format=output_format,
+                )
+            else:
+                core.run_desensitize_pipeline(
+                    task_id,
+                    input_path,
+                    document_name,
+                    is_text,
+                    validated_output_dir,
+                    output_format=output_format,
+                )
         log(f'compliance_worker completed: task={task_id} command={args.command}')
         return 0
     except Exception as e:

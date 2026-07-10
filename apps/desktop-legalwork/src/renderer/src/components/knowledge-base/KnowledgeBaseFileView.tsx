@@ -253,7 +253,6 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
             // If even binary read fails, just set empty content
             if (!cancelled) setFileContent({ content: '', encoding: 'utf8', type: 'unsupported' })
           }
-          if (!cancelled) setFileLoading(false)
           return
         }
         if (type === 'pdf') {
@@ -279,7 +278,6 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
             type,
             extractedText: extracted?.text ?? ''
           })
-          if (!cancelled) setFileLoading(false)
           return
         }
         if (type === 'document') {
@@ -293,7 +291,6 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
           } catch {
             if (!cancelled) setFileContent({ content: '', encoding: 'utf8', type: 'document' })
           }
-          if (!cancelled) setFileLoading(false)
           return
         }
         const isBinary = type === 'image' || type === 'audio'
@@ -326,10 +323,11 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, liveAssistant, liveReasoning])
 
-  // Cleanup object URL on unmount
+  // Cleanup object URL on unmount or when the URL changes
   useEffect(() => {
+    const objectUrl = fileContent?.objectUrl
     return () => {
-      if (fileContent?.objectUrl) URL.revokeObjectURL(fileContent.objectUrl)
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [fileContent])
 
@@ -347,19 +345,11 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
   }, [node.path])
 
   // ── AI Chat: RAG-based Q&A ──
-  const {
-    composerModel,
-    composerPickList,
-    composerModelGroups,
-    setComposerModel,
-    loadComposerModels
-  } = useChatStore((s) => ({
-    composerModel: s.composerModel,
-    composerPickList: s.composerPickList,
-    composerModelGroups: s.composerModelGroups,
-    setComposerModel: s.setComposerModel,
-    loadComposerModels: s.loadComposerModels
-  }))
+  const composerModel = useChatStore((s) => s.composerModel)
+  const composerPickList = useChatStore((s) => s.composerPickList)
+  const composerModelGroups = useChatStore((s) => s.composerModelGroups)
+  const setComposerModel = useChatStore((s) => s.setComposerModel)
+  const loadComposerModels = useChatStore((s) => s.loadComposerModels)
   const activeModel = composerModel.trim() || 'auto'
   const effectiveModel =
     activeModel && activeModel !== 'auto'
@@ -502,7 +492,7 @@ ${question.trim()}
 
 请基于检索到的内容给出准确、专业的回答。如果内容不足以回答问题，请明确说明。引用来源时请标注对应的 [来源编号]，不要编造未出现在上下文中的依据。`
 
-      // Step 4: Create a thread with the current workspace
+      // Step 4: Create a side thread with the current workspace so it does not sync to the main chat sidebar.
       const workspace = await getWorkspaceRoot()
       const threadResult = await requestJson<{ id: string }>(
         '/v1/threads',
@@ -511,7 +501,8 @@ ${question.trim()}
           workspace,
           title: `知识库：${node.name}`,
           model: effectiveModel,
-          mode: 'agent'
+          mode: 'agent',
+          relation: 'side'
         }
       )
       const threadId = threadResult.id

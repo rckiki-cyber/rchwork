@@ -7,7 +7,7 @@ description:
   触发场景：用户要求搜索信息、查看网页内容、访问需要登录的网站、操作网页界面、抓取社交媒体内容（小红书、微博、推特等）、读取动态渲染页面、以及任何需要真实浏览器环境的网络任务。
 metadata:
   author: 一泽Eze
-  version: "2.5.0"
+  version: "2.5.1-local"
 ---
 
 # web-access Skill
@@ -60,11 +60,12 @@ node "${CLAUDE_SKILL_DIR}/scripts/check-deps.mjs"
 
 **Jina**（可选预处理层，可与 WebFetch/curl 组合使用，由于其特性可节省 tokens 消耗，请积极在任务合适时组合使用）：第三方网络服务，可将网页转为 Markdown，大幅节省 token 但可能有信息损耗。调用方式为 `r.jina.ai/example.com`（URL 前加前缀，不保留原网址 http 前缀），限 20 RPM。适合文章、博客、文档、PDF 等以正文为核心的页面；对数据面板、商品页等非文章结构页面可能提取到错误区块。
 
-进入浏览器层后，`/eval` 就是你的眼睛和手：
+进入浏览器层后，DOM 与截图识别共同构成你的眼睛和手：
 
-- **看**：用 `/eval` 查询 DOM，发现页面上的链接、按钮、表单、文本内容——相当于「看看这个页面有什么」
-- **做**：用 `/click` 点击元素、`/scroll` 滚动加载、`/eval` 填表提交——像人一样在页面内自然导航
-- **读**：用 `/eval` 提取文字内容，判断图片/视频是否承载核心信息——是则提取媒体 URL 定向读取或 `/screenshot` 视觉识别
+- **看 DOM**：用 `/eval` 或 `/snapshot` 查询页面结构、链接、按钮、表单和文本内容。
+- **看画面**：DOM 不足、纯图标、canvas、图表、验证码提示、弹窗遮挡、视觉布局校验时，用 `/visionMap` 生成带编号热区的截图，并结合图片识别判断页面状态。
+- **做**：优先用 `/click` 或 `/clickAt` 点击明确 selector；只有 selector 不可靠或目标只在视觉上可定位时，才用 `/clickPoint` 按截图坐标点击。
+- **读**：优先用 `/eval` 提取文字和媒体 URL；内容承载在图片/视频中时，用 `/screenshot` 或 `/visionMap` 采帧后视觉识别。
 
 浏览网页时，**先了解页面结构，再决定下一步动作**。不需要提前规划所有步骤。
 
@@ -86,6 +87,17 @@ node "${CLAUDE_SKILL_DIR}/scripts/find-url.mjs" [关键词...] [--only bookmarks
 - **GUI 交互**（点击按钮、填写输入框、滚动浏览）：GUI 是为人设计的，网站不会限制正常的 UI 操作，确定性最高，但步骤多、速度慢。
 
 根据对目标平台的了解来灵活选择方式。GUI 交互也是程序化方式的有效探测——通过一次真实交互观察站点的实际行为（URL 模式、必需参数、页面跳转逻辑），为后续程序化操作提供依据；同时当程序化方式受阻时，GUI 交互是可靠的兜底。
+
+### 截图识别与视觉操控
+
+当页面无法只靠 DOM 可靠理解时，进入视觉循环：
+
+1. 用 `/visionMap` 保存带编号热区的截图，并读取返回的元素清单。
+2. 结合截图识别页面状态：弹窗、遮罩、按钮图标、canvas 区域、图表、验证码/登录提示、响应式布局是否正常。
+3. 若编号热区能定位目标，优先使用对应元素的 `selector` 调 `/clickAt`；若只有视觉坐标可靠，再用 `/clickPoint` 点击截图坐标。
+4. 操作后重新 `/snapshot` 或 `/visionMap`，确认页面变化符合任务目标。
+
+不要把视觉地图当作唯一信息源。可见截图用于判断“屏幕上发生了什么”，DOM 与网络数据用于提取“页面里真实有什么”。两者冲突时，先判断是否存在遮罩、滚动区域、iframe、Shadow DOM、懒加载或反爬提示。
 
 **站点内交互产生的链接是可靠的**：通过用户视角中的可交互单元（卡片、条目、按钮）进行的站点内交互，自然到达的 URL 天然携带平台所需的完整上下文。而手动构造的 URL 可能缺失隐式必要参数，导致被拦截、返回错误页面、甚至触发反爬。
 
@@ -116,11 +128,17 @@ curl -s "http://localhost:3456/new?url=https://example.com"
 # 页面信息
 curl -s "http://localhost:3456/info?target=ID"
 
+# 可见交互元素快照（含 selector、文字、坐标）
+curl -s "http://localhost:3456/snapshot?target=ID"
+
 # 执行任意 JS：可读写 DOM、提取数据、操控元素、触发状态变更、提交表单、调用内部方法
 curl -s -X POST "http://localhost:3456/eval?target=ID" -d 'document.title'
 
 # 捕获页面渲染状态（含视频当前帧）
 curl -s "http://localhost:3456/screenshot?target=ID&file=/tmp/shot.png"
+
+# 视觉地图：截图上叠加交互元素编号，并返回编号对应的 selector/坐标清单
+curl -s "http://localhost:3456/visionMap?target=ID&file=/tmp/vision.png"
 
 # 导航、后退
 curl -s "http://localhost:3456/navigate?target=ID&url=URL"
@@ -131,6 +149,12 @@ curl -s -X POST "http://localhost:3456/click?target=ID" -d 'button.submit'
 
 # 真实鼠标点击 — CDP Input.dispatchMouseEvent，算用户手势，能触发文件对话框
 curl -s -X POST "http://localhost:3456/clickAt?target=ID" -d 'button.upload'
+
+# 坐标点击 — 与 /visionMap 的编号热区或视觉识别结果配合使用
+curl -s -X POST "http://localhost:3456/clickPoint?target=ID" -d '{"x":420,"y":260}'
+
+# 输入文本 — 可直接向当前焦点输入，也可先用 selector 聚焦
+curl -s -X POST "http://localhost:3456/type?target=ID" -d '{"selector":"input[name=q]","text":"关键词"}'
 
 # 文件上传 — 直接设置 file input 的本地文件路径，绕过文件对话框
 curl -s -X POST "http://localhost:3456/setFiles?target=ID" -d '{"selector":"input[type=file]","files":["/path/to/file.png"]}'

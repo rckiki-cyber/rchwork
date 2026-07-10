@@ -20,6 +20,8 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
   const stickToBottomRef = useRef(true)
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const [clockNow, setClockNow] = useState(Date.now())
+  const [exportInFlight, setExportInFlight] = useState(false)
+  const [exportNotice, setExportNotice] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const {
     activeRecord,
     isResearching,
@@ -74,8 +76,15 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     [handleStart]
   )
 
-  const handleExportWord = useCallback(() => {
+  const handleExportWord = useCallback(async () => {
     if (!activeRecord?.summary) return
+    if (typeof window.dsGui?.exportLegalResearchToWord !== 'function') {
+      setExportNotice({ tone: 'error', text: '当前环境不支持导出 Word。' })
+      return
+    }
+    if (exportInFlight) return
+    setExportInFlight(true)
+    setExportNotice(null)
 
     const { query, summary, reasoning, steps, timestamp } = activeRecord
 
@@ -165,12 +174,22 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
 </html>`
 
     const defaultName = `法律调研_${query.slice(0, 30)}`.replace(/[<>:"/\\|?*]/g, '_')
-    window.dsGui?.exportLegalResearchToWord?.({ html, defaultName }).then((result) => {
-      if (!result.ok && !result.canceled) {
-        console.error('导出 Word 失败:', (result as { message?: string }).message)
+    try {
+      const result = await window.dsGui.exportLegalResearchToWord({ html, defaultName })
+      if (result.ok) {
+        setExportNotice({ tone: 'success', text: `已导出：${result.path}` })
+      } else if (!result.canceled) {
+        setExportNotice({ tone: 'error', text: result.message || '导出 Word 失败。' })
       }
-    }).catch(console.error)
-  }, [activeRecord, t])
+    } catch (error) {
+      setExportNotice({
+        tone: 'error',
+        text: error instanceof Error ? `导出 Word 失败：${error.message}` : '导出 Word 失败。'
+      })
+    } finally {
+      setExportInFlight(false)
+    }
+  }, [activeRecord, exportInFlight, t])
 
   const renderBlock = (block: ChatBlock): ReactElement | null => {
     if (block.kind === 'user') {
@@ -308,14 +327,23 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
 
         {/* Export button row */}
         {activeRecord?.summary && (
-          <div className="flex items-center justify-end border-b border-[var(--ds-border)] px-6 py-2">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--ds-border)] px-6 py-2">
+            <div
+              className={`min-w-0 truncate text-[11px] ${
+                exportNotice?.tone === 'error' ? 'text-red-500' : 'text-[var(--ds-faint)]'
+              }`}
+              title={exportNotice?.text}
+            >
+              {exportNotice?.text ?? ''}
+            </div>
             <button
               type="button"
               onClick={handleExportWord}
-              className="flex items-center gap-1.5 rounded-[6px] border border-[var(--ds-border)] bg-[var(--ds-sidebar-field-bg)] px-3 py-1.5 text-[11px] font-medium text-[var(--ds-ink)] transition-colors hover:bg-[var(--ds-sidebar-row-hover)]"
+              disabled={exportInFlight}
+              className="flex shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--ds-border)] bg-[var(--ds-sidebar-field-bg)] px-3 py-1.5 text-[11px] font-medium text-[var(--ds-ink)] transition-colors hover:bg-[var(--ds-sidebar-row-hover)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <FileDown className="h-3.5 w-3.5" strokeWidth={1.75} />
-              {t('legalResearchExportWord')}
+              {exportInFlight ? '导出中...' : t('legalResearchExportWord')}
             </button>
           </div>
         )}

@@ -3,7 +3,7 @@ import { watch, type FSWatcher } from 'node:fs'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { dirname, join } from 'node:path'
+import { dirname, extname, join } from 'node:path'
 import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { z } from 'zod'
 import {
@@ -1289,6 +1289,9 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       if (result.canceled || !result.filePath) {
         return { ok: false, canceled: true }
       }
+      const targetPath = extname(result.filePath).toLowerCase() === '.docx'
+        ? result.filePath
+        : `${result.filePath}.docx`
       const { createRequire } = await import('node:module')
       const require = createRequire(import.meta.url)
       const htmlToDocx = require('html-to-docx') as (
@@ -1307,8 +1310,8 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       const buffer = Buffer.from(
         docx instanceof ArrayBuffer ? new Uint8Array(docx) : Buffer.from(await docx.arrayBuffer())
       )
-      await writeFile(result.filePath, buffer)
-      return { ok: true, path: result.filePath }
+      await writeFile(targetPath, buffer)
+      return { ok: true, path: targetPath }
     } catch (error) {
       return {
         ok: false,

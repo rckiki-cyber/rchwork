@@ -146,7 +146,8 @@ export const CreateThreadRequest = z.object({
   mode: ThreadMode.default('agent'),
   approvalPolicy: ApprovalPolicySchema.optional(),
   sandboxMode: SandboxModeSchema.optional(),
-  costBudgetUsd: z.number().positive().optional()
+  costBudgetUsd: z.number().positive().optional(),
+  relation: ThreadRelation.optional()
 })
 export type CreateThreadRequest = z.infer<typeof CreateThreadRequest>
 

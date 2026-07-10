@@ -51,6 +51,12 @@ curl -s "http://localhost:3456/back?target=ID"
 curl -s "http://localhost:3456/info?target=ID"
 ```
 
+### GET /snapshot?target=ID
+返回当前视口内可见交互元素清单，含编号、selector、文字、角色、坐标和中心点。适合先理解页面结构，再选择点击/输入目标。
+```bash
+curl -s "http://localhost:3456/snapshot?target=ID"
+```
+
 ### POST /eval?target=ID
 执行 JavaScript 表达式，POST body 为 JS 代码。
 ```bash
@@ -67,6 +73,19 @@ curl -s -X POST "http://localhost:3456/click?target=ID" -d 'button.submit'
 CDP 浏览器级真实鼠标点击（`Input.dispatchMouseEvent`），POST body 为 CSS 选择器。先获取元素坐标，再模拟鼠标按下/释放。算真实用户手势，能触发文件对话框、绕过部分反自动化检测。
 ```bash
 curl -s -X POST "http://localhost:3456/clickAt?target=ID" -d 'button.upload'
+```
+
+### POST /clickPoint?target=ID
+CDP 浏览器级坐标点击。POST body 为 JSON `{ "x": 100, "y": 200 }`，坐标为当前视口 CSS 像素。用于 `/visionMap` 识别到目标但 selector 不可靠的场景。
+```bash
+curl -s -X POST "http://localhost:3456/clickPoint?target=ID" -d '{"x":420,"y":260}'
+```
+
+### POST /type?target=ID
+向当前焦点输入文本；也可传 JSON `{ "selector": "...", "text": "..." }` 先聚焦再输入。
+```bash
+curl -s -X POST "http://localhost:3456/type?target=ID" -d '{"selector":"input[name=q]","text":"关键词"}'
+curl -s -X POST "http://localhost:3456/type?target=ID" -d '直接输入到当前焦点'
 ```
 
 ### POST /setFiles?target=ID
@@ -86,6 +105,12 @@ curl -s "http://localhost:3456/scroll?target=ID&direction=bottom"
 截图。指定 `file` 参数保存到本地文件；不指定则返回图片二进制。可选 `format=jpeg`。
 ```bash
 curl -s "http://localhost:3456/screenshot?target=ID&file=/tmp/shot.png"
+```
+
+### GET /visionMap?target=ID&file=/tmp/vision.png
+生成带编号热区的截图，并返回编号对应的 selector、文字和坐标清单。用于自动截图识别、视觉校验、纯图标按钮、canvas/图表和 DOM 不可靠页面。
+```bash
+curl -s "http://localhost:3456/visionMap?target=ID&file=/tmp/vision.png"
 ```
 
 ## /eval 使用提示

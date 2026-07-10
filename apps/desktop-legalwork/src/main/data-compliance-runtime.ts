@@ -42,6 +42,12 @@ export type DataComplianceSubmitPayload = {
     dataBase64?: string
     filePath?: string
   }
+  files?: Array<{
+    name: string
+    type?: string
+    dataBase64?: string
+    filePath?: string
+  }>
 }
 
 const PORT = 5100

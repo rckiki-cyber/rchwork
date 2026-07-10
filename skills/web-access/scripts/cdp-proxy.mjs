@@ -317,6 +317,131 @@ async function readBody(req) {
   return body;
 }
 
+function parseJsonBody(raw, fallback = {}) {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+const interactiveElementsExpression = `(() => {
+  const cssEscape = globalThis.CSS?.escape || ((s) => String(s).replace(/[^a-zA-Z0-9_-]/g, '\\\\$&'));
+  const interactiveSelector = [
+    'a[href]', 'button', 'input', 'select', 'textarea', 'summary',
+    '[contenteditable="true"]', '[onclick]', '[tabindex]:not([tabindex="-1"])',
+    '[role="button"]', '[role="link"]', '[role="menuitem"]', '[role="tab"]',
+    '[role="checkbox"]', '[role="radio"]', '[role="switch"]',
+    '[role="textbox"]', '[role="combobox"]'
+  ].join(',');
+
+  function selectorFor(el) {
+    if (el.id) return '#' + cssEscape(el.id);
+    for (const attr of ['data-testid', 'data-test', 'data-cy', 'aria-label', 'name', 'placeholder', 'title']) {
+      const value = el.getAttribute(attr);
+      if (value) return el.tagName.toLowerCase() + '[' + attr + '="' + String(value).replace(/"/g, '\\\\"') + '"]';
+    }
+    const parts = [];
+    let node = el;
+    while (node && node.nodeType === 1 && node !== document.body && parts.length < 5) {
+      let part = node.tagName.toLowerCase();
+      const parent = node.parentElement;
+      if (parent) {
+        const same = Array.from(parent.children).filter(child => child.tagName === node.tagName);
+        if (same.length > 1) part += ':nth-of-type(' + (same.indexOf(node) + 1) + ')';
+      }
+      parts.unshift(part);
+      node = parent;
+    }
+    return parts.join(' > ');
+  }
+
+  function textFor(el) {
+    return (
+      el.getAttribute('aria-label') ||
+      el.getAttribute('title') ||
+      el.getAttribute('placeholder') ||
+      el.value ||
+      el.innerText ||
+      el.textContent ||
+      ''
+    ).replace(/\\s+/g, ' ').trim().slice(0, 160);
+  }
+
+  function visible(el, rect) {
+    const style = getComputedStyle(el);
+    return rect.width > 0 && rect.height > 0 &&
+      style.visibility !== 'hidden' &&
+      style.display !== 'none' &&
+      Number(style.opacity || 1) > 0.01 &&
+      rect.bottom >= 0 && rect.right >= 0 &&
+      rect.top <= innerHeight && rect.left <= innerWidth;
+  }
+
+  const seen = new Set();
+  return Array.from(document.querySelectorAll(interactiveSelector))
+    .filter((el) => {
+      const rect = el.getBoundingClientRect();
+      if (!visible(el, rect)) return false;
+      const key = Math.round(rect.left) + ',' + Math.round(rect.top) + ',' + Math.round(rect.width) + ',' + Math.round(rect.height);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((el, index) => {
+      const rect = el.getBoundingClientRect();
+      const tag = el.tagName.toLowerCase();
+      return {
+        index: index + 1,
+        selector: selectorFor(el),
+        tag,
+        role: el.getAttribute('role') || (tag === 'a' ? 'link' : tag === 'button' ? 'button' : ''),
+        type: el.getAttribute('type') || '',
+        text: textFor(el),
+        href: el.href || '',
+        rect: {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        },
+        center: {
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2)
+        }
+      };
+    })
+    .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
+    .slice(0, 120)
+    .map((item, index) => ({ ...item, index: index + 1 }));
+})()`;
+
+function annotateExpression(limit = 80) {
+  const safeLimit = Math.max(1, Math.min(120, Number(limit) || 80));
+  return `(() => {
+    const old = document.getElementById('__cdp_vision_map_overlay__');
+    if (old) old.remove();
+    const elements = ${interactiveElementsExpression};
+    const root = document.createElement('div');
+    root.id = '__cdp_vision_map_overlay__';
+    root.style.cssText = 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;font-family:Arial,sans-serif;';
+    const colors = ['#ff3b30', '#007aff', '#34c759', '#ff9500', '#af52de', '#00c7be'];
+    for (const item of elements.slice(0, ${safeLimit})) {
+      const color = colors[(item.index - 1) % colors.length];
+      const box = document.createElement('div');
+      box.style.cssText = 'position:fixed;left:' + item.rect.x + 'px;top:' + item.rect.y + 'px;width:' + Math.max(item.rect.width, 6) + 'px;height:' + Math.max(item.rect.height, 6) + 'px;border:2px solid ' + color + ';box-sizing:border-box;background:rgba(255,255,255,.06);';
+      const label = document.createElement('div');
+      label.textContent = String(item.index);
+      label.style.cssText = 'position:absolute;left:-2px;top:-20px;min-width:18px;height:18px;padding:0 4px;background:' + color + ';color:white;font:700 12px/18px Arial,sans-serif;border-radius:4px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.35);';
+      box.appendChild(label);
+      root.appendChild(box);
+    }
+    document.documentElement.appendChild(root);
+    return elements;
+  })()`;
+}
+
 // --- HTTP API ---
 const server = http.createServer(async (req, res) => {
   const parsed = new URL(req.url, `http://localhost:${PORT}`);
@@ -481,6 +606,80 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ clicked: true, x: coord.x, y: coord.y, tag: coord.tag, text: coord.text }));
     }
 
+    // POST /clickPoint?target=xxx — 按视口坐标执行真实鼠标点击，配合 /visionMap 截图使用
+    // body: JSON { "x": 100, "y": 200 } 或纯文本 "100,200"
+    else if (pathname === '/clickPoint') {
+      const sid = await ensureSession(q.target);
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw, {});
+      let x = Number(body.x);
+      let y = Number(body.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        const match = raw.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+        if (match) {
+          x = Number(match[1]);
+          y = Number(match[2]);
+        }
+      }
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: '需要 x/y 坐标，例如 {"x":100,"y":200}' }));
+        return;
+      }
+      const targetResp = await sendCDP('Runtime.evaluate', {
+        expression: `(() => {
+          const el = document.elementFromPoint(${JSON.stringify(x)}, ${JSON.stringify(y)});
+          if (!el) return null;
+          return { tag: el.tagName, text: (el.innerText || el.textContent || el.value || '').replace(/\\s+/g, ' ').trim().slice(0, 100) };
+        })()`,
+        returnByValue: true,
+      }, sid);
+      await sendCDP('Input.dispatchMouseEvent', {
+        type: 'mousePressed', x, y, button: 'left', clickCount: 1
+      }, sid);
+      await sendCDP('Input.dispatchMouseEvent', {
+        type: 'mouseReleased', x, y, button: 'left', clickCount: 1
+      }, sid);
+      res.end(JSON.stringify({ clicked: true, x, y, target: targetResp.result?.result?.value || null }));
+    }
+
+    // POST /type?target=xxx — 向当前焦点输入文本；可传 selector 先聚焦
+    // body: JSON { "selector": "input[name=q]", "text": "hello" } 或纯文本
+    else if (pathname === '/type') {
+      const sid = await ensureSession(q.target);
+      const raw = await readBody(req);
+      const body = parseJsonBody(raw, null);
+      const selector = body?.selector || q.selector || '';
+      const text = body?.text ?? raw;
+      if (!text) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: '需要输入文本' }));
+        return;
+      }
+      if (selector) {
+        const selectorJson = JSON.stringify(selector);
+        const focusResp = await sendCDP('Runtime.evaluate', {
+          expression: `(() => {
+            const el = document.querySelector(${selectorJson});
+            if (!el) return { error: '未找到元素: ' + ${selectorJson} };
+            el.scrollIntoView({ block: 'center' });
+            el.focus();
+            return { focused: true, tag: el.tagName };
+          })()`,
+          returnByValue: true,
+          awaitPromise: true,
+        }, sid);
+        const focused = focusResp.result?.result?.value;
+        if (focused?.error) {
+          res.statusCode = 400;
+          res.end(JSON.stringify(focused));
+          return;
+        }
+      }
+      await sendCDP('Input.insertText', { text: String(text) }, sid);
+      res.end(JSON.stringify({ typed: true, length: String(text).length, selector: selector || null }));
+    }
+
     // POST /setFiles?target=xxx — 给 file input 设置本地文件（绕过文件对话框）
     // body: JSON { "selector": "input[type=file]", "files": ["/path/to/file1.png", "/path/to/file2.png"] }
     else if (pathname === '/setFiles') {
@@ -552,6 +751,45 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // GET /snapshot?target=xxx - 返回可见交互元素列表（带 selector、文字、坐标）
+    else if (pathname === '/snapshot') {
+      const sid = await ensureSession(q.target);
+      const resp = await sendCDP('Runtime.evaluate', {
+        expression: interactiveElementsExpression,
+        returnByValue: true,
+        awaitPromise: true,
+      }, sid);
+      res.end(JSON.stringify({ elements: resp.result?.result?.value || [] }, null, 2));
+    }
+
+    // GET /visionMap?target=xxx&file=/tmp/map.png - 截图并叠加编号热区
+    else if (pathname === '/visionMap') {
+      const sid = await ensureSession(q.target);
+      const limit = q.limit || 80;
+      const elementsResp = await sendCDP('Runtime.evaluate', {
+        expression: annotateExpression(limit),
+        returnByValue: true,
+        awaitPromise: true,
+      }, sid);
+      const elements = elementsResp.result?.result?.value || [];
+      const format = q.format || 'png';
+      const shotResp = await sendCDP('Page.captureScreenshot', {
+        format,
+        quality: format === 'jpeg' ? 80 : undefined,
+      }, sid);
+      await sendCDP('Runtime.evaluate', {
+        expression: 'document.getElementById("__cdp_vision_map_overlay__")?.remove(); true',
+        returnByValue: true,
+      }, sid).catch(() => {});
+      const image = Buffer.from(shotResp.result.data, 'base64');
+      if (q.file) {
+        fs.writeFileSync(q.file, image);
+        res.end(JSON.stringify({ saved: q.file, elements }, null, 2));
+      } else {
+        res.end(JSON.stringify({ imageBase64: shotResp.result.data, elements }, null, 2));
+      }
+    }
+
     // GET /info?target=xxx - 获取页面信息
     else if (pathname === '/info') {
       const sid = await ensureSession(q.target);
@@ -576,8 +814,13 @@ const server = http.createServer(async (req, res) => {
           '/info?target=': 'GET - 页面标题/URL/状态',
           '/eval?target=': 'POST body=JS表达式 - 执行 JS',
           '/click?target=': 'POST body=CSS选择器 - 点击元素',
+          '/clickAt?target=': 'POST body=CSS选择器 - 真实鼠标点击元素中心',
+          '/clickPoint?target=': 'POST body={x,y} - 真实鼠标点击视口坐标',
+          '/type?target=': 'POST body=文本或{selector,text} - 输入文本',
           '/scroll?target=&y=&direction=': 'GET - 滚动页面',
           '/screenshot?target=&file=': 'GET - 截图',
+          '/snapshot?target=': 'GET - 可见交互元素列表',
+          '/visionMap?target=&file=': 'GET - 带编号热区的截图和元素清单',
         },
       }));
     }

@@ -43,6 +43,17 @@ describe('contracts', () => {
     })
     expect(parsed.title).toBe('demo')
     expect(parsed.mode).toBe('agent')
+    expect(parsed.relation).toBeUndefined()
+  })
+
+  it('accepts relation: side in thread creation payload', () => {
+    const parsed = CreateThreadRequest.parse({
+      title: 'demo',
+      workspace: '/tmp/ws',
+      model: 'deepseek-chat',
+      relation: 'side'
+    })
+    expect(parsed.relation).toBe('side')
   })
 
   it('accepts thread goal contracts and events', () => {

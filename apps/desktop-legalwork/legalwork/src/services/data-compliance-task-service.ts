@@ -52,8 +52,10 @@ export type DataComplianceTask = {
   document_name: string
   product_type: 'review' | 'desensitize'
   review_type?: 'document' | 'code'
-  input_type: 'file' | 'text'
+  input_type: 'file' | 'text' | 'batch'
   input_path: string
+  input_manifest_path?: string
+  input_files?: DataComplianceStoredInputFile[]
   original_filename?: string
   stored_filename?: string
   output_dir?: string
@@ -88,6 +90,19 @@ export type DataComplianceCreateTaskInput = {
     dataBase64?: string
     filePath?: string
   }
+  files?: Array<{
+    name: string
+    type?: string
+    dataBase64?: string
+    filePath?: string
+  }>
+}
+
+export type DataComplianceStoredInputFile = {
+  name: string
+  type?: string
+  path: string
+  stored_filename: string
 }
 
 export type DataComplianceEnvironmentCheckResult =
@@ -113,8 +128,12 @@ export type DataComplianceFileKey =
 const REQUIRED_PYTHON_PACKAGES = [
   'docx',
   'fitz',
+  'openpyxl',
+  'pptx',
+  'pypdf',
   'pandas',
   'PIL',
+  'pytesseract',
   'presidio_analyzer',
   'presidio_anonymizer'
 ]
@@ -195,6 +214,21 @@ function safeFilename(name: string): string {
   const suffix = base.slice(stem.length)
   const safeStem = stem.replace(/[^\w一-龥.-]+/g, '_').replace(/^[._]+|[._]+$/g, '') || 'upload'
   return `${safeStem}${suffix.toLowerCase() || '.txt'}`
+}
+
+function uniqueSafeFilename(name: string, used: Set<string>): string {
+  const safe = safeFilename(name)
+  const dotIndex = safe.lastIndexOf('.')
+  const stem = dotIndex > 0 ? safe.slice(0, dotIndex) : safe
+  const suffix = dotIndex > 0 ? safe.slice(dotIndex) : ''
+  let candidate = safe
+  let counter = 2
+  while (used.has(candidate.toLowerCase())) {
+    candidate = `${stem}_${counter}${suffix}`
+    counter += 1
+  }
+  used.add(candidate.toLowerCase())
+  return candidate
 }
 
 /** Verify that a resolved path stays inside a root directory. */
@@ -463,19 +497,57 @@ export class DataComplianceTaskService {
     const documentName = input.documentName?.trim() || '未命名任务'
 
     let inputPath: string
-    let inputType: 'file' | 'text'
+    let inputType: 'file' | 'text' | 'batch'
+    let inputManifestPath: string | undefined
+    let inputFiles: DataComplianceStoredInputFile[] | undefined
     let originalFilename: string | undefined
     let storedFilename: string | undefined
 
-    if (input.file?.filePath || input.file?.dataBase64) {
-      const name = safeFilename(input.file.name || 'upload')
+    const inputFilePayloads = [
+      ...(input.files ?? []),
+      ...(input.file ? [input.file] : [])
+    ].filter((file) => Boolean(file.filePath || file.dataBase64))
+
+    if (inputFilePayloads.length > 1) {
+      const filesDir = join(taskDir, 'input_files')
+      await mkdir(filesDir, { recursive: true })
+      const used = new Set<string>()
+      inputFiles = []
+      for (const [index, file] of inputFilePayloads.entries()) {
+        const stored = uniqueSafeFilename(file.name || `upload_${index + 1}`, used)
+        const targetPath = join(filesDir, stored)
+        if (file.filePath) {
+          await copyFile(file.filePath, targetPath)
+        } else {
+          await writeFile(targetPath, Buffer.from(file.dataBase64 ?? '', 'base64'))
+        }
+        inputFiles.push({
+          name: file.name || stored,
+          type: file.type,
+          path: targetPath,
+          stored_filename: stored
+        })
+      }
+      inputManifestPath = join(taskDir, 'input_manifest.json')
+      await writeFile(
+        inputManifestPath,
+        JSON.stringify({ files: inputFiles }, null, 2),
+        'utf-8'
+      )
+      inputPath = inputManifestPath
+      inputType = 'batch'
+      originalFilename = `${inputFiles.length} files`
+      storedFilename = 'input_manifest.json'
+    } else if (inputFilePayloads.length === 1) {
+      const file = inputFilePayloads[0]
+      const name = safeFilename(file.name || 'upload')
       storedFilename = `${taskId}_${name}`
-      originalFilename = input.file.name || name
+      originalFilename = file.name || name
       inputPath = join(taskDir, storedFilename)
-      if (input.file.filePath) {
-        await copyFile(input.file.filePath, inputPath)
+      if (file.filePath) {
+        await copyFile(file.filePath, inputPath)
       } else {
-        await writeFile(inputPath, Buffer.from(input.file.dataBase64 ?? '', 'base64'))
+        await writeFile(inputPath, Buffer.from(file.dataBase64 ?? '', 'base64'))
       }
       inputType = 'file'
     } else if (input.inputText?.trim()) {
@@ -494,6 +566,8 @@ export class DataComplianceTaskService {
       review_type: mode === 'review' ? reviewType : undefined,
       input_type: inputType,
       input_path: inputPath,
+      input_manifest_path: inputManifestPath,
+      input_files: inputFiles,
       original_filename: originalFilename,
       stored_filename: storedFilename,
       output_dir: input.outputDir?.trim() || undefined,
@@ -503,7 +577,7 @@ export class DataComplianceTaskService {
       progress: {
         step: 0,
         total_steps: mode === 'desensitize' ? 4 : 11,
-        message: '任务已创建，等待 worker 启动',
+        message: '任务已创建，正在启动 worker',
         status: 'running'
       }
     }
@@ -520,10 +594,21 @@ export class DataComplianceTaskService {
     const task = await this.readTaskState(taskId)
     if (!task) return
 
+    task.status = 'running'
+    task.progress = {
+      step: 0,
+      total_steps: task.progress?.total_steps ?? (mode === 'desensitize' ? 4 : 11),
+      message: 'worker 已启动，正在准备处理任务',
+      status: 'running'
+    }
+    this.writeTaskState(task)
+
     const payload = {
       task_id: taskId,
       document_name: task.document_name,
       input_path: task.input_path,
+      input_manifest_path: task.input_manifest_path,
+      input_files: task.input_files ?? [],
       input_type: task.input_type,
       review_type: task.review_type ?? 'document',
       output_dir: task.output_dir,
@@ -555,7 +640,7 @@ export class DataComplianceTaskService {
       {
         cwd: this.webRoot,
         env: {
-          ...process.env,
+          ...buildDataCompliancePythonEnv(),
           COMPLIANCEAI_PYTHON: python,
           COMPLIANCEAI_LOG_PATH: logPath,
           LEGALWORK_API_KEY: process.env.LEGALWORK_API_KEY ?? '',

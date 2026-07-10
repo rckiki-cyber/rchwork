@@ -64,6 +64,7 @@ export function useSettingsGuiUpdate({
     if (state.status === 'downloaded') {
       setCheckingGuiUpdate(false)
       setDownloadingGuiUpdate(false)
+      setInstallingGuiUpdate(false)
       setGuiUpdateProgress(null)
       setGuiUpdateDownloaded(true)
       setGuiUpdateError(null)

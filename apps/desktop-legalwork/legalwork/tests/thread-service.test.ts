@@ -131,6 +131,28 @@ async function seedParentWithTurns(
   }
 }
 
+describe('ThreadService.create relation', () => {
+  it('defaults relation to primary', async () => {
+    const { service, threadStore } = buildService()
+    const thread = await service.create(
+      { workspace: '/tmp/p', model: 'deepseek-chat', mode: 'agent' },
+      { id: 'thr_default', title: 'Default' }
+    )
+    expect(thread.relation).toBe('primary')
+    expect((await threadStore.get('thr_default'))?.relation).toBe('primary')
+  })
+
+  it('stores relation: side when provided', async () => {
+    const { service, threadStore } = buildService()
+    const thread = await service.create(
+      { workspace: '/tmp/p', model: 'deepseek-chat', mode: 'agent', relation: 'side' },
+      { id: 'thr_side', title: 'Side' }
+    )
+    expect(thread.relation).toBe('side')
+    expect((await threadStore.get('thr_side'))?.relation).toBe('side')
+  })
+})
+
 describe('ThreadService.fork with side relation', () => {
   it('sets parentThreadId and side relation on the new thread', async () => {
     const { service, threadStore } = buildService()

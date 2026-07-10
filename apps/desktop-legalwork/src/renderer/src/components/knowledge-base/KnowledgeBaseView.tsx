@@ -1,4 +1,4 @@
-import type { DragEvent as ReactDragEvent, ReactElement } from 'react'
+import { Component, type DragEvent as ReactDragEvent, type ErrorInfo, type ReactElement, type ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
@@ -48,6 +48,77 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 import type { KnowledgeTreeNode } from './types'
 import { KnowledgeBaseFileView } from './KnowledgeBaseFileView'
 type TreeNode = KnowledgeTreeNode
+
+type FileViewBoundaryProps = {
+  fileName: string
+  onBack: () => void
+  children: ReactNode
+}
+
+type FileViewBoundaryState = {
+  error: Error | null
+}
+
+class KnowledgeFileViewErrorBoundary extends Component<FileViewBoundaryProps, FileViewBoundaryState> {
+  state: FileViewBoundaryState = { error: null }
+
+  static getDerivedStateFromError(error: Error): FileViewBoundaryState {
+    return { error }
+  }
+
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error('[KnowledgeBaseFileView] render error:', error, info.componentStack)
+    if (typeof window !== 'undefined' && typeof window.dsGui?.logError === 'function') {
+      void window.dsGui.logError('knowledge-base-file-view', 'Failed to render knowledge base file', {
+        fileName: this.props.fileName,
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        componentStack: info.componentStack
+      }).catch(() => undefined)
+    }
+  }
+
+  override render(): ReactNode {
+    if (!this.state.error) return this.props.children
+
+    return (
+      <div className="ds-no-drag flex h-full min-h-0 flex-col bg-[var(--ds-main)]">
+        <header className="flex shrink-0 items-center gap-3 border-b border-ds-border px-6 py-3">
+          <button
+            type="button"
+            onClick={this.props.onBack}
+            className="flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)]"
+            title="返回文件列表"
+          >
+            <ArrowLeft className="h-4 w-4" strokeWidth={1.8} />
+          </button>
+          <div className="min-w-0">
+            <h2 className="truncate text-[15px] font-semibold text-[var(--ds-ink)]">{this.props.fileName}</h2>
+            <p className="text-[12px] text-[var(--ds-muted)]">文件打开失败</p>
+          </div>
+        </header>
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <div className="w-full max-w-md rounded-[8px] border border-red-200 bg-red-50 p-5 text-center shadow-sm dark:border-red-900/50 dark:bg-red-950/20">
+            <div className="text-[14px] font-semibold text-red-700 dark:text-red-200">
+              打开该文件时应用视图出错
+            </div>
+            <p className="mt-2 break-words text-[12px] leading-5 text-red-600 dark:text-red-200/80">
+              {this.state.error.message || String(this.state.error)}
+            </p>
+            <button
+              type="button"
+              onClick={this.props.onBack}
+              className="mt-4 rounded-[6px] bg-red-700/10 px-4 py-2 text-[12px] font-medium text-red-700 transition hover:bg-red-700/15 dark:text-red-100"
+            >
+              返回知识库
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+}
 
 type UploadSummary = {
   done: number
@@ -470,13 +541,14 @@ function PdfPreview({ base64Content, fileName }: { base64Content: string; fileNa
             `第 ${pageNumber} 页渲染超时`
           )
           if (cancelled) break
-          renderedPages.push({
+          const renderedPage: PdfRenderedPage = {
             pageNumber,
             width: viewport.width,
             height: viewport.height,
             dataUrl: canvas.toDataURL('image/png')
-          })
-          setPages([...renderedPages])
+          }
+          renderedPages.push(renderedPage)
+          setPages((prev) => [...prev, renderedPage])
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'PDF 预览渲染失败')
@@ -728,6 +800,10 @@ export function KnowledgeBaseView(): ReactElement {
     setPreview(null)
   }, [preview])
 
+  const handleBack = useCallback(() => {
+    setViewingFile(null)
+  }, [])
+
   const openInSystemApp = useCallback(async (node: TreeNode) => {
     setError(null)
     try {
@@ -797,8 +873,9 @@ export function KnowledgeBaseView(): ReactElement {
   }, [preview, openInSystemApp])
 
   useEffect(() => {
+    const objectUrl = preview?.objectUrl
     return () => {
-      if (preview?.objectUrl) URL.revokeObjectURL(preview.objectUrl)
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [preview])
 
@@ -923,12 +1000,18 @@ ${question.trim()}
 
 请基于检索到的内容给出准确、专业的回答。如果内容不足以回答问题，请明确说明。引用来源时请标注对应的 [来源编号]，不要编造未出现在上下文中的依据。`
 
-      // Create thread with workspace
+      // Create a side thread so knowledge-base AI chat does not sync to the main chat sidebar.
       const workspace = await getWorkspaceRoot()
       const threadResult = await requestJson<{ id: string }>(
         '/v1/threads',
         'POST',
-        { workspace, title: '知识库全局对话', model: 'deepseek-chat', mode: 'agent' }
+        {
+          workspace,
+          title: '知识库全局对话',
+          model: 'deepseek-chat',
+          mode: 'agent',
+          relation: 'side'
+        }
       )
       const threadId = threadResult.id
 
@@ -1097,10 +1180,16 @@ ${question.trim()}
 
   if (viewingFile) {
     return (
-      <KnowledgeBaseFileView
-        node={viewingFile}
-        onBack={() => setViewingFile(null)}
-      />
+      <KnowledgeFileViewErrorBoundary
+        key={viewingFile.path}
+        fileName={viewingFile.name}
+        onBack={handleBack}
+      >
+        <KnowledgeBaseFileView
+          node={viewingFile}
+          onBack={handleBack}
+        />
+      </KnowledgeFileViewErrorBoundary>
     )
   }
 

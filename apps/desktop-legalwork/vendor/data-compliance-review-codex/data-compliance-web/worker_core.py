@@ -37,7 +37,7 @@ SCRIPTS_DIR = BASE_DIR / 'scripts'
 LOCAL_REGULATION_DB = PROJECT_ROOT / 'knowledge-base' / 'local-regulations.sqlite3'
 
 REVIEW_IMAGE_EXTENSIONS = {ext.lstrip('.') for ext in IMAGE_EXTENSIONS}
-ALLOWED_EXTENSIONS = {'txt', 'md', 'doc', 'docx', 'pdf'} | REVIEW_IMAGE_EXTENSIONS
+ALLOWED_EXTENSIONS = {'txt', 'md', 'markdown', 'doc', 'docx', 'pdf', 'csv', 'tsv', 'xlsx', 'xls', 'ods', 'pptx', 'json', 'jsonl', 'ndjson'} | REVIEW_IMAGE_EXTENSIONS
 DESENSITIZE_EXTENSIONS = {'doc', 'docx', 'pdf'} | {
     ext.lstrip('.')
     for ext in (TEXT_EXTENSIONS | TABLE_EXTENSIONS | JSON_EXTENSIONS | IMAGE_EXTENSIONS | PRESENTATION_EXTENSIONS)
@@ -112,6 +112,35 @@ def ensure_task_loaded(task_id: str) -> bool:
         tasks[task_id] = state
         return True
     return False
+
+
+def _safe_batch_stem(name: str, index: int) -> str:
+    stem = Path(name or f'file_{index}').stem or f'file_{index}'
+    stem = re.sub(r'[\\/:*?"<>|]', '_', stem).strip(' ._')
+    return stem or f'file_{index}'
+
+
+def _load_batch_input_files(task: dict, manifest_path: Path) -> list[dict]:
+    files = task.get('input_files')
+    if isinstance(files, list) and files:
+        return [item for item in files if isinstance(item, dict)]
+    if manifest_path.exists():
+        payload = json.loads(manifest_path.read_text(encoding='utf-8'))
+        manifest_files = payload.get('files')
+        if isinstance(manifest_files, list):
+            return [item for item in manifest_files if isinstance(item, dict)]
+    return []
+
+
+def _copy_batch_output(output_file: Path, output_dir: Path, stem: str) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    target = output_dir / f'{stem}_{output_file.name}'
+    counter = 2
+    while target.exists():
+        target = output_dir / f'{stem}_{counter}_{output_file.name}'
+        counter += 1
+    shutil.copy2(output_file, target)
+    return target
 
 
 def allowed_file(filename: str | None) -> bool:
@@ -607,6 +636,7 @@ def run_review_pipeline(task_id: str, input_path: Path, document_name: str, is_t
     ]
 
     def update_progress(step: int, message: str, status: str = 'running', detail: dict | None = None) -> None:
+        task['status'] = 'running' if status == 'running' else status
         task['progress'] = {
             'step': step,
             'total_steps': len(checkpoints),
@@ -901,6 +931,7 @@ def run_code_review_pipeline(task_id: str, input_path: Path, document_name: str,
     work_dir.mkdir(parents=True, exist_ok=True)
 
     def update_progress(step: int, message: str, status: str = 'running') -> None:
+        task['status'] = 'running' if status == 'running' else status
         task['progress'] = {
             'step': step,
             'total_steps': 4,
@@ -992,6 +1023,7 @@ def run_desensitize_pipeline(
     work_dir.mkdir(parents=True, exist_ok=True)
 
     def update_progress(step: int, message: str, status: str = 'running', detail: dict | None = None) -> None:
+        task['status'] = 'running' if status == 'running' else status
         task['progress'] = {
             'step': step,
             'total_steps': 4,
@@ -1002,6 +1034,161 @@ def run_desensitize_pipeline(
         save_task_state(task_id)
 
     try:
+        if task.get('input_type') == 'batch':
+            input_files = _load_batch_input_files(task, Path(input_path))
+            if not input_files:
+                raise ValueError('批量脱敏任务缺少输入文件清单。')
+
+            batch_dir = work_dir / 'batch_outputs'
+            batch_dir.mkdir(parents=True, exist_ok=True)
+            batch_entries: list[dict] = []
+            batch_failures: list[dict] = []
+            total_findings = 0
+            total_entity_counts: dict[str, int] = {}
+
+            for index, file_info in enumerate(input_files, start=1):
+                file_path = Path(str(file_info.get('path') or ''))
+                original_name = str(file_info.get('name') or file_path.name or f'file_{index}')
+                try:
+                    if not file_path.exists():
+                        raise FileNotFoundError(f'批量输入文件不存在：{original_name}')
+
+                    stem = _safe_batch_stem(original_name, index)
+                    item_dir = batch_dir / f'{index:03d}_{stem}'
+                    update_progress(
+                        1,
+                        f'正在处理第 {index}/{len(input_files)} 份材料：{original_name}',
+                        detail={'current': index, 'total': len(input_files), 'file': original_name},
+                    )
+                    result = process_desensitization(
+                        task_id=f'{task_id}_{index}',
+                        input_path=file_path,
+                        document_name=Path(original_name).stem or document_name,
+                        work_dir=item_dir,
+                        is_text=False,
+                        output_dir=None,
+                        output_format=output_format,
+                    )
+                    report = result['report']
+                    summary = report.get('summary', {}) if isinstance(report, dict) else {}
+                    file_findings = int(summary.get('total_findings') or 0)
+                    total_findings += file_findings
+                    entity_counts = summary.get('entity_counts') if isinstance(summary, dict) else {}
+                    if isinstance(entity_counts, dict):
+                        for key, value in entity_counts.items():
+                            total_entity_counts[str(key)] = total_entity_counts.get(str(key), 0) + int(value or 0)
+
+                    output_file = Path(result['output_file'])
+                    copied_output = _copy_batch_output(output_file, output_dir, stem) if output_dir else None
+                    batch_entries.append({
+                        'index': index,
+                        'input_name': original_name,
+                        'output_file': str(output_file),
+                        'saved_output_file': str(copied_output) if copied_output else None,
+                        'report_json': str(result['report_json']),
+                        'report_md': str(result['report_md']),
+                        'subject_mapping_md': str(result['subject_mapping_md']),
+                        'summary': summary,
+                    })
+                except Exception as exc:
+                    batch_failures.append({
+                        'index': index,
+                        'input_name': original_name,
+                        'path': str(file_path),
+                        'error': str(exc),
+                    })
+
+            if not batch_entries:
+                detail = '; '.join(f"{item['input_name']}: {item['error']}" for item in batch_failures)
+                raise RuntimeError(f'批量脱敏全部失败：{detail}')
+
+            update_progress(3, '正在生成批量脱敏汇总报告...')
+            aggregate_report = {
+                'task_id': task_id,
+                'document_name': document_name,
+                'input_name': f'{len(batch_entries)} files',
+                'input_type': 'batch',
+                'status': 'completed',
+                'strategy': 'format_preserving_mask',
+                'summary': {
+                    'file_count': len(input_files),
+                    'completed_file_count': len(batch_entries),
+                    'failed_file_count': len(batch_failures),
+                    'total_findings': total_findings,
+                    'entity_counts': dict(sorted(total_entity_counts.items())),
+                },
+                'files': batch_entries,
+                'failures': batch_failures,
+                'warnings': ['批量任务逐文件脱敏，单文件详细报告保存在 batch_outputs 子目录。'],
+                'residual_risk': '自动脱敏不能保证识别全部敏感信息，正式外发前仍建议抽样复核。',
+            }
+            report_json = work_dir / 'desensitization_report.json'
+            report_md = work_dir / 'desensitization_report.md'
+            output_index = work_dir / 'batch_desensitized_outputs.md'
+            note = work_dir / 'original_retention_note.txt'
+            subject_mapping_md = work_dir / 'subject_mapping.md'
+            subject_mapping_json = work_dir / 'subject_mapping.json'
+
+            report_json.write_text(json.dumps(aggregate_report, ensure_ascii=False, indent=2), encoding='utf-8')
+            report_lines = [
+                f'# {document_name or "批量材料"} 脱敏汇总报告',
+                '',
+                f'- 文件数量：{len(input_files)}',
+                f'- 成功处理：{len(batch_entries)}',
+                f'- 处理失败：{len(batch_failures)}',
+                f'- 命中总数：{total_findings}',
+                '',
+                '## 文件结果',
+            ]
+            output_lines = [
+                '# 批量脱敏输出索引',
+                '',
+                f'- 任务编号：{task_id}',
+                f'- 文件数量：{len(batch_entries)}',
+                '',
+                '| 序号 | 输入文件 | 命中数 | 输出文件 |',
+                '|------|----------|--------|----------|',
+            ]
+            for entry in batch_entries:
+                findings = entry.get('summary', {}).get('total_findings', 0)
+                output_name = Path(str(entry.get('output_file') or '')).name
+                report_lines.append(f'- {entry["index"]}. {entry["input_name"]}：命中 {findings} 处，输出 `{output_name}`')
+                output_lines.append(f'| {entry["index"]} | {entry["input_name"]} | {findings} | {output_name} |')
+            if batch_failures:
+                report_lines.extend(['', '## 处理失败文件'])
+                for failure in batch_failures:
+                    report_lines.append(f'- {failure["index"]}. {failure["input_name"]}：{failure["error"]}')
+            report_md.write_text('\n'.join(report_lines).rstrip() + '\n', encoding='utf-8')
+            output_index.write_text('\n'.join(output_lines).rstrip() + '\n', encoding='utf-8')
+            note.write_text(
+                '原始文件仅保存在本地任务目录，用于完成本次批量数据脱敏处理。\n'
+                '自动识别存在漏检和误检风险，正式外发前请对脱敏结果进行抽样复核。\n',
+                encoding='utf-8',
+            )
+            subject_mapping_md.write_text('# 批量主体逆向映射表\n\n请查看 batch_outputs 下各文件的 subject_mapping.md。\n', encoding='utf-8')
+            subject_mapping_json.write_text(json.dumps({'task_id': task_id, 'files': batch_entries}, ensure_ascii=False, indent=2), encoding='utf-8')
+
+            task['status'] = 'completed'
+            task['completed_at'] = datetime.now().isoformat()
+            task['result'] = {
+                'desensitized_output': str(output_index),
+                'desensitization_report': str(report_json),
+                'desensitization_report_md': str(report_md),
+                'retention_note': str(note),
+                'subject_mapping_md': str(subject_mapping_md),
+                'subject_mapping_json': str(subject_mapping_json),
+            }
+            if output_dir:
+                task['result']['output_dir'] = str(output_dir)
+            task['progress'] = {
+                'step': 4,
+                'total_steps': 4,
+                'message': f'批量脱敏完成：成功 {len(batch_entries)} 份，失败 {len(batch_failures)} 份，命中 {total_findings} 处敏感信息',
+                'status': 'completed',
+            }
+            save_task_state(task_id)
+            return
+
         update_progress(1, '正在读取待脱敏数据...')
         time.sleep(0.2)
         update_progress(2, '正在识别敏感信息并执行保留格式打码...')

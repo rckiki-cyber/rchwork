@@ -180,6 +180,7 @@ def desensitize_upload():
     )
     output_dir_raw = request.form.get('output_dir', '').strip()
     output_dir = validate_output_dir(output_dir_raw)
+    output_format = request.form.get('output_format', '').strip() or None
     task_id = str(uuid.uuid4())[:8]
 
     if input_text:
@@ -195,7 +196,7 @@ def desensitize_upload():
             'status': 'pending',
             'created_at': datetime.now().isoformat(),
         }
-        thread = Thread(target=run_desensitize_pipeline, args=(task_id, temp_file, document_name, True, output_dir))
+        thread = Thread(target=run_desensitize_pipeline, args=(task_id, temp_file, document_name, True, output_dir, output_format))
         thread.start()
         return jsonify({'task_id': task_id})
 
@@ -220,7 +221,7 @@ def desensitize_upload():
             'status': 'pending',
             'created_at': datetime.now().isoformat(),
         }
-        thread = Thread(target=run_desensitize_pipeline, args=(task_id, file_path, document_name, False, output_dir))
+        thread = Thread(target=run_desensitize_pipeline, args=(task_id, file_path, document_name, False, output_dir, output_format))
         thread.start()
         return jsonify({'task_id': task_id})
 

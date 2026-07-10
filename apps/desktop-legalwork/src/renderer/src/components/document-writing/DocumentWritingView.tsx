@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookOpen, Database, RefreshCw, Upload } from 'lucide-react'
+import { BookOpen, Clock, Database, RefreshCw, Upload } from 'lucide-react'
 import {
   builtInTemplates,
   type LegalTemplate,
@@ -12,7 +12,7 @@ import { DocumentWritingEditor } from './DocumentWritingEditor'
 import { DocumentKnowledgePanel } from './DocumentKnowledgePanel'
 import { DocumentTemplateUploader } from './DocumentTemplateUploader'
 import type { DocumentHistoryRecord } from '../../../../shared/document-history'
-import { DocumentHistoryDialog } from './DocumentHistoryDialog'
+import { DocumentHistorySidebar } from './DocumentHistorySidebar'
 import type { UserTemplate } from '../../../../shared/user-templates'
 
 function userTemplateToLegalTemplate(ut: UserTemplate): LegalTemplate {
@@ -38,6 +38,8 @@ const KNOWLEDGE_PANEL_MAX_WIDTH = 640
 export function DocumentWritingView(): ReactElement {
   const { t } = useTranslation('common')
 
+  const [leftTab, setLeftTab] = useState<'templates' | 'history'>('templates')
+  const [historyRefreshSignal, setHistoryRefreshSignal] = useState(0)
   const [activeCategory, setActiveCategory] = useState<TemplateCategory | 'all'>('all')
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -53,7 +55,6 @@ export function DocumentWritingView(): ReactElement {
     Array<{ file: File; name: string; content: string; loaded: boolean }>
   >([])
   const [instruction, setInstruction] = useState('')
-  const [historyOpen, setHistoryOpen] = useState(false)
   const [knowledgePanelOpen, setKnowledgePanelOpen] = useState(false)
   const [knowledgePanelWidth, setKnowledgePanelWidth] = useState(KNOWLEDGE_PANEL_DEFAULT_WIDTH)
 
@@ -118,6 +119,31 @@ export function DocumentWritingView(): ReactElement {
     []
   )
 
+  const saveCurrentToHistory = useCallback(
+    async (contentOverride?: string) => {
+      if (!activeTemplate) return
+      const content = contentOverride ?? generatedContent
+      if (!content) return
+      try {
+        await window.dsGui.saveDocumentHistoryRecord({
+          id: `hist-${Date.now()}`,
+          templateName: activeTemplate.name,
+          templateCategory: activeTemplate.category,
+          templateSource: activeTemplate.category === 'custom' ? 'custom' : 'builtin',
+          fieldValues,
+          materialFileNames: uploadedMaterials.filter((m) => m.loaded).map((m) => m.name),
+          instructions: instruction,
+          generatedContent: content,
+          createdAt: new Date().toISOString()
+        })
+        setHistoryRefreshSignal((n) => n + 1)
+      } catch {
+        // Silently save - non-critical
+      }
+    },
+    [activeTemplate, generatedContent, fieldValues, uploadedMaterials, instruction]
+  )
+
   const handleGenerate = useCallback(async () => {
     if (!activeTemplate) return
     setGenerating(true)
@@ -132,11 +158,16 @@ export function DocumentWritingView(): ReactElement {
         required: f.required
       }))
 
+      let result:
+        | { ok: true; content: string }
+        | { ok: false; message: string }
+        | undefined
+
       if (activeTemplate.category === 'custom') {
         const loadedMaterials = uploadedMaterials
           .filter((m) => m.loaded && m.content)
           .map((m) => ({ fileName: m.name, content: m.content }))
-        const result = await window.dsGui.generateDocumentFromTemplate({
+        result = await window.dsGui.generateDocumentFromTemplate({
           template: {
             name: activeTemplate.name,
             description: activeTemplate.description,
@@ -148,32 +179,28 @@ export function DocumentWritingView(): ReactElement {
           materials: loadedMaterials.length > 0 ? loadedMaterials : undefined,
           instructions: instruction.trim() || undefined
         })
-        if (result.ok) {
-          setGeneratedContent(result.content)
-          void saveCurrentToHistory()
-        } else {
-          setError(result.message)
-        }
       } else {
-        const result = await window.dsGui.generateDocument({
+        result = await window.dsGui.generateDocument({
           templateName: activeTemplate.name,
           templateDescription: activeTemplate.description,
           templateContent: activeTemplate.content,
           fields,
           legalBasis: activeTemplate.legalBasis
         })
-        if (result.ok) {
-          setGeneratedContent(result.content)
-        } else {
-          setError(result.message)
-        }
+      }
+
+      if (result.ok) {
+        setGeneratedContent(result.content)
+        void saveCurrentToHistory(result.content)
+      } else {
+        setError(result.message)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败，请重试。')
     } finally {
       setGenerating(false)
     }
-  }, [activeTemplate, fieldValues, uploadedMaterials, instruction])
+  }, [activeTemplate, fieldValues, uploadedMaterials, instruction, saveCurrentToHistory])
 
   const handleNewDocument = useCallback(() => {
     setActiveTemplateId(null)
@@ -251,26 +278,25 @@ export function DocumentWritingView(): ReactElement {
     [loadUserTemplates]
   )
 
-  const saveCurrentToHistory = useCallback(async () => {
-    if (!activeTemplate || !generatedContent) return
-    try {
-      await window.dsGui.saveDocumentHistoryRecord({
-        id: `hist-${Date.now()}`,
-        templateName: activeTemplate.name,
-        templateCategory: activeTemplate.category,
-        templateSource: activeTemplate.category === 'custom' ? 'custom' : 'builtin',
-        fieldValues,
-        materialFileNames: uploadedMaterials
-          .filter((m) => m.loaded)
-          .map((m) => m.name),
-        instructions: instruction,
-        generatedContent,
-        createdAt: new Date().toISOString()
-      })
-    } catch {
-      // Silently save - non-critical
-    }
-  }, [activeTemplate, generatedContent, fieldValues, uploadedMaterials, instruction])
+  const handleRestoreHistory = useCallback(
+    (record: DocumentHistoryRecord) => {
+      // Try to re-select the template that produced this record.
+      const matchedTemplate = allTemplates.find(
+        (t) =>
+          t.name === record.templateName &&
+          (t.category === record.templateCategory || record.templateCategory === 'custom')
+      )
+      if (matchedTemplate) {
+        setActiveTemplateId(matchedTemplate.id)
+      }
+      setFieldValues(record.fieldValues)
+      setGeneratedContent(record.generatedContent)
+      setUploadedMaterials([])
+      setInstruction(record.instructions)
+      setLeftTab('templates')
+    },
+    [allTemplates]
+  )
 
   const handleDeleteUserTemplate = useCallback(
     async (templateId: string) => {
@@ -361,64 +387,91 @@ export function DocumentWritingView(): ReactElement {
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Left: document writing tools (always template library) */}
+      {/* Left: document writing tools (templates or history) */}
       <div className="w-[320px] shrink-0 border-r border-[var(--ds-sidebar-divider)] bg-[var(--ds-sidebar)]">
-        <div className="ds-no-drag border-b border-[var(--ds-sidebar-divider)] p-3">
-          <div className="grid grid-cols-2 gap-2 rounded-[8px] bg-[var(--ds-sidebar-field-bg)] p-1">
+        <div className="ds-no-drag flex items-center gap-2 border-b border-[var(--ds-sidebar-divider)] p-3">
+          <div className="flex flex-1 rounded-[8px] bg-[var(--ds-sidebar-field-bg)] p-1">
             <button
               type="button"
-              className="flex h-8 items-center justify-center gap-1.5 rounded-[7px] bg-ds-card text-[12px] font-medium text-[var(--ds-ink)] shadow-sm transition"
-            >
-              <BookOpen className="h-3.5 w-3.5" strokeWidth={1.75} />
-              <span>模板库</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleKnowledgeToggle}
-              className={`flex h-8 items-center justify-center gap-1.5 rounded-[7px] text-[12px] font-medium transition ${
-                knowledgePanelOpen
+              onClick={() => setLeftTab('templates')}
+              className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[7px] text-[12px] font-medium transition ${
+                leftTab === 'templates'
                   ? 'bg-ds-card text-[var(--ds-ink)] shadow-sm'
                   : 'text-[var(--ds-muted)] hover:text-[var(--ds-ink)]'
               }`}
             >
-              <Database className="h-3.5 w-3.5" strokeWidth={1.75} />
-              <span>知识库</span>
+              <BookOpen className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span>{t('documentWritingTemplateLibrary')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLeftTab('history')}
+              className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[7px] text-[12px] font-medium transition ${
+                leftTab === 'history'
+                  ? 'bg-ds-card text-[var(--ds-ink)] shadow-sm'
+                  : 'text-[var(--ds-muted)] hover:text-[var(--ds-ink)]'
+              }`}
+            >
+              <Clock className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span>{t('documentWritingHistory')}</span>
             </button>
           </div>
-        </div>
-        <DocumentTemplateLibrary
-          templates={allTemplates}
-          activeCategory={activeCategory}
-          activeTemplateId={activeTemplateId}
-          searchQuery={searchQuery}
-          showUserTemplates={showUserTemplates}
-          onSelectTemplate={handleSelectTemplate}
-          onCategoryChange={handleCategoryChange}
-          onSearchQueryChange={setSearchQuery}
-          onDeleteUserTemplate={handleDeleteUserTemplate}
-          deletingTemplateId={deletingTemplateId}
-          loadingUserTemplates={loadingTemplates}
-        />
-        {/* Upload button area */}
-        <div className="ds-no-drag shrink-0 border-t border-[var(--ds-sidebar-divider)] px-4 py-3">
           <button
             type="button"
-            onClick={() => setUploaderOpen(true)}
-            disabled={loadingTemplates}
-            className="flex w-full items-center justify-center gap-2 rounded-[8px] border border-[var(--ds-sidebar-row-ring)] bg-[var(--ds-sidebar-field-bg)] px-4 py-2 text-[13px] font-medium text-[var(--ds-ink)] transition hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)] disabled:opacity-40"
+            onClick={handleKnowledgeToggle}
+            title={t('knowledgeBase')}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border border-[var(--ds-sidebar-row-ring)] text-[12px] font-medium transition ${
+              knowledgePanelOpen
+                ? 'bg-ds-card text-[var(--ds-ink)] shadow-sm'
+                : 'text-[var(--ds-muted)] hover:text-[var(--ds-ink)]'
+            }`}
           >
-            {loadingTemplates ? (
-              <RefreshCw className="h-4 w-4 animate-spin" strokeWidth={1.75} />
-            ) : (
-              <Upload className="h-4 w-4" strokeWidth={1.75} />
-            )}
-            <span>
-              {loadingTemplates
-                ? t('documentWritingLoadingTemplates') || '加载中...'
-                : t('documentWritingUploadTemplate')}
-            </span>
+            <Database className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
         </div>
+
+        {leftTab === 'templates' ? (
+          <>
+            <DocumentTemplateLibrary
+              templates={allTemplates}
+              activeCategory={activeCategory}
+              activeTemplateId={activeTemplateId}
+              searchQuery={searchQuery}
+              showUserTemplates={showUserTemplates}
+              onSelectTemplate={handleSelectTemplate}
+              onCategoryChange={handleCategoryChange}
+              onSearchQueryChange={setSearchQuery}
+              onDeleteUserTemplate={handleDeleteUserTemplate}
+              deletingTemplateId={deletingTemplateId}
+              loadingUserTemplates={loadingTemplates}
+            />
+            {/* Upload button area */}
+            <div className="ds-no-drag shrink-0 border-t border-[var(--ds-sidebar-divider)] px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setUploaderOpen(true)}
+                disabled={loadingTemplates}
+                className="flex w-full items-center justify-center gap-2 rounded-[8px] border border-[var(--ds-sidebar-row-ring)] bg-[var(--ds-sidebar-field-bg)] px-4 py-2 text-[13px] font-medium text-[var(--ds-ink)] transition hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)] disabled:opacity-40"
+              >
+                {loadingTemplates ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+                ) : (
+                  <Upload className="h-4 w-4" strokeWidth={1.75} />
+                )}
+                <span>
+                  {loadingTemplates
+                    ? t('documentWritingLoadingTemplates') || '加载中...'
+                    : t('documentWritingUploadTemplate')}
+                </span>
+              </button>
+            </div>
+          </>
+        ) : (
+          <DocumentHistorySidebar
+            onRestore={handleRestoreHistory}
+            onRefreshSignal={historyRefreshSignal}
+          />
+        )}
       </div>
 
       {/* Main: Editor always visible */}
@@ -464,20 +517,6 @@ export function DocumentWritingView(): ReactElement {
         onClose={() => setUploaderOpen(false)}
         onUpload={handleUpload}
         onSaveLearnedTemplate={handleSaveLearnedTemplate}
-      />
-
-      {/* History dialog */}
-      <DocumentHistoryDialog
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        onRestore={(record) => {
-          // When user clicks "查看" on a history record, populate the editor
-          setGeneratedContent(record.generatedContent)
-          setFieldValues(record.fieldValues)
-          setUploadedMaterials([])
-          setInstruction(record.instructions)
-          setHistoryOpen(false)
-        }}
       />
     </div>
   )

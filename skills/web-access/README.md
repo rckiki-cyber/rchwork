@@ -37,7 +37,8 @@ AI Agent 原本的联网能力（WebSearch、WebFetch）缺少调度策略和浏
 |------|------|
 | 联网工具自动选择 | WebSearch / WebFetch / curl / Jina / CDP，按场景自主判断，可任意组合 |
 | CDP Proxy 浏览器操作 | 直连用户日常 Chrome，天然携带登录态，支持动态页面、交互操作、视频截帧 |
-| 三种点击方式 | `/click`（JS click）、`/clickAt`（CDP 真实鼠标事件）、`/setFiles`（文件上传） |
+| 自动截图识别辅助 | `/visionMap` 生成带编号热区的截图并返回 selector/坐标清单，支持视觉判断后点击 |
+| 多种交互方式 | `/click`（JS click）、`/clickAt`（真实鼠标点元素）、`/clickPoint`（真实鼠标点坐标）、`/type`（输入文本）、`/setFiles`（文件上传） |
 | 本地 Chrome 书签/历史检索 | `find-url.mjs` 查询公网搜不到的目标（内部系统）或用户访问过的页面，支持关键词/时间窗/访问频度排序 |
 | 并行分治 | 多目标时分发子 Agent 并行执行，共享一个 Proxy，tab 级隔离 |
 | 站点经验积累 | 按域名存储操作经验（URL 模式、平台特征、已知陷阱），跨 session 复用 |

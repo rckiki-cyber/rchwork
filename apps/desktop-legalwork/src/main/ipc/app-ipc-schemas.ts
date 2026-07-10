@@ -176,7 +176,7 @@ export const runtimeRequestPayloadSchema = z
       value.startsWith('/') ? value : `/${value}`
     ),
     method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
-    body: z.string().max(MAX_BODY_BYTES).optional()
+    body: z.string().optional()
   })
   .refine((payload) => isAllowedRuntimeRequest(payload), {
     message: 'runtime request path is not allowed'
@@ -189,7 +189,7 @@ export const dataComplianceRequestPayloadSchema = z
       value.startsWith('/') ? value : `/${value}`
     ),
     method: z.enum(['GET', 'POST', 'DELETE']).optional(),
-    body: z.string().max(MAX_BODY_BYTES).optional()
+    body: z.string().optional()
   })
   .refine((payload) => {
     const method = payload.method ?? 'GET'
@@ -223,23 +223,26 @@ export const dataComplianceRequestPayloadSchema = z
   })
   .strict()
 
+const dataComplianceFilePayloadSchema = z.object({
+  name: z.string().trim().min(1).max(500),
+  type: z.string().trim().max(200).optional(),
+  dataBase64: z.string().optional(),
+  filePath: z.string().trim().min(1).max(MAX_PATH_LENGTH).optional()
+}).strict().refine((file) => Boolean(file.dataBase64 || file.filePath), {
+  message: 'file data or file path is required'
+})
+
 export const dataComplianceSubmitPayloadSchema = z.object({
   mode: z.enum(['review', 'desensitize']),
   documentName: z.string().trim().max(500).optional(),
-  inputText: z.string().max(MAX_BODY_BYTES).optional(),
+  inputText: z.string().optional(),
   reviewType: z.enum(['document', 'code']).optional(),
   outputDir: z.string().trim().max(2000).optional(),
   outputFormat: z.enum(['md', 'docx', 'txt']).optional(),
-  file: z.object({
-    name: z.string().trim().min(1).max(500),
-    type: z.string().trim().max(200).optional(),
-    dataBase64: z.string().optional(),
-    filePath: z.string().trim().min(1).max(MAX_PATH_LENGTH).optional()
-  }).strict().optional()
-}).strict().refine((payload) => Boolean(payload.file || payload.inputText?.trim()), {
+  file: dataComplianceFilePayloadSchema.optional(),
+  files: z.array(dataComplianceFilePayloadSchema).optional()
+}).strict().refine((payload) => Boolean(payload.file || payload.files?.length || payload.inputText?.trim()), {
   message: 'file or input text is required'
-}).refine((payload) => !payload.file || Boolean(payload.file.dataBase64 || payload.file.filePath), {
-  message: 'file data or file path is required'
 })
 
 export const dataComplianceDownloadFilePayloadSchema = z.object({

@@ -124,6 +124,7 @@ export class ThreadService {
       approvalPolicy: request.approvalPolicy,
       sandboxMode: request.sandboxMode,
       ...(request.costBudgetUsd !== undefined ? { costBudgetUsd: request.costBudgetUsd } : {}),
+      relation: request.relation,
       status: options.status
     })
     await this.threadStore.upsert(thread)

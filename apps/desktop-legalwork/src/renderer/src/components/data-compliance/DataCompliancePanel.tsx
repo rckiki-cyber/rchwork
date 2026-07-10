@@ -76,9 +76,9 @@ type SubmitMode = 'review' | 'desensitize'
 type DesensitizeKind = 'info' | 'material'
 type ReviewType = 'document' | 'code'
 type Notice = { tone: 'info' | 'error' | 'success'; text: string }
+type DataComplianceFilePayload = NonNullable<DataComplianceSubmitPayload['file']>
 
 const FALLBACK_API_BASE = ''
-const MAX_DATA_COMPLIANCE_BASE64_FILE_BYTES = 50 * 1024 * 1024 // 50 MiB
 
 const sectionMeta: Record<DataComplianceSection, { title: string; kicker: string }> = {
   review: { title: '合规审查', kicker: '文档、代码与数据处理链路风险识别' },
@@ -293,7 +293,7 @@ function readFileChunkAsBase64(file: File, start: number, end: number): Promise<
   })
 }
 
-async function fileToPayload(file: File): Promise<DataComplianceSubmitPayload['file']> {
+async function fileToPayload(file: File): Promise<DataComplianceFilePayload> {
   const filePath = window.dsGui?.getLocalFilePath?.(file)
   if (filePath) {
     return {
@@ -346,10 +346,30 @@ async function requestJson<T>(
 }
 
 async function submitViaFallback(payload: DataComplianceSubmitPayload): Promise<DataComplianceRequestResult> {
+  if ((payload.files?.length ?? 0) > 1) {
+    return {
+      ok: false,
+      status: 400,
+      body: JSON.stringify({ error: '当前运行环境不支持批量材料提交，请使用桌面应用主进程通道。' }),
+      contentType: 'application/json'
+    }
+  }
   const form = new FormData()
   if (payload.file?.dataBase64) {
     const bytes = Uint8Array.from(atob(payload.file.dataBase64), (char) => char.charCodeAt(0))
     form.set('file', new Blob([bytes], { type: payload.file.type || 'application/octet-stream' }), payload.file.name)
+  } else if (payload.file || payload.files?.length) {
+    const first = payload.files?.[0]
+    if (!first?.dataBase64) {
+      return {
+        ok: false,
+        status: 400,
+        body: JSON.stringify({ error: '缺少可提交的文件内容。' }),
+        contentType: 'application/json'
+      }
+    }
+    const bytes = Uint8Array.from(atob(first.dataBase64), (char) => char.charCodeAt(0))
+    form.set('file', new Blob([bytes], { type: first.type || 'application/octet-stream' }), first.name)
   }
   if (payload.inputText?.trim()) form.set('input_text', payload.inputText.trim())
   if (payload.documentName?.trim()) form.set('document_name', payload.documentName.trim())
@@ -1223,7 +1243,7 @@ export function DataCompliancePanel({
   const [reviewType, setReviewType] = useState<ReviewType>('document')
   const [documentName, setDocumentName] = useState('')
   const [inputText, setInputText] = useState('')
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -1428,18 +1448,29 @@ export function DataCompliancePanel({
     }
   }, [result?.status])
 
-  const setSelectedFile = useCallback((nextFile: File | null): void => {
-    setFile(nextFile)
-    if (nextFile && !documentName.trim()) {
-      setDocumentName(nextFile.name.replace(/\.[^.]+$/, ''))
+  const addSelectedFiles = useCallback((nextFiles: File[]): void => {
+    if (nextFiles.length === 0) return
+    setFiles((current) => {
+      const byKey = new Map(current.map((item) => [`${item.name}:${item.size}:${item.lastModified}`, item]))
+      for (const nextFile of nextFiles) {
+        byKey.set(`${nextFile.name}:${nextFile.size}:${nextFile.lastModified}`, nextFile)
+      }
+      return [...byKey.values()]
+    })
+    if (!documentName.trim()) {
+      const first = nextFiles[0]
+      setDocumentName(nextFiles.length === 1
+        ? first.name.replace(/\.[^.]+$/, '')
+        : `批量材料 ${nextFiles.length} 个文件`
+      )
     }
-    const formats = inferOutputFormats(nextFile)
+    const formats = inferOutputFormats(nextFiles.length === 1 ? nextFiles[0] : null)
     setOutputFormat(formats[0]?.value ?? '')
   }, [documentName])
 
   const onPickFile = (event: ChangeEvent<HTMLInputElement>): void => {
-    const nextFile = event.target.files?.[0] ?? null
-    setSelectedFile(nextFile)
+    const nextFiles = Array.from(event.target.files ?? [])
+    addSelectedFiles(nextFiles)
     // 允许重复选择同一文件
     if (event.target) event.target.value = ''
   }
@@ -1448,9 +1479,9 @@ export function DataCompliancePanel({
     event.preventDefault()
     event.stopPropagation()
     setDragActive(false)
-    const dropped = event.dataTransfer.files?.[0] ?? null
-    if (dropped) setSelectedFile(dropped)
-  }, [setSelectedFile])
+    const dropped = Array.from(event.dataTransfer.files ?? [])
+    addSelectedFiles(dropped)
+  }, [addSelectedFiles])
 
   const onDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
     event.preventDefault()
@@ -1465,9 +1496,19 @@ export function DataCompliancePanel({
   }, [])
 
   const clearFile = useCallback((): void => {
-    setSelectedFile(null)
+    setFiles([])
     if (fileInputRef.current) fileInputRef.current.value = ''
-  }, [setSelectedFile])
+  }, [])
+
+  const removeFile = useCallback((fileToRemove: File): void => {
+    setFiles((current) =>
+      current.filter((item) =>
+        item.name !== fileToRemove.name ||
+        item.size !== fileToRemove.size ||
+        item.lastModified !== fileToRemove.lastModified
+      )
+    )
+  }, [])
 
   const pickOutputDir = async (): Promise<void> => {
     if (typeof window.dsGui?.pickWorkspaceDirectory !== 'function') {
@@ -1485,7 +1526,7 @@ export function DataCompliancePanel({
   }
 
   const submitTask = async (mode: SubmitMode): Promise<void> => {
-    if (!file && !inputText.trim()) {
+    if (files.length === 0 && !inputText.trim()) {
       setNotice({ tone: 'error', text: '请先上传文件或输入待处理文本。' })
       return
     }
@@ -1494,12 +1535,12 @@ export function DataCompliancePanel({
     progressDismissedRef.current = false
     setProgressDismissed(false)
     setProgressTaskId('')
-    setSubmissionProgress({
-      kind: 'running',
-      step: 0,
-      message: file ? '正在读取材料并创建任务…' : '正在创建任务…',
-      percent: 3
-    })
+      setSubmissionProgress({
+        kind: 'running',
+        step: 0,
+        message: files.length > 0 ? '正在读取材料并创建任务…' : '正在创建任务…',
+        percent: 3
+      })
     try {
       await ensureServer()
       setSubmissionProgress({
@@ -1508,20 +1549,16 @@ export function DataCompliancePanel({
         message: '正在提交到后台队列…',
         percent: 8
       })
-      if (
-        file &&
-        file.size > MAX_DATA_COMPLIANCE_BASE64_FILE_BYTES &&
-        !window.dsGui?.getLocalFilePath?.(file)
-      ) {
-        throw new Error(t('dataComplianceFileTooLarge'))
-      }
-      const filePayload = file ? await fileToPayload(file) : undefined
+      const filePayloads = files.length > 0
+        ? await Promise.all(files.map((selected) => fileToPayload(selected)))
+        : []
       const payload: DataComplianceSubmitPayload = {
         mode,
         documentName,
         inputText,
         reviewType: reviewType === 'code' ? 'code' : 'document',
-        file: filePayload
+        ...(filePayloads.length === 1 ? { file: filePayloads[0] } : {}),
+        ...(filePayloads.length > 1 ? { files: filePayloads } : {})
       }
       if (mode === 'desensitize' && effectiveDesensitizeKind === 'material') {
         payload.outputDir = outputDir.trim() || workspaceRoot
@@ -1543,7 +1580,7 @@ export function DataCompliancePanel({
               percent: 10
             }
       )
-      setResult(nextTaskId ? { task_id: nextTaskId, status: 'processing', document_name: documentName || file?.name } : null)
+      setResult(nextTaskId ? { task_id: nextTaskId, status: 'processing', document_name: documentName || files[0]?.name } : null)
       setNotice({ tone: 'success', text: `任务已提交：${nextTaskId}` })
       onSectionChange('results')
       refreshHistory().catch((error: unknown) => {
@@ -1640,6 +1677,8 @@ export function DataCompliancePanel({
       : effectiveDesensitizeKind === 'material'
         ? '粘贴待脱敏的合同、证据材料或业务文档...'
         : '粘贴待脱敏的个人信息、业务数据或结构化文本...'
+    const primaryFile = files[0] ?? null
+    const outputFormatOptions = inferOutputFormats(files.length === 1 ? primaryFile : null)
 
     return (
       <section className="rounded-[16px] border border-ds-border bg-ds-card p-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
@@ -1648,7 +1687,7 @@ export function DataCompliancePanel({
           <h2 className="text-[16px] font-semibold text-ds-ink">
             {submitTitle}
           </h2>
-          <p className="mt-1 text-[12.5px] text-ds-muted">支持文件或文本输入，提交后自动追踪结果。</p>
+          <p className="mt-1 text-[12.5px] text-ds-muted">支持批量文件或文本输入，提交后自动追踪结果。</p>
         </div>
         {mode === 'review' ? (
           <div className="flex rounded-[10px] border border-ds-border-muted bg-ds-subtle p-1">
@@ -1696,36 +1735,61 @@ export function DataCompliancePanel({
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               onChange={onPickFile}
               className="hidden"
             />
-            {file ? (
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-ds-subtle">
-                  <FileTypeIcon fileName={file.name} className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13.5px] font-medium text-ds-ink" title={file.name}>
-                    {file.name}
+            {files.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 text-[13px] font-medium text-ds-ink">
+                    已选择 {files.length} 个文件
                   </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-[11.5px] text-ds-muted">
-                    <span className={`inline-flex items-center rounded-[6px] border px-2 py-0.5 text-[11px] font-semibold ${fileTypeBadgeClass(fileTypeLabelForFile(file.name))}`}>
-                      {fileTypeLabelForFile(file.name)}
-                    </span>
-                    <span>{(file.size / 1024).toFixed(1)} KB</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      clearFile()
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] border border-ds-border-muted bg-ds-subtle px-2.5 py-1.5 text-[12px] text-ds-muted transition hover:bg-red-500/10 hover:text-red-600"
+                    title="清空文件"
+                  >
+                    <X className="h-3.5 w-3.5" strokeWidth={1.8} />
+                    清空
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    clearFile()
-                  }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ds-faint transition hover:bg-red-500/10 hover:text-red-600"
-                  title="移除文件"
-                >
-                  <X className="h-4 w-4" strokeWidth={1.8} />
-                </button>
+                <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                  {files.map((selected) => (
+                    <div key={`${selected.name}:${selected.size}:${selected.lastModified}`} className="flex items-center gap-3 rounded-[10px] border border-ds-border-muted bg-ds-subtle px-3 py-2">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-ds-card">
+                        <FileTypeIcon fileName={selected.name} className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] font-medium text-ds-ink" title={selected.name}>
+                          {selected.name}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2 text-[11.5px] text-ds-muted">
+                          <span className={`inline-flex items-center rounded-[6px] border px-2 py-0.5 text-[11px] font-semibold ${fileTypeBadgeClass(fileTypeLabelForFile(selected.name))}`}>
+                            {fileTypeLabelForFile(selected.name)}
+                          </span>
+                          <span>{(selected.size / 1024).toFixed(1)} KB</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          removeFile(selected)
+                        }}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ds-faint transition hover:bg-red-500/10 hover:text-red-600"
+                        title="移除文件"
+                      >
+                        <X className="h-4 w-4" strokeWidth={1.8} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[11.5px] text-ds-faint">继续点击或拖拽可追加文件。</div>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center gap-2 py-2 text-center">
@@ -1733,7 +1797,7 @@ export function DataCompliancePanel({
                   <Upload className="h-5 w-5" strokeWidth={1.8} />
                 </div>
                 <div className="text-[13px] font-medium text-ds-ink">拖拽文件到此处</div>
-                <div className="text-[12px] text-ds-muted">或点击选择文件</div>
+                <div className="text-[12px] text-ds-muted">或点击选择文件，可一次选择多个</div>
               </div>
             )}
           </div>
@@ -1755,19 +1819,19 @@ export function DataCompliancePanel({
               <select
                 value={outputFormat}
                 onChange={(event) => setOutputFormat(event.target.value as 'md' | 'docx' | 'txt' | '')}
-                disabled={busy || statusBusy || installProgress.kind === 'installing' || inferOutputFormats(file).length === 0}
+                disabled={busy || statusBusy || installProgress.kind === 'installing' || outputFormatOptions.length === 0}
                 className="mt-1.5 w-full rounded-[12px] border border-ds-border bg-ds-card px-3 py-2 text-[13.5px] text-ds-ink outline-none transition focus:border-accent/40 focus:ring-2 focus:ring-accent/15 disabled:opacity-55"
               >
-                {inferOutputFormats(file).length === 0 ? (
+                {outputFormatOptions.length === 0 ? (
                   <option value="">按原格式输出</option>
                 ) : (
-                  inferOutputFormats(file).map((fmt) => (
+                  outputFormatOptions.map((fmt) => (
                     <option key={fmt.value} value={fmt.value}>{fmt.label}</option>
                   ))
                 )}
               </select>
               <p className="mt-1.5 text-[11.5px] text-ds-faint">
-                Word 与 PDF 材料可选择输出为 Markdown、Word 或 Text。
+                单个 Word 或 PDF 材料可指定输出格式；批量材料默认按各自类型输出。
               </p>
             </label>
             <label className="block">

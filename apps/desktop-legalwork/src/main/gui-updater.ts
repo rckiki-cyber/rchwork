@@ -1,6 +1,8 @@
 import { app, autoUpdater as nativeAutoUpdater, BrowserWindow } from 'electron'
 import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import electronUpdater from 'electron-updater'
 import type { ProgressInfo, UpdateDownloadedEvent, UpdateInfo } from 'electron-updater'
@@ -41,6 +43,8 @@ let beforeInstallUpdatePromise: Promise<void> | null = null
 let backgroundCheckTimer: NodeJS.Timeout | null = null
 let backgroundCheckPromise: Promise<void> | null = null
 let installExitWatchTimer: NodeJS.Timeout | null = null
+let downloadedUpdatePaths: string[] = []
+let fallbackInstallStarted = false
 
 const GUI_UPDATE_SCHEDULE_FILE = 'gui-update-schedule.json'
 const GUI_UPDATE_INSTALL_EXIT_TIMEOUT_MS = 12_000
@@ -451,18 +455,37 @@ function startInstallExitWatch(): void {
     installExitWatchTimer = null
     if (lastState.status !== 'installing') return
 
-    const message =
-      'legalwork did not quit after starting the update installer. Quit legalwork completely and reopen it, or install the update from the download page.'
-    abortQuitAndInstall('GUI update installer did not trigger application quit in time.', {
-      version: lastInfo?.latestVersion,
-      channel: lastInfo?.channel
-    })
-    emitGuiUpdateState({
-      status: 'error',
-      info: lastInfo ?? undefined,
-      message,
-      code: 'install_failed'
-    })
+    void startMacZipFallbackInstall('native updater did not quit in time')
+      .then((started) => {
+        if (started) return
+
+        const message =
+          'legalwork did not quit after starting the update installer. Quit legalwork completely and reopen it, or install the update from the download page.'
+        abortQuitAndInstall('GUI update installer did not trigger application quit in time.', {
+          version: lastInfo?.latestVersion,
+          channel: lastInfo?.channel
+        })
+        emitGuiUpdateState({
+          status: 'error',
+          info: lastInfo ?? undefined,
+          message,
+          code: 'install_failed'
+        })
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        abortQuitAndInstall('GUI update fallback installer failed to start.', {
+          version: lastInfo?.latestVersion,
+          channel: lastInfo?.channel,
+          message
+        })
+        emitGuiUpdateState({
+          status: 'error',
+          info: lastInfo ?? undefined,
+          message,
+          code: 'install_failed'
+        })
+      })
   }, GUI_UPDATE_INSTALL_EXIT_TIMEOUT_MS)
 }
 
@@ -484,6 +507,163 @@ function runBeforeInstallUpdate(): Promise<void> {
       })
   }
   return beforeInstallUpdatePromise
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+function currentAppBundlePath(): string | null {
+  const execPath = process.execPath
+  const match = execPath.match(/^(.*\.app)\/Contents\/MacOS\/[^/]+$/)
+  return match?.[1] ?? null
+}
+
+function updaterCacheDirCandidates(): string[] {
+  const candidates = new Set<string>()
+  const cacheRoot =
+    process.platform === 'win32'
+      ? (process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'))
+      : process.platform === 'darwin'
+        ? join(homedir(), 'Library', 'Caches')
+        : (process.env.XDG_CACHE_HOME || join(homedir(), '.cache'))
+  const appName = typeof app.getName === 'function' ? app.getName() : 'legalwork'
+  candidates.add(join(cacheRoot, 'legalwork-updater'))
+  candidates.add(join(cacheRoot, `${appName}-updater`))
+  candidates.add(join(app.getPath('userData'), '__update__'))
+  return [...candidates]
+}
+
+function pendingUpdateZipFromCache(): string | null {
+  for (const rawPath of downloadedUpdatePaths) {
+    if (rawPath.endsWith('.zip') && existsSync(rawPath)) return rawPath
+  }
+
+  for (const cacheDir of updaterCacheDirCandidates()) {
+    const pendingDir = join(cacheDir, 'pending')
+    const infoPath = join(pendingDir, 'update-info.json')
+    try {
+      if (existsSync(infoPath)) {
+        const info = JSON.parse(readFileSync(infoPath, 'utf8')) as { fileName?: unknown }
+        const fileName = typeof info.fileName === 'string' ? info.fileName : ''
+        const updatePath = fileName ? join(pendingDir, fileName) : ''
+        if (updatePath.endsWith('.zip') && existsSync(updatePath)) return updatePath
+      }
+    } catch {
+      // Try scanning the pending directory below.
+    }
+
+    try {
+      if (!existsSync(pendingDir)) continue
+      const entries = readdirSync(pendingDir)
+        .filter((entry) => entry.endsWith('.zip'))
+        .map((entry) => join(pendingDir, entry))
+        .filter((path) => existsSync(path))
+        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+      if (entries[0]) return entries[0]
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  return null
+}
+
+async function writeMacFallbackInstallScript(zipPath: string, targetApp: string): Promise<string> {
+  const scriptDir = await mkdtemp(join(tmpdir(), 'legalwork-gui-update-'))
+  const scriptPath = join(scriptDir, 'install-mac-update.sh')
+  const logDir = join(app.getPath('userData'), 'logs')
+  const logPath = join(logDir, 'gui-update-install.log')
+  await mkdir(logDir, { recursive: true })
+
+  const script = `#!/bin/bash
+set -u
+
+ZIP=${shellQuote(zipPath)}
+TARGET=${shellQuote(targetApp)}
+APP_PID=${process.pid}
+LOG=${shellQuote(logPath)}
+STAGE="\${TMPDIR:-/tmp}/legalwork-update-stage-$$"
+BACKUP="\${TMPDIR:-/tmp}/legalwork-update-backup-$$-$(basename "$TARGET")"
+
+exec >> "$LOG" 2>&1
+echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] fallback installer started"
+echo "zip=$ZIP"
+echo "target=$TARGET"
+
+for _ in $(seq 1 50); do
+  if ! kill -0 "$APP_PID" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.2
+done
+
+if kill -0 "$APP_PID" >/dev/null 2>&1; then
+  echo "app still running, sending SIGTERM"
+  kill "$APP_PID" >/dev/null 2>&1 || true
+  sleep 1
+fi
+
+if kill -0 "$APP_PID" >/dev/null 2>&1; then
+  echo "app still running after SIGTERM; aborting"
+  exit 20
+fi
+
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+ditto -x -k "$ZIP" "$STAGE"
+NEW_APP=$(find "$STAGE" -maxdepth 1 -name "*.app" -type d | head -n 1)
+if [ -z "$NEW_APP" ]; then
+  echo "no .app bundle found in update zip"
+  exit 21
+fi
+
+xattr -dr com.apple.quarantine "$NEW_APP" >/dev/null 2>&1 || true
+rm -rf "$BACKUP"
+if [ -d "$TARGET" ]; then
+  mv "$TARGET" "$BACKUP"
+fi
+if ! mv "$NEW_APP" "$TARGET"; then
+  echo "failed to move updated app into place; restoring previous app"
+  if [ -d "$BACKUP" ]; then
+    mv "$BACKUP" "$TARGET"
+  fi
+  exit 22
+fi
+xattr -dr com.apple.quarantine "$TARGET" >/dev/null 2>&1 || true
+
+open "$TARGET"
+rm -rf "$STAGE" "$BACKUP"
+echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] fallback installer completed"
+`
+
+  await writeFile(scriptPath, script, 'utf8')
+  await chmod(scriptPath, 0o755)
+  return scriptPath
+}
+
+async function startMacZipFallbackInstall(reason: string): Promise<boolean> {
+  if (fallbackInstallStarted || process.platform !== 'darwin') return false
+  const targetApp = currentAppBundlePath()
+  const zipPath = pendingUpdateZipFromCache()
+  if (!targetApp || !zipPath) return false
+
+  fallbackInstallStarted = true
+  const scriptPath = await writeMacFallbackInstallScript(zipPath, targetApp)
+  logWarn('gui-update', 'Starting macOS zip fallback installer.', {
+    reason,
+    version: lastInfo?.latestVersion,
+    channel: lastInfo?.channel,
+    zipPath,
+    targetApp
+  })
+  const child = spawn('/bin/bash', [scriptPath], {
+    detached: true,
+    stdio: 'ignore'
+  })
+  child.unref()
+  app.quit()
+  return true
 }
 
 function clearBackgroundCheckTimer(): void {
@@ -559,6 +739,8 @@ function configureUpdaterChannel(channel: GuiUpdateChannel): void {
   if (!changed) return
   downloaded = false
   downloadPromise = null
+  downloadedUpdatePaths = []
+  fallbackInstallStarted = false
   lastInfo = null
   emitGuiUpdateState({ status: 'idle' })
 }
@@ -789,6 +971,8 @@ export function initializeGuiUpdater(
 
   autoUpdater.on('update-available', (updateInfo: UpdateInfo) => {
     downloaded = false
+    downloadedUpdatePaths = []
+    fallbackInstallStarted = false
     const info = toGuiInfo(updateInfo, true)
     lastInfo = info
     emitGuiUpdateState({ status: 'available', info })
@@ -802,6 +986,8 @@ export function initializeGuiUpdater(
 
   autoUpdater.on('update-not-available', (updateInfo: UpdateInfo) => {
     downloaded = false
+    downloadedUpdatePaths = []
+    fallbackInstallStarted = false
     const info = toGuiInfo(updateInfo, false)
     lastInfo = info
     emitGuiUpdateState({ status: 'not_available', info })
@@ -819,6 +1005,9 @@ export function initializeGuiUpdater(
 
   autoUpdater.on('update-downloaded', (event: UpdateDownloadedEvent) => {
     downloaded = true
+    const downloadedFile = typeof event.downloadedFile === 'string' ? event.downloadedFile : ''
+    downloadedUpdatePaths = downloadedFile ? [downloadedFile] : downloadedUpdatePaths
+    fallbackInstallStarted = false
     const info = toGuiInfo(event, true)
     lastInfo = info
     emitGuiUpdateState({ status: 'downloaded', info })
@@ -932,6 +1121,7 @@ export async function downloadGuiUpdate(channel?: GuiUpdateChannel): Promise<Gui
       })
     }
     const paths = await downloadPromise
+    downloadedUpdatePaths = paths.filter((path) => path.endsWith('.zip') && existsSync(path))
     return { ok: true, paths }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)

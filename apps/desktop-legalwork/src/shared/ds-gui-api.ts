@@ -110,6 +110,12 @@ export type DataComplianceSubmitPayload = {
     dataBase64?: string
     filePath?: string
   }
+  files?: Array<{
+    name: string
+    type?: string
+    dataBase64?: string
+    filePath?: string
+  }>
 }
 export type DataComplianceDownloadResult =
   | { ok: true; dataBase64: string; filename: string; contentType: string }

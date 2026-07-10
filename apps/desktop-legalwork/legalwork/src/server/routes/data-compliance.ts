@@ -58,6 +58,7 @@ type JsonCreateTaskBody = {
   outputDir?: string
   outputFormat?: 'md' | 'docx' | 'txt'
   file?: { name: string; type?: string; dataBase64?: string; filePath?: string }
+  files?: Array<{ name: string; type?: string; dataBase64?: string; filePath?: string }>
 }
 
 function normalizeCreateTaskInput(
@@ -81,6 +82,14 @@ function normalizeCreateTaskInput(
           dataBase64: body.file.dataBase64,
           filePath: body.file.filePath
         }
+      : undefined,
+    files: Array.isArray(body.files)
+      ? body.files.map((file) => ({
+          name: file.name,
+          type: file.type,
+          dataBase64: file.dataBase64,
+          filePath: file.filePath
+        }))
       : undefined
   }
 }

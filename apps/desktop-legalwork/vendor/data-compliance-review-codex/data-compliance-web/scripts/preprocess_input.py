@@ -31,6 +31,10 @@ try:
 except Exception:  # pragma: no cover - fallback handled at runtime
     PdfReader = None
 
+TABLE_EXTENSIONS = {'.csv', '.tsv', '.xlsx', '.xls', '.ods'}
+PRESENTATION_EXTENSIONS = {'.pptx'}
+JSON_EXTENSIONS = {'.json', '.jsonl', '.ndjson'}
+
 
 def read_text(file_path: str, text: str) -> str:
     if file_path:
@@ -42,8 +46,22 @@ def read_text(file_path: str, text: str) -> str:
             return read_image_text(path)
         if suffix in {'.doc', '.docx'}:
             return read_office_text(path)
+        if suffix in TABLE_EXTENSIONS:
+            return read_table_text(path)
+        if suffix in PRESENTATION_EXTENSIONS:
+            return read_presentation_text(path)
+        if suffix in JSON_EXTENSIONS:
+            return path.read_text(encoding='utf-8', errors='replace')
         return path.read_text(encoding='utf-8')
     return text
+
+
+def has_meaningful_text(text: str) -> bool:
+    compact = re.sub(r'\s+', '', text or '')
+    if len(compact) < 40:
+        return False
+    readable = re.findall(r'[\u4e00-\u9fffA-Za-z0-9]', compact)
+    return len(readable) >= 30 and len(readable) / max(len(compact), 1) >= 0.35
 
 
 def read_pdf_text(path: Path) -> str:
@@ -56,7 +74,7 @@ def read_pdf_text(path: Path) -> str:
         except Exception:
             text = ''
 
-    if not text and shutil.which('pdftotext'):
+    if not has_meaningful_text(text) and shutil.which('pdftotext'):
         run = subprocess.run(
             ['pdftotext', '-layout', '-enc', 'UTF-8', str(path), '-'],
             capture_output=True,
@@ -66,12 +84,20 @@ def read_pdf_text(path: Path) -> str:
         if run.returncode == 0:
             text = run.stdout.strip()
 
-    if not text:
+    if not has_meaningful_text(text):
         try:
-            text = extract_pdf_ocr_text(path)
+            ocr_text = extract_pdf_ocr_text(path)
+            if has_meaningful_text(ocr_text):
+                text = ocr_text
+            elif not text.strip():
+                text = ocr_text
         except OcrUnavailable as exc:
+            if text.strip():
+                return text
             raise SystemExit(f'无法从 PDF 中提取文本，且无法执行 OCR：{exc}') from exc
         except Exception as exc:
+            if text.strip():
+                return text
             raise SystemExit(f'无法从 PDF 中提取文本，OCR 失败：{exc}') from exc
     return text
 
@@ -120,6 +146,70 @@ def read_office_text(path: Path) -> str:
     if not text:
         raise SystemExit('无法从文档中提取文本，请确认文件内容有效')
     return text
+
+
+def read_table_text(path: Path) -> str:
+    try:
+        import pandas as pd
+    except Exception as exc:
+        raise SystemExit(f'缺少表格解析依赖 pandas：{exc}') from exc
+
+    suffix = path.suffix.lower()
+    try:
+        if suffix == '.csv':
+            sheets = {'CSV': pd.read_csv(path, dtype=str, keep_default_na=False)}
+        elif suffix == '.tsv':
+            sheets = {'TSV': pd.read_csv(path, sep='\t', dtype=str, keep_default_na=False)}
+        else:
+            sheets = pd.read_excel(path, sheet_name=None, dtype=str, keep_default_na=False)
+    except Exception as exc:
+        raise SystemExit(f'无法解析表格文件：{exc}') from exc
+
+    parts: list[str] = []
+    for sheet_name, frame in sheets.items():
+        parts.append(f'【表格：{sheet_name}】')
+        if frame.empty:
+            parts.append('（空表）')
+            continue
+        columns = [str(column) for column in frame.columns]
+        for row_index, row in frame.iterrows():
+            cells = []
+            for column in columns:
+                value = str(row.get(column, '')).strip()
+                if value:
+                    cells.append(f'{column}: {value}')
+            if cells:
+                parts.append(f'第 {row_index + 1} 行：' + ' | '.join(cells))
+    return '\n'.join(parts).strip()
+
+
+def read_presentation_text(path: Path) -> str:
+    try:
+        from pptx import Presentation
+    except Exception as exc:
+        raise SystemExit(f'缺少演示文稿解析依赖 python-pptx：{exc}') from exc
+
+    try:
+        presentation = Presentation(str(path))
+    except Exception as exc:
+        raise SystemExit(f'无法解析 PPTX 文件：{exc}') from exc
+
+    parts: list[str] = []
+    for slide_index, slide in enumerate(presentation.slides, start=1):
+        slide_parts: list[str] = []
+        for shape in slide.shapes:
+            text = getattr(shape, 'text', '')
+            if text and text.strip():
+                slide_parts.append(text.strip())
+            table = getattr(shape, 'table', None)
+            if table is not None:
+                for row in table.rows:
+                    cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                    if cells:
+                        slide_parts.append(' | '.join(cells))
+        if slide_parts:
+            parts.append(f'【幻灯片 {slide_index}】\n' + '\n'.join(slide_parts))
+    return '\n\n'.join(parts).strip()
 
 
 def iter_docx_blocks(parent) -> list[Paragraph | Table]:
