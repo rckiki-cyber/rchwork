@@ -57,6 +57,17 @@ const cumulativeReleaseOverrides = {
       '补全 README 中 v0.2.2 / v0.2.3 / v0.2.4 的更新记录。'
     ],
   },
+  'v0.2.7': {
+    summary: '自动更新兜底安装、数据合规批量任务、文书生成历史侧边栏等多项体验优化。',
+    categories: ['桌面端', '数据合规', '插件技能', '修复优化'],
+    highlights: [
+      'macOS 自动更新增加 zip 兜底安装：当原生 updater 未触发应用退出时，自动执行已下载 zip 的替代安装流程，降低更新失败概率。',
+      '数据合规支持批量任务：可一次提交多个文件进行审查或脱敏，自动生成清单并统一调度；worker 扩展 Excel、PPT、PDF、OCR 等文件解析能力。',
+      '文书生成历史改为侧边栏：历史记录从弹窗迁移到左侧边栏，生成后自动保存并刷新，切换和回溯更便捷。',
+      '法律研究与知识库继续优化：文件预览、分类和问答交互体验进一步提升。',
+      'web-access skill 增强：新增 CDP proxy 脚本与 API 参考，浏览器自动化链路更完整。'
+    ],
+  },
 };
 
 function normalizeReleaseLine(line) {
