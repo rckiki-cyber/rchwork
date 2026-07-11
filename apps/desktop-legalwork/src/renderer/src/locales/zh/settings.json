@@ -332,6 +332,8 @@
   "approvalNever": "不执行工具",
   "sandboxMode": "文件访问范围",
   "sandboxModeDesc": "限制 AI 助手可以读取或修改哪些本地文件。修改后会在助手服务重启或重连时生效。",
+  "restrictFileAccessToWorkspace": "仅访问编辑项目文件",
+  "restrictFileAccessToWorkspaceDesc": "关闭时，Agent 可以访问和编辑电脑上的任意文件夹；开启后，Agent 只能访问当前编辑项目/工作目录内的文件。修改后会在助手服务重启或重连时生效。",
   "sandboxWorkspaceWrite": "可修改工作目录",
   "sandboxReadOnly": "只能读取文件",
   "sandboxFullAccess": "可访问所有文件",

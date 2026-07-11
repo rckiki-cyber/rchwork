@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
-import type { ApprovalPolicy, AppSettingsV1, ModelProviderProfileV1, SandboxMode } from '@shared/app-settings'
+import type { ApprovalPolicy, AppSettingsV1, ModelProviderProfileV1 } from '@shared/app-settings'
 import {
   DEFAULT_MODEL_PROVIDER_ID,
   DEFAULT_WRITE_INLINE_COMPLETION_BASE_URL,
@@ -1919,23 +1919,18 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                     }
                   />
                   <SettingRow
-                    title={t('sandboxMode')}
-                    description={t('sandboxModeDesc')}
+                    title={t('restrictFileAccessToWorkspace')}
+                    description={t('restrictFileAccessToWorkspaceDesc')}
                     control={
-                      <select
-                        className={selectControlClass}
-                        value={legalwork.sandboxMode}
-                        onChange={(e) =>
+                      <Toggle
+                        checked={legalwork.restrictFileAccessToWorkspace === true}
+                        onChange={(v) =>
                           updateLegalwork({
-                            sandboxMode: e.target.value as SandboxMode
+                            restrictFileAccessToWorkspace: v,
+                            sandboxMode: v ? 'workspace-write' : 'danger-full-access'
                           })
                         }
-                      >
-                        <option value="workspace-write">{t('sandboxWorkspaceWrite')}</option>
-                        <option value="read-only">{t('sandboxReadOnly')}</option>
-                        <option value="danger-full-access">{t('sandboxFullAccess')}</option>
-                        <option value="external-sandbox">{t('sandboxExternal')}</option>
-                      </select>
+                      />
                     }
                   />
                 </SettingsCard>

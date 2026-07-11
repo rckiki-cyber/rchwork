@@ -2853,7 +2853,8 @@ body.dark.raven-layout .home-headline .char:hover { color: #5ee4e0; }
             // 更新消息文本和检查点（每步都记录），不改变进度百分比
             const msg = p.message || data.message || '';
             if (msg) {
-                setProgress(Math.round(Math.min(currentProgressPct(), 95)), msg);
+                const serverPct = typeof p.percent === 'number' ? p.percent : null;
+                setProgress(Math.round(Math.min(serverPct ?? currentProgressPct(), 95)), msg);
                 addCheckpoint(msg);
             }
 

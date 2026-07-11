@@ -30,8 +30,8 @@ import {
   X
 } from 'lucide-react'
 import { SendIcon } from '../icons/SendIcon'
-import * as pdfjsLib from 'pdfjs-dist'
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
+import { getProvider } from '../../agent/registry'
+import type { ChatBlock } from '../../agent/types'
 import {
   LEGALWORK_KNOWLEDGE_CLASSIFY_PATH,
   LEGALWORK_KNOWLEDGE_CREATE_FOLDER_PATH,
@@ -43,10 +43,9 @@ import {
   LEGALWORK_KNOWLEDGE_TREE_PATH
 } from '../../../../shared/legalwork-endpoints'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
-
 import type { KnowledgeTreeNode } from './types'
 import { KnowledgeBaseFileView } from './KnowledgeBaseFileView'
+import { PdfJsPreview } from './PdfJsPreview'
 type TreeNode = KnowledgeTreeNode
 
 type FileViewBoundaryProps = {
@@ -357,6 +356,34 @@ type ChatMessage = {
   timestamp: number
 }
 
+function blocksToKnowledgeChatMessages(blocks: ChatBlock[]): ChatMessage[] {
+  const messages: ChatMessage[] = []
+  for (const block of blocks) {
+    if (block.kind === 'user') {
+      messages.push({
+        id: block.id,
+        role: 'user',
+        content: block.text,
+        timestamp: block.createdAt ? new Date(block.createdAt).getTime() : Date.now()
+      })
+    } else if (block.kind === 'assistant') {
+      messages.push({
+        id: block.id,
+        role: 'assistant',
+        content: block.text,
+        timestamp: block.createdAt ? new Date(block.createdAt).getTime() : Date.now()
+      })
+    }
+  }
+  return messages
+}
+
+function knowledgeChatTitle(question: string): string {
+  const trimmed = question.trim()
+  const summary = trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed
+  return `知识库全局对话 · ${summary}`
+}
+
 type KnowledgeRetrievalSource = {
   path: string
   title: string
@@ -384,32 +411,6 @@ type KnowledgeClassifyResult = {
     reason: string
   }>
   dryRun: boolean
-}
-
-type PdfRenderedPage = {
-  pageNumber: number
-  width: number
-  height: number
-  dataUrl: string
-}
-
-const PDF_RENDER_TIMEOUT_MS = 20000
-const PDFJS_ASSET_BASE_URL = new URL('pdfjs/', window.location.href).toString()
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs)
-    promise.then(
-      (value) => {
-        window.clearTimeout(timeout)
-        resolve(value)
-      },
-      (error: unknown) => {
-        window.clearTimeout(timeout)
-        reject(error)
-      }
-    )
-  })
 }
 
 function fileExtension(node: TreeNode): string {
@@ -454,157 +455,6 @@ function buildObjectUrl(node: TreeNode, base64Content: string): string {
   return URL.createObjectURL(blob)
 }
 
-function base64ToBytes(base64Content: string): Uint8Array {
-  const byteString = atob(base64Content)
-  const bytes = new Uint8Array(byteString.length)
-  for (let i = 0; i < byteString.length; i += 1) {
-    bytes[i] = byteString.charCodeAt(i)
-  }
-  return bytes
-}
-
-function PdfPreview({ base64Content, fileName }: { base64Content: string; fileName: string }): ReactElement {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const renderKeyRef = useRef<string>('')
-  const [pages, setPages] = useState<PdfRenderedPage[]>([])
-  const [loading, setLoading] = useState(false)
-  const [renderingMore, setRenderingMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [renderWidth, setRenderWidth] = useState(480)
-
-  useEffect(() => {
-    const element = containerRef.current
-    if (!element) return
-    let measured = false
-    const updateWidth = (): void => {
-      if (measured) return
-      const width = Math.floor(element.clientWidth)
-      if (width <= 0) return
-      measured = true
-      setRenderWidth(Math.min(Math.max(width - 32, 280), 960))
-    }
-    updateWidth()
-    const observer = new ResizeObserver(updateWidth)
-    observer.observe(element)
-    return () => {
-      measured = true
-      observer.disconnect()
-    }
-  }, [base64Content])
-
-  useEffect(() => {
-    let cancelled = false
-    const renderPdf = async (): Promise<void> => {
-      if (!base64Content || renderWidth <= 0) return
-      const renderKey = `${base64Content.length}:${renderWidth}`
-      if (renderKeyRef.current === renderKey) return
-      renderKeyRef.current = renderKey
-      setLoading(true)
-      setRenderingMore(false)
-      setError(null)
-      setPages([])
-      let pdf: pdfjsLib.PDFDocumentProxy | null = null
-      try {
-        pdf = await withTimeout(
-          pdfjsLib.getDocument({
-            data: base64ToBytes(base64Content),
-            cMapUrl: `${PDFJS_ASSET_BASE_URL}cmaps/`,
-            cMapPacked: true,
-            standardFontDataUrl: `${PDFJS_ASSET_BASE_URL}standard_fonts/`
-          }).promise,
-          PDF_RENDER_TIMEOUT_MS,
-          'PDF 加载超时'
-        )
-        const renderedPages: PdfRenderedPage[] = []
-        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-          if (cancelled) break
-          if (pageNumber > 1) {
-            setLoading(false)
-            setRenderingMore(true)
-          }
-          const page = await withTimeout(pdf.getPage(pageNumber), PDF_RENDER_TIMEOUT_MS, `第 ${pageNumber} 页读取超时`)
-          const baseViewport = page.getViewport({ scale: 1 })
-          const scale = renderWidth / baseViewport.width
-          const viewport = page.getViewport({ scale })
-          const canvas = document.createElement('canvas')
-          const context = canvas.getContext('2d')
-          if (!context) throw new Error('无法创建 PDF 预览画布')
-          const ratio = window.devicePixelRatio || 1
-          canvas.width = Math.floor(viewport.width * ratio)
-          canvas.height = Math.floor(viewport.height * ratio)
-          canvas.style.width = `${viewport.width}px`
-          canvas.style.height = `${viewport.height}px`
-          context.setTransform(ratio, 0, 0, ratio, 0, 0)
-          await withTimeout(
-            page.render({ canvas, canvasContext: context, viewport }).promise,
-            PDF_RENDER_TIMEOUT_MS,
-            `第 ${pageNumber} 页渲染超时`
-          )
-          if (cancelled) break
-          const renderedPage: PdfRenderedPage = {
-            pageNumber,
-            width: viewport.width,
-            height: viewport.height,
-            dataUrl: canvas.toDataURL('image/png')
-          }
-          renderedPages.push(renderedPage)
-          setPages((prev) => [...prev, renderedPage])
-        }
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'PDF 预览渲染失败')
-      } finally {
-        if (pdf) void pdf.destroy()
-        if (!cancelled) setLoading(false)
-        if (!cancelled) setRenderingMore(false)
-      }
-    }
-    void renderPdf()
-    return () => {
-      cancelled = true
-    }
-  }, [base64Content, renderWidth])
-
-  return (
-    <div ref={containerRef} className="min-h-full bg-[var(--ds-main)]">
-      {loading && pages.length === 0 ? (
-        <div className="flex h-full min-h-[320px] items-center justify-center gap-2 text-[13px] text-[var(--ds-muted)]">
-          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.8} />
-          正在渲染 PDF...
-        </div>
-      ) : null}
-      {error ? (
-        <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 p-6 text-center text-[13px] text-[var(--ds-muted)]">
-          <FileText className="h-10 w-10 text-slate-300" strokeWidth={1.4} />
-          <div className="font-medium text-[var(--ds-ink)]">PDF 预览失败</div>
-          <div className="max-w-sm break-words">{error}</div>
-        </div>
-      ) : pages.length > 0 ? (
-        <div className="flex flex-col items-center gap-4 p-4">
-          {pages.map((page) => (
-            <figure key={page.pageNumber} className="w-full">
-              <img
-                src={page.dataUrl}
-                alt={`${fileName} 第 ${page.pageNumber} 页`}
-                className="mx-auto max-w-full rounded-[4px] bg-white shadow-sm"
-                style={{ width: page.width, minHeight: page.height }}
-              />
-              <figcaption className="mt-2 text-center text-[11px] text-[var(--ds-muted)]">
-                第 {page.pageNumber} 页
-              </figcaption>
-            </figure>
-          ))}
-          {renderingMore ? (
-            <div className="flex items-center gap-2 pb-4 text-[12px] text-[var(--ds-muted)]">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
-              继续渲染...
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
 type ContextMenuState = {
   visible: boolean
   x: number
@@ -634,7 +484,17 @@ function isDescendantOf(path: string, ancestorPath: string): boolean {
   return path !== ancestorPath && path.startsWith(`${ancestorPath}/`)
 }
 
-export function KnowledgeBaseView(): ReactElement {
+type KnowledgeBaseViewProps = {
+  selectedThreadId?: string | null
+  onSelectThread?: (id: string | null) => void
+  onChatThreadsChange?: () => void
+}
+
+export function KnowledgeBaseView({
+  selectedThreadId,
+  onSelectThread,
+  onChatThreadsChange
+}: KnowledgeBaseViewProps): ReactElement {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [currentPath, setCurrentPath] = useState('')
   const [query, setQuery] = useState('')
@@ -670,7 +530,32 @@ export function KnowledgeBaseView(): ReactElement {
   const [chatInput, setChatInput] = useState('')
   const [chatSending, setChatSending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
+  const [activeChatThreadId, setActiveChatThreadId] = useState<string | null>(null)
   const chatMessagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Load a selected knowledge-chat thread into the AI chat panel.
+  useEffect(() => {
+    if (!selectedThreadId) return
+    const threadId = selectedThreadId
+    let cancelled = false
+    async function load(): Promise<void> {
+      try {
+        const provider = getProvider()
+        const { blocks } = await provider.getThreadDetail(threadId)
+        if (cancelled) return
+        setChatMessages(blocksToKnowledgeChatMessages(blocks))
+        setActiveChatThreadId(threadId)
+        setChatOpen(true)
+      } catch (err) {
+        if (cancelled) return
+        setChatError(err instanceof Error ? err.message : '加载对话记录失败')
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedThreadId])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -843,7 +728,7 @@ export function KnowledgeBaseView(): ReactElement {
           objectUrl = buildObjectUrl(node, data.content)
         } catch {
           // buildObjectUrl can fail on invalid base64; for PDF the
-          // PdfPreview component uses raw base64Content directly anyway
+          // PdfJsPreview component uses raw base64Content directly anyway
         }
       }
       setPreview({ node, content: data.content, encoding: data.encoding, objectUrl })
@@ -1000,20 +885,24 @@ ${question.trim()}
 
 请基于检索到的内容给出准确、专业的回答。如果内容不足以回答问题，请明确说明。引用来源时请标注对应的 [来源编号]，不要编造未出现在上下文中的依据。`
 
-      // Create a side thread so knowledge-base AI chat does not sync to the main chat sidebar.
+      // Reuse the active knowledge-chat thread if one exists; otherwise create a side thread.
       const workspace = await getWorkspaceRoot()
-      const threadResult = await requestJson<{ id: string }>(
-        '/v1/threads',
-        'POST',
-        {
-          workspace,
-          title: '知识库全局对话',
-          model: 'deepseek-chat',
-          mode: 'agent',
-          relation: 'side'
-        }
-      )
-      const threadId = threadResult.id
+      let threadId = activeChatThreadId
+      if (!threadId) {
+        const threadResult = await requestJson<{ id: string }>(
+          '/v1/threads',
+          'POST',
+          {
+            workspace,
+            title: knowledgeChatTitle(question.trim()),
+            model: 'deepseek-chat',
+            mode: 'agent',
+            relation: 'side'
+          }
+        )
+        threadId = threadResult.id
+        setActiveChatThreadId(threadId)
+      }
 
       // Start a turn
       await requestJson(`/v1/threads/${threadId}/turns`, 'POST', { prompt })
@@ -1027,17 +916,20 @@ ${question.trim()}
         content: assistantMsg,
         timestamp: Date.now()
       }])
+      onChatThreadsChange?.()
     } catch (err) {
       setChatError(err instanceof Error ? err.message : 'AI 响应失败')
     } finally {
       setChatSending(false)
     }
-  }, [chatSending])
+  }, [chatSending, activeChatThreadId, onChatThreadsChange, pollKnowledgeChat])
 
   const clearChat = useCallback((): void => {
     setChatMessages([])
     setChatError(null)
-  }, [])
+    setActiveChatThreadId(null)
+    onSelectThread?.(null)
+  }, [onSelectThread])
 
   const handleChatKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1188,6 +1080,7 @@ ${question.trim()}
         <KnowledgeBaseFileView
           node={viewingFile}
           onBack={handleBack}
+          onChatThreadsChange={onChatThreadsChange}
         />
       </KnowledgeFileViewErrorBoundary>
     )
@@ -1563,7 +1456,7 @@ ${question.trim()}
                   正在读取...
                 </div>
               ) : previewType(preview.node) === 'pdf' && preview.content ? (
-                <PdfPreview base64Content={preview.content} fileName={preview.node.name} />
+                <PdfJsPreview base64Content={preview.content} fileName={preview.node.name} />
               ) : previewType(preview.node) === 'image' && preview.objectUrl ? (
                 <img
                   src={preview.objectUrl}

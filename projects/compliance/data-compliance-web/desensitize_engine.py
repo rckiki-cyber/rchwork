@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -69,6 +70,16 @@ except Exception as _redaction_import_error:  # pragma: no cover - optional depe
     REDACTION_AVAILABLE = False
 
 LEGAL_SUBJECT_TYPES = ['person_name', 'company_name']
+FAST_SUBJECT_TYPES = ['company_name']
+
+PERSON_CONTEXT_PATTERN = re.compile(
+    r'(?:原告|被告|第三人|上诉人|被上诉人|申请人|被申请人|申请执行人|被执行人|'
+    r'甲方|乙方|丙方|丁方|委托人|受托人|法定代表人|负责人|联系人|姓名)'
+    r'[：:\s，,、]*([\u4e00-\u9fa5]{2,4})'
+)
+PERSON_LIST_PATTERN = re.compile(
+    r'(?<![\u4e00-\u9fa5])([\u4e00-\u9fa5]{2,4})(?:、|和|与)([\u4e00-\u9fa5]{2,4})(?![\u4e00-\u9fa5])'
+)
 
 
 @dataclass(frozen=True)
@@ -138,13 +149,55 @@ class Finding:
         }
 
 
-def redact_legal_subjects(text: str, locator: str = '') -> tuple[str, list[SubjectMapping]]:
+def _looks_like_person_name(value: str) -> bool:
+    if not 2 <= len(value) <= 4:
+        return False
+    noise = {'公司', '企业', '集团', '法院', '银行', '合同', '协议', '数据', '用户', '个人', '信息'}
+    return value not in noise and not any(word in value for word in noise)
+
+
+def _detect_person_subjects(text: str) -> list[Any]:
+    """用轻量规则识别常见中文自然人姓名，避免为人名加载重型 NER。"""
+    entities: list[Any] = []
+    if not text:
+        return entities
+
+    class _Entity:
+        def __init__(self, original: str, start: int, end: int, confidence: float) -> None:
+            self.entity_type = 'person_name'
+            self.text = original
+            self.start = start
+            self.end = end
+            self.confidence = confidence
+
+    for match in PERSON_CONTEXT_PATTERN.finditer(text):
+        original = match.group(1)
+        if _looks_like_person_name(original):
+            entities.append(_Entity(original, match.start(1), match.end(1), 0.82))
+
+    for match in PERSON_LIST_PATTERN.finditer(text):
+        for group_index in (1, 2):
+            original = match.group(group_index)
+            if _looks_like_person_name(original):
+                entities.append(_Entity(original, match.start(group_index), match.end(group_index), 0.72))
+
+    return entities
+
+
+def redact_legal_subjects(
+    text: str,
+    locator: str = '',
+    *,
+    detector: Any | None = None,
+) -> tuple[str, list[SubjectMapping]]:
     """识别并替换法律主体（自然人、公司），返回替换后文本与可逆映射表。"""
-    if not REDACTION_AVAILABLE or not text or not text.strip():
+    if not text or not text.strip():
         return text, []
 
-    detector = RedactionDetector()
-    entities = detector.detect(text, entity_types=LEGAL_SUBJECT_TYPES)
+    entities: list[Any] = []
+    if REDACTION_AVAILABLE and detector is not None:
+        entities.extend(detector.detect(text, entity_types=FAST_SUBJECT_TYPES, use_semantic=False))
+    entities.extend(_detect_person_subjects(text))
     if not entities:
         return text, []
 
@@ -227,7 +280,11 @@ def sanitize_text_and_subjects(
 ) -> tuple[str, list[Finding], list[SubjectMapping]]:
     """先执行隐私信息脱敏，再对法律主体进行可逆替换。"""
     sanitized, findings = engine.sanitize_text(text, surface=surface, locator=locator)
-    redacted, subject_mappings = redact_legal_subjects(sanitized, locator=locator)
+    redacted, subject_mappings = redact_legal_subjects(
+        sanitized,
+        locator=locator,
+        detector=engine._subject_detector,
+    )
     return redacted, findings, subject_mappings
 
 
@@ -290,13 +347,22 @@ PRESIDIO_ENTITY_MAP = {
 class Desensitizer:
     def __init__(self) -> None:
         self._analyzer: Any | None = None
+        self._subject_detector: Any | None = None
         self.presidio_available = False
-        if AnalyzerEngine is not None and importlib.util.find_spec('en_core_web_sm') is not None:
+        self.subject_detector_available = False
+        use_presidio = os.environ.get('COMPLIANCEAI_USE_PRESIDIO', '').lower() in {'1', 'true', 'yes'}
+        if use_presidio and AnalyzerEngine is not None and importlib.util.find_spec('en_core_web_sm') is not None:
             try:
                 self._analyzer = AnalyzerEngine()
                 self.presidio_available = True
             except Exception:
                 self._analyzer = None
+        if REDACTION_AVAILABLE:
+            try:
+                self._subject_detector = RedactionDetector()
+                self.subject_detector_available = True
+            except Exception:
+                self._subject_detector = None
 
     def sanitize_text(self, text: str, *, surface: str = 'text', locator: str = '') -> tuple[str, list[Finding]]:
         findings = self._detect(text, surface=surface, locator=locator)
@@ -496,7 +562,9 @@ def build_report(
         'strategy': 'format_preserving_mask',
         'engine': {
             'presidio_available': engine.presidio_available,
+            'presidio_default_enabled': os.environ.get('COMPLIANCEAI_USE_PRESIDIO', '').lower() in {'1', 'true', 'yes'},
             'custom_chinese_rules_enabled': True,
+            'legal_subject_detector_available': engine.subject_detector_available,
         },
         'summary': {
             'total_findings': len(findings),

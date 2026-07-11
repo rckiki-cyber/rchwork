@@ -40,6 +40,7 @@ import {
 } from '../data-compliance/DataCompliancePanel'
 import { LegalResearchSidebar } from '../legal-research/LegalResearchSidebar'
 import type { ResearchRecord } from '../legal-research/useLegalResearch'
+import { KnowledgeBaseChatSidebar } from '../knowledge-base/KnowledgeBaseChatSidebar'
 
 type Props = {
   threads: NormalizedThread[]
@@ -56,6 +57,8 @@ type Props = {
   showArchivedThreads: boolean
   legalResearchRecords: ResearchRecord[]
   activeLegalResearchRecordId: string | null
+  knowledgeChatThreads: NormalizedThread[]
+  activeKnowledgeChatThreadId: string | null
   onThreadSearchChange: (query: string) => void
   onShowArchivedThreadsChange: (show: boolean) => void
   onSelectThread: (id: string) => void
@@ -82,6 +85,8 @@ type Props = {
   onDeleteLegalResearchRecord: (id: string) => void
   onClearLegalResearchHistory: () => void
   onStopLegalResearch: () => void
+  onSelectKnowledgeChatThread: (id: string) => void
+  onDeleteKnowledgeChatThread: (id: string) => void
   onToggleSidebar: () => void
 }
 
@@ -100,6 +105,8 @@ export function Sidebar({
   showArchivedThreads,
   legalResearchRecords,
   activeLegalResearchRecordId,
+  knowledgeChatThreads,
+  activeKnowledgeChatThreadId,
   onThreadSearchChange,
   onShowArchivedThreadsChange,
   onSelectThread,
@@ -126,6 +133,8 @@ export function Sidebar({
   onDeleteLegalResearchRecord,
   onClearLegalResearchHistory,
   onStopLegalResearch,
+  onSelectKnowledgeChatThread,
+  onDeleteKnowledgeChatThread,
   onToggleSidebar
 }: Props): ReactElement {
   const { t, i18n } = useTranslation('common')
@@ -287,11 +296,12 @@ export function Sidebar({
           </div>
         </div>
       ) : activeView === 'knowledgeBase' ? (
-        <div className="ds-no-drag flex min-h-0 flex-1 flex-col px-2 pt-1">
-          <div className="px-1 text-[13px] font-medium text-ds-faint">
-            {t('knowledgeBase')}
-          </div>
-        </div>
+        <KnowledgeBaseChatSidebar
+          threads={knowledgeChatThreads}
+          activeThreadId={activeKnowledgeChatThreadId}
+          onSelectThread={onSelectKnowledgeChatThread}
+          onDeleteThread={onDeleteKnowledgeChatThread}
+        />
       ) : activeView === 'desensitize' ? (
         <DesensitizeSidebarNav
           activeSection={desensitizeSection}

@@ -88,5 +88,5 @@ export function summarizeProcessBlocks(
 }
 
 export function defaultWorkExpanded(): boolean {
-  return false
+  return true
 }

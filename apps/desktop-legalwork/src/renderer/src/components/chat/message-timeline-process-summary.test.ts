@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatBlock } from '../../agent/types'
 import {
+  defaultWorkExpanded,
   getProcessAttentionLevel,
   processBlockNeedsAttention,
   summarizeProcessBlocks
@@ -31,6 +32,10 @@ function t(key: string, opts?: Record<string, unknown>): string {
 }
 
 describe('message timeline process summary', () => {
+  it('shows completed work details by default', () => {
+    expect(defaultWorkExpanded()).toBe(true)
+  })
+
   it('summarizes execution work into a compact result-first label', () => {
     const blocks: ChatBlock[] = [
       {

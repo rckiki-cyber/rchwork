@@ -193,6 +193,15 @@ export function isLegalResearchThread(
   return trimmed.startsWith(LEGAL_RESEARCH_TITLE_PREFIX)
 }
 
+const KNOWLEDGE_TITLE_PREFIXES = ['知识库全局对话', '知识库：']
+
+export function isKnowledgeThread(
+  thread: Pick<NormalizedThread, 'title'>
+): boolean {
+  const trimmed = thread.title?.trim() ?? ''
+  return KNOWLEDGE_TITLE_PREFIXES.some((prefix) => trimmed.startsWith(prefix))
+}
+
 export function optimisticUserModelLabel(
   composerModel: string,
   threadModel: string | undefined

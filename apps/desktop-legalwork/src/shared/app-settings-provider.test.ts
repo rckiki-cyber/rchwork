@@ -58,6 +58,41 @@ describe('model provider settings', () => {
     expect(runtime.baseUrl).toBe('https://custom.example/v1')
   })
 
+  it('defaults Legalwork file access to the whole computer', () => {
+    const runtime = resolveLegalworkRuntimeSettings(settings())
+
+    expect(runtime.restrictFileAccessToWorkspace).toBe(false)
+    expect(runtime.sandboxMode).toBe('danger-full-access')
+  })
+
+  it('restricts file access only when the explicit project-files switch is on', () => {
+    const base = settings()
+    base.agents.legalwork = {
+      ...base.agents.legalwork,
+      restrictFileAccessToWorkspace: true,
+      sandboxMode: 'workspace-write'
+    }
+
+    const runtime = resolveLegalworkRuntimeSettings(base)
+
+    expect(runtime.restrictFileAccessToWorkspace).toBe(true)
+    expect(runtime.sandboxMode).toBe('workspace-write')
+  })
+
+  it('ignores legacy workspace sandbox values when the explicit switch is absent', () => {
+    const base = settings()
+    base.agents.legalwork = {
+      ...base.agents.legalwork,
+      restrictFileAccessToWorkspace: false,
+      sandboxMode: 'workspace-write'
+    }
+
+    const runtime = resolveLegalworkRuntimeSettings(base)
+
+    expect(runtime.restrictFileAccessToWorkspace).toBe(false)
+    expect(runtime.sandboxMode).toBe('danger-full-access')
+  })
+
   it('resolves Kimi Code with its Anthropic-compatible endpoint format', () => {
     const base = settings()
     base.provider.providers = base.provider.providers.map((provider) =>

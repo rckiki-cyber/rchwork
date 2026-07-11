@@ -874,7 +874,8 @@ def run_review_pipeline(task_id, input_path, document_name, is_text=False):
             'step': len(checkpoints),
             'total_steps': len(checkpoints),
             'message': '审查完成',
-            'status': 'completed'
+            'status': 'completed',
+            'percent': 100,
         }
         save_task_state(task_id)
 
@@ -889,7 +890,8 @@ def run_review_pipeline(task_id, input_path, document_name, is_text=False):
             'step': task.get('progress', {}).get('step', 0),
             'total_steps': len(checkpoints),
             'message': f'出错了: {str(e)}',
-            'status': 'error'
+            'status': 'error',
+            'percent': task.get('progress', {}).get('percent', 0),
         }
         save_task_state(task_id)
 
@@ -956,6 +958,7 @@ def run_code_review_pipeline(task_id, input_path, document_name, is_text=False):
             'total_steps': 4,
             'message': '代码审查完成',
             'status': 'completed',
+            'percent': 100,
         }
         save_task_state(task_id)
     except Exception as e:
@@ -970,6 +973,7 @@ def run_code_review_pipeline(task_id, input_path, document_name, is_text=False):
             'total_steps': 4,
             'message': f'出错了: {str(e)}',
             'status': 'error',
+            'percent': task.get('progress', {}).get('percent', 0),
         }
         save_task_state(task_id)
 
@@ -980,12 +984,14 @@ def run_desensitize_pipeline(task_id, input_path, document_name, is_text=False, 
     work_dir.mkdir(parents=True, exist_ok=True)
 
     def update_progress(step, message, status='running', detail=None):
+        total_steps = 4
         task['progress'] = {
             'step': step,
-            'total_steps': 4,
+            'total_steps': total_steps,
             'message': message,
             'status': status,
             'detail': detail or {},
+            'percent': min(95, max(3, round(step / total_steps * 100))),
         }
         save_task_state(task_id)
 
@@ -1021,6 +1027,7 @@ def run_desensitize_pipeline(task_id, input_path, document_name, is_text=False, 
             'total_steps': 4,
             'message': f'脱敏完成：命中 {report.get("summary", {}).get("total_findings", 0)} 处敏感信息',
             'status': 'completed',
+            'percent': 100,
         }
         save_task_state(task_id)
     except Exception as e:
@@ -1035,6 +1042,7 @@ def run_desensitize_pipeline(task_id, input_path, document_name, is_text=False, 
             'total_steps': 4,
             'message': f'脱敏失败: {str(e)}',
             'status': 'error',
+            'percent': task.get('progress', {}).get('percent', 0),
         }
         save_task_state(task_id)
 

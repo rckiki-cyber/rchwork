@@ -434,7 +434,7 @@ function useComplianceProgress(taskId: string | null): ProgressState {
     }
     const controller = new AbortController()
     abortRef.current = controller
-    setState({ kind: 'running', step: 0, message: '任务已提交，等待开始处理…', percent: 0 })
+    setState({ kind: 'running', step: 0, message: '任务已提交，正在启动本地处理引擎…', percent: 5 })
 
     // 主 LegalWork runtime 需要鉴权，renderer 无法直接连接 SSE。
     // 改为通过 IPC 轮询 /data-compliance/tasks/:id。
@@ -464,7 +464,11 @@ function useComplianceProgress(taskId: string | null): ProgressState {
         }
         const step = typeof progress?.step === 'number' ? progress.step : 0
         const message = typeof progress?.message === 'string' ? progress.message : '正在处理…'
-        const percent = typeof progress?.percent === 'number' ? progress.percent : Math.min(step * 9, 95)
+        const percent = typeof progress?.percent === 'number'
+          ? progress.percent
+          : step > 0
+            ? Math.min(step * 9, 95)
+            : 8
         setState({ kind: 'running', step, message, percent })
         schedule(1000)
       } catch {

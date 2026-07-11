@@ -8,6 +8,11 @@ import sys
 from pathlib import Path
 
 try:
+    import numpy as np
+except Exception:  # pragma: no cover - optional dependency
+    np = None
+
+try:
     import fitz  # PyMuPDF
 except Exception:  # pragma: no cover - optional dependency
     fitz = None
@@ -22,16 +27,215 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     pytesseract = None
 
+try:
+    from paddleocr import PaddleOCR
+except Exception:  # pragma: no cover - optional dependency
+    PaddleOCR = None
+
 
 OCR_LANG = 'chi_sim+eng'
 OCR_FALLBACK_LANG = 'eng'
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff'}
 TESSERACT_ENV_KEYS = ('LEGALWORK_TESSERACT_CMD', 'TESSERACT_CMD')
 OCR_ROOT_ENV_KEYS = ('LEGALWORK_OCR_ROOT', 'TESSERACT_ROOT')
+PADDLE_MODEL_ROOT_ENV_KEYS = ('LEGALWORK_PADDLEOCR_MODEL_ROOT', 'PADDLEOCR_MODEL_ROOT')
+PADDLE_LANG = os.environ.get('LEGALWORK_PADDLEOCR_LANG', 'ch')
+_PADDLE_ENGINE = None
 
 
 class OcrUnavailable(RuntimeError):
     pass
+
+
+def _paddle_engine():
+    global _PADDLE_ENGINE
+    if PaddleOCR is None or np is None:
+        return None
+    if _PADDLE_ENGINE is not None:
+        return _PADDLE_ENGINE
+    kwargs = {
+        'lang': PADDLE_LANG,
+        'show_log': False,
+        'use_textline_orientation': True,
+    }
+    model_dirs = _paddle_model_dirs()
+    kwargs.update(model_dirs)
+    if model_dirs:
+        kwargs.pop('lang', None)
+    try:
+        _PADDLE_ENGINE = PaddleOCR(**kwargs)
+    except (TypeError, ValueError):
+        kwargs.pop('show_log', None)
+        try:
+            _PADDLE_ENGINE = PaddleOCR(**kwargs)
+        except (TypeError, ValueError):
+            kwargs.pop('use_angle_cls', None)
+            kwargs['use_textline_orientation'] = True
+            _PADDLE_ENGINE = PaddleOCR(**kwargs)
+    return _PADDLE_ENGINE
+
+
+def _candidate_paddle_model_roots() -> list[Path]:
+    roots: list[Path] = []
+    for key in PADDLE_MODEL_ROOT_ENV_KEYS:
+        raw = os.environ.get(key)
+        if raw:
+            roots.append(Path(raw).expanduser())
+    for root in _candidate_ocr_roots():
+        roots.extend([
+            root / 'paddle-models',
+            root / 'paddleocr-models',
+            root / 'official_models',
+        ])
+    roots.append(Path.home() / '.paddlex' / 'official_models')
+    return roots
+
+
+def _paddle_model_dir(name: str) -> str | None:
+    for root in _candidate_paddle_model_roots():
+        candidate = root / name
+        if candidate.is_dir():
+            return str(candidate)
+    return None
+
+
+def _paddle_model_dirs() -> dict[str, str]:
+    mapping = {
+        'doc_orientation_classify_model_dir': 'PP-LCNet_x1_0_doc_ori',
+        'doc_unwarping_model_dir': 'UVDoc',
+        'textline_orientation_model_dir': 'PP-LCNet_x1_0_textline_ori',
+        'text_detection_model_dir': 'PP-OCRv6_medium_det',
+        'text_recognition_model_dir': 'PP-OCRv6_medium_rec',
+    }
+    result: dict[str, str] = {}
+    for key, name in mapping.items():
+        model_dir = _paddle_model_dir(name)
+        if model_dir:
+            result[key] = model_dir
+    return result
+
+
+def _paddle_available() -> bool:
+    try:
+        return _paddle_engine() is not None
+    except Exception:
+        return False
+
+
+def _normalize_paddle_result(result) -> list[tuple[list[list[float]], str, float]]:
+    """Normalize PaddleOCR 2.x/3.x outputs into (box, text, score)."""
+    rows: list[tuple[list[list[float]], str, float]] = []
+
+    def add_line(line) -> None:
+      if not line:
+          return
+      if isinstance(line, dict):
+          text = line.get('text') or line.get('rec_text') or ''
+          score = line.get('score') or line.get('rec_score') or 0
+          box = line.get('points') or line.get('box') or line.get('dt_polys')
+          if text and box is not None:
+              rows.append((box, str(text), float(score or 0)))
+          return
+      if isinstance(line, (list, tuple)) and len(line) >= 2:
+          box = line[0]
+          payload = line[1]
+          if isinstance(payload, (list, tuple)) and payload:
+              text = payload[0]
+              score = payload[1] if len(payload) > 1 else 0
+              rows.append((box, str(text), float(score or 0)))
+
+    if isinstance(result, dict):
+        texts = result.get('rec_texts') or result.get('texts') or []
+        scores = result.get('rec_scores') or result.get('scores') or []
+        boxes = result.get('rec_polys') or result.get('dt_polys') or result.get('boxes') or []
+        for index, text in enumerate(texts):
+            if not text:
+                continue
+            box = boxes[index] if index < len(boxes) else None
+            if box is None:
+                continue
+            score = scores[index] if index < len(scores) else 0
+            rows.append((box, str(text), float(score or 0)))
+        return rows
+
+    if isinstance(result, list):
+        for item in result:
+            if isinstance(item, dict):
+                rows.extend(_normalize_paddle_result(item))
+            elif isinstance(item, list) and item and isinstance(item[0], (list, tuple, dict)):
+                # PaddleOCR 2.x returns one page list around line results.
+                for line in item:
+                    add_line(line)
+            else:
+                add_line(item)
+    return rows
+
+
+def _paddle_ocr_rows(image) -> list[tuple[list[list[float]], str, float]]:
+    engine = _paddle_engine()
+    if engine is None or np is None:
+        return []
+    array = np.array(image.convert('RGB'))
+    try:
+        raw = engine.ocr(array, cls=True)
+    except TypeError:
+        raw = engine.ocr(array)
+    return _normalize_paddle_result(raw)
+
+
+def _paddle_image_to_string(image) -> str:
+    rows = _paddle_ocr_rows(image)
+    return '\n'.join(text for _box, text, _score in rows).strip()
+
+
+def _paddle_image_to_data(image) -> dict:
+    rows = _paddle_ocr_rows(image)
+    data = {
+        'text': [],
+        'left': [],
+        'top': [],
+        'width': [],
+        'height': [],
+        'line_num': [],
+        'word_num': [],
+        'block_num': [],
+        'par_num': [],
+        'conf': [],
+    }
+    for index, (box, text, score) in enumerate(rows, start=1):
+        try:
+            xs = [float(point[0]) for point in box]
+            ys = [float(point[1]) for point in box]
+        except Exception:
+            continue
+        left = int(max(0, min(xs)))
+        top = int(max(0, min(ys)))
+        right = int(max(xs))
+        bottom = int(max(ys))
+        data['text'].append(text)
+        data['left'].append(left)
+        data['top'].append(top)
+        data['width'].append(max(1, right - left))
+        data['height'].append(max(1, bottom - top))
+        data['line_num'].append(index)
+        data['word_num'].append(1)
+        data['block_num'].append(index)
+        data['par_num'].append(1)
+        data['conf'].append(round(score * 100, 2))
+    return data
+
+
+def ocr_backend_status() -> dict:
+    return {
+        'preferred': 'paddleocr',
+        'paddleocr_importable': PaddleOCR is not None,
+        'numpy_importable': np is not None,
+        'paddleocr_available': PaddleOCR is not None and np is not None,
+        'paddleocr_initialized': _PADDLE_ENGINE is not None,
+        'bundled_model_count': len(_paddle_model_dirs()),
+        'pytesseract_importable': pytesseract is not None,
+        'tesseract_available': bool(_configure_tesseract()) if pytesseract is not None else False,
+    }
 
 
 def _binary_names() -> list[str]:
@@ -122,23 +326,7 @@ def _find_homebrew_cmd() -> str | None:
 
 
 def _try_install_tesseract() -> bool:
-    if sys.platform != 'darwin':
-        return False
-    if os.environ.get('LEGALWORK_DISABLE_OCR_AUTO_INSTALL') == '1':
-        return False
-    brew = _find_homebrew_cmd()
-    if not brew:
-        return False
-    try:
-        subprocess.run(
-            [brew, 'install', 'tesseract', 'tesseract-lang'],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        return False
-    return _find_tesseract_cmd() is not None
+    return False
 
 
 def _candidate_tessdata_dirs(tesseract_cmd: str) -> list[Path]:
@@ -181,10 +369,12 @@ def _missing_dependencies(require_pdf: bool = False) -> list[str]:
         missing.append('PDF 页面读取组件')
     if Image is None:
         missing.append('图片处理组件')
+    if _paddle_available():
+        return missing
     if pytesseract is None:
-        missing.append('图片文字识别组件')
-    if not _configure_tesseract() and not (_try_install_tesseract() and _configure_tesseract()):
-        missing.append('OCR 识别引擎')
+        missing.append('图片文字识别组件 PaddleOCR')
+    elif not _configure_tesseract() and not (_try_install_tesseract() and _configure_tesseract()):
+        missing.append('OCR 识别引擎 PaddleOCR')
     return missing
 
 
@@ -199,6 +389,8 @@ def ensure_ocr_available(*, require_pdf: bool = False) -> None:
 
 
 def _image_to_string(image) -> str:
+    if _paddle_available():
+        return _paddle_image_to_string(image)
     assert pytesseract is not None
     try:
         return pytesseract.image_to_string(image, lang=OCR_LANG)
@@ -208,6 +400,8 @@ def _image_to_string(image) -> str:
 
 def ocr_image_to_data(image) -> dict:
     ensure_ocr_available()
+    if _paddle_available():
+        return _paddle_image_to_data(image)
     assert pytesseract is not None
     try:
         return pytesseract.image_to_data(image, lang=OCR_LANG, output_type=pytesseract.Output.DICT)

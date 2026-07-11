@@ -332,6 +332,8 @@
   "approvalNever": "Do not run tools",
   "sandboxMode": "File access range",
   "sandboxModeDesc": "Limit which local files the AI assistant can read or change. Changes apply after the assistant service restarts or reconnects.",
+  "restrictFileAccessToWorkspace": "Only access project files",
+  "restrictFileAccessToWorkspaceDesc": "Off lets the agent access and edit files anywhere on this computer. On restricts the agent to the current project/workspace. Changes apply after the assistant service restarts or reconnects.",
   "sandboxWorkspaceWrite": "Can edit workspace",
   "sandboxReadOnly": "Can only read files",
   "sandboxFullAccess": "Can access all files",

@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 import { parseClawCommand } from '@shared/claw-commands'
@@ -12,12 +12,12 @@ import {
 } from '@shared/keyboard-shortcuts'
 import type { DesktopCommand, SkillListItem } from '@shared/ds-gui-api'
 import type { ClipboardImageReadResult } from '@shared/workspace-file'
-import type { AttachmentReference, ChatBlock } from '../agent/types'
+import type { AttachmentReference, ChatBlock, NormalizedThread } from '../agent/types'
 import type { CoreRuntimeInfoJson, CoreRuntimeSkillJson } from '../agent/legalwork-contract'
 import { getProvider } from '../agent/registry'
 import { rendererRuntimeClient } from '../agent/runtime-client'
 import { useChatStore } from '../store/chat-store'
-import { isClawThread, isLegalResearchThread } from '../store/chat-store-helpers'
+import { isClawThread, isKnowledgeThread, isLegalResearchThread } from '../store/chat-store-helpers'
 import {
   extractLatestTurnAutoOpenDevPreviewUrls,
   extractLatestTurnDevPreviewUrls
@@ -382,6 +382,8 @@ export function Workbench(): ReactElement {
     }
   }, [])
   const legalResearch = useLegalResearch()
+  const [selectedKnowledgeChatThreadId, setSelectedKnowledgeChatThreadId] = useState<string | null>(null)
+  const [knowledgeChatThreads, setKnowledgeChatThreads] = useState<NormalizedThread[]>([])
   const [composerFileReferences, setComposerFileReferences] = useState<ComposerFileReference[]>([])
   const [attachmentUploadBusy, setAttachmentUploadBusy] = useState(false)
   const [attachmentUploadError, setAttachmentUploadError] = useState<string | null>(null)
@@ -403,6 +405,27 @@ export function Workbench(): ReactElement {
     () => resolveKeyboardShortcutBindings(keyboardShortcuts),
     [keyboardShortcuts]
   )
+
+  const refreshKnowledgeChatThreads = useCallback(async (): Promise<void> => {
+    try {
+      const response = await rendererRuntimeClient.runtimeRequest(
+        '/v1/threads?include=side&include_archived=true',
+        'GET'
+      )
+      if (!response.ok) return
+      const payload = JSON.parse(response.body) as { threads: NormalizedThread[] }
+      const threads = Array.isArray(payload.threads) ? payload.threads : []
+      setKnowledgeChatThreads(threads.filter((thread) => isKnowledgeThread(thread)))
+    } catch {
+      // Ignore fetch errors; the list stays empty until the next refresh.
+    }
+  }, [])
+
+  useEffect(() => {
+    if (route === 'knowledgeBase') {
+      void refreshKnowledgeChatThreads()
+    }
+  }, [route, refreshKnowledgeChatThreads])
 
   const draftByThread = useRef<Record<string, string>>({})
   const prevThreadId = useRef<string | null>(null)
@@ -1662,6 +1685,8 @@ export function Workbench(): ReactElement {
               showArchivedThreads={showArchivedThreads}
               legalResearchRecords={legalResearch.records}
               activeLegalResearchRecordId={legalResearch.activeRecordId}
+              knowledgeChatThreads={knowledgeChatThreads}
+              activeKnowledgeChatThreadId={selectedKnowledgeChatThreadId}
               onThreadSearchChange={setThreadSearch}
               onShowArchivedThreadsChange={setShowArchivedThreads}
               onSelectThread={openThread}
@@ -1688,6 +1713,18 @@ export function Workbench(): ReactElement {
               onDeleteLegalResearchRecord={legalResearch.deleteRecord}
               onClearLegalResearchHistory={legalResearch.clearHistory}
               onStopLegalResearch={legalResearch.stopResearch}
+              onSelectKnowledgeChatThread={setSelectedKnowledgeChatThreadId}
+              onDeleteKnowledgeChatThread={async (id) => {
+                try {
+                  await rendererRuntimeClient.runtimeRequest(`/v1/threads/${id}`, 'DELETE')
+                } catch {
+                  // Ignore errors; the list refresh will show the current state.
+                }
+                if (selectedKnowledgeChatThreadId === id) {
+                  setSelectedKnowledgeChatThreadId(null)
+                }
+                await refreshKnowledgeChatThreads()
+              }}
               onToggleSidebar={toggleLeftSidebar}
             />
           </div>
@@ -1773,7 +1810,11 @@ export function Workbench(): ReactElement {
             </div>
             <div className="ds-no-drag flex min-h-0 flex-1 overflow-hidden">
               <Suspense fallback={<div className="h-full flex-1 bg-ds-main" />}>
-                <KnowledgeBaseView />
+                <KnowledgeBaseView
+                  selectedThreadId={selectedKnowledgeChatThreadId}
+                  onSelectThread={setSelectedKnowledgeChatThreadId}
+                  onChatThreadsChange={refreshKnowledgeChatThreads}
+                />
               </Suspense>
             </div>
           </>

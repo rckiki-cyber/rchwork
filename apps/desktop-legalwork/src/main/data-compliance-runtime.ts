@@ -54,6 +54,7 @@ const PORT = 5100
 const BUNDLED_WEB_ROOT = join('vendor', 'data-compliance-review-codex', 'data-compliance-web')
 const DEPENDENCY_MARKER = '.legalwork-deps-installed'
 const MIN_PYTHON_VERSION = { major: 3, minor: 10 }
+const MAX_PYTHON_VERSION = { major: 3, minor: 12 }
 const REQUIRED_PYTHON_IMPORTS = [
   'flask',
   'docx',
@@ -70,6 +71,8 @@ const REQUIRED_PYTHON_IMPORTS = [
   'pptx',
   'fitz',
   'PIL',
+  'paddle',
+  'paddleocr',
   'pytesseract'
 ]
 const COMMON_BINARY_DIRS = [
@@ -92,8 +95,8 @@ export function parsePythonVersionOutput(output: string): { major: number; minor
 export function isSupportedDataCompliancePythonVersion(output: string): boolean {
   const version = parsePythonVersionOutput(output)
   if (!version) return false
-  if (version.major > MIN_PYTHON_VERSION.major) return true
-  return version.major === MIN_PYTHON_VERSION.major && version.minor >= MIN_PYTHON_VERSION.minor
+  if (version.major !== MIN_PYTHON_VERSION.major) return false
+  return version.minor >= MIN_PYTHON_VERSION.minor && version.minor <= MAX_PYTHON_VERSION.minor
 }
 
 function sleep(ms: number): Promise<void> {
@@ -118,9 +121,13 @@ function killExistingProcessOnPort(port: number): void {
   }
 }
 
-function pythonExecutable(webRoot: string): string {
-  if (process.platform === 'win32') return join(webRoot, 'venv', 'Scripts', 'python.exe')
-  return join(webRoot, 'venv', 'bin', 'python')
+function runtimeVenvRoot(): string {
+  return join(app.getPath('userData'), 'data-compliance', 'python-venv')
+}
+
+function pythonExecutable(venvRoot: string = runtimeVenvRoot()): string {
+  if (process.platform === 'win32') return join(venvRoot, 'Scripts', 'python.exe')
+  return join(venvRoot, 'bin', 'python')
 }
 
 function canRunSupportedPython(command: string, env: NodeJS.ProcessEnv = appendPathForPython()): boolean {
@@ -151,7 +158,7 @@ function findSystemPython(env: NodeJS.ProcessEnv = appendPathForPython()): strin
     if (canRunSupportedPython(candidate, env)) return candidate
   }
 
-  throw new Error('未找到 Python 3.10+ 解释器。请重新运行安装，让 legalwork 自动安装内置 Python 3.11。')
+  throw new Error('未找到兼容的数据合规 Python 3.10-3.12 解释器。请重新运行安装，让 legalwork 自动安装内置 Python 3.11。')
 }
 
 function shellQuote(value: string): string {
@@ -281,10 +288,14 @@ function appendPathForPython(baseRoots: Array<string | undefined> = []): NodeJS.
   const ocrBinDirs = ocrRuntimeBinDirs(roots)
   const tesseractCmd = findTesseractCommand(ocrBinDirs)
   const tessdataDir = ocrRuntimeTessdataDirs(roots)[0]
+  const paddleModelRoot = roots
+    .map((root) => join(root, 'paddle-models'))
+    .find((candidate) => existsSync(candidate))
   const current = process.env.PATH ?? ''
   return {
     ...process.env,
     ...(roots[0] ? { LEGALWORK_OCR_ROOT: roots[0] } : {}),
+    ...(paddleModelRoot ? { LEGALWORK_PADDLEOCR_MODEL_ROOT: paddleModelRoot } : {}),
     ...(tesseractCmd ? { LEGALWORK_TESSERACT_CMD: tesseractCmd } : {}),
     ...(tessdataDir && !process.env.TESSDATA_PREFIX ? { TESSDATA_PREFIX: tessdataDir } : {}),
     PATH: [current, ...ocrBinDirs, ...COMMON_BINARY_DIRS].filter(Boolean).join(delimiter)
@@ -590,9 +601,9 @@ export class DataComplianceRuntime {
   }
 
   private async ensurePythonEnvironment(): Promise<void> {
-    const python = pythonExecutable(this.webRoot)
-    const venvRoot = join(this.webRoot, 'venv')
-    const marker = join(this.webRoot, DEPENDENCY_MARKER)
+    const venvRoot = runtimeVenvRoot()
+    const python = pythonExecutable(venvRoot)
+    const marker = join(venvRoot, DEPENDENCY_MARKER)
     const logPath = join(this.logDir, 'data-compliance-runtime.log')
     const env = appendPathForPython([this.webRoot, this.projectRoot])
     if (existsSync(python) && !canRunSupportedPython(python, env)) {
@@ -602,7 +613,8 @@ export class DataComplianceRuntime {
     if (!existsSync(python)) {
       this.installing = true
       try {
-        await runCommand(findSystemPython(env), ['-m', 'venv', 'venv'], {
+        await mkdir(dirname(venvRoot), { recursive: true })
+        await runCommand(findSystemPython(env), ['-m', 'venv', venvRoot], {
           cwd: this.webRoot,
           logPath,
           env
@@ -612,7 +624,7 @@ export class DataComplianceRuntime {
       }
     }
     if (!canRunSupportedPython(python, env)) {
-      throw new Error('数据合规虚拟环境不是 Python 3.10+，无法安装依赖。')
+      throw new Error('数据合规虚拟环境不是 Python 3.10-3.12，无法稳定安装 PaddleOCR 等依赖。')
     }
     if (!existsSync(marker) || !(await this.hasRequiredPythonPackages(python, env))) {
       this.installing = true
@@ -622,12 +634,16 @@ export class DataComplianceRuntime {
           logPath,
           env
         })
+        if (!(await this.hasRequiredPythonPackages(python, env))) {
+          rmSync(marker, { force: true })
+          throw new Error('数据合规 Python 依赖安装后仍无法导入，请检查安装日志或重新安装应用。')
+        }
         await writeFile(marker, new Date().toISOString(), 'utf-8')
       } finally {
         this.installing = false
       }
     }
-    await this.ensureOcrRuntime(logPath)
+    await this.ensureOcrRuntime(python, logPath, env)
   }
 
   private async hasRequiredPythonPackages(python: string, env: NodeJS.ProcessEnv): Promise<boolean> {
@@ -644,30 +660,23 @@ export class DataComplianceRuntime {
     }
   }
 
-  private async ensureOcrRuntime(logPath: string): Promise<void> {
-    const env = appendPathForPython([this.webRoot, this.projectRoot])
-    if (canRunTesseract(env)) return
-
-    if (process.platform === 'darwin') {
-      const brew = findHomebrewExecutable(env)
-      if (brew) {
-        this.installing = true
-        try {
-          await runCommand(brew, ['install', 'tesseract', 'tesseract-lang'], {
-            cwd: this.webRoot,
-            logPath,
-            env
-          })
-        } finally {
-          this.installing = false
-        }
-        if (canRunTesseract(appendPathForPython([this.webRoot, this.projectRoot]))) return
-      }
+  private async ensureOcrRuntime(python: string, logPath: string, env: NodeJS.ProcessEnv): Promise<void> {
+    try {
+      await runCommand(
+        python,
+        [
+          '-c',
+          'import json\nfrom scripts.ocr_text import ocr_backend_status\nprint(json.dumps(ocr_backend_status(), ensure_ascii=False))'
+        ],
+        { cwd: this.webRoot, logPath, env }
+      )
+    } catch {
+      await writeFile(
+        logPath,
+        `[${new Date().toISOString()}] OCR backend diagnostic failed; PaddleOCR is the preferred backend and task-level fallbacks will be used if OCR cannot run.\n`,
+        { flag: 'a' }
+      ).catch(() => undefined)
     }
-
-    throw new Error(
-      'OCR 组件未就绪：未找到可运行的 Tesseract 引擎。请在发布包中内置 ocr-runtime，或确保安装流程已自动安装 Tesseract。'
-    )
   }
 
   private async startProcess(): Promise<void> {
@@ -696,12 +705,13 @@ export class DataComplianceRuntime {
       }
     }
 
-    const child = spawn(pythonExecutable(this.webRoot), ['server_entry.py', '--port', String(PORT)], {
+    const venvPython = pythonExecutable()
+    const child = spawn(venvPython, ['server_entry.py', '--port', String(PORT)], {
       cwd: this.webRoot,
       env: {
         ...appendPathForPython([this.webRoot, this.projectRoot]),
         ...agentEnv,
-        COMPLIANCEAI_PYTHON: pythonExecutable(this.webRoot),
+        COMPLIANCEAI_PYTHON: venvPython,
         COMPLIANCEAI_LOG_PATH: logPath
       },
       stdio: ['ignore', 'pipe', 'pipe']

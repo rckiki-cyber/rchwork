@@ -295,6 +295,7 @@ const legalworkRuntimePatchSchema = z.object({
   model: z.string().trim().min(1).max(128).optional(),
   approvalPolicy: approvalPolicySchema.optional(),
   sandboxMode: sandboxModeSchema.optional(),
+  restrictFileAccessToWorkspace: z.boolean().optional(),
   tokenEconomyMode: z.boolean().optional(),
   tokenEconomy: z.object({
     enabled: z.boolean().optional(),

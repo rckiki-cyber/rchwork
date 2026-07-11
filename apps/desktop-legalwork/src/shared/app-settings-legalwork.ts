@@ -100,6 +100,7 @@ export function defaultLegalworkRuntimeSettings(
     model: DEFAULT_LEGALWORK_MODEL,
     approvalPolicy: DEFAULT_APPROVAL_POLICY,
     sandboxMode: DEFAULT_SANDBOX_MODE,
+    restrictFileAccessToWorkspace: false,
     tokenEconomyMode: false,
     tokenEconomy: defaultLegalworkTokenEconomySettings(),
     insecure: false,
@@ -111,10 +112,8 @@ export function defaultLegalworkRuntimeSettings(
   }
 }
 
-function normalizeLegalworkSandboxMode(value: SandboxMode | undefined): SandboxMode {
-  return value === 'read-only' || value === 'workspace-write'
-    ? DEFAULT_SANDBOX_MODE
-    : value ?? DEFAULT_SANDBOX_MODE
+function effectiveSandboxModeForFileAccess(restrictFileAccessToWorkspace: boolean): SandboxMode {
+  return restrictFileAccessToWorkspace ? 'workspace-write' : DEFAULT_SANDBOX_MODE
 }
 
 export function defaultLegalworkMcpSearchSettings(): LegalworkMcpSearchSettingsV1 {
@@ -255,9 +254,14 @@ export function mergeLegalworkRuntimeSettings(
         }
       : {})
   })
+  const restrictFileAccessToWorkspace = typeof patch?.restrictFileAccessToWorkspace === 'boolean'
+    ? patch.restrictFileAccessToWorkspace
+    : current.restrictFileAccessToWorkspace === true
   return {
     ...current,
     ...(patch ?? {}),
+    restrictFileAccessToWorkspace,
+    sandboxMode: effectiveSandboxModeForFileAccess(restrictFileAccessToWorkspace),
     tokenEconomyMode: nextTokenEconomy.enabled,
     tokenEconomy: nextTokenEconomy,
     mcpSearch: nextMcpSearch,
@@ -526,7 +530,8 @@ export function migrateLegacyAppSettings(parsed: LegacyAppSettingsShape): Partia
     storage: normalizeLegalworkStorageSettings(explicitLegalwork.storage),
     contextCompaction: normalizeLegalworkContextCompactionSettings(explicitLegalwork.contextCompaction),
     runtimeTuning: normalizeLegalworkRuntimeTuningSettings(explicitLegalwork.runtimeTuning),
-    sandboxMode: normalizeLegalworkSandboxMode(explicitLegalwork.sandboxMode ?? legacySeed.sandboxMode)
+    restrictFileAccessToWorkspace: explicitLegalwork.restrictFileAccessToWorkspace === true,
+    sandboxMode: effectiveSandboxModeForFileAccess(explicitLegalwork.restrictFileAccessToWorkspace === true)
   }
   // Strip the legacy `agentProvider` discriminator and the legacy
   // per-provider settings from the surfaced migration result. The

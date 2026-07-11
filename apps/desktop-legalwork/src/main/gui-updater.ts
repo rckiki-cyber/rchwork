@@ -223,8 +223,44 @@ function hasCjk(value: string): boolean {
   return /[\u3400-\u9fff]/.test(value)
 }
 
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (entity, raw: string) => {
+    const normalized = raw.toLowerCase()
+    if (normalized.startsWith('#x')) {
+      const codePoint = Number.parseInt(normalized.slice(2), 16)
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : entity
+    }
+    if (normalized.startsWith('#')) {
+      const codePoint = Number.parseInt(normalized.slice(1), 10)
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : entity
+    }
+    const named: Record<string, string> = {
+      amp: '&',
+      apos: "'",
+      gt: '>',
+      lt: '<',
+      nbsp: ' ',
+      quot: '"'
+    }
+    return named[normalized] ?? entity
+  })
+}
+
+function htmlReleaseTextToPlainText(value: string): string {
+  return decodeHtmlEntities(value)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '\n- ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/(?:h[1-6]|p|div|section|article|blockquote|ul|ol)>/gi, '\n')
+    .replace(/<(?:h[1-6]|p|div|section|article|blockquote|ul|ol)\b[^>]*>/gi, '\n')
+    .replace(/<a\b[^>]*>/gi, '')
+    .replace(/<\/a>/gi, '')
+    .replace(/<\/?(?:strong|em|b|i|code|span|small|del|s|mark|kbd)\b[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+}
+
 function cleanReleaseLine(line: string): string {
-  return line
+  return htmlReleaseTextToPlainText(line)
     .replace(/\[([^\]]+)\]\((?:https?:\/\/)?[^)]+\)/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/^#{1,6}\s*/, '')
@@ -320,7 +356,7 @@ function buildReleaseHighlights(...parts: unknown[]): string[] {
   const seen = new Set<string>()
   const highlights: string[] = []
   for (const part of parts.flatMap(releaseTextParts)) {
-    const lines = part.split(/\r?\n/)
+    const lines = htmlReleaseTextToPlainText(part).split(/\r?\n/)
     for (const line of lines) {
       const normalized = normalizeReleaseHighlight(line)
       if (!normalized || seen.has(normalized)) continue

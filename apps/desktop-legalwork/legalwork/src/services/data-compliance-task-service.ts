@@ -17,6 +17,7 @@ import { Readable } from 'node:stream'
 
 const DATA_COMPLIANCE_VENV_DIR_NAME = 'python-venv'
 const MIN_DATA_COMPLIANCE_PYTHON = { major: 3, minor: 10 }
+const MAX_DATA_COMPLIANCE_PYTHON = { major: 3, minor: 12 }
 
 function resolveDataComplianceVenvDir(dataDir: string): string {
   return join(dataDir, 'data-compliance', DATA_COMPLIANCE_VENV_DIR_NAME)
@@ -41,8 +42,8 @@ export function parsePythonVersionOutput(output: string): { major: number; minor
 export function isSupportedDataCompliancePythonVersion(output: string): boolean {
   const version = parsePythonVersionOutput(output)
   if (!version) return false
-  if (version.major !== MIN_DATA_COMPLIANCE_PYTHON.major) return version.major > MIN_DATA_COMPLIANCE_PYTHON.major
-  return version.minor >= MIN_DATA_COMPLIANCE_PYTHON.minor
+  if (version.major !== MIN_DATA_COMPLIANCE_PYTHON.major) return false
+  return version.minor >= MIN_DATA_COMPLIANCE_PYTHON.minor && version.minor <= MAX_DATA_COMPLIANCE_PYTHON.minor
 }
 
 export type DataComplianceTaskStatus = 'pending' | 'running' | 'completed' | 'failed'
@@ -74,6 +75,7 @@ export type DataComplianceProgress = {
   total_steps: number
   message: string
   status?: 'running' | 'completed' | 'error'
+  percent?: number
   detail?: Record<string, unknown>
 }
 
@@ -126,6 +128,7 @@ export type DataComplianceFileKey =
   | 'subject_mapping_json'
 
 const REQUIRED_PYTHON_PACKAGES = [
+  'flask',
   'docx',
   'fitz',
   'openpyxl',
@@ -133,6 +136,8 @@ const REQUIRED_PYTHON_PACKAGES = [
   'pypdf',
   'pandas',
   'PIL',
+  'paddle',
+  'paddleocr',
   'pytesseract',
   'presidio_analyzer',
   'presidio_anonymizer'
@@ -323,8 +328,8 @@ export class DataComplianceTaskService {
     if (!this.pythonBin) {
       return {
         ok: false,
-        reason: '未找到 Python 3.10+ 解释器',
-        fix: '请点击“重试”让 legalwork 自动安装内置 Python 3.11，或手动安装 Python 3.10 及以上版本。'
+        reason: '未找到 Python 3.10-3.12 解释器',
+        fix: '请点击“重试”让 legalwork 自动安装内置 Python 3.11。'
       }
     }
 
@@ -578,7 +583,8 @@ export class DataComplianceTaskService {
         step: 0,
         total_steps: mode === 'desensitize' ? 4 : 11,
         message: '任务已创建，正在启动 worker',
-        status: 'running'
+        status: 'running',
+        percent: 5
       }
     }
     this.writeTaskState(task)
@@ -599,7 +605,8 @@ export class DataComplianceTaskService {
       step: 0,
       total_steps: task.progress?.total_steps ?? (mode === 'desensitize' ? 4 : 11),
       message: 'worker 已启动，正在准备处理任务',
-      status: 'running'
+      status: 'running',
+      percent: 8
     }
     this.writeTaskState(task)
 
@@ -669,6 +676,16 @@ export class DataComplianceTaskService {
       if (latest && latest.status !== 'pending' && latest.status !== 'running') {
         clearInterval(pollInterval)
         return
+      }
+      if (latest && polls >= 5 && (latest.progress?.step ?? 0) === 0) {
+        latest.progress = {
+          step: 0,
+          total_steps: latest.progress?.total_steps ?? (mode === 'desensitize' ? 4 : 11),
+          message: '本地处理引擎正在加载依赖并读取输入，请稍候',
+          status: 'running',
+          percent: Math.min(18, 8 + polls)
+        }
+        this.writeTaskState(latest)
       }
       if (polls >= maxPolls) {
         clearInterval(pollInterval)

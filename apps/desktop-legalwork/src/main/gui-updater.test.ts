@@ -122,6 +122,43 @@ describe('downloadGuiUpdate', () => {
     expect(JSON.stringify(info)).not.toContain('latest-mac.yml')
   })
 
+  it('strips HTML tags from release highlights before rendering them in settings', async () => {
+    process.env.LEGALWORK_GITHUB_REPO = 'sunyifeisb-art/legalwork'
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v0.2.7',
+        name: 'LegalWork 0.2.7',
+        published_at: '2026-07-11T00:00:00.000Z',
+        body: [
+          '<h2>v0.2.7</h2>',
+          '<ul>',
+          '<li><strong>自动更新兜底安装</strong>： macOS 在原生 updater 未触发应用退出时，自动通过已下载的 zip 执行 shell 兜底安装，降低更新失败概率。</li>',
+          '<li><strong>数据合规批量任务</strong>： 支持一次提交多个文件进行合规审查/脱敏，自动生成 <code>input_manifest.json</code> 并统一调度。</li>',
+          '</ul>'
+        ].join('\n')
+      })
+    })))
+    updater.checkForUpdates.mockRejectedValueOnce(new Error('latest-mac.yml is missing'))
+
+    const module = await import('./gui-updater')
+    module.initializeGuiUpdater(() => null, () => 'stable')
+
+    const info = await module.checkGuiUpdate('stable')
+
+    expect(info).toMatchObject({
+      ok: true,
+      latestVersion: '0.2.7',
+      releaseHighlights: [
+        '自动更新兜底安装： macOS 在原生 updater 未触发应用退出时，自动通过已下载的 zip 执行 shell 兜底安装，降低更新失败概率。',
+        '数据合规批量任务： 支持一次提交多个文件进行合规审查/脱敏，自动生成 input_manifest.json 并统一调度。'
+      ]
+    })
+    expect(JSON.stringify(info)).not.toContain('<li>')
+    expect(JSON.stringify(info)).not.toContain('<strong>')
+    expect(JSON.stringify(info)).not.toContain('<code>')
+  })
+
   it('retries the packaged updater when the previous check only found a manual GitHub fallback', async () => {
     process.env.LEGALWORK_GITHUB_REPO = 'sunyifeisb-art/legalwork'
     vi.stubGlobal('fetch', vi.fn(async () => ({

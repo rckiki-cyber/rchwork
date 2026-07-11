@@ -7,6 +7,8 @@ import {
   File,
   FileCode2,
   Loader2,
+  MessageSquare,
+  PanelRightClose,
   Trash2,
   Wrench,
   X
@@ -29,6 +31,7 @@ import { LegalworkRuntimeProvider } from '../../agent/legalwork-runtime'
 import type { ThreadEventSink } from '../../agent/types'
 import { brandForModel } from '../../lib/model-brand'
 import type { KnowledgeTreeNode } from './types'
+import { PdfJsPreview } from './PdfJsPreview'
 
 // ── Helpers (copied from KnowledgeBaseView to keep this file self-contained) ──
 
@@ -120,31 +123,6 @@ function fileTypeLabel(node: KnowledgeTreeNode): string {
   return ext.toUpperCase()
 }
 
-function PdfPreview({
-  objectUrl,
-  extractedText,
-  fileName
-}: {
-  objectUrl?: string
-  extractedText?: string
-  fileName: string
-}): ReactElement {
-  return (
-    <div className="h-full min-h-0 bg-white dark:bg-[#101010]">
-      {objectUrl ? (
-        <iframe
-          src={objectUrl}
-          title={fileName}
-          className="h-full w-full border-0"
-          sandbox="allow-same-origin"
-        />
-      ) : (
-        <DocumentPreview text={extractedText ?? ''} fileName={fileName} />
-      )}
-    </div>
-  )
-}
-
 // ── Chat message types ──
 
 type ChatMessage = {
@@ -168,6 +146,12 @@ type FileContent = {
   objectUrl?: string
   type: PreviewType
   extractedText?: string
+}
+
+function knowledgeFileChatTitle(fileName: string, question: string): string {
+  const trimmed = question.trim()
+  const summary = trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed
+  return `知识库：${fileName} · ${summary}`
 }
 
 // ── Document text extraction preview component ──
@@ -215,9 +199,10 @@ const knowledgeRuntimeProvider = new LegalworkRuntimeProvider()
 type Props = {
   node: KnowledgeTreeNode
   onBack: () => void
+  onChatThreadsChange?: () => void
 }
 
-export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
+export function KnowledgeBaseFileView({ node, onBack, onChatThreadsChange }: Props): ReactElement {
   const [fileContent, setFileContent] = useState<FileContent | null>(null)
   const [fileLoading, setFileLoading] = useState(true)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -225,11 +210,42 @@ export function KnowledgeBaseFileView({ node, onBack }: Props): ReactElement {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
+  const [activeChatThreadId, setActiveChatThreadId] = useState<string | null>(null)
   const [liveReasoning, setLiveReasoning] = useState('')
   const [liveAssistant, setLiveAssistant] = useState('')
   const [runtimeModel, setRuntimeModel] = useState('')
+  const [chatOpen, setChatOpen] = useState(true)
+  const [chatWidth, setChatWidth] = useState(420)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatAbortRef = useRef<AbortController | null>(null)
+  const resizingChatRef = useRef(false)
+
+  const MIN_CHAT_WIDTH = 320
+  const MAX_CHAT_WIDTH = 720
+
+  const startChatResize = useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    resizingChatRef.current = true
+    const startX = event.clientX
+    const startWidth = chatWidth
+    const onMove = (ev: PointerEvent): void => {
+      if (!resizingChatRef.current) return
+      const delta = startX - ev.clientX
+      const next = Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, startWidth + delta))
+      setChatWidth(next)
+    }
+    const onUp = (): void => {
+      resizingChatRef.current = false
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [chatWidth])
+
+  const toggleChat = useCallback((): void => {
+    setChatOpen((prev) => !prev)
+  }, [])
 
   // Load file content on mount
   useEffect(() => {
@@ -492,20 +508,24 @@ ${question.trim()}
 
 请基于检索到的内容给出准确、专业的回答。如果内容不足以回答问题，请明确说明。引用来源时请标注对应的 [来源编号]，不要编造未出现在上下文中的依据。`
 
-      // Step 4: Create a side thread with the current workspace so it does not sync to the main chat sidebar.
+      // Step 4: Reuse the active file-chat thread or create a side thread so it does not sync to the main chat sidebar.
       const workspace = await getWorkspaceRoot()
-      const threadResult = await requestJson<{ id: string }>(
-        '/v1/threads',
-        'POST',
-        {
-          workspace,
-          title: `知识库：${node.name}`,
-          model: effectiveModel,
-          mode: 'agent',
-          relation: 'side'
-        }
-      )
-      const threadId = threadResult.id
+      let threadId = activeChatThreadId
+      if (!threadId) {
+        const threadResult = await requestJson<{ id: string }>(
+          '/v1/threads',
+          'POST',
+          {
+            workspace,
+            title: knowledgeFileChatTitle(node.name, question.trim()),
+            model: effectiveModel,
+            mode: 'agent',
+            relation: 'side'
+          }
+        )
+        threadId = threadResult.id
+        setActiveChatThreadId(threadId)
+      }
 
       // Step 5: Start a turn and capture the turnId for precise polling
       const turnResponse = await requestJson<{ turnId: string }>(
@@ -601,6 +621,7 @@ ${question.trim()}
       }])
       setLiveReasoning('')
       setLiveAssistant('')
+      onChatThreadsChange?.()
     } catch (err) {
       if (chatAbortRef.current === abort) {
         setChatError(err instanceof Error ? err.message : 'AI 响应失败')
@@ -609,7 +630,7 @@ ${question.trim()}
       if (chatAbortRef.current === abort) chatAbortRef.current = null
       setSending(false)
     }
-  }, [effectiveModel, fileContent, node, pollTurnCompletion, pushOrUpdateToolMessage, sending])
+  }, [effectiveModel, fileContent, node, pollTurnCompletion, pushOrUpdateToolMessage, sending, activeChatThreadId, onChatThreadsChange])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -626,6 +647,7 @@ ${question.trim()}
     setLiveReasoning('')
     setLiveAssistant('')
     setSending(false)
+    setActiveChatThreadId(null)
   }, [])
 
   // ── Render ──
@@ -654,6 +676,23 @@ ${question.trim()}
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={toggleChat}
+            className={`inline-flex h-8 items-center gap-1.5 rounded-[6px] border px-3 text-[12px] font-medium transition ${
+              chatOpen
+                ? 'border-[var(--ds-accent)] bg-[var(--ds-accent)]/10 text-[var(--ds-accent)]'
+                : 'border-ds-border bg-ds-card text-[var(--ds-muted)] hover:bg-ds-hover hover:text-[var(--ds-ink)]'
+            }`}
+            title={chatOpen ? '收起 AI 对话' : '展开 AI 对话'}
+          >
+            {chatOpen ? (
+              <PanelRightClose className="h-3.5 w-3.5" strokeWidth={1.8} />
+            ) : (
+              <MessageSquare className="h-3.5 w-3.5" strokeWidth={1.8} />
+            )}
+            <span>AI 对话</span>
+          </button>
+          <button
+            type="button"
             onClick={() => void openInSystemApp()}
             className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-ds-border bg-ds-card px-3 text-[12px] font-medium text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)]"
           >
@@ -666,7 +705,7 @@ ${question.trim()}
       {/* Content + Chat split */}
       <div className="flex min-h-0 flex-1">
         {/* File Content Panel */}
-        <div className="flex min-w-0 flex-1 flex-col border-r border-ds-border">
+        <div className={`flex min-w-0 flex-1 flex-col ${chatOpen ? 'border-r border-ds-border' : ''}`}>
           {fileLoading ? (
             <div className="flex h-full items-center justify-center gap-2 text-[13px] text-[var(--ds-muted)]">
               <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.8} />
@@ -692,9 +731,8 @@ ${question.trim()}
           ) : (
             <div className="min-h-0 flex-1 overflow-auto">
               {fileContent.type === 'pdf' ? (
-                <PdfPreview
-                  objectUrl={fileContent.objectUrl}
-                  extractedText={fileContent.extractedText}
+                <PdfJsPreview
+                  base64Content={fileContent.content}
                   fileName={node.name}
                 />
               ) : fileContent.type === 'image' && fileContent.objectUrl ? (
@@ -724,7 +762,7 @@ ${question.trim()}
                     {fileTypeLabel(node)} 文件
                   </div>
                   <p className="max-w-xs text-[12px] leading-relaxed text-[var(--ds-muted)]">
-                    此文件类型暂不支持内联预览，但你可以通过右侧 AI 对话功能提问文件相关问题。
+                    此文件类型暂不支持内联预览，{chatOpen ? '但你可以通过右侧 AI 对话功能提问文件相关问题。' : '你可以展开右侧 AI 对话提问文件相关问题。'}
                   </p>
                   <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--ds-muted)]">
                     <span>{formatBytes(node.sizeBytes)}</span>
@@ -746,7 +784,18 @@ ${question.trim()}
         </div>
 
         {/* AI Chat Panel */}
-        <aside className="flex h-full w-[340px] min-w-[300px] flex-col border-l border-ds-border bg-ds-card">
+        {chatOpen ? (
+          <>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              className="relative z-20 shrink-0 cursor-col-resize bg-ds-border hover:bg-[var(--ds-accent)] w-[3px] transition-colors"
+              onPointerDown={startChatResize}
+            />
+            <aside
+              className="flex h-full min-w-0 flex-col border-l border-ds-border bg-ds-card"
+              style={{ width: chatWidth }}
+            >
           <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-ds-border px-4 py-2">
             <div className="flex min-w-0 items-center gap-2">
               <ModelBrandIcon brand={modelBrand} className="h-5 w-5" />
@@ -915,6 +964,8 @@ ${question.trim()}
             </div>
           </div>
         </aside>
+          </>
+        ) : null}
       </div>
     </div>
   )

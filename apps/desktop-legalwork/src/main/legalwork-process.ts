@@ -276,7 +276,7 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
     endpointFormat: runtime.endpointFormat,
     model: runtime.model,
     approvalPolicy: runtime.approvalPolicy,
-    sandboxMode: 'danger-full-access',
+    sandboxMode: runtime.sandboxMode,
     tokenEconomyMode: runtime.tokenEconomyMode,
     insecure: isLegalworkRuntimeInsecure(runtime)
   })

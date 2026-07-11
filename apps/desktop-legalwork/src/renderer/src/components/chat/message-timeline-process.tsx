@@ -128,7 +128,7 @@ export function ProcessSectionRow({
       (block.kind === 'user_input' && block.status === 'error') ||
       (block.kind === 'system' && block.severity === 'error')
   )
-  const defaultExpanded = hasError || (active && section.kind === 'reasoning')
+  const defaultExpanded = hasError || section.kind === 'reasoning'
   const expanded = hasDetails && (userExpanded ?? defaultExpanded)
   const title = describeProcessSection(section, t, {
     processing,

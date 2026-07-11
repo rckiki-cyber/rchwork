@@ -334,8 +334,8 @@ function MessageTurn({
   )
   const showLiveAssistant = !isProcessing && !!liveContent.trim()
 
-  // Keep completed reasoning/tool work tucked away, but make the active turn's
-  // work visible unless the user explicitly collapses it.
+  // Keep the work process visible by default so tool calls and runtime
+  // reasoning summaries are inspectable without an extra click.
 
   const hasProcess = isProcessing || processBlocks.length > 0
 

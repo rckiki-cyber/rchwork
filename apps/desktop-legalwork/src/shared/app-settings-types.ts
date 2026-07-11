@@ -81,6 +81,8 @@ export type LegalworkRuntimeSettingsV1 = {
   model: string
   approvalPolicy: ApprovalPolicy
   sandboxMode: SandboxMode
+  /** When true, agent file access is restricted to the selected project/workspace. Defaults to false. */
+  restrictFileAccessToWorkspace: boolean
   /** Compress safe tool context before each model call. */
   tokenEconomyMode: boolean
   /** Detailed token-saving behavior used when building Legalwork model requests. */

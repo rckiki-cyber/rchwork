@@ -5,7 +5,7 @@ import { withToolBoundary } from './builtin-tool-utils.js'
 import type { DataComplianceTask, DataComplianceTaskService } from '../../services/data-compliance-task-service.js'
 
 const POLL_INTERVAL_MS = 1_000
-const MAX_POLL_MS = 120_000
+const MAX_POLL_MS = 45_000
 
 function mimeTypeFromPath(filePath: string): string {
   const ext = extname(filePath).toLowerCase()
