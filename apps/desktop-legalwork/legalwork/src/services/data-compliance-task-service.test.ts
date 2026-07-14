@@ -69,14 +69,19 @@ describe('data compliance task creation', () => {
     expect(manifest.files).toHaveLength(2)
   })
 
-  it('rejects multi-file review tasks until review batching is supported', async () => {
+  it('stores multi-file review tasks as a batch manifest', async () => {
     const service = await createService()
-    await expect(service.createTask({
+    const { taskId } = await service.createTask({
       mode: 'review',
       files: [
         { name: 'one.txt', dataBase64: Buffer.from('one').toString('base64') },
         { name: 'two.txt', dataBase64: Buffer.from('two').toString('base64') }
       ]
-    })).rejects.toThrow('批量文件提交目前仅支持材料脱敏')
+    })
+
+    const task = await service.getTask(taskId)
+    expect(task?.input_type).toBe('batch')
+    expect(task?.input_files).toHaveLength(2)
+    expect(task?.input_manifest_path).toBeTruthy()
   })
 })

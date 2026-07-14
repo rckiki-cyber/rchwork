@@ -41,6 +41,43 @@ function base64ToBytes(base64Content: string): Uint8Array {
   return bytes
 }
 
+export async function extractPdfTextFromBase64(base64Content: string, maxChars = 30000): Promise<string> {
+  if (!base64Content) return ''
+  let pdf: pdfjsLib.PDFDocumentProxy | null = null
+  try {
+    pdf = await withTimeout(
+      pdfjsLib.getDocument({
+        data: base64ToBytes(base64Content),
+        cMapUrl: `${PDFJS_ASSET_BASE_URL}cmaps/`,
+        cMapPacked: true,
+        standardFontDataUrl: `${PDFJS_ASSET_BASE_URL}standard_fonts/`
+      }).promise,
+      PDF_RENDER_TIMEOUT_MS,
+      'PDF 文本读取超时'
+    )
+    const chunks: string[] = []
+    let totalLength = 0
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await withTimeout(pdf.getPage(pageNumber), PDF_RENDER_TIMEOUT_MS, `第 ${pageNumber} 页文本读取超时`)
+      const textContent = await withTimeout(page.getTextContent(), PDF_RENDER_TIMEOUT_MS, `第 ${pageNumber} 页文本解析超时`)
+      const pageText = textContent.items
+        .map((item) => ('str' in item ? item.str : ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (pageText) {
+        const chunk = `第 ${pageNumber} 页：\n${pageText}`
+        chunks.push(chunk)
+        totalLength += chunk.length
+      }
+      if (totalLength >= maxChars) break
+    }
+    return chunks.join('\n\n').slice(0, maxChars)
+  } finally {
+    if (pdf) void pdf.destroy()
+  }
+}
+
 type Props = {
   base64Content: string
   fileName: string
@@ -58,19 +95,16 @@ export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
   useEffect(() => {
     const element = containerRef.current
     if (!element) return
-    let measured = false
     const updateWidth = (): void => {
-      if (measured) return
       const width = Math.floor(element.clientWidth)
       if (width <= 0) return
-      measured = true
-      setRenderWidth(Math.min(Math.max(width - 32, 280), 960))
+      const nextWidth = Math.min(Math.max(width - 32, 280), 960)
+      setRenderWidth((prev) => (Math.abs(prev - nextWidth) > 8 ? nextWidth : prev))
     }
     updateWidth()
     const observer = new ResizeObserver(updateWidth)
     observer.observe(element)
     return () => {
-      measured = true
       observer.disconnect()
     }
   }, [base64Content])

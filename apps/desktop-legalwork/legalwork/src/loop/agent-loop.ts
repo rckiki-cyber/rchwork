@@ -697,6 +697,7 @@ export class AgentLoop {
     })
     const contextInstructions = [
       modelIdentityInstruction(modelCapabilities.id),
+      ...(attachments.fileReferences.length ? [attachmentFileReferenceInstruction(attachments.fileReferences)] : []),
       ...(activeGoalInstruction ? [activeGoalInstruction] : []),
       ...(activeTodoInstruction ? [activeTodoInstruction] : []),
       ...memoryInstructions(memories),
@@ -1781,8 +1782,14 @@ export class AgentLoop {
     threadId: string
     workspace: string
     modelCapabilities: ModelCapabilityMetadata
-  }): Promise<{ imageAttachments: ModelInputAttachment[]; textFallbacks: ModelTextAttachmentFallback[] }> {
-    if (input.attachmentIds.length === 0) return { imageAttachments: [], textFallbacks: [] }
+  }): Promise<{
+    imageAttachments: ModelInputAttachment[]
+    textFallbacks: ModelTextAttachmentFallback[]
+    fileReferences: AttachmentFileReference[]
+  }> {
+    if (input.attachmentIds.length === 0) {
+      return { imageAttachments: [], textFallbacks: [], fileReferences: [] }
+    }
     if (!this.opts.attachmentStore) {
       throw new Error('attachment store is unavailable')
     }
@@ -1790,11 +1797,20 @@ export class AgentLoop {
     const textFallbackPolicy = this.opts.attachmentStore.textFallbackPolicy()
     const imageAttachments: ModelInputAttachment[] = []
     const textFallbacks: ModelTextAttachmentFallback[] = []
+    const fileReferences: AttachmentFileReference[] = []
     for (const id of input.attachmentIds) {
       const attachment = await this.opts.attachmentStore.resolveContent(id, {
         threadId: input.threadId,
         workspace: input.workspace
       })
+      if (attachment.localFilePath) {
+        fileReferences.push({
+          id: attachment.id,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          localFilePath: attachment.localFilePath
+        })
+      }
       if (supportsImageInput && attachment.mimeType.toLowerCase().startsWith('image/')) {
         imageAttachments.push({
           id: attachment.id,
@@ -1802,7 +1818,8 @@ export class AgentLoop {
           mimeType: attachment.mimeType,
           dataBase64: attachment.data.toString('base64'),
           ...(attachment.width ? { width: attachment.width } : {}),
-          ...(attachment.height ? { height: attachment.height } : {})
+          ...(attachment.height ? { height: attachment.height } : {}),
+          ...(attachment.localFilePath ? { localFilePath: attachment.localFilePath } : {})
         })
         continue
       }
@@ -1811,7 +1828,7 @@ export class AgentLoop {
         textFallbackPolicy.textFallbackMaxBase64Bytes
       ))
     }
-    return { imageAttachments, textFallbacks }
+    return { imageAttachments, textFallbacks, fileReferences }
   }
 
   private async retrieveMemories(input: {
@@ -1855,7 +1872,8 @@ function buildTextAttachmentFallback(
       byteSize: fallback.byteSize,
       ...(fallback.width ? { width: fallback.width } : {}),
       ...(fallback.height ? { height: fallback.height } : {}),
-      ...(fallback.wasCompressed !== undefined ? { wasCompressed: fallback.wasCompressed } : {})
+      ...(fallback.wasCompressed !== undefined ? { wasCompressed: fallback.wasCompressed } : {}),
+      ...(attachment.localFilePath ? { localFilePath: attachment.localFilePath } : {})
     }
   }
 
@@ -1869,6 +1887,7 @@ function buildTextAttachmentFallback(
       byteSize: attachment.byteSize,
       ...(attachment.width ? { width: attachment.width } : {}),
       ...(attachment.height ? { height: attachment.height } : {}),
+      ...(attachment.localFilePath ? { localFilePath: attachment.localFilePath } : {}),
       wasCompressed: false
     }
   }
@@ -1880,8 +1899,31 @@ function buildTextAttachmentFallback(
     byteSize: attachment.byteSize,
     ...(attachment.width ? { width: attachment.width } : {}),
     ...(attachment.height ? { height: attachment.height } : {}),
+    ...(attachment.localFilePath ? { localFilePath: attachment.localFilePath } : {}),
     wasCompressed: false
   }
+}
+
+type AttachmentFileReference = {
+  id: string
+  name: string
+  mimeType: string
+  localFilePath: string
+}
+
+function attachmentFileReferenceInstruction(references: readonly AttachmentFileReference[]): string {
+  if (references.length === 0) return ''
+  const lines = [
+    'Uploaded file access:',
+    '- Files attached to the current user message have already been saved to local disk.',
+    '- When the user asks you to inspect, process, OCR, redact, summarize, or transform an attachment, use the local file path below directly with available tools instead of asking where the file is.'
+  ]
+  for (const reference of references) {
+    lines.push(
+      `- ${reference.name} (${reference.mimeType}, ${reference.id}): ${reference.localFilePath}`
+    )
+  }
+  return lines.join('\n')
 }
 
 function attachmentRequestPipelineDetails(input: {

@@ -350,6 +350,7 @@ export type DsGuiApi = {
   ) => Promise<ScheduleTaskFromTextResult>
   runDesktopCommand: (command: DesktopCommand) => Promise<void>
   openExternal: (url: string) => Promise<void>
+  openLocalPath: (path: string) => Promise<PathOpenResult>
   openKnowledgeFile: (path: string) => Promise<PathOpenResult>
   uploadKnowledgeFile: (file: File, targetPath: string) => Promise<KnowledgeUploadFileResult>
   uploadAttachmentFile: (file: File, payload: AttachmentFileUploadPayload) => Promise<RuntimeRequestResult>

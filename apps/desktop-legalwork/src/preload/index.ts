@@ -180,6 +180,7 @@ const api = {
   runDesktopCommand: (command) =>
     ipcRenderer.invoke('desktop:command', command),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  openLocalPath: (path) => ipcRenderer.invoke('shell:open-path', path),
   openKnowledgeFile: (path) => ipcRenderer.invoke('knowledge:open-file', { path }),
   uploadKnowledgeFile: (file, targetPath) => {
     const sourcePath = webUtils.getPathForFile(file)

@@ -128,14 +128,13 @@ export function SidebarCommandRow({
     >
       <span
         className={cx(
-          'flex shrink-0 items-center justify-center',
-          accent ? 'h-5 w-5' : 'h-4 w-4',
+          'flex h-5 w-5 shrink-0 items-center justify-center',
           accent ? 'text-[#1f1f1f] dark:text-white' : footer ? 'text-[#888888]' : 'text-[#343434] dark:text-white/75'
         )}
       >
         {icon}
       </span>
-      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-left leading-5">{label}</span>
       {shortcut ? (
         <kbd className="ds-kbd hidden items-center gap-0.5 rounded-md px-1.5 py-0.5 font-mono text-[11.5px] font-medium text-ds-faint sm:inline-flex">
           <Command className="h-2.5 w-2.5" strokeWidth={2} />

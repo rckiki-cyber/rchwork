@@ -71,14 +71,35 @@ except Exception as _redaction_import_error:  # pragma: no cover - optional depe
 
 LEGAL_SUBJECT_TYPES = ['person_name', 'company_name']
 FAST_SUBJECT_TYPES = ['company_name']
+REDACTION_FILL = (229, 231, 235)
+PDF_REDACTION_FILL = tuple(channel / 255 for channel in REDACTION_FILL)
+REDACTION_PADDING = 1.5
 
 PERSON_CONTEXT_PATTERN = re.compile(
     r'(?:原告|被告|第三人|上诉人|被上诉人|申请人|被申请人|申请执行人|被执行人|'
     r'甲方|乙方|丙方|丁方|委托人|受托人|法定代表人|负责人|联系人|姓名)'
     r'[：:\s，,、]*([\u4e00-\u9fa5]{2,4})'
 )
+ENGLISH_PERSON_CONTEXT_PATTERN = re.compile(
+    r'\b(?:Legal\s+Representative|Representative|Contact(?:s)?|Director|Manager|Name)'
+    r'[ \t]*[:：]?[ \t]*([A-Z][A-Za-z.\'-]+(?:[ \t]+[A-Z][A-Za-z.\'-]+){1,3})\b'
+)
+ENGLISH_LABEL_CHINESE_PERSON_PATTERN = re.compile(
+    r'\b(?:Legal\s+Representative|Representative|Contact(?:s)?|Director|Manager|Name)'
+    r'[ \t]*[:：]?[ \t]*([\u4e00-\u9fa5]{2,4})'
+)
 PERSON_LIST_PATTERN = re.compile(
     r'(?<![\u4e00-\u9fa5])([\u4e00-\u9fa5]{2,4})(?:、|和|与)([\u4e00-\u9fa5]{2,4})(?![\u4e00-\u9fa5])'
+)
+ENGLISH_COMPANY_PATTERN = re.compile(
+    r'\b([A-Z][A-Za-z0-9&.\',()/-]*(?:\s+[A-Z][A-Za-z0-9&.\',()/-]*){0,12}\s+'
+    r'(?:Co\.?,?\s*Ltd\.?|Company|Corporation|Corp\.?|Limited|LLC|Inc\.?|Holdings?|Group|'
+    r'Finance\s+Co\.?,?\s*Ltd\.?))\b',
+    re.IGNORECASE,
+)
+BRANDING_TEXT_PATTERN = re.compile(
+    r'\b(?:ORIGINATOR|SERVICER|LOGO)\b|\[[^\]]*(?:ORIGINATOR|LOGO)[^\]]*\]',
+    re.IGNORECASE,
 )
 
 
@@ -175,6 +196,16 @@ def _detect_person_subjects(text: str) -> list[Any]:
         if _looks_like_person_name(original):
             entities.append(_Entity(original, match.start(1), match.end(1), 0.82))
 
+    for match in ENGLISH_PERSON_CONTEXT_PATTERN.finditer(text):
+        original = match.group(1).strip()
+        if original and not ENGLISH_COMPANY_PATTERN.search(original):
+            entities.append(_Entity(original, match.start(1), match.end(1), 0.74))
+
+    for match in ENGLISH_LABEL_CHINESE_PERSON_PATTERN.finditer(text):
+        original = match.group(1).strip()
+        if _looks_like_person_name(original):
+            entities.append(_Entity(original, match.start(1), match.end(1), 0.8))
+
     for match in PERSON_LIST_PATTERN.finditer(text):
         for group_index in (1, 2):
             original = match.group(group_index)
@@ -182,6 +213,62 @@ def _detect_person_subjects(text: str) -> list[Any]:
                 entities.append(_Entity(original, match.start(group_index), match.end(group_index), 0.72))
 
     return entities
+
+
+def _detect_english_company_subjects(text: str) -> list[Any]:
+    """识别英文公司名，覆盖封面/表格中常见的 Co., Ltd. 等主体。"""
+    entities: list[Any] = []
+    if not text:
+        return entities
+
+    class _Entity:
+        def __init__(self, original: str, start: int, end: int, confidence: float) -> None:
+            self.entity_type = 'company_name'
+            self.text = re.sub(r'\s+', ' ', original).strip(' ,;')
+            self.start = start
+            self.end = end
+            self.confidence = confidence
+
+    for match in ENGLISH_COMPANY_PATTERN.finditer(text):
+        original = match.group(1)
+        if len(original.strip()) >= 5:
+            entities.append(_Entity(original, match.start(1), match.end(1), 0.78))
+    return entities
+
+
+def detect_legal_subject_entities(
+    text: str,
+    *,
+    detector: Any | None = None,
+) -> list[Any]:
+    """返回带位置的法律主体实体，供文本替换和版式遮盖共用。"""
+    entities: list[Any] = []
+    if REDACTION_AVAILABLE and detector is not None:
+        entities.extend(detector.detect(text, entity_types=FAST_SUBJECT_TYPES, use_semantic=False))
+    entities.extend(_detect_english_company_subjects(text))
+    entities.extend(_detect_person_subjects(text))
+    return dedupe_subject_entities(entities)
+
+
+def dedupe_subject_entities(entities: list[Any]) -> list[Any]:
+    ordered = sorted(
+        entities,
+        key=lambda item: (
+            int(getattr(item, 'start', 0)),
+            -(int(getattr(item, 'end', 0)) - int(getattr(item, 'start', 0))),
+            -float(getattr(item, 'confidence', 0.0)),
+        ),
+    )
+    kept: list[Any] = []
+    for entity in ordered:
+        start = int(getattr(entity, 'start', 0))
+        end = int(getattr(entity, 'end', 0))
+        if end <= start:
+            continue
+        if any(start < int(getattr(current, 'end', 0)) and end > int(getattr(current, 'start', 0)) for current in kept):
+            continue
+        kept.append(entity)
+    return sorted(kept, key=lambda item: int(getattr(item, 'start', 0)))
 
 
 def redact_legal_subjects(
@@ -194,10 +281,7 @@ def redact_legal_subjects(
     if not text or not text.strip():
         return text, []
 
-    entities: list[Any] = []
-    if REDACTION_AVAILABLE and detector is not None:
-        entities.extend(detector.detect(text, entity_types=FAST_SUBJECT_TYPES, use_semantic=False))
-    entities.extend(_detect_person_subjects(text))
+    entities = detect_legal_subject_entities(text, detector=detector)
     if not entities:
         return text, []
 
@@ -853,6 +937,97 @@ def process_docx(
     return output_file, all_findings, all_subjects
 
 
+def _expanded_pdf_rect(rect: Any, page: Any, padding: float = REDACTION_PADDING) -> Any:
+    bounds = page.rect
+    expanded = fitz.Rect(rect)
+    expanded.x0 = max(bounds.x0, expanded.x0 - padding)
+    expanded.y0 = max(bounds.y0, expanded.y0 - padding)
+    expanded.x1 = min(bounds.x1, expanded.x1 + padding)
+    expanded.y1 = min(bounds.y1, expanded.y1 + padding)
+    return expanded
+
+
+def _search_pdf_rects(page: Any, value: str) -> list[Any]:
+    if not value or not value.strip():
+        return []
+    candidates = [
+        value,
+        re.sub(r'\s+', ' ', value).strip(),
+        re.sub(r'\s+', '', value).strip(),
+    ]
+    seen_candidates: set[str] = set()
+    rects: list[Any] = []
+    seen_rects: set[tuple[int, int, int, int]] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen_candidates:
+            continue
+        seen_candidates.add(candidate)
+        try:
+            found = page.search_for(candidate)
+        except Exception:
+            found = []
+        for rect in found:
+            key = (round(rect.x0), round(rect.y0), round(rect.x1), round(rect.y1))
+            if key in seen_rects:
+                continue
+            seen_rects.add(key)
+            rects.append(rect)
+    return rects
+
+
+def _add_pdf_text_redactions(page: Any, values: list[str]) -> int:
+    count = 0
+    for value in values:
+        for rect in _search_pdf_rects(page, value):
+            page.add_redact_annot(_expanded_pdf_rect(rect, page), fill=PDF_REDACTION_FILL)
+            count += 1
+    return count
+
+
+def _add_pdf_branding_image_redactions(page: Any, page_index: int, page_text: str) -> int:
+    """封面上方的小图片多为主体 logo，命中主体/Originator 语境时一并遮盖。"""
+    if page_index > 2 or not re.search(r'originator|servicer|finance|company|co\.|ltd|公司', page_text, re.IGNORECASE):
+        return 0
+    if not hasattr(page, 'get_image_info'):
+        return 0
+
+    page_area = max(1.0, float(page.rect.width * page.rect.height))
+    count = 0
+    try:
+        image_infos = page.get_image_info(xrefs=True)
+    except Exception:
+        return 0
+
+    for info in image_infos:
+        bbox = info.get('bbox')
+        if not bbox:
+            continue
+        rect = fitz.Rect(bbox)
+        if rect.is_empty:
+            continue
+        image_area = float(rect.width * rect.height)
+        if rect.y0 > page.rect.height * 0.42:
+            continue
+        if image_area > page_area * 0.12:
+            continue
+        if rect.width < 8 or rect.height < 8:
+            continue
+        page.add_redact_annot(_expanded_pdf_rect(rect, page, padding=2.0), fill=PDF_REDACTION_FILL)
+        count += 1
+    return count
+
+
+def _apply_pdf_redactions(page: Any) -> None:
+    image_mode = getattr(fitz, 'PDF_REDACT_IMAGE_PIXELS', None)
+    try:
+        if image_mode is not None:
+            page.apply_redactions(images=image_mode)
+        else:
+            page.apply_redactions()
+    except TypeError:
+        page.apply_redactions()
+
+
 def process_pdf(
     input_path: Path,
     work_dir: Path,
@@ -864,22 +1039,52 @@ def process_pdf(
     all_subjects: list[SubjectMapping] = []
     if fitz is not None:
         pdf = fitz.open(str(input_path))
+        redaction_count = 0
         for page_index, page in enumerate(pdf, start=1):
             page_text = page.get_text('text') or ''
             if page_text.strip():
-                redacted, findings, subjects = sanitize_text_and_subjects(
-                    page_text, engine, surface='pdf', locator=f'第 {page_index} 页'
+                locator = f'第 {page_index} 页'
+                findings = engine._detect(page_text, surface='pdf', locator=locator)
+                _redacted_text, subjects = redact_legal_subjects(
+                    page_text,
+                    locator=locator,
+                    detector=engine._subject_detector,
                 )
                 all_findings.extend(findings)
                 all_subjects.extend(subjects)
-                text_parts.append(f'--- 第 {page_index} 页 ---\n{redacted}')
-        pdf.close()
+                subject_entities = detect_legal_subject_entities(page_text, detector=engine._subject_detector)
+                values = [page_text[item.start:item.end] for item in findings]
+                values.extend(str(getattr(entity, 'text', '')) for entity in subject_entities)
+                for match in BRANDING_TEXT_PATTERN.finditer(page_text):
+                    values.append(match.group(0))
+                page_redactions = _add_pdf_text_redactions(page, values)
+                page_redactions += _add_pdf_branding_image_redactions(page, page_index, page_text)
+                redaction_count += page_redactions
+                if page_redactions:
+                    _apply_pdf_redactions(page)
+                redacted_preview = replace_spans(page_text, findings)
+                redacted_preview, _preview_subjects = redact_legal_subjects(
+                    redacted_preview,
+                    locator=locator,
+                    detector=engine._subject_detector,
+                )
+                text_parts.append(f'--- 第 {page_index} 页 ---\n{redacted_preview}')
 
     if text_parts:
-        output_file = work_dir / 'desensitized_output.txt'
-        output_file.write_text('\n\n'.join(text_parts), encoding='utf-8')
-        warnings.append('PDF 当前输出为脱敏文本副本；版式级 PDF 涂黑可在图片化处理链路继续增强。')
+        output_file = work_dir / 'desensitized_output.pdf'
+        try:
+            pdf.save(str(output_file), garbage=4, deflate=True)
+        finally:
+            pdf.close()
+        preview_file = work_dir / 'desensitized_output_preview.txt'
+        preview_file.write_text('\n\n'.join(text_parts), encoding='utf-8')
+        if redaction_count:
+            warnings.append(f'PDF 已执行版式级遮盖 {redaction_count} 处；请抽样复核 logo 和扫描图像区域。')
+        else:
+            warnings.append('PDF 可复制文本未定位到可遮盖坐标，已保留脱敏文本预览供复核。')
         return output_file, all_findings, all_subjects
+    if fitz is not None:
+        pdf.close()
 
     warnings.append('PDF 未提取到可复制文本，尝试按扫描件图片进行 OCR 脱敏。')
     if fitz is None:
@@ -1108,27 +1313,129 @@ def process_image(
     return redact_image(input_path, output_file, engine, '图片')
 
 
+def _ocr_token_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    texts = data.get('text', [])
+    for index, raw in enumerate(texts):
+        text = (raw or '').strip()
+        if not text:
+            continue
+        try:
+            left = int(float(data.get('left', [])[index]))
+            top = int(float(data.get('top', [])[index]))
+            width = int(float(data.get('width', [])[index]))
+            height = int(float(data.get('height', [])[index]))
+        except Exception:
+            continue
+        rows.append({
+            'index': index,
+            'text': text,
+            'left': left,
+            'top': top,
+            'width': max(1, width),
+            'height': max(1, height),
+            'block_num': data.get('block_num', [0] * len(texts))[index] if index < len(data.get('block_num', [])) else 0,
+            'par_num': data.get('par_num', [0] * len(texts))[index] if index < len(data.get('par_num', [])) else 0,
+            'line_num': data.get('line_num', [index] * len(texts))[index] if index < len(data.get('line_num', [])) else index,
+            'word_num': data.get('word_num', [index] * len(texts))[index] if index < len(data.get('word_num', [])) else index,
+        })
+    return rows
+
+
+def _group_ocr_lines(tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[tuple[Any, Any, Any], list[dict[str, Any]]] = defaultdict(list)
+    for token in tokens:
+        key = (token['block_num'], token['par_num'], token['line_num'])
+        groups[key].append(token)
+
+    lines: list[dict[str, Any]] = []
+    for key, items in groups.items():
+        ordered = sorted(items, key=lambda item: (item['top'], item['left'], item['word_num']))
+        parts: list[str] = []
+        spans: list[tuple[int, int, dict[str, Any]]] = []
+        cursor = 0
+        for item in ordered:
+            if parts:
+                parts.append(' ')
+                cursor += 1
+            start = cursor
+            parts.append(item['text'])
+            cursor += len(item['text'])
+            spans.append((start, cursor, item))
+        lines.append({'key': key, 'text': ''.join(parts), 'spans': spans, 'tokens': ordered})
+    return sorted(lines, key=lambda line: (min(t['top'] for t in line['tokens']), min(t['left'] for t in line['tokens'])))
+
+
+def _span_intersects(start: int, end: int, token_start: int, token_end: int) -> bool:
+    return start < token_end and end > token_start
+
+
+def _draw_ocr_span(
+    draw: Any,
+    line: dict[str, Any],
+    start: int,
+    end: int,
+    image_width: int,
+    image_height: int,
+) -> bool:
+    spans = line['spans']
+    if not spans:
+        return False
+
+    if len(spans) == 1:
+        token = spans[0][2]
+        text_len = max(1, len(line['text']))
+        ratio_start = max(0.0, min(1.0, start / text_len))
+        ratio_end = max(ratio_start + 0.02, min(1.0, end / text_len))
+        left = token['left'] + int(token['width'] * ratio_start)
+        right = token['left'] + int(token['width'] * ratio_end)
+        top = token['top']
+        bottom = token['top'] + token['height']
+        draw.rectangle([
+            max(0, left - 2),
+            max(0, top - 2),
+            min(image_width, right + 2),
+            min(image_height, bottom + 2),
+        ], fill=REDACTION_FILL)
+        return True
+
+    drawn = False
+    for token_start, token_end, token in spans:
+        if not _span_intersects(start, end, token_start, token_end):
+            continue
+        draw.rectangle([
+            max(0, token['left'] - 2),
+            max(0, token['top'] - 2),
+            min(image_width, token['left'] + token['width'] + 2),
+            min(image_height, token['top'] + token['height'] + 2),
+        ], fill=REDACTION_FILL)
+        drawn = True
+    return drawn
+
+
 def redact_image(input_path: Path, output_file: Path, engine: Desensitizer, locator_prefix: str) -> tuple[Path, list[Finding], list[SubjectMapping]]:
     image = Image.open(input_path).convert('RGB')
     data = ocr_image_to_data(image)
     draw = ImageDraw.Draw(image)
     all_findings: list[Finding] = []
     all_subjects: list[SubjectMapping] = []
-    for index, token in enumerate(data.get('text', [])):
-        text = (token or '').strip()
-        if not text:
-            continue
-        redacted, findings, subjects = sanitize_text_and_subjects(
-            text, engine, surface='image_text', locator=f'{locator_prefix} OCR#{index + 1}'
+    tokens = _ocr_token_rows(data)
+    lines = _group_ocr_lines(tokens)
+    for line_index, line in enumerate(lines, start=1):
+        text = line['text']
+        locator = f'{locator_prefix} OCR行#{line_index}'
+        _redacted, findings, subjects = sanitize_text_and_subjects(
+            text, engine, surface='image_text', locator=locator
         )
         all_findings.extend(findings)
         all_subjects.extend(subjects)
-        if not findings or redacted == text:
-            continue
-        left = int(data['left'][index])
-        top = int(data['top'][index])
-        width = int(data['width'][index])
-        height = int(data['height'][index])
-        draw.rectangle([left, top, left + width, top + height], fill='black')
+        subject_entities = detect_legal_subject_entities(text, detector=engine._subject_detector)
+        spans_to_redact: list[tuple[int, int]] = [(item.start, item.end) for item in findings]
+        spans_to_redact.extend((int(getattr(entity, 'start', 0)), int(getattr(entity, 'end', 0))) for entity in subject_entities)
+        spans_to_redact.extend((match.start(), match.end()) for match in BRANDING_TEXT_PATTERN.finditer(text))
+        for start, end in spans_to_redact:
+            if end <= start:
+                continue
+            _draw_ocr_span(draw, line, start, end, image.width, image.height)
     image.save(output_file)
     return output_file, all_findings, all_subjects

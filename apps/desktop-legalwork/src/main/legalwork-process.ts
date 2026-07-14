@@ -56,6 +56,8 @@ const LEGALWORK_STOP_GRACE_MS = 800
 const LEGALWORK_STOP_FORCE_MS = 400
 const STDERR_TAIL_MAX_CHARS = 4_000
 const LEGALWORK_SCHEDULE_MCP_TIMEOUT_MS = 5_000
+const LEGALWORK_OFFICECLI_MCP_TIMEOUT_MS = 30_000
+const LEGALWORK_OFFICECLI_MCP_SERVER_NAME = 'officecli'
 const GUI_ATTACHMENT_ALLOWED_MIME_TYPES = [
   'image/*',
   'text/*',
@@ -240,21 +242,11 @@ export async function startLegalworkChild(settings: AppSettingsV1): Promise<void
 
 async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
   const runtime = resolveLegalworkRuntimeSettings(settings)
-  if (isLegalworkChildRunning()) return
   if (!runtime.autoStart) return
-  if (childLogCapture) {
-    await childLogCapture.close()
-    childLogCapture = null
-  }
   const root = appRoot()
   const resolution = resolveLegalworkExecutable(root, runtime.binaryPath)
-  if (resolution.command === process.execPath && !existsSync(resolution.args[0])) {
-    throw new Error(
-      `Legalwork runtime build is missing at ${resolution.args[0]}. Run \`npm run build:legalwork\` before starting the GUI.`
-    )
-  }
   const dataDir = resolveLegalworkDataDir(runtime)
-  await syncGuiManagedLegalworkConfig(dataDir, runtime, {
+  const configChanged = await syncGuiManagedLegalworkConfig(dataDir, runtime, {
     scheduleMcp: {
       settings,
       launch: {
@@ -262,8 +254,25 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
         execPath: process.execPath,
         isPackaged: app.isPackaged
       }
+    },
+    officecli: {
+      appPath: app.getAppPath(),
+      isPackaged: app.isPackaged
     }
   })
+  if (isLegalworkChildRunning()) {
+    if (!configChanged) return
+    await stopLegalworkChildAndWait()
+  }
+  if (childLogCapture) {
+    await childLogCapture.close()
+    childLogCapture = null
+  }
+  if (resolution.command === process.execPath && !existsSync(resolution.args[0])) {
+    throw new Error(
+      `Legalwork runtime build is missing at ${resolution.args[0]}. Run \`npm run build:legalwork\` before starting the GUI.`
+    )
+  }
   lastResolvedBinary = resolution.command === process.execPath
     ? resolution.args.join(' ')
     : resolution.command
@@ -337,9 +346,13 @@ export async function syncGuiManagedLegalworkConfig(
       settings: AppSettingsV1
       launch: ClawScheduleMcpLaunchConfig
     }
+    officecli?: {
+      appPath: string
+      isPackaged: boolean
+    }
     mcpConfigPath?: string
   }
-): Promise<void> {
+): Promise<boolean> {
   const configPath = join(dataDir, 'config.json')
   const existing = sanitizeLegalworkConfigSections(await readJsonObjectIfExists(configPath))
   const importedMcpServers = await readGuiManagedMcpServers(
@@ -409,6 +422,14 @@ export async function syncGuiManagedLegalworkConfig(
                 options.scheduleMcp.launch
               )
             }
+          : {}),
+          ...(options?.officecli
+          ? {
+              [LEGALWORK_OFFICECLI_MCP_SERVER_NAME]: buildOfficeCliLegalworkMcpServer(
+                options.officecli.appPath,
+                options.officecli.isPackaged
+              )
+            }
           : {})
         },
         search: {
@@ -430,9 +451,10 @@ export async function syncGuiManagedLegalworkConfig(
     )
   }
   const nextText = `${JSON.stringify(next, null, 2)}\n`
-  if (existing && nextText === `${JSON.stringify(existing, null, 2)}\n`) return
+  if (existing && nextText === `${JSON.stringify(existing, null, 2)}\n`) return false
   await mkdir(dirname(configPath), { recursive: true })
   await writeFile(configPath, nextText, 'utf8')
+  return true
 }
 
 function buildGuiScheduleLegalworkMcpServer(
@@ -449,6 +471,27 @@ function buildGuiScheduleLegalworkMcpServer(
     },
     trustScope: 'user',
     timeoutMs: LEGALWORK_SCHEDULE_MCP_TIMEOUT_MS
+  }
+}
+
+function resolveOfficeCliBinaryPath(appPath: string, isPackaged: boolean): string {
+  const root = isPackaged ? appPath.replace(/app\.asar$/, 'app.asar.unpacked') : appPath
+  return join(root, 'legalwork', 'node_modules', '@officecli', 'officecli', 'vendor', 'officecli')
+}
+
+function buildOfficeCliLegalworkMcpServer(
+  appPath: string,
+  isPackaged: boolean
+): Record<string, unknown> {
+  return {
+    enabled: true,
+    transport: 'stdio',
+    command: resolveOfficeCliBinaryPath(appPath, isPackaged),
+    args: ['mcp'],
+    env: {},
+    trustScope: 'user',
+    trustedWorkspaceRoots: [],
+    timeoutMs: LEGALWORK_OFFICECLI_MCP_TIMEOUT_MS
   }
 }
 

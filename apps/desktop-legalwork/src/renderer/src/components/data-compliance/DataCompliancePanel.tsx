@@ -315,6 +315,13 @@ async function fileToPayload(file: File): Promise<DataComplianceFilePayload> {
   }
 }
 
+function localFileParentDirectory(file: File): string {
+  const filePath = window.dsGui?.getLocalFilePath?.(file)
+  if (!filePath) return ''
+  const separatorIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
+  return separatorIndex > 0 ? filePath.slice(0, separatorIndex) : ''
+}
+
 async function fallbackRequest(
   path: string,
   method: 'GET' | 'POST' | 'DELETE' = 'GET',
@@ -494,28 +501,45 @@ function useComplianceProgress(taskId: string | null): ProgressState {
 
 function ProgressModal({ state, onDismiss, modeScope = 'review' }: { state: ProgressState; onDismiss: () => void; modeScope?: SubmitMode }): ReactElement | null {
   if (state.kind === 'idle') return null
-  if (state.kind === 'completed' || state.kind === 'failed') return null
   const running = state.kind === 'running'
   const isDesensitize = modeScope === 'desensitize'
-  const title = isDesensitize ? '正在脱敏中' : '正在审查中'
-  const subtitle = isDesensitize ? '请稍候，系统正在处理脱敏任务' : '请稍候，系统正在分析文档合规性'
+  const failed = state.kind === 'failed'
+  const completed = state.kind === 'completed'
+  const title = failed
+    ? (isDesensitize ? '脱敏失败' : '审查失败')
+    : completed
+      ? (isDesensitize ? '脱敏完成' : '审查完成')
+      : (isDesensitize ? '正在脱敏中' : '正在审查中')
+  const subtitle = failed
+    ? '任务没有完成，请查看错误信息后重新提交'
+    : completed
+      ? '任务已完成，可关闭弹窗查看结果'
+      : isDesensitize
+        ? '请稍候，系统正在处理脱敏任务'
+        : '请稍候，系统正在分析文档合规性'
+  const actionLabel = running ? '后台运行' : '关闭'
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onDismiss() }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-md rounded-[18px] border border-ds-border bg-ds-card p-6 shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
         <button
           type="button"
           onClick={onDismiss}
-          title="后台运行"
-          aria-label="后台运行"
+          title={actionLabel}
+          aria-label={actionLabel}
           className="absolute right-4 top-4 inline-flex h-8 items-center gap-1.5 rounded-full border border-ds-border-muted bg-ds-subtle px-3 text-[12px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
         >
-          <Minimize2 className="h-3.5 w-3.5" strokeWidth={1.9} />
-          后台运行
+          {running ? <Minimize2 className="h-3.5 w-3.5" strokeWidth={1.9} /> : <X className="h-3.5 w-3.5" strokeWidth={1.9} />}
+          {actionLabel}
         </button>
         <div className="mb-4 flex items-center gap-3 pr-28">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--ds-accent-soft)] text-[var(--ds-accent)]">
-            <Loader2 className="h-5 w-5 animate-spin" />
+          <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
+            failed
+              ? 'bg-red-500/12 text-red-500'
+              : completed
+                ? 'bg-emerald-500/12 text-emerald-500'
+                : 'bg-[var(--ds-accent-soft)] text-[var(--ds-accent)]'
+          }`}>
+            {failed ? <AlertCircle className="h-5 w-5" /> : completed ? <CheckCircle2 className="h-5 w-5" /> : <Loader2 className="h-5 w-5 animate-spin" />}
           </div>
           <div>
             <h3 className="text-[15px] font-semibold text-ds-ink">{title}</h3>
@@ -524,13 +548,13 @@ function ProgressModal({ state, onDismiss, modeScope = 'review' }: { state: Prog
         </div>
         <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-ds-subtle">
           <div
-            className="h-full rounded-full bg-[var(--ds-accent)] transition-all duration-500 ease-out"
-            style={{ width: `${running ? state.percent : 0}%` }}
+            className={`h-full rounded-full transition-all duration-500 ease-out ${failed ? 'bg-red-500' : completed ? 'bg-emerald-500' : 'bg-[var(--ds-accent)]'}`}
+            style={{ width: `${running ? state.percent : completed || failed ? 100 : 0}%` }}
           />
         </div>
         <div className="flex items-center justify-between text-[12px] text-ds-muted">
-          <span className="truncate pr-4">{running ? state.message : '处理中…'}</span>
-          <span className="shrink-0">{running ? `${state.percent}%` : ''}</span>
+          <span className="truncate pr-4">{running ? state.message : failed ? state.message : '处理完成'}</span>
+          <span className="shrink-0">{running ? `${state.percent}%` : completed ? '100%' : ''}</span>
         </div>
       </div>
     </div>
@@ -1264,7 +1288,8 @@ export function DataCompliancePanel({
     baseUrl: '', message: '检测中...'
   })
   const [statusBusy, setStatusBusy] = useState(false)
-  const [outputDir, setOutputDir] = useState(workspaceRoot || '')
+  const [outputDir, setOutputDir] = useState('')
+  const [outputDirTouched, setOutputDirTouched] = useState(false)
   const [outputFormat, setOutputFormat] = useState<'md' | 'docx' | 'txt' | ''>('')
   const [installProgress, setInstallProgress] = useState<InstallProgressState>({ kind: 'idle' })
 
@@ -1308,10 +1333,11 @@ export function DataCompliancePanel({
   }, [])
 
   useEffect(() => {
-    if (workspaceRoot && !outputDir.trim()) {
-      setOutputDir(workspaceRoot)
-    }
-  }, [workspaceRoot, outputDir])
+    if (outputDirTouched) return
+    const parentDir = files[0] ? localFileParentDirectory(files[0]) : ''
+    const nextOutputDir = parentDir || workspaceRoot || ''
+    setOutputDir((current) => current === nextOutputDir ? current : nextOutputDir)
+  }, [files, outputDirTouched, workspaceRoot])
 
   useEffect(() => {
     if (typeof window.dsGui?.onDataComplianceInstallProgress !== 'function') return
@@ -1402,7 +1428,7 @@ export function DataCompliancePanel({
     }
   }, [ensureServer, modeScope])
 
-  const loadResult = useCallback(async (id = selectedTaskId, options: { quiet?: boolean } = {}): Promise<ComplianceResult | null> => {
+  const loadResult = useCallback(async (id = selectedTaskId, options: { quiet?: boolean; navigate?: boolean } = {}): Promise<ComplianceResult | null> => {
     const targetId = id.trim()
     if (!targetId) {
       setNotice({ tone: 'error', text: '请输入任务编号。' })
@@ -1422,7 +1448,7 @@ export function DataCompliancePanel({
       } else {
         setProgressTaskId((current) => (current === targetId ? '' : current))
       }
-      onSectionChange('results')
+      if (options.navigate !== false) onSectionChange('results')
       return payload
     } catch (error) {
       if (!options.quiet) {
@@ -1443,15 +1469,6 @@ export function DataCompliancePanel({
     })
   }, [refreshHistory, modeScope])
 
-  // Dismiss progress modal when result loads as completed/failed/error
-  useEffect(() => {
-    const status = (result?.status ?? '').toLowerCase()
-    if (status === 'completed' || status === 'failed' || status === 'error') {
-      setProgressDismissed(true)
-      setProgressTaskId('')
-    }
-  }, [result?.status])
-
   const addSelectedFiles = useCallback((nextFiles: File[]): void => {
     if (nextFiles.length === 0) return
     setFiles((current) => {
@@ -1470,7 +1487,11 @@ export function DataCompliancePanel({
     }
     const formats = inferOutputFormats(nextFiles.length === 1 ? nextFiles[0] : null)
     setOutputFormat(formats[0]?.value ?? '')
-  }, [documentName])
+    if (!outputDirTouched) {
+      const parentDir = localFileParentDirectory(nextFiles[0])
+      if (parentDir) setOutputDir(parentDir)
+    }
+  }, [documentName, outputDirTouched])
 
   const onPickFile = (event: ChangeEvent<HTMLInputElement>): void => {
     const nextFiles = Array.from(event.target.files ?? [])
@@ -1522,6 +1543,7 @@ export function DataCompliancePanel({
     try {
       const picked = await window.dsGui.pickWorkspaceDirectory(outputDir || undefined)
       if (!picked.canceled && picked.path) {
+        setOutputDirTouched(true)
         setOutputDir(picked.path)
       }
     } catch (error) {
@@ -1626,13 +1648,41 @@ export function DataCompliancePanel({
     }
   }
 
-  const openExternalUrl = (url: string): void => {
-    if (typeof window.dsGui?.openExternal === 'function') {
-      void window.dsGui.openExternal(url).catch(() => window.open(url, '_blank', 'noreferrer'))
+  const openLocalPath = useCallback(async (targetPath: string): Promise<boolean> => {
+    const normalizedPath = targetPath.trim()
+    if (!normalizedPath) {
+      setNotice({ tone: 'error', text: '没有可打开的输出目录。' })
+      return false
+    }
+    if (typeof window.dsGui?.openLocalPath !== 'function') {
+      setNotice({ tone: 'error', text: '当前环境不支持打开本地目录。' })
+      return false
+    }
+    const opened = await window.dsGui.openLocalPath(normalizedPath)
+    if (!opened.ok) {
+      setNotice({ tone: 'error', text: opened.message ? `打开目录失败：${opened.message}` : '打开目录失败。' })
+      return false
+    }
+    return true
+  }, [])
+
+  const openHistoryTask = useCallback(async (task: ComplianceTask): Promise<void> => {
+    const id = taskIdOf(task)
+    if (!id) return
+    const shouldOpenOutputDir = modeScope === 'desensitize' && (task.status ?? '').toLowerCase() === 'completed'
+    const payload = await loadResult(id, {
+      quiet: shouldOpenOutputDir,
+      navigate: !shouldOpenOutputDir
+    })
+    if (!shouldOpenOutputDir) return
+    if (payload?.output_dir) {
+      const opened = await openLocalPath(payload.output_dir)
+      if (opened) setNotice({ tone: 'success', text: `已打开输出目录：${payload.output_dir}` })
       return
     }
-    window.open(url, '_blank', 'noreferrer')
-  }
+    onSectionChange('results')
+    setNotice({ tone: 'error', text: '该脱敏任务没有记录输出目录，请在结果页下载脱敏文件。' })
+  }, [loadResult, modeScope, onSectionChange, openLocalPath])
 
   const downloadComplianceFile = async (taskId: string, fileKey: string): Promise<void> => {
     if (typeof window.dsGui?.downloadDataComplianceFile !== 'function') {
@@ -1981,8 +2031,8 @@ export function DataCompliancePanel({
                       type="button"
                       onClick={() => {
                         if (id) {
-                          loadResult(id).catch((error: unknown) => {
-                            console.error('[DataCompliancePanel] loadResult failed:', error)
+                          openHistoryTask(task).catch((error: unknown) => {
+                            console.error('[DataCompliancePanel] openHistoryTask failed:', error)
                           })
                         }
                       }}
@@ -2069,11 +2119,7 @@ export function DataCompliancePanel({
                             </span>
                             <button
                               type="button"
-                              onClick={() =>
-                                openExternalUrl(
-                                  `file://${encodeURIComponent(result.output_dir ?? '')}`
-                                )
-                              }
+                              onClick={() => { if (result.output_dir) void openLocalPath(result.output_dir) }}
                               className="inline-flex items-center gap-1 rounded-full border border-ds-border bg-ds-card px-2 py-1 text-[11.5px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
                             >
                               <Folder className="h-3 w-3" strokeWidth={1.8} />
@@ -2162,7 +2208,7 @@ export function DataCompliancePanel({
           ) : null}
         </div>
       </div>
-      <ProgressModal state={visibleProgress} onDismiss={dismissProgress} modeScope={modeScope} />
+      <ProgressModal state={visibleProgress} onDismiss={dismissProgress} modeScope={effectiveModeScope} />
     </div>
   )
 }

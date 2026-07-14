@@ -735,6 +735,7 @@ function formatAttachmentTextFallback(
   const lines = [
     '[Attached file]',
     `Name: ${attachment.name}`,
+    `FilePath: ${attachment.localFilePath ?? 'unknown'}`,
     `MIME: ${attachment.mimeType}`,
     `Bytes: ${attachment.byteSize}`,
     ...(attachment.width && attachment.height ? [`Dimensions: ${formatAttachmentDimensions(attachment)}`] : [])

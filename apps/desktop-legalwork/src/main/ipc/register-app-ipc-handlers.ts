@@ -1440,6 +1440,10 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     const validatedUrl = parseIpcPayload('shell:open-external', shellOpenExternalUrlSchema, url)
     await shell.openExternal(validatedUrl)
   })
+  ipcMain.handle('shell:open-path', async (_, targetPath: unknown) => {
+    const validatedPath = parseIpcPayload('shell:open-path', rootPathSchema, targetPath)
+    return openPathWithShell(validatedPath)
+  })
   ipcMain.handle('knowledge:open-file', async (_, payload: unknown) => {
     const { path } = parseIpcPayload('knowledge:open-file', knowledgeOpenFilePayloadSchema, payload)
     try {

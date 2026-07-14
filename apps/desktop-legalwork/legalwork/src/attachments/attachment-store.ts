@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import type { AttachmentsCapabilityConfig } from '../contracts/capabilities.js'
 import type { AttachmentDiagnostics, AttachmentMetadata, AttachmentTextFallback } from '../contracts/attachments.js'
 import { AttachmentMetadata as AttachmentMetadataSchema } from '../contracts/attachments.js'
 
 export type AttachmentContent = AttachmentMetadata & {
   data: Buffer
+  localFilePath?: string
 }
 
 export interface AttachmentStore {
@@ -75,6 +76,7 @@ export class FileAttachmentStore implements AttachmentStore {
         updatedAt: now
       }, input)
       await writeFile(contentPath, input.data)
+      await this.writeNamedContentFile(next, input.data)
       await writeFile(metadataPath, JSON.stringify(next, null, 2), 'utf8')
       return next
     }
@@ -93,6 +95,7 @@ export class FileAttachmentStore implements AttachmentStore {
       updatedAt: now
     }, input))
     await writeFile(contentPath, input.data)
+    await this.writeNamedContentFile(metadata, input.data)
     await writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf8')
     return metadata
   }
@@ -111,9 +114,11 @@ export class FileAttachmentStore implements AttachmentStore {
     const metadata = await this.get(id)
     if (!metadata) throw new Error(`attachment not found: ${id}`)
     if (!isAuthorized(metadata, scope)) throw new Error(`attachment is not authorized for this turn: ${id}`)
+    const data = await readFile(this.contentPath(id))
     return {
       ...metadata,
-      data: await readFile(this.contentPath(id))
+      data,
+      localFilePath: await this.writeNamedContentFile(metadata, data)
     }
   }
 
@@ -151,9 +156,26 @@ export class FileAttachmentStore implements AttachmentStore {
     return join(this.options.rootDir, `${id}.bin`)
   }
 
+  private namedContentPath(metadata: Pick<AttachmentMetadata, 'id' | 'name'>): string {
+    return join(this.options.rootDir, 'files', metadata.id, safeAttachmentFilename(metadata.name))
+  }
+
+  private async writeNamedContentFile(metadata: Pick<AttachmentMetadata, 'id' | 'name'>, data: Buffer): Promise<string> {
+    const path = this.namedContentPath(metadata)
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, data)
+    return path
+  }
+
   private metadataPath(id: string): string {
     return join(this.options.rootDir, `${id}.json`)
   }
+}
+
+function safeAttachmentFilename(name: string): string {
+  const raw = basename(name.trim() || 'attachment')
+  const safe = raw.replace(/[^\w一-龥 .()[\]-]+/g, '_').replace(/^[ ._]+|[ ._]+$/g, '')
+  return safe || 'attachment'
 }
 
 function mergeScope<T extends AttachmentMetadata>(metadata: T, input: { threadId?: string; workspace?: string }): T {

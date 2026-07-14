@@ -85,6 +85,51 @@ def main() -> int:
         if report.get('strategy') != 'format_preserving_mask':
             raise AssertionError(f'unexpected strategy: {report.get("strategy")}')
 
+        legal_text = (
+            '原告：大连易和投资有限公司，住所地辽宁省大连市中山区同兴街25层1号。\n'
+            '法定代表人：王强，董事长兼总经理。\n'
+            '委托诉讼代理人：程国滨，上海中联律师事务所律师。\n'
+            '委托诉讼代理人：王斌，上海功承瀛泰(长春)律师事务\n所律师。\n'
+            '被告：吉林市丰满区人民政府。\n'
+            '吉林省吉林市中级人民法院于2026年7月13日公开开庭审理，吉林市丰满区人民政府副区长于洋、委托诉讼代理人程国滨、王斌到庭。\n'
+            '本协议签订生效后，由乙方及乙方合作公司在丰满区分别注册成立商业管理公司及地产开发公司。\n'
+            '被告未依约履行道路建设、配套管网铺设义务，造成实际投资、继续协商、承担责任等争议。'
+        )
+        legal_path = work / 'legal-source.txt'
+        legal_path.write_text(legal_text, encoding='utf-8')
+        legal_result = process_desensitization(
+            task_id='legal-text',
+            input_path=legal_path,
+            document_name='legal-text',
+            work_dir=work / 'legal-text-out',
+            is_text=True,
+        )
+        legal_masked = Path(legal_result['output_file']).read_text(encoding='utf-8')
+        for fragment in [
+            '本协议签订生效后',
+            '实际投资、继续协商、承担责任',
+            '乙方合作公司',
+            '商业管理公司',
+            '地产开发公司',
+        ]:
+            assert_contains(legal_masked, fragment, 'legal text')
+        for forbidden in [
+            '大连易和投资有限公司',
+            '吉林市丰满区人民政府',
+            '吉林省吉林市中级人民法院',
+            '上海中联律师事务所',
+            '上海功承瀛泰',
+            '王强',
+            '程国滨',
+            '王斌',
+            '于洋',
+            '实某某某',
+            '继某某某',
+            '承某某某',
+        ]:
+            if forbidden in legal_masked:
+                raise AssertionError(f'legal text redaction policy failed: {forbidden!r} in {legal_masked!r}')
+
         print('OK')
         return 0
     finally:

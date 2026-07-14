@@ -1,6 +1,6 @@
 {
   "name": "legalwork",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "legalwork local HTTP/SSE agent runtime",
   "type": "module",
   "private": true,
@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@officecli/officecli": "^1.0.135",
     "better-sqlite3": "^12.10.0",
     "diff": "^8.0.4",
     "mammoth": "^1.12.0",

@@ -31,7 +31,7 @@ import { LegalworkRuntimeProvider } from '../../agent/legalwork-runtime'
 import type { ThreadEventSink } from '../../agent/types'
 import { brandForModel } from '../../lib/model-brand'
 import type { KnowledgeTreeNode } from './types'
-import { PdfJsPreview } from './PdfJsPreview'
+import { extractPdfTextFromBase64, PdfJsPreview } from './PdfJsPreview'
 
 // ── Helpers (copied from KnowledgeBaseView to keep this file self-contained) ──
 
@@ -154,6 +154,12 @@ function knowledgeFileChatTitle(fileName: string, question: string): string {
   return `知识库：${fileName} · ${summary}`
 }
 
+function currentFileTextForPrompt(fileContent: FileContent | null): string {
+  const directText = fileContent?.extractedText?.trim()
+    || (fileContent?.encoding === 'utf8' ? fileContent.content.trim() : '')
+  return directText.slice(0, 16000)
+}
+
 // ── Document text extraction preview component ──
 
 function DocumentPreview({ text, fileName }: { text: string; fileName: string }): ReactElement {
@@ -215,13 +221,15 @@ export function KnowledgeBaseFileView({ node, onBack, onChatThreadsChange }: Pro
   const [liveAssistant, setLiveAssistant] = useState('')
   const [runtimeModel, setRuntimeModel] = useState('')
   const [chatOpen, setChatOpen] = useState(true)
-  const [chatWidth, setChatWidth] = useState(420)
+  const [chatWidth, setChatWidth] = useState(360)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatAbortRef = useRef<AbortController | null>(null)
   const resizingChatRef = useRef(false)
+  const splitContainerRef = useRef<HTMLDivElement>(null)
 
   const MIN_CHAT_WIDTH = 320
-  const MAX_CHAT_WIDTH = 720
+  const MAX_CHAT_WIDTH = 520
+  const MIN_PREVIEW_WIDTH = 720
 
   const startChatResize = useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
@@ -231,7 +239,10 @@ export function KnowledgeBaseFileView({ node, onBack, onChatThreadsChange }: Pro
     const onMove = (ev: PointerEvent): void => {
       if (!resizingChatRef.current) return
       const delta = startX - ev.clientX
-      const next = Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, startWidth + delta))
+      const containerWidth = splitContainerRef.current?.clientWidth ?? window.innerWidth
+      const maxWidthWithPreview = Math.max(MIN_CHAT_WIDTH, containerWidth - MIN_PREVIEW_WIDTH)
+      const nextMax = Math.min(MAX_CHAT_WIDTH, maxWidthWithPreview)
+      const next = Math.max(MIN_CHAT_WIDTH, Math.min(nextMax, startWidth + delta))
       setChatWidth(next)
     }
     const onUp = (): void => {
@@ -279,6 +290,11 @@ export function KnowledgeBaseFileView({ node, onBack, onChatThreadsChange }: Pro
             `${LEGALWORK_KNOWLEDGE_EXTRACT_TEXT_PATH}?path=${encodeURIComponent(node.path)}`
           ).catch(() => null)
           if (cancelled) return
+          let extractedText = extracted?.text?.trim() ?? ''
+          if (!extractedText && data.content) {
+            extractedText = await extractPdfTextFromBase64(data.content).catch(() => '')
+            if (cancelled) return
+          }
           let objectUrl: string | undefined
           if (data.content) {
             try {
@@ -292,7 +308,7 @@ export function KnowledgeBaseFileView({ node, onBack, onChatThreadsChange }: Pro
             encoding: data.encoding,
             objectUrl,
             type,
-            extractedText: extracted?.text ?? ''
+            extractedText
           })
           return
         }
@@ -472,41 +488,42 @@ export function KnowledgeBaseFileView({ node, onBack, onChatThreadsChange }: Pro
       const retrievalQuery = `${question.trim()} ${node.name} ${node.path}`
       const retrieval = await requestJson<KnowledgeRetrievalResult>(
         `${LEGALWORK_KNOWLEDGE_RETRIEVE_PATH}?q=${encodeURIComponent(retrievalQuery)}&max_chars=9000&exclude_expired=true`
-      )
-      let context = retrieval.contextText
-      if (!context) {
-        const rawContent = fileContent?.encoding === 'utf8'
-          ? fileContent.content.slice(0, 4000)
-          : ''
-        context = rawContent
-          ? `文件内容：\n${rawContent}`
-          : `文件：${node.name}（${fileTypeLabel(node)}，${formatBytes(node.sizeBytes)}）`
-      }
+      ).catch((): KnowledgeRetrievalResult => ({
+        contextText: '',
+        sources: [],
+        latencyMs: 0
+      }))
+      const currentFileText = currentFileTextForPrompt(fileContent)
+      const currentFileContext = currentFileText
+        ? `## 当前打开文件的正文（优先依据）\n${currentFileText}`
+        : `## 当前打开文件\n${node.name}（${fileTypeLabel(node)}，${formatBytes(node.sizeBytes)}）\n\n未能从当前文件直接提取到可用正文。`
+      const retrievalContext = retrieval.contextText
+        ? `## 知识库补充检索结果（仅作补充，不得替代当前文件）\n${retrieval.contextText}`
+        : '## 知识库补充检索结果\n无'
       const citations = retrieval.sources.length
         ? retrieval.sources
           .slice(0, 8)
           .map((source, index) => `[来源 ${index + 1}] ${source.citation || source.title}（${source.path}，相关度 ${Math.round(source.relevanceScore * 100)}%）`)
           .join('\n')
         : '无'
-      const hasCurrentFileSource = retrieval.sources.some((source) => source.path === node.path)
 
       const prompt = `你是一个专业的法律知识助手。请基于以下检索到的相关内容回答用户的问题。
 
 ## 当前文件
 ${node.name}（${fileTypeLabel(node)}）
 
-## RAG 检索上下文
-${context}
+${currentFileContext}
+
+${retrievalContext}
 
 ## 可引用来源
+当前文件：${node.name}（来自文件预览页直接读取）
 ${citations}
-
-${!hasCurrentFileSource && retrieval.sources.length > 0 ? '（注：检索结果主要来自知识库中其他相关文件，可能与当前文件无直接关联。）' : ''}
 
 ## 用户问题
 ${question.trim()}
 
-请基于检索到的内容给出准确、专业的回答。如果内容不足以回答问题，请明确说明。引用来源时请标注对应的 [来源编号]，不要编造未出现在上下文中的依据。`
+请优先依据“当前打开文件的正文”回答；知识库补充检索结果只能用于交叉参考或补充背景，不能把其他文件内容误认为当前文件内容。如果当前文件正文不足以回答问题，请明确说明缺口。引用补充来源时请标注对应的 [来源编号]，不要编造未出现在上下文中的依据。`
 
       // Step 4: Reuse the active file-chat thread or create a side thread so it does not sync to the main chat sidebar.
       const workspace = await getWorkspaceRoot()
@@ -703,9 +720,9 @@ ${question.trim()}
       </header>
 
       {/* Content + Chat split */}
-      <div className="flex min-h-0 flex-1">
+      <div ref={splitContainerRef} className="flex min-h-0 flex-1">
         {/* File Content Panel */}
-        <div className={`flex min-w-0 flex-1 flex-col ${chatOpen ? 'border-r border-ds-border' : ''}`}>
+        <div className={`flex min-w-[min(720px,100%)] flex-1 flex-col ${chatOpen ? 'border-r border-ds-border' : ''}`}>
           {fileLoading ? (
             <div className="flex h-full items-center justify-center gap-2 text-[13px] text-[var(--ds-muted)]">
               <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.8} />

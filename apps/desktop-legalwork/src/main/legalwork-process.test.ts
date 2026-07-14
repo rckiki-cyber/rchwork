@@ -325,6 +325,52 @@ describe('syncGuiManagedLegalworkConfig', () => {
     })
   })
 
+  it('adds the bundled OfficeCLI MCP server to Legalwork runtime capabilities', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const configPath = join(tempRoot, 'config.json')
+    const module = await import('./legalwork-process')
+    const appPath = '/tmp/legalwork-test-app'
+
+    await module.syncGuiManagedLegalworkConfig(tempRoot, defaultLegalworkRuntimeSettings(), {
+      officecli: {
+        appPath,
+        isPackaged: false
+      }
+    })
+
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
+    expect(parsed.capabilities.mcp.enabled).toBe(true)
+    expect(parsed.capabilities.mcp.servers.officecli).toMatchObject({
+      enabled: true,
+      transport: 'stdio',
+      command: join(appPath, 'legalwork', 'node_modules', '@officecli', 'officecli', 'vendor', 'officecli'),
+      args: ['mcp'],
+      env: {},
+      trustScope: 'user',
+      trustedWorkspaceRoots: [],
+      timeoutMs: 30000
+    })
+  })
+
+  it('uses the unpacked asar path for OfficeCLI when packaged', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const configPath = join(tempRoot, 'config.json')
+    const module = await import('./legalwork-process')
+    const appPath = '/Applications/legalwork.app/Contents/Resources/app.asar'
+
+    await module.syncGuiManagedLegalworkConfig(tempRoot, defaultLegalworkRuntimeSettings(), {
+      officecli: {
+        appPath,
+        isPackaged: true
+      }
+    })
+
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
+    expect(parsed.capabilities.mcp.servers.officecli.command).toBe(
+      join('/Applications/legalwork.app/Contents/Resources/app.asar.unpacked', 'legalwork', 'node_modules', '@officecli', 'officecli', 'vendor', 'officecli')
+    )
+  })
+
   it('adds GUI project and configured global skill roots to Legalwork runtime capabilities', async () => {
     if (!tempRoot) throw new Error('temp root not initialized')
     const configPath = join(tempRoot, 'config.json')

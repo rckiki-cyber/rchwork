@@ -16,8 +16,11 @@ import { dirname, extname, isAbsolute, join, normalize, relative as pathRelative
 import { Readable } from 'node:stream'
 
 const DATA_COMPLIANCE_VENV_DIR_NAME = 'python-venv'
+const DATA_COMPLIANCE_CORE_DEPENDENCY_MARKER = '.legalwork-core-deps-installed'
 const MIN_DATA_COMPLIANCE_PYTHON = { major: 3, minor: 10 }
 const MAX_DATA_COMPLIANCE_PYTHON = { major: 3, minor: 12 }
+const PYTHON_IMPORT_TIMEOUT_MS = 8_000
+const PYTHON_VERSION_TIMEOUT_MS = 3_000
 
 function resolveDataComplianceVenvDir(dataDir: string): string {
   return join(dataDir, 'data-compliance', DATA_COMPLIANCE_VENV_DIR_NAME)
@@ -127,7 +130,7 @@ export type DataComplianceFileKey =
   | 'subject_mapping_md'
   | 'subject_mapping_json'
 
-const REQUIRED_PYTHON_PACKAGES = [
+const CORE_REQUIRED_PYTHON_PACKAGES = [
   'flask',
   'docx',
   'fitz',
@@ -136,11 +139,14 @@ const REQUIRED_PYTHON_PACKAGES = [
   'pypdf',
   'pandas',
   'PIL',
-  'paddle',
-  'paddleocr',
-  'pytesseract',
   'presidio_analyzer',
   'presidio_anonymizer'
+]
+
+const OPTIONAL_OCR_PYTHON_PACKAGES = [
+  'paddle',
+  'paddleocr',
+  'pytesseract'
 ]
 
 const PYTHON_COMMAND_CANDIDATES = process.platform === 'win32'
@@ -264,6 +270,7 @@ export class DataComplianceTaskService {
     this.logDir = input.logDir
     this.pythonBin = this.resolvePythonExecutable()
     mkdirSync(this.tasksDir, { recursive: true })
+    this.markInterruptedTasks()
   }
 
   private venvPythonPath(): string {
@@ -314,7 +321,8 @@ export class DataComplianceTaskService {
         env: buildDataCompliancePythonEnv(),
         shell: false,
         encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: PYTHON_VERSION_TIMEOUT_MS
       })
       return result.status === 0 &&
         isSupportedDataCompliancePythonVersion(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
@@ -354,18 +362,7 @@ export class DataComplianceTaskService {
       }
     }
 
-    const missing: string[] = []
-    for (const pkg of REQUIRED_PYTHON_PACKAGES) {
-      try {
-        const result = await this.runPython(['-c', `import ${pkg}`])
-        if (result.exitCode !== 0) {
-          missing.push(pkg)
-        }
-      } catch {
-        missing.push(pkg)
-      }
-    }
-
+    const missing = await this.findMissingPackages(CORE_REQUIRED_PYTHON_PACKAGES, this.pythonBin)
     if (missing.length > 0) {
       return {
         ok: false,
@@ -380,6 +377,7 @@ export class DataComplianceTaskService {
   private async ensurePythonEnvironment(): Promise<void> {
     const venvPython = this.venvPythonPath()
     const requirementsPath = join(this.webRoot, 'requirements.txt')
+    const markerPath = join(this.venvDir, DATA_COMPLIANCE_CORE_DEPENDENCY_MARKER)
 
     if (!this.canRunPython(venvPython)) {
       const basePython = this.pythonBin
@@ -395,9 +393,17 @@ export class DataComplianceTaskService {
     this.pythonBin = venvPython
 
     if (!existsSync(requirementsPath)) return
+    if (existsSync(markerPath)) return
 
-    const missing = await this.findMissingPackages(REQUIRED_PYTHON_PACKAGES, venvPython)
-    if (missing.length === 0) return
+    const missing = await this.findMissingPackages(CORE_REQUIRED_PYTHON_PACKAGES, venvPython)
+    if (missing.length === 0) {
+      writeFileSync(markerPath, JSON.stringify({
+        checked_at: nowIso(),
+        core_packages: CORE_REQUIRED_PYTHON_PACKAGES,
+        optional_ocr_packages: OPTIONAL_OCR_PYTHON_PACKAGES
+      }, null, 2), 'utf-8')
+      return
+    }
 
     const result = await this.runCommand(
       venvPython,
@@ -407,12 +413,24 @@ export class DataComplianceTaskService {
     if (result.exitCode !== 0) {
       throw new Error(`安装依赖失败: ${result.stderr || result.stdout}`)
     }
+
+    const stillMissing = await this.findMissingPackages(CORE_REQUIRED_PYTHON_PACKAGES, venvPython)
+    if (stillMissing.length > 0) {
+      throw new Error(`安装依赖后仍缺少核心包: ${stillMissing.join(', ')}`)
+    }
+    writeFileSync(markerPath, JSON.stringify({
+      checked_at: nowIso(),
+      core_packages: CORE_REQUIRED_PYTHON_PACKAGES,
+      optional_ocr_packages: OPTIONAL_OCR_PYTHON_PACKAGES
+    }, null, 2), 'utf-8')
   }
 
   private async findMissingPackages(packages: string[], python: string): Promise<string[]> {
     const missing: string[] = []
     for (const pkg of packages) {
-      const result = await this.runCommand(python, ['-c', `import ${pkg}`])
+      const result = await this.runCommand(python, ['-c', `import ${pkg}`], {
+        timeoutMs: PYTHON_IMPORT_TIMEOUT_MS
+      })
       if (result.exitCode !== 0) {
         missing.push(pkg)
       }
@@ -431,13 +449,25 @@ export class DataComplianceTaskService {
   private runCommand(
     command: string,
     args: string[],
-    options: { cwd?: string } = {}
+    options: { cwd?: string; timeoutMs?: number } = {}
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, args, {
         cwd: options.cwd,
         env: buildDataCompliancePythonEnv()
       })
+      let settled = false
+      const finish = (value: { exitCode: number; stdout: string; stderr: string }): void => {
+        if (settled) return
+        settled = true
+        if (timeout) clearTimeout(timeout)
+        resolve(value)
+      }
+      const timeout = options.timeoutMs
+        ? setTimeout(() => {
+            child.kill('SIGKILL')
+          }, options.timeoutMs)
+        : null
       let stdout = ''
       let stderr = ''
       child.stdout?.on('data', (chunk) => {
@@ -446,11 +476,43 @@ export class DataComplianceTaskService {
       child.stderr?.on('data', (chunk) => {
         stderr += String(chunk)
       })
-      child.on('error', reject)
+      child.on('error', (error) => {
+        if (settled) return
+        settled = true
+        if (timeout) clearTimeout(timeout)
+        reject(error)
+      })
       child.on('exit', (exitCode) => {
-        resolve({ exitCode: exitCode ?? 1, stdout, stderr })
+        finish({ exitCode: exitCode ?? 1, stdout, stderr })
       })
     })
+  }
+
+  private markInterruptedTasks(): void {
+    let entries: Array<{ isDirectory: () => boolean; name: string }>
+    try {
+      entries = readdirSync(this.tasksDir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const task = this.readTaskStateSync(entry.name)
+      if (!task) continue
+      if (task.status !== 'pending' && task.status !== 'running') continue
+
+      task.status = 'failed'
+      task.error = '任务已中断，请重新提交。'
+      task.completed_at = nowIso()
+      task.progress = {
+        step: task.progress?.step ?? 0,
+        total_steps: task.progress?.total_steps ?? (task.product_type === 'desensitize' ? 4 : 11),
+        message: '任务已中断，请重新提交。',
+        status: 'error'
+      }
+      this.writeTaskState(task)
+    }
   }
 
   private taskDir(taskId: string): string {
@@ -653,9 +715,11 @@ export class DataComplianceTaskService {
           LEGALWORK_API_KEY: process.env.LEGALWORK_API_KEY ?? '',
           DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? ''
         },
-        stdio: ['ignore', logOut, logErr]
+        stdio: ['ignore', 'pipe', 'pipe']
       }
     )
+    child.stdout?.pipe(logOut, { end: false })
+    child.stderr?.pipe(logErr, { end: false })
     this.runningChildren.set(taskId, child)
 
     // Poll task_state.json while worker runs; cap total polling time to avoid

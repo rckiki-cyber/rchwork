@@ -1,5 +1,5 @@
 const { execFileSync } = require('node:child_process')
-const { existsSync, readdirSync, rmSync, statSync } = require('node:fs')
+const { chmodSync, cpSync, existsSync, readdirSync, rmSync, statSync } = require('node:fs')
 const { join } = require('node:path')
 
 const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
@@ -8,7 +8,9 @@ const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
   'legalwork/package-lock.json',
   'legalwork/node_modules/zod/package.json',
   'legalwork/node_modules/diff/package.json',
-  'legalwork/node_modules/@modelcontextprotocol/sdk/package.json'
+  'legalwork/node_modules/@modelcontextprotocol/sdk/package.json',
+  'legalwork/node_modules/@officecli/officecli/package.json',
+  'legalwork/node_modules/@officecli/officecli/vendor/officecli'
 ]
 
 const DATA_COMPLIANCE_REQUIRED_PATHS = [
@@ -98,6 +100,24 @@ function prunePackedLegalworkDependencies(context) {
     'root better-sqlite3 dependency'
   )
   rmSync(join(legalworkDir, 'node_modules', 'better-sqlite3'), { recursive: true, force: true })
+}
+
+function projectDir(context) {
+  return context.packager?.projectDir || join(__dirname, '..')
+}
+
+function restoreBundledOfficeCli(context) {
+  const source = join(projectDir(context), 'legalwork', 'node_modules', '@officecli', 'officecli')
+  const target = join(
+    unpackedAppRoot(context),
+    'legalwork',
+    'node_modules',
+    '@officecli',
+    'officecli'
+  )
+  assertExists(join(source, 'vendor', 'officecli'), 'source OfficeCLI native binary')
+  cpSync(source, target, { recursive: true, force: true })
+  chmodSync(join(target, 'vendor', 'officecli'), 0o755)
 }
 
 function validateBundledLegalworkRuntime(context) {
@@ -211,6 +231,7 @@ function stripUnnecessaryMacPermissions(context) {
 
 async function afterPack(context) {
   prunePackedLegalworkDependencies(context)
+  restoreBundledOfficeCli(context)
   validateBundledLegalworkRuntime(context)
   validateBundledDataComplianceRuntime(context)
   stripUnnecessaryMacPermissions(context)
@@ -228,6 +249,7 @@ exports._internals = {
   findInfoPlists,
   macInfoPlistPaths,
   prunePackedLegalworkDependencies,
+  restoreBundledOfficeCli,
   validateBundledLegalworkRuntime,
   validateBundledDataComplianceRuntime,
   stripUnnecessaryMacPermissions

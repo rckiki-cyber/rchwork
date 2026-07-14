@@ -82,14 +82,70 @@ except Exception as _redaction_import_error:  # pragma: no cover - optional depe
 LEGAL_SUBJECT_TYPES = ['person_name', 'company_name']
 FAST_SUBJECT_TYPES = ['company_name']
 
+CHINESE_SURNAMES = set(
+    '赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜'
+    '戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费'
+    '廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和'
+    '穆萧尹姚邵湛汪祁毛禹狄米贝明臧计伏成戴谈宋庞熊纪舒屈项祝董梁杜阮'
+    '蓝闵席季麻强贾路娄危江童颜郭梅盛林刁钟徐邱骆高夏蔡田胡凌霍虞万支'
+    '柯昝管卢莫经房裘缪干解应宗丁宣邓郁单杭洪包诸左石崔吉龚程邢裴陆荣'
+    '翁荀羊於惠甄曲家封芮羿储靳汲邴糜松井段富巫乌焦巴弓牧隗山谷车侯宓'
+    '蓬全郗班仰秋仲伊宫宁仇栾暴甘斜厉戎祖武符刘景詹束龙叶幸司韶郜黎蓟'
+    '薄印宿白怀蒲邰从鄂索咸籍赖卓蔺屠蒙池乔阳胥能苍双闻莘党翟谭贡劳逄'
+    '姬申扶堵冉宰郦雍却璩桑桂濮牛寿通边扈燕冀郏浦尚农温别庄晏柴瞿阎连'
+    '习宦艾鱼容向古易慎戈廖庾终暨居衡步都耿满弘匡国文寇广禄阙东欧利师'
+    '巩聂晁勾敖融冷訾辛阚那简饶空曾毋沙乜养鞠须丰巢关蒯相查后荆红游竺'
+    '权逯盖益桓公'
+)
+
 PERSON_CONTEXT_PATTERN = re.compile(
-    r'(?:原告|被告|第三人|上诉人|被上诉人|申请人|被申请人|申请执行人|被执行人|'
-    r'甲方|乙方|丙方|丁方|委托人|受托人|法定代表人|负责人|联系人|姓名)'
-    r'[：:\s，,、]*([\u4e00-\u9fa5]{2,4})'
+    r'(?:委托诉讼代理人|委托代理人|诉讼代理人|法定代表人|出庭负责人|负责人|联系人|姓名)'
+    r'[：:\s，,、]*((?:[\u4e00-\u9fa5]\s*){2,4})'
 )
 PERSON_LIST_PATTERN = re.compile(
     r'(?<![\u4e00-\u9fa5])([\u4e00-\u9fa5]{2,4})(?:、|和|与)([\u4e00-\u9fa5]{2,4})(?![\u4e00-\u9fa5])'
 )
+PERSON_LIST_CONTEXT_PATTERN = re.compile(
+    r'(?:委托诉讼代理人|委托代理人|诉讼代理人|法定代表人|出庭负责人|负责人|联系人)[：:\s，,、]*'
+    r'([\u4e00-\u9fa5]{2,4})(?:、|和|与)([\u4e00-\u9fa5]{2,4})'
+)
+PERSON_ROLE_INLINE_PATTERN = re.compile(
+    r'(?:委托诉讼代理人|委托代理人|诉讼代理人|法定代表人|出庭负责人|负责人|联系人|'
+    r'副区长|区长|董事长|总经理|经理|律师)'
+    r'[：:\s，,、的]*'
+    r'(?P<names>[\u4e00-\u9fa5]{2,4}(?:[、和与及]\s*[\u4e00-\u9fa5]{2,4})*)'
+)
+ORG_SUFFIX_PATTERN = (
+    r'有限责任公司|股份有限公司|有限公司|股份公司|集团有限公司|集团公司|科技有限公司|'
+    r'文化产业(?:（?[\u4e00-\u9fa5]{0,6}）?)?有限公司|律师事务所|事务所|'
+    r'人民政府|人民法院|人民检察院|仲裁委员会|公证处|公安局|管理局|监管局|委员会|'
+    r'银行|支行|分行|集团|公司|企业|中心'
+)
+ORG_NAME_CHARS = r'[\u4e00-\u9fa5A-Za-z0-9（）()·\-\s]'
+PARTY_ORG_PATTERN = re.compile(
+    r'(?:原告|被告|第三人|上诉人|被上诉人|申请人|被申请人|申请执行人|被执行人|'
+    r'甲方|乙方|丙方|丁方|委托人|受托人)[：:\s]*'
+    rf'(?P<org>{ORG_NAME_CHARS}{{2,100}}?(?:{ORG_SUFFIX_PATTERN}))'
+)
+ALIAS_ORG_PATTERN = re.compile(
+    rf'(?P<org>{ORG_NAME_CHARS}{{2,100}}?(?:{ORG_SUFFIX_PATTERN}))'
+    r'[（(]\s*以下简称\s*(?P<alias>[\u4e00-\u9fa5A-Za-z0-9（）()·\-\s]{2,30})\s*[）)]'
+)
+LAW_FIRM_PATTERN = re.compile(rf'{ORG_NAME_CHARS}{{2,60}}律师\s*事务\s*所')
+LEGAL_ORG_CANDIDATE_PATTERN = re.compile(
+    rf'{ORG_NAME_CHARS}{{2,100}}(?:{ORG_SUFFIX_PATTERN})'
+)
+NARROW_INSTITUTION_PATTERN = re.compile(
+    r'[\u4e00-\u9fa5A-Za-z0-9（）()·\-\s]{2,60}(?:人民政府|人民法院|人民检察院|仲裁委员会|公证处|公安局|管理局|监管局|委员会|银行|支行|分行)'
+)
+REGISTERED_ORG_PATTERN = re.compile(
+    rf'{ORG_NAME_CHARS}{{2,100}}?(?:有限责任\s*公司|股份有限\s*公司|有限\s*公司|律师\s*事务\s*所)'
+)
+GENERIC_ORG_TERMS = {
+    '合作公司', '乙方合作公司', '商业管理公司', '地产开发公司', '房地产开发公司',
+    '项目公司', '法人公司', '公司', '新设立的公司', '新注册成立的两家公司',
+    '注册公司', '管理公司', '开发公司', '法人公司', '两家公司', '合作公司在丰满区分别注册成立商业管理公司',
+}
 
 
 @dataclass(frozen=True)
@@ -214,25 +270,71 @@ def _generate_subject_token(entity_type: str, original: str) -> str:
     if not original:
         return original
     if entity_type == 'company_name':
-        cleaned = _clean_company_name(original)
-        if len(cleaned) <= 1:
-            return cleaned + '某'
-        if len(cleaned) == 2:
-            return cleaned[0] + '某'
-        return cleaned[0] + '某' * (len(cleaned) - 2) + cleaned[-1]
+        compact = re.sub(r'\s+', '', original.strip())
+        if len(compact) <= 2:
+            return compact[:1] + '某'
+        return compact[0] + '某' * max(1, len(compact) - 2) + compact[-1]
     if entity_type == 'person_name':
         # 保留姓，名替换为"某"。
-        if len(original) <= 1:
-            return original
-        return original[0] + '某' * (len(original) - 1)
+        compact = re.sub(r'\s+', '', original)
+        if len(compact) <= 1:
+            return compact
+        return compact[0] + '某' * (len(compact) - 1)
     return original
 
 
 def _looks_like_person_name(value: str) -> bool:
+    value = re.sub(r'\s+', '', value)
     if not 2 <= len(value) <= 4:
         return False
-    noise = {'公司', '企业', '集团', '法院', '银行', '合同', '协议', '数据', '用户', '个人', '信息'}
-    return value not in noise and not any(word in value for word in noise)
+    noise = {
+        '公司', '企业', '集团', '法院', '银行', '合同', '协议', '数据', '用户', '个人', '信息',
+        '政府', '项目', '投资', '实际', '继续', '协商', '承担', '提出', '原因', '支付',
+        '权利', '义务', '责任', '违约', '资金', '商业', '地块', '按照', '收到', '作出',
+        '履行', '申请', '被告', '原告', '第三', '行政', '诉讼', '审理', '判决',
+    }
+    if value in noise or any(word in value for word in noise):
+        return False
+    return value[0] in CHINESE_SURNAMES
+
+
+def _normalize_org_name(value: str) -> str:
+    name = value.strip().strip('，,。；;：:、 \t\r\n"“”‘’')
+    name = re.sub(r'\s+', '', name)
+    name = re.sub(
+        r'^(?:原告|被告|第三人|上诉人|被上诉人|申请人|被申请人|申请执行人|被执行人|'
+        r'甲方|乙方|丙方|丁方|委托人|受托人|住所地|住址|地址|因诉|诉|与|向|由|及|和|同|在|为|的)+',
+        '',
+        name,
+    )
+    trim_markers = [
+        '由乙方及乙方', '由乙方', '乙方及乙方', '分别注册成立', '注册成立',
+        '新设立的', '新注册成立的', '以下简称', '因诉',
+    ]
+    for marker in trim_markers:
+        if marker in name:
+            name = name.split(marker)[-1]
+    return name.strip().strip('，,。；;：:、 \t\r\n"“”‘’')
+
+
+def _looks_like_legal_org(value: str) -> bool:
+    name = _normalize_org_name(value)
+    if len(name) < 4 or len(name) > 80:
+        return False
+    if name in GENERIC_ORG_TERMS:
+        return False
+    generic_phrases = {
+        '合作公司', '乙方合作公司', '商业管理公司', '地产开发公司', '房地产开发公司',
+        '项目公司', '法人公司', '新设立的公司', '新注册成立的两家公司',
+        '注册公司', '两家公司', '独立法人项目公司',
+    }
+    if any(generic in name for generic in generic_phrases):
+        return False
+    if any(generic in name for generic in {'分别注册成立商业管理公司', '乙方合作公司在', '本协议', '通过土地'}):
+        return False
+    if re.search(r'(注册成立|新设立|新注册成立|合作|项目|法人|商业管理|地产开发|房地产开发).{0,8}公司', name):
+        return False
+    return bool(re.search(ORG_SUFFIX_PATTERN, name))
 
 
 def _detect_person_subjects(text: str) -> list[Any]:
@@ -242,23 +344,119 @@ def _detect_person_subjects(text: str) -> list[Any]:
         return entities
 
     class _Entity:
-        def __init__(self, original: str, start: int, end: int, confidence: float) -> None:
+        def __init__(self, original: str, start: int, end: int, confidence: float, canonical: str | None = None) -> None:
             self.entity_type = 'person_name'
             self.text = original
             self.start = start
             self.end = end
             self.confidence = confidence
+            self.canonical = canonical or re.sub(r'\s+', '', original)
+
+    known_names: set[str] = set()
+
+    def add_name(original: str, start: int, end: int, confidence: float) -> None:
+        compact = re.sub(r'\s+', '', original)
+        if _looks_like_person_name(compact):
+            known_names.add(compact)
+            entities.append(_Entity(original, start, end, confidence, canonical=compact))
 
     for match in PERSON_CONTEXT_PATTERN.finditer(text):
         original = match.group(1)
-        if _looks_like_person_name(original):
-            entities.append(_Entity(original, match.start(1), match.end(1), 0.82))
+        add_name(original, match.start(1), match.end(1), 0.82)
 
-    for match in PERSON_LIST_PATTERN.finditer(text):
+    for match in PERSON_LIST_CONTEXT_PATTERN.finditer(text):
         for group_index in (1, 2):
             original = match.group(group_index)
-            if _looks_like_person_name(original):
-                entities.append(_Entity(original, match.start(group_index), match.end(group_index), 0.72))
+            add_name(original, match.start(group_index), match.end(group_index), 0.72)
+
+    for match in PERSON_ROLE_INLINE_PATTERN.finditer(text):
+        names_text = match.group('names')
+        names_start = match.start('names')
+        cursor = 0
+        for part in re.finditer(r'[\u4e00-\u9fa5]{2,4}', names_text):
+            original = part.group(0)
+            add_name(original, names_start + part.start(), names_start + part.end(), 0.76)
+            cursor = part.end()
+        del cursor
+
+    for name in sorted(known_names, key=len, reverse=True):
+        pattern = r'\s*'.join(re.escape(char) for char in name)
+        for match in re.finditer(pattern, text):
+            add_name(match.group(0), match.start(), match.end(), 0.8)
+
+    return entities
+
+
+def _detect_legal_org_subjects(text: str) -> list[Any]:
+    """从法律文书结构中识别确定主体，避免把普通正文中的“公司”泛化脱敏。"""
+    entities: list[Any] = []
+    if not text:
+        return entities
+
+    class _Entity:
+        def __init__(self, original: str, start: int, end: int, confidence: float, canonical: str | None = None) -> None:
+            self.entity_type = 'company_name'
+            self.text = original
+            self.start = start
+            self.end = end
+            self.confidence = confidence
+            self.canonical = canonical or original
+
+    canonical_by_name: dict[str, str] = {}
+
+    def remember(name: str, canonical: str | None = None) -> None:
+        normalized = _normalize_org_name(name)
+        normalized_canonical = _normalize_org_name(canonical or normalized)
+        if _looks_like_legal_org(normalized):
+            if normalized in canonical_by_name and canonical_by_name[normalized] != normalized:
+                return
+            canonical_by_name[normalized] = normalized_canonical
+            for suffix_match in re.finditer(r'[\u4e00-\u9fa5]{2,12}(?:区|县|市)人民政府$', normalized):
+                canonical_by_name.setdefault(suffix_match.group(0), normalized_canonical)
+            for suffix_match in re.finditer(r'[\u4e00-\u9fa5]{2,16}(?:人民法院|人民检察院)$', normalized):
+                canonical_by_name.setdefault(suffix_match.group(0), normalized_canonical)
+
+    def add_span(name: str, start: int, end: int, confidence: float = 0.9, canonical: str | None = None) -> None:
+        page_marker = re.match(r'\s*[-—]*\s*第\s*\d+\s*页\s*[-—]*\s*', name)
+        if page_marker:
+            start += page_marker.end()
+            name = name[page_marker.end():]
+        for marker in ('以下简称', '股东', '上诉于', '向', '诉被告', '诉', '被告', '原告'):
+            marker_index = name.rfind(marker)
+            if marker_index >= 0 and marker_index + len(marker) < len(name):
+                start += marker_index + len(marker)
+                name = name[marker_index + len(marker):]
+                break
+        normalized = _normalize_org_name(name)
+        normalized_canonical = _normalize_org_name(canonical or normalized)
+        if not _looks_like_legal_org(normalized):
+            return
+        remember(normalized, normalized_canonical)
+        entities.append(_Entity(name, start, end, confidence, canonical=normalized_canonical))
+
+    for match in PARTY_ORG_PATTERN.finditer(text):
+        add_span(match.group('org'), match.start('org'), match.end('org'))
+
+    for match in ALIAS_ORG_PATTERN.finditer(text):
+        full_name = _normalize_org_name(match.group('org'))
+        alias = _normalize_org_name(match.group('alias'))
+        add_span(match.group('org'), match.start('org'), match.end('org'), canonical=full_name)
+        if alias.endswith(('公司', '政府', '事务所', '法院', '检察院', '银行', '中心')):
+            canonical_by_name[alias] = full_name
+            entities.append(_Entity(match.group('alias'), match.start('alias'), match.end('alias'), 0.88, canonical=full_name))
+
+    for match in LAW_FIRM_PATTERN.finditer(text):
+        add_span(match.group(0), match.start(), match.end())
+
+    for match in REGISTERED_ORG_PATTERN.finditer(text):
+        add_span(match.group(0), match.start(), match.end(), confidence=0.86)
+
+    for match in NARROW_INSTITUTION_PATTERN.finditer(text):
+        add_span(match.group(0), match.start(), match.end(), confidence=0.86)
+
+    for name, canonical in sorted(canonical_by_name.items(), key=lambda item: len(item[0]), reverse=True):
+        for match in re.finditer(re.escape(name), text):
+            entities.append(_Entity(name, match.start(), match.end(), 0.9, canonical=canonical))
 
     return entities
 
@@ -275,8 +473,10 @@ def redact_legal_subjects(
         return text, []
 
     entities: list[Any] = []
-    if REDACTION_AVAILABLE and detector is not None:
+    redact_legal_orgs = os.environ.get('COMPLIANCEAI_REDACT_LEGAL_ORGS', '').lower() in {'1', 'true', 'yes'}
+    if redact_legal_orgs and REDACTION_AVAILABLE and detector is not None:
         entities.extend(detector.detect(text, entity_types=FAST_SUBJECT_TYPES, use_semantic=False))
+    entities.extend(_detect_legal_org_subjects(text))
     entities.extend(_detect_person_subjects(text))
     if not entities:
         return text, []
@@ -292,7 +492,8 @@ def redact_legal_subjects(
     for entity in entities:
         entity_type = getattr(entity, 'entity_type', '')
         original = getattr(entity, 'text', '')
-        if entity_type == 'company_name' and not any(word in original for word in concrete_institution_words):
+        compact_original = re.sub(r'\s+', '', original)
+        if entity_type == 'company_name' and not any(word in compact_original for word in concrete_institution_words):
             continue
         filtered_entities.append(entity)
     entities = filtered_entities
@@ -304,12 +505,13 @@ def redact_legal_subjects(
     for entity in entities:
         entity_type = getattr(entity, 'entity_type', '')
         original = getattr(entity, 'text', '')
+        canonical = getattr(entity, 'canonical', original)
         if entity_type not in LEGAL_SUBJECT_TYPES or not original:
             continue
-        if original not in clusters:
-            clusters[original] = {
+        if canonical not in clusters:
+            clusters[canonical] = {
                 'entity_type': entity_type,
-                'token': _generate_subject_token(entity_type, original),
+                'token': _generate_subject_token(entity_type, canonical),
             }
 
     if not clusters:
@@ -330,6 +532,7 @@ def redact_legal_subjects(
         end = getattr(entity, 'end', 0)
         original = getattr(entity, 'text', '')
         entity_type = getattr(entity, 'entity_type', '')
+        canonical = getattr(entity, 'canonical', original)
         if start < 0 or end > len(text) or end <= start:
             continue
         if (start, end) in seen:
@@ -338,9 +541,9 @@ def redact_legal_subjects(
         if any((start < existing_end and end > existing_start) for existing_start, existing_end in seen):
             continue
         seen.add((start, end))
-        if original not in clusters:
+        if canonical not in clusters:
             continue
-        token = clusters[original]['token']
+        token = clusters[canonical]['token']
         redacted_text = redacted_text[:start] + token + redacted_text[end:]
         subject_mappings.append(SubjectMapping(
             entity_type=entity_type,
@@ -408,7 +611,11 @@ REGEX_RULES: list[tuple[str, re.Pattern[str], float]] = [
     ),
     (
         'ADDRESS',
-        re.compile(r'(?:[\u4e00-\u9fa5]{2,}(?:省|自治区|市|区|县|镇|乡|街道)[\u4e00-\u9fa5A-Za-z0-9\-]{0,24})|(?:[\u4e00-\u9fa5]{2,}(?:路|街|巷|弄)\d*号?[\u4e00-\u9fa5A-Za-z0-9\-]{0,12})'),
+        re.compile(
+            r'(?:住所地|住址|地址|联系地址)[：:\s，,、]*[\u4e00-\u9fa5A-Za-z0-9\-（）()]{4,48}'
+            r'(?:号|室|层|单元|栋|座|市|区|县|镇|乡|街道|街|路|巷|弄)'
+            r'|(?:[\u4e00-\u9fa5]{1,12}(?:路|街|巷|弄)\d+(?:号|室|层|单元|栋|座)?)'
+        ),
         0.72,
     ),
 ]
