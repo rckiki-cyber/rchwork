@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T14:06:27.907Z",
+  "generated_at": "2026-07-14T14:07:06.238Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
@@ -8,11 +8,18 @@
       "published_at": "2026-07-14T14:06:10Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.2.9",
       "prerelease": false,
-      "summary": "本次更新包括：修复优化。",
+      "summary": "本次更新包括：对话体验、数据合规、桌面端。",
       "highlights": [
-        "LegalWork 0.2.9 已上线，安装后即可使用这一版的新能力与体验优化。"
+        "使用体验更新：v0.2.9",
+        "OfficeCLI 集成：新增 @officecli/officecli 支持，打包流程自动恢复原生 binary；运行时自动注入 officecli MCP server，配置变更后自动重启 legalwork 进程。",
+        "Agent 附件本地路径引用：附件支持 localFilePath，Agent 可直接引用本地文件路径，文件类任务处理更精准。",
+        "数据合规和附件上传体验优化，处理图片和材料时操作反馈更明确。",
+        "文件脱敏能力优化，处理客户材料和敏感信息时更稳妥。"
       ],
       "categories": [
+        "对话体验",
+        "数据合规",
+        "桌面端",
         "修复优化"
       ],
       "assets": [
