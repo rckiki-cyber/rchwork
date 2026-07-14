@@ -68,6 +68,17 @@ const cumulativeReleaseOverrides = {
       'web-access skill 增强：新增 CDP proxy 脚本与 API 参考，浏览器自动化链路更完整。'
     ],
   },
+  'v0.2.9': {
+    summary: 'OfficeCLI 集成、数据合规引擎优化、Agent 附件本地路径引用等多项更新。',
+    categories: ['插件市场', '数据合规', 'Agent 运行', '修复优化'],
+    highlights: [
+      'OfficeCLI 集成：新增 Office 文档读写 MCP server，打包流程自动处理 binary，配置变更后运行时自动重启生效。',
+      'Agent 附件支持本地路径引用：文件附件可直接以本地路径形式提供给 Agent，提升文件类任务处理精度。',
+      '数据合规本地引擎优化：Python 依赖按核心/可选 OCR 包拆分，安装完成后写入标记避免重复校验，启动更快更稳。',
+      '数据合规面板体验改进：进度弹窗支持完成/失败状态展示，任务生命周期更直观。',
+      '脱敏引擎主体识别增强：新增法定代表人、委托诉讼代理人、律所、公司/机构等识别规则，脱敏覆盖更完整。'
+    ],
+  },
 };
 
 function normalizeReleaseLine(line) {
