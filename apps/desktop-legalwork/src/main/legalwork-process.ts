@@ -474,20 +474,30 @@ function buildGuiScheduleLegalworkMcpServer(
   }
 }
 
-function resolveOfficeCliBinaryPath(appPath: string, isPackaged: boolean): string {
+function resolveOfficeCliBinaryPath(
+  appPath: string,
+  isPackaged: boolean
+): { command: string; args: string[] } {
   const root = isPackaged ? appPath.replace(/app\.asar$/, 'app.asar.unpacked') : appPath
-  return join(root, 'legalwork', 'node_modules', '@officecli', 'officecli', 'vendor', 'officecli')
+  const officeCliRoot = join(root, 'legalwork', 'node_modules', '@officecli', 'officecli')
+  const binaryPath = join(officeCliRoot, 'vendor', 'officecli')
+  if (existsSync(binaryPath)) {
+    return { command: binaryPath, args: ['mcp'] }
+  }
+  const shimPath = join(officeCliRoot, 'officecli.js')
+  return { command: process.execPath, args: [shimPath, 'mcp'] }
 }
 
 function buildOfficeCliLegalworkMcpServer(
   appPath: string,
   isPackaged: boolean
 ): Record<string, unknown> {
+  const { command, args } = resolveOfficeCliBinaryPath(appPath, isPackaged)
   return {
     enabled: true,
     transport: 'stdio',
-    command: resolveOfficeCliBinaryPath(appPath, isPackaged),
-    args: ['mcp'],
+    command,
+    args,
     env: {},
     trustScope: 'user',
     trustedWorkspaceRoots: [],

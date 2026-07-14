@@ -108,6 +108,7 @@ function projectDir(context) {
 
 function restoreBundledOfficeCli(context) {
   const source = join(projectDir(context), 'legalwork', 'node_modules', '@officecli', 'officecli')
+  const sourceBinary = join(source, 'vendor', 'officecli')
   const target = join(
     unpackedAppRoot(context),
     'legalwork',
@@ -115,9 +116,15 @@ function restoreBundledOfficeCli(context) {
     '@officecli',
     'officecli'
   )
-  assertExists(join(source, 'vendor', 'officecli'), 'source OfficeCLI native binary')
+  const targetBinary = join(target, 'vendor', 'officecli')
+  if (!existsSync(sourceBinary)) {
+    console.warn(`[after-pack] OfficeCLI native binary not found at ${sourceBinary}; skipping bundled binary restore. The launcher shim will download it on first run.`)
+    return
+  }
   cpSync(source, target, { recursive: true, force: true })
-  chmodSync(join(target, 'vendor', 'officecli'), 0o755)
+  if (existsSync(targetBinary)) {
+    chmodSync(targetBinary, 0o755)
+  }
 }
 
 function validateBundledLegalworkRuntime(context) {
