@@ -9,8 +9,7 @@ const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
   'legalwork/node_modules/zod/package.json',
   'legalwork/node_modules/diff/package.json',
   'legalwork/node_modules/@modelcontextprotocol/sdk/package.json',
-  'legalwork/node_modules/@officecli/officecli/package.json',
-  'legalwork/node_modules/@officecli/officecli/vendor/officecli'
+  'legalwork/node_modules/@officecli/officecli/package.json'
 ]
 
 const DATA_COMPLIANCE_REQUIRED_PATHS = [
