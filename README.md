@@ -510,3 +510,5 @@ legalwork/
 - 桌面端 agent runtime 基于 [Kun](https://github.com/KunAgent/Kun)（© 2026 xingyu）
 - OCR 引擎使用 [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) 和 [Tesseract](https://github.com/tesseract-ocr/tesseract)
 - 脱敏参考 [Presidio](https://github.com/microsoft/presidio) 设计模式
+- 法律 Skill 体系的设计参考了清华大学法律智能 / 法律 AI 相关公开 Skill 的任务拆分、法律推理和文书工作流思路。
+- 也感谢社区中公开发布法律、合规、检索、写作和数据处理 Skill 的作者；LegalWork 的 Skill 库在设计分类、提示结构和场景覆盖时参考了这些开放实践。
