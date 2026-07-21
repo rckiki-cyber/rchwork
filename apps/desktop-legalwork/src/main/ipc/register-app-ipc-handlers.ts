@@ -29,6 +29,7 @@ import type {
   SystemNotificationResult,
   TurnCompleteNotificationPayload,
   UpstreamModelsResult,
+  EndpointModelsResult,
   WorkspacePickResult
 } from '../../shared/ds-gui-api'
 import type { GuiUpdateDownloadResult, GuiUpdateInfo, GuiUpdateInstallResult, GuiUpdateState } from '../../shared/gui-update'
@@ -54,6 +55,7 @@ import {
   scheduleTaskFromTextPayloadSchema,
   shellOpenExternalUrlSchema,
   skillListPayloadSchema,
+  skillReadFilePayloadSchema,
   skillSaveFilePayloadSchema,
   settingsPatchSchema,
   streamIdSchema,
@@ -74,6 +76,7 @@ import {
   userTemplateSchema,
   templateLearningRequestSchema,
   templateGenerateWithMaterialsRequestSchema,
+  documentMaterialExtractionPayloadSchema,
   documentHistoryRecordSchema
 } from './app-ipc-schemas'
 import type { JsonSettingsStore } from '../settings-store'
@@ -111,6 +114,7 @@ import {
 import { generateDocument } from '../services/document-generation-service'
 import { learnTemplate } from '../services/template-learning-service'
 import { generateFromTemplate } from '../services/template-generation-service'
+import { extractDocumentMaterial } from '../services/document-material-service'
 import {
   listTemplates,
   saveTemplate,
@@ -126,7 +130,7 @@ import {
   setHistoryBaseDir
 } from '../services/document-history-service'
 import { copyWriteDocumentAsRichText, exportWriteDocument } from '../services/write-export-service'
-import { importGuiSkillFromPath, listGuiSkills } from '../services/skill-service'
+import { importGuiSkillFromPath, listGuiSkills, readGuiSkillFile } from '../services/skill-service'
 
 type GuiUpdaterModule = typeof import('../gui-updater')
 
@@ -149,6 +153,11 @@ type RegisterAppIpcHandlersOptions = {
   ) => Promise<RuntimeRequestResult>
   reconnectRuntime: () => Promise<AppSettingsV1>
   fetchUpstreamModels: () => Promise<UpstreamModelsResult>
+  fetchEndpointModels: (
+    baseUrl: string,
+    apiKey: string,
+    options?: { providerId?: string; endpointFormat?: string }
+  ) => Promise<EndpointModelsResult>
   getClawRuntime: () => ClawRuntime | null
   getScheduleRuntime: () => ScheduleRuntime | null
   startFeishuInstallQrcode: (isLark: boolean) => Promise<ClawImInstallQrResult>
@@ -259,6 +268,7 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     runtimeRequest,
     reconnectRuntime,
     fetchUpstreamModels,
+    fetchEndpointModels,
     getClawRuntime,
     getScheduleRuntime,
     startFeishuInstallQrcode,
@@ -372,6 +382,14 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
   ipcMain.handle('runtime:reconnect', async () => reconnectRuntime())
 
   ipcMain.handle('upstream:models', async () => fetchUpstreamModels())
+  ipcMain.handle('upstream:models-for-endpoint', async (_, payload: unknown) => {
+    const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
+    const baseUrl = typeof body.baseUrl === 'string' ? body.baseUrl : ''
+    const apiKey = typeof body.apiKey === 'string' ? body.apiKey : ''
+    const providerId = typeof body.providerId === 'string' ? body.providerId : undefined
+    const endpointFormat = typeof body.endpointFormat === 'string' ? body.endpointFormat : undefined
+    return fetchEndpointModels(baseUrl, apiKey, { providerId, endpointFormat })
+  })
 
   // 将旧 Flask API 路径映射到主 LegalWork runtime 的 /data-compliance 路径。
   // 这样前端在过渡期可以继续使用 /api/history、/api/result/:id 等旧路径。
@@ -1070,6 +1088,11 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     return listGuiSkills(settings, request.workspaceRoot)
   })
 
+  ipcMain.handle('skill:read-file', async (_, payload: unknown) => {
+    const request = parseIpcPayload('skill:read-file', skillReadFilePayloadSchema, payload)
+    return readGuiSkillFile(request.rootPath, request.entryPath)
+  })
+
   ipcMain.handle('skill:import', async () => {
     const options: Electron.OpenDialogOptions = {
       title: '导入 Skill 文件夹或 zip',
@@ -1402,6 +1425,15 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       payload
     )
     return generateFromTemplate(await store.load(), request)
+  })
+
+  ipcMain.handle('document:material:extract', async (_, payload: unknown) => {
+    const request = parseIpcPayload(
+      'document:material:extract',
+      documentMaterialExtractionPayloadSchema,
+      payload
+    )
+    return extractDocumentMaterial(request)
   })
 
   // ── Document History ──────────────────────────────────────────────

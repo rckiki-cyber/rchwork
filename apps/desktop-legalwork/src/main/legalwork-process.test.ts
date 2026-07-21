@@ -343,8 +343,8 @@ describe('syncGuiManagedLegalworkConfig', () => {
     expect(parsed.capabilities.mcp.servers.officecli).toMatchObject({
       enabled: true,
       transport: 'stdio',
-      command: join(appPath, 'legalwork', 'node_modules', '@officecli', 'officecli', 'vendor', 'officecli'),
-      args: ['mcp'],
+      command: process.execPath,
+      args: [join(appPath, 'legalwork', 'node_modules', '@officecli', 'officecli', 'officecli.js'), 'mcp'],
       env: {},
       trustScope: 'user',
       trustedWorkspaceRoots: [],
@@ -369,6 +369,7 @@ describe('syncGuiManagedLegalworkConfig', () => {
     expect(parsed.capabilities.mcp.servers.officecli.command).toBe(
       join('/Applications/legalwork.app/Contents/Resources/app.asar.unpacked', 'legalwork', 'node_modules', '@officecli', 'officecli', 'vendor', 'officecli')
     )
+    expect(parsed.capabilities.mcp.servers.officecli.args).toEqual(['mcp'])
   })
 
   it('adds GUI project and configured global skill roots to Legalwork runtime capabilities', async () => {

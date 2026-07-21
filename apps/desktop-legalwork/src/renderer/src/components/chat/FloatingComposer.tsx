@@ -71,7 +71,6 @@ import {
   formatPercent,
   useThreadUsageState
 } from '../../hooks/use-thread-usage'
-import { GitBranchPicker } from './GitBranchPicker'
 import { NewConversationProjectPicker } from './NewConversationProjectPicker'
 import {
   FloatingComposerModelPicker,
@@ -96,10 +95,12 @@ type Props = {
   runtimeReady: boolean
   hasActiveThread: boolean
   composerModel: string
+  composerProviderId?: string
   composerPickList: string[]
   composerModelGroups?: ModelProviderModelGroup[]
   composerReasoningEffort?: string
-  onComposerModelChange: (modelId: string) => void
+  onComposerModelChange: (modelId: string, providerId?: string) => void
+  onModelMenuOpen?: () => void
   onComposerReasoningEffortChange?: (effort: ComposerReasoningEffort) => void
   hideModelPicker?: boolean
   modelPickerMode?: 'select' | 'combobox'
@@ -144,8 +145,8 @@ type Props = {
    */
   hideBtwCommand?: boolean
   /**
-   * When provided, show a project/workspace picker in the footer next to the
-   * Git branch picker (used for the new-conversation empty state).
+   * When provided, show a project/workspace picker in the footer
+   * (used for the new-conversation empty state).
    */
   threads?: import('../../agent/types').NormalizedThread[]
   workspaceRoots?: string[]
@@ -551,10 +552,12 @@ export function FloatingComposer({
   runtimeReady,
   hasActiveThread,
   composerModel,
+  composerProviderId,
   composerPickList,
   composerModelGroups = [],
   composerReasoningEffort,
   onComposerModelChange,
+  onModelMenuOpen,
   onComposerReasoningEffortChange,
   hideModelPicker = false,
   modelPickerMode = 'select',
@@ -1810,12 +1813,14 @@ export function FloatingComposer({
                   compact={compact}
                   mode={modelPickerMode}
                   composerModel={composerModel}
+                  composerProviderId={composerProviderId}
                   composerPickList={composerPickList}
                   composerModelGroups={composerModelGroups}
                   composerReasoningEffort={composerReasoningEffort}
                   canChangeModel={canChangeModel}
                   stretch={stretchModelPicker}
                   onComposerModelChange={onComposerModelChange}
+                  onModelMenuOpen={onModelMenuOpen}
                   onComposerReasoningEffortChange={onComposerReasoningEffortChange}
                 />
               )}
@@ -1859,7 +1864,6 @@ export function FloatingComposer({
                 t={t}
               />
             ) : null}
-            <GitBranchPicker workspaceRoot={effectiveWorkspaceRoot} />
             {showThreadUsageFooter ? (
               <div
                 className="ds-composer-usage ds-no-drag inline-flex min-h-7 max-w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 overflow-visible rounded-lg border border-ds-border-muted bg-ds-card/72 px-2.5 py-0.5 text-[12.5px] font-medium leading-5 text-ds-muted shadow-sm"

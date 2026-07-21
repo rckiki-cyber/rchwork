@@ -21,6 +21,8 @@ const api = {
   downloadDataComplianceFile: (taskId, fileKey) =>
     ipcRenderer.invoke('data-compliance:download-file', { taskId, fileKey }),
   fetchUpstreamModels: () => ipcRenderer.invoke('upstream:models'),
+  fetchEndpointModels: (baseUrl, apiKey, options) =>
+    ipcRenderer.invoke('upstream:models-for-endpoint', { baseUrl, apiKey, ...options }),
   getClawStatus: () => ipcRenderer.invoke('claw:status'),
   runClawTask: (taskId) =>
     ipcRenderer.invoke('claw:task:run', taskId),
@@ -35,6 +37,8 @@ const api = {
     ipcRenderer.invoke('workspace:pick-directory', defaultPath),
   listSkills: (workspaceRoot) =>
     ipcRenderer.invoke('skill:list', { workspaceRoot }),
+  readSkillFile: (rootPath, entryPath) =>
+    ipcRenderer.invoke('skill:read-file', { rootPath, entryPath }),
   saveSkillFile: (rootPath, skillName, content) =>
     ipcRenderer.invoke('skill:save-file', { rootPath, skillName, content }),
   importSkill: () =>
@@ -110,6 +114,8 @@ const api = {
     ipcRenderer.invoke('templates:learn', payload),
   generateDocumentFromTemplate: (payload) =>
     ipcRenderer.invoke('templates:generate', payload),
+  extractDocumentMaterial: (payload) =>
+    ipcRenderer.invoke('document:material:extract', payload),
   listDocumentHistory: () =>
     ipcRenderer.invoke('history:list'),
   getDocumentHistoryRecord: (id) =>

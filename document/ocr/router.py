@@ -51,6 +51,126 @@ class OCRProfile:
     options: Dict[str, Any] = field(default_factory=dict)
 
 
+def _bbox_rect(bbox: Any) -> Optional[tuple[float, float, float, float]]:
+    """Normalize OCR bbox variants to x0, y0, x1, y1."""
+    if bbox is None:
+        return None
+    try:
+        if hasattr(bbox, "tolist"):
+            bbox = bbox.tolist()
+        if len(bbox) == 4 and all(isinstance(item, (int, float)) for item in bbox):
+            x0, y0, x1, y1 = [float(item) for item in bbox]
+            return min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)
+        points = []
+        for point in bbox:
+            if hasattr(point, "tolist"):
+                point = point.tolist()
+            if len(point) >= 2:
+                points.append((float(point[0]), float(point[1])))
+        if points:
+            xs = [point[0] for point in points]
+            ys = [point[1] for point in points]
+            return min(xs), min(ys), max(xs), max(ys)
+    except Exception:
+        return None
+    return None
+
+
+def _median(values: List[float], default: float) -> float:
+    values = sorted(value for value in values if value > 0)
+    if not values:
+        return default
+    mid = len(values) // 2
+    if len(values) % 2:
+        return values[mid]
+    return (values[mid - 1] + values[mid]) / 2
+
+
+def _is_cjk_or_punctuation(char: str) -> bool:
+    return bool(re.match(r"[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef，。；：？！、）】》」』]", char))
+
+
+def _needs_space(prev: str, current: str, gap: float, median_height: float) -> bool:
+    if not prev or not current:
+        return False
+    if _is_cjk_or_punctuation(prev[-1]) or _is_cjk_or_punctuation(current[0]):
+        return False
+    return gap > max(2.0, median_height * 0.12)
+
+
+def _assemble_ocr_text(blocks: List[Dict[str, Any]]) -> str:
+    """Assemble OCR blocks into readable lines using their coordinates."""
+    normalized = []
+    for block in blocks:
+        text = str(block.get("text", "")).strip()
+        rect = _bbox_rect(block.get("bbox"))
+        if not text:
+            continue
+        if rect is None:
+            normalized.append({"text": text, "rect": None})
+            continue
+        x0, y0, x1, y1 = rect
+        normalized.append({
+            "text": text,
+            "rect": rect,
+            "x0": x0,
+            "y0": y0,
+            "x1": x1,
+            "y1": y1,
+            "cy": (y0 + y1) / 2,
+            "height": max(1.0, y1 - y0),
+        })
+
+    positioned = [item for item in normalized if item.get("rect") is not None]
+    unpositioned = [item["text"] for item in normalized if item.get("rect") is None]
+    if not positioned:
+        return "\n".join(unpositioned).strip()
+
+    median_height = _median([item["height"] for item in positioned], 14.0)
+    line_threshold = max(4.0, median_height * 0.65)
+    lines: List[List[Dict[str, Any]]] = []
+
+    for item in sorted(positioned, key=lambda part: (part["cy"], part["x0"])):
+        target_line = None
+        for line in reversed(lines[-3:]):
+            line_center = sum(part["cy"] for part in line) / len(line)
+            if abs(item["cy"] - line_center) <= line_threshold:
+                target_line = line
+                break
+        if target_line is None:
+            lines.append([item])
+        else:
+            target_line.append(item)
+
+    assembled_lines = []
+    previous_bottom: Optional[float] = None
+    paragraph_gap = max(10.0, median_height * 1.65)
+
+    for line in lines:
+        line.sort(key=lambda part: part["x0"])
+        line_top = min(part["y0"] for part in line)
+        line_bottom = max(part["y1"] for part in line)
+        if previous_bottom is not None and line_top - previous_bottom > paragraph_gap:
+            assembled_lines.append("")
+
+        pieces: List[str] = []
+        previous_right: Optional[float] = None
+        for part in line:
+            text = part["text"]
+            if pieces and previous_right is not None:
+                gap = part["x0"] - previous_right
+                if _needs_space(pieces[-1], text, gap, median_height):
+                    pieces.append(" ")
+            pieces.append(text)
+            previous_right = part["x1"]
+        assembled_lines.append("".join(pieces).strip())
+        previous_bottom = line_bottom
+
+    if unpositioned:
+        assembled_lines.extend(unpositioned)
+    return "\n".join(line for line in assembled_lines if line is not None).strip()
+
+
 class BaseOCRAdapter:
     """OCR 适配器基类"""
 
@@ -201,21 +321,19 @@ class PaddleOCRAdapter(BaseOCRAdapter):
                     count += 1
 
                 avg_confidence = total_confidence / count if count > 0 else 0.0
-                full_text = "\n".join(block["text"] for block in blocks)
+                full_text = _assemble_ocr_text(blocks)
             else:
                 # PaddleOCR v2.x API: ocr(img, cls=True)
                 result = self._engine.ocr(image_path, cls=True)
                 if not result or not result[0]:
                     return OCROutput(text="", engine=self.name, confidence=0.0)
 
-                texts = []
                 blocks = []
                 total_confidence = 0.0
                 count = 0
 
                 for line in result[0]:
                     bbox, (text, confidence) = line
-                    texts.append(text)
                     blocks.append({
                         "text": text,
                         "bbox": bbox,
@@ -225,7 +343,7 @@ class PaddleOCRAdapter(BaseOCRAdapter):
                     count += 1
 
                 avg_confidence = total_confidence / count if count > 0 else 0.0
-                full_text = "\n".join(texts)
+                full_text = _assemble_ocr_text(blocks)
 
             elapsed = int((datetime.now() - start).total_seconds() * 1000)
 
@@ -283,6 +401,8 @@ class PaddleOCRAdapter(BaseOCRAdapter):
 
                 pages.append({
                     "page_number": page_num + 1,
+                    "width": pix.width,
+                    "height": pix.height,
                     "blocks": output.blocks,
                     "confidence": output.confidence,
                 })
@@ -379,7 +499,6 @@ class TesseractAdapter(BaseOCRAdapter):
                 img, lang=lang, output_type=pytesseract.Output.DICT
             )
 
-            texts = []
             blocks = []
             total_confidence = 0.0
             count = 0
@@ -388,7 +507,6 @@ class TesseractAdapter(BaseOCRAdapter):
                 text = data["text"][i].strip()
                 conf = int(data["conf"][i]) if data["conf"][i] != "-1" else 0
                 if text:
-                    texts.append(text)
                     blocks.append({
                         "text": text,
                         "bbox": [
@@ -403,7 +521,7 @@ class TesseractAdapter(BaseOCRAdapter):
                     count += 1
 
             avg_confidence = total_confidence / (count * 100.0) if count > 0 else 0.0
-            full_text = "\n".join(texts)
+            full_text = _assemble_ocr_text(blocks)
 
             elapsed = int((datetime.now() - start).total_seconds() * 1000)
 
@@ -429,10 +547,10 @@ class TesseractAdapter(BaseOCRAdapter):
         if not text:
             return text
         # 中文字符（含中文标点）之间的空格去掉
-        text = re.sub(r'([\u4e00-\u9fff\u3000-\u303f\uff00-\uffef])\s+([\u4e00-\u9fff\u3000-\u303f\uff00-\uffef])', r'\1\2', text)
+        text = re.sub(r'([\u4e00-\u9fff\u3000-\u303f\uff00-\uffef])[ \t]+([\u4e00-\u9fff\u3000-\u303f\uff00-\uffef])', r'\1\2', text)
         # 中文字符与中文标点之间的空格去掉
-        text = re.sub(r'([\u4e00-\u9fff])\s+([，。；：？！、）】》」\'"])', r'\1\2', text)
-        text = re.sub(r'([（【「『])\s+([\u4e00-\u9fff])', r'\1\2', text)
+        text = re.sub(r'([\u4e00-\u9fff])[ \t]+([，。；：？！、）】》」\'"])', r'\1\2', text)
+        text = re.sub(r'([（【「『])[ \t]+([\u4e00-\u9fff])', r'\1\2', text)
         # 连续空格压缩为一个
         text = re.sub(r' {2,}', ' ', text)
         return text.strip()
@@ -475,6 +593,8 @@ class TesseractAdapter(BaseOCRAdapter):
 
                 pages.append({
                     "page_number": page_num + 1,
+                    "width": pix.width,
+                    "height": pix.height,
                     "blocks": output.blocks,
                     "confidence": output.confidence,
                 })

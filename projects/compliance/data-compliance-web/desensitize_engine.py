@@ -101,6 +101,7 @@ BRANDING_TEXT_PATTERN = re.compile(
     r'\b(?:ORIGINATOR|SERVICER|LOGO)\b|\[[^\]]*(?:ORIGINATOR|LOGO)[^\]]*\]',
     re.IGNORECASE,
 )
+ENGLISH_LEGAL_NORM_FOLLOWING_PATTERN = re.compile(r'^\s+(?:Law|Act|Code|Regulation|Regulations|Rules)\b', re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -170,6 +171,14 @@ class Finding:
         }
 
 
+@dataclass(frozen=True)
+class ImageRedactionResult:
+    output_file: Path
+    findings: list[Finding]
+    subjects: list[SubjectMapping]
+    preview_text: str
+
+
 def _looks_like_person_name(value: str) -> bool:
     if not 2 <= len(value) <= 4:
         return False
@@ -236,6 +245,27 @@ def _detect_english_company_subjects(text: str) -> list[Any]:
     return entities
 
 
+def _is_public_legal_norm_subject(text: str, entity: Any) -> bool:
+    """公开法律规范名称不作为案件主体替换。"""
+    start = int(getattr(entity, 'start', 0))
+    end = int(getattr(entity, 'end', 0))
+    original = str(getattr(entity, 'text', ''))
+    if not original or end <= start:
+        return False
+
+    following = text[end:end + 24]
+    if ENGLISH_LEGAL_NORM_FOLLOWING_PATTERN.match(following):
+        return True
+
+    left = text.rfind('《', 0, start + 1)
+    right = text.find('》', end)
+    if left >= 0 and right >= 0 and text.find('》', left, start) < 0:
+        title = text[left + 1:right]
+        if re.search(r'(法|法律|法典|条例|规定|办法|规则|细则|解释|决定|意见|通知)$', title):
+            return True
+    return False
+
+
 def detect_legal_subject_entities(
     text: str,
     *,
@@ -247,6 +277,7 @@ def detect_legal_subject_entities(
         entities.extend(detector.detect(text, entity_types=FAST_SUBJECT_TYPES, use_semantic=False))
     entities.extend(_detect_english_company_subjects(text))
     entities.extend(_detect_person_subjects(text))
+    entities = [entity for entity in entities if not _is_public_legal_norm_subject(text, entity)]
     return dedupe_subject_entities(entities)
 
 
@@ -1098,19 +1129,34 @@ def process_pdf(
 
     pdf = fitz.open(str(input_path))
     page_outputs: list[str] = []
+    preview_parts: list[str] = []
     for page_index, page in enumerate(pdf, start=1):
         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
         page_image = work_dir / f'_pdf_page_{page_index}.png'
         pix.save(str(page_image))
-        redacted, page_findings, page_subjects = redact_image(
+        page_result = redact_image_with_preview(
             page_image, work_dir / f'desensitized_output_page_{page_index}.png', engine, f'第 {page_index} 页'
         )
-        page_outputs.append(redacted.name)
-        all_findings.extend(page_findings)
-        all_subjects.extend(page_subjects)
+        page_outputs.append(page_result.output_file.name)
+        if page_result.preview_text:
+            preview_parts.append(f'--- 第 {page_index} 页 ---\n{page_result.preview_text}')
+        all_findings.extend(page_result.findings)
+        all_subjects.extend(page_result.subjects)
     pdf.close()
+    preview_file = work_dir / 'desensitized_output_preview.txt'
+    preview_file.write_text('\n\n'.join(preview_parts).rstrip() + ('\n' if preview_parts else ''), encoding='utf-8')
     manifest = work_dir / 'desensitized_output_pages.json'
-    manifest.write_text(json.dumps({'pages': page_outputs}, ensure_ascii=False, indent=2), encoding='utf-8')
+    manifest.write_text(
+        json.dumps(
+            {
+                'pages': page_outputs,
+                'preview_text_file': preview_file.name,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
     return manifest, all_findings, all_subjects
 
 
@@ -1355,7 +1401,7 @@ def _group_ocr_lines(tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
         spans: list[tuple[int, int, dict[str, Any]]] = []
         cursor = 0
         for item in ordered:
-            if parts:
+            if parts and _needs_ocr_token_space(parts[-1], item['text']):
                 parts.append(' ')
                 cursor += 1
             start = cursor
@@ -1364,6 +1410,33 @@ def _group_ocr_lines(tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
             spans.append((start, cursor, item))
         lines.append({'key': key, 'text': ''.join(parts), 'spans': spans, 'tokens': ordered})
     return sorted(lines, key=lambda line: (min(t['top'] for t in line['tokens']), min(t['left'] for t in line['tokens'])))
+
+
+def _is_cjk_or_punctuation(char: str) -> bool:
+    return bool(re.match(r'[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef，。；：？！、）】》」』]', char))
+
+
+def _needs_ocr_token_space(previous: str, current: str) -> bool:
+    if not previous or not current:
+        return False
+    if _is_cjk_or_punctuation(previous[-1]) or _is_cjk_or_punctuation(current[0]):
+        return False
+    return True
+
+
+def _redact_ocr_line_preview(
+    text: str,
+    findings: list[Finding],
+    engine: Desensitizer,
+    locator: str,
+) -> str:
+    redacted = replace_spans(text, findings)
+    redacted, _subjects = redact_legal_subjects(
+        redacted,
+        locator=locator,
+        detector=engine._subject_detector,
+    )
+    return redacted
 
 
 def _span_intersects(start: int, end: int, token_start: int, token_end: int) -> bool:
@@ -1413,12 +1486,18 @@ def _draw_ocr_span(
     return drawn
 
 
-def redact_image(input_path: Path, output_file: Path, engine: Desensitizer, locator_prefix: str) -> tuple[Path, list[Finding], list[SubjectMapping]]:
+def redact_image_with_preview(
+    input_path: Path,
+    output_file: Path,
+    engine: Desensitizer,
+    locator_prefix: str,
+) -> ImageRedactionResult:
     image = Image.open(input_path).convert('RGB')
     data = ocr_image_to_data(image)
     draw = ImageDraw.Draw(image)
     all_findings: list[Finding] = []
     all_subjects: list[SubjectMapping] = []
+    preview_lines: list[str] = []
     tokens = _ocr_token_rows(data)
     lines = _group_ocr_lines(tokens)
     for line_index, line in enumerate(lines, start=1):
@@ -1429,6 +1508,7 @@ def redact_image(input_path: Path, output_file: Path, engine: Desensitizer, loca
         )
         all_findings.extend(findings)
         all_subjects.extend(subjects)
+        preview_lines.append(_redact_ocr_line_preview(text, findings, engine, locator))
         subject_entities = detect_legal_subject_entities(text, detector=engine._subject_detector)
         spans_to_redact: list[tuple[int, int]] = [(item.start, item.end) for item in findings]
         spans_to_redact.extend((int(getattr(entity, 'start', 0)), int(getattr(entity, 'end', 0))) for entity in subject_entities)
@@ -1438,4 +1518,14 @@ def redact_image(input_path: Path, output_file: Path, engine: Desensitizer, loca
                 continue
             _draw_ocr_span(draw, line, start, end, image.width, image.height)
     image.save(output_file)
-    return output_file, all_findings, all_subjects
+    return ImageRedactionResult(
+        output_file=output_file,
+        findings=all_findings,
+        subjects=all_subjects,
+        preview_text='\n'.join(line for line in preview_lines if line.strip()).strip(),
+    )
+
+
+def redact_image(input_path: Path, output_file: Path, engine: Desensitizer, locator_prefix: str) -> tuple[Path, list[Finding], list[SubjectMapping]]:
+    result = redact_image_with_preview(input_path, output_file, engine, locator_prefix)
+    return result.output_file, result.findings, result.subjects

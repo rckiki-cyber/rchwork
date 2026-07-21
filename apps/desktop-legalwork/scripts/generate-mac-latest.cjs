@@ -52,6 +52,16 @@ async function main() {
     throw new Error(`No macOS zip/dmg artifacts found in ${distDir}`)
   }
 
+  const zipArchitectures = new Set(
+    artifacts.filter((artifact) => artifact.ext === 'zip').map((artifact) => artifact.arch)
+  )
+  const missingZipArchitectures = ['arm64', 'x64'].filter((arch) => !zipArchitectures.has(arch))
+  if (missingZipArchitectures.length > 0) {
+    throw new Error(
+      `macOS in-app updates require zip artifacts for both arm64 and x64; missing: ${missingZipArchitectures.join(', ')}`
+    )
+  }
+
   const versions = new Set(artifacts.map((artifact) => artifact.version))
   if (versions.size !== 1) {
     throw new Error(`Mac artifacts contain mixed versions: ${Array.from(versions).join(', ')}`)

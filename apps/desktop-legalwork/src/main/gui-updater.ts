@@ -263,7 +263,13 @@ function cleanReleaseLine(line: string): string {
   return htmlReleaseTextToPlainText(line)
     .replace(/\[([^\]]+)\]\((?:https?:\/\/)?[^)]+\)/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
     .replace(/^#{1,6}\s*/, '')
+    .replace(/^[\s>]*(?:[✅✓✗✘⚠️⚠•·▪▫◦●○]+)\s*/u, '')
     .replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '')
     .replace(/^\s*\[[ xX]\]\s+/, '')
     .replace(/\s+/g, ' ')
@@ -272,7 +278,13 @@ function cleanReleaseLine(line: string): string {
 
 function looksLikeTechnicalReleaseLine(line: string): boolean {
   if (!line || /^https?:\/\//i.test(line)) return true
+  if (/^-{3,}$/.test(line)) return true
   if (/^(full changelog|compare|automated release|release artifacts?|assets?)\b/i.test(line)) return true
+  if (/^(构建信息|平台|未签名构建)$/i.test(line)) return true
+  if (/^(macOS|Windows|Linux)[:：]/i.test(line)) return true
+  if (/^(release version|release channel|base version|branch|commit|platform)[:：]/i.test(line)) return true
+  if (/^(unsigned build|this is an unsigned build|run this after downloading|or)$/i.test(line)) return true
+  if (/^(xattr|npm|node|npx|gh|curl|powershell|bash|sh)\s+/i.test(line)) return true
   if (/^(commits?|sha|checksum|blockmap|latest[-\w]*\.ya?ml)\b/i.test(line)) return true
   if (/\b(commit|sha256|sha512|blockmap|package-lock|pnpm-lock|yarn.lock|tsconfig|eslint|prettier)\b/i.test(line)) {
     return true

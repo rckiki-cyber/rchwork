@@ -238,6 +238,11 @@ if ($LASTEXITCODE -ne 0) {
   Write-Err 'Windows build failed (npm run dist:win).'
   exit 1
 }
+& node (Join-Path $Root 'scripts\normalize-windows-latest.cjs') (Join-Path $Root 'dist')
+if ($LASTEXITCODE -ne 0) {
+  Write-Err 'Failed to normalize Windows update metadata.'
+  exit 1
+}
 
 $DistDir = Join-Path $Root 'dist'
 $AssetSpecs = @(

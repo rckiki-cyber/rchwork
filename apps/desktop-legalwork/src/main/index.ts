@@ -28,7 +28,7 @@ import {
 import { parseRuntimeErrorBody, runtimeErrorToError, type RuntimeErrorCode } from '../shared/runtime-error'
 import type { GuiUpdateState } from '../shared/gui-update'
 import { isAllowedDevPreviewUrl } from '../shared/dev-preview-url'
-import { fetchUpstreamModelIds } from './upstream-models'
+import { fetchModelsForEndpoint, fetchUpstreamModelIds } from './upstream-models'
 import { APP_PRODUCT_NAME, APP_USER_MODEL_ID, configureAppIdentity } from './app-identity'
 import {
   legalworkRuntimeAdapter,
@@ -997,6 +997,7 @@ app.whenReady().then(async () => {
       return settings
     },
     fetchUpstreamModels: fetchModels,
+    fetchEndpointModels: fetchModelsForEndpoint,
     getClawRuntime: () => clawRuntime,
     getScheduleRuntime: () => scheduleRuntime,
     startFeishuInstallQrcode,

@@ -1,0 +1,47 @@
+import { describe, expect, it } from 'vitest'
+import { preprocessLegalResearchSummary } from './legal-research-markdown'
+
+describe('preprocessLegalResearchSummary', () => {
+  it('wraps box-drawing legal framework diagrams in a text fence', () => {
+    const input = [
+      '自动驾驶汽车交通事故责任框架（中国现行框架）',
+      '┌────────────────────┐ | 事故发生 |',
+      '└────────────────────┘ ▼',
+      '┌────────────────────┐ | 第一层：交强险先行赔付 |',
+      '└────────────────────┘ ▼',
+      '6.2 核心法律不确定性'
+    ].join('\n')
+
+    expect(preprocessLegalResearchSummary(input)).toBe([
+      '自动驾驶汽车交通事故责任框架（中国现行框架）',
+      '```text',
+      '┌────────────────────┐ | 事故发生 |',
+      '└────────────────────┘ ▼',
+      '┌────────────────────┐ | 第一层：交强险先行赔付 |',
+      '└────────────────────┘ ▼',
+      '```',
+      '6.2 核心法律不确定性'
+    ].join('\n'))
+  })
+
+  it('preserves ordinary GFM tables', () => {
+    const input = [
+      '| 风险点 | 风险等级 | 说明 |',
+      '| --- | --- | --- |',
+      '| 责任主体不明 | 高 | 需要结合产品责任与侵权责任判断 |'
+    ].join('\n')
+
+    expect(preprocessLegalResearchSummary(input)).toBe(input)
+  })
+
+  it('does not rewrite existing fenced code blocks', () => {
+    const input = [
+      '```text',
+      'A||B',
+      '┌──┐',
+      '```'
+    ].join('\n')
+
+    expect(preprocessLegalResearchSummary(input)).toBe(input)
+  })
+})

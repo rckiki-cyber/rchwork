@@ -32,7 +32,11 @@ import {
 
 export type { AppSettingsV1 }
 
-const DEFAULT_WORKSPACE_ROOT = join(homedir(), '.legalwork', 'default_workspace')
+const LEGACY_DEFAULT_WORKSPACE_ROOTS = [
+  join(homedir(), '.legalwork', 'default_workspace'),
+  join(homedir(), '.deepseekgui', 'default_workspace')
+] as const
+const DEFAULT_WORKSPACE_ROOT = join(homedir(), 'Desktop')
 const DEFAULT_CLAW_CHANNELS_ROOT = join(homedir(), '.legalwork', 'claw')
 const DEFAULT_WRITE_WORKSPACE_ROOT_ABSOLUTE = expandHomePath(DEFAULT_WRITE_WORKSPACE_ROOT)
 const SETTINGS_FILE_NAME = 'legalwork-settings.json'
@@ -58,7 +62,11 @@ export function expandHomePath(raw: string | null | undefined): string {
 }
 
 function normalizeWorkspaceRoot(raw: string | null | undefined): string {
-  return expandHomePath(raw) || DEFAULT_WORKSPACE_ROOT
+  const expanded = expandHomePath(raw)
+  if (!expanded) return DEFAULT_WORKSPACE_ROOT
+  return LEGACY_DEFAULT_WORKSPACE_ROOTS.includes(expanded as typeof LEGACY_DEFAULT_WORKSPACE_ROOTS[number])
+    ? DEFAULT_WORKSPACE_ROOT
+    : expanded
 }
 
 function normalizeWriteWorkspaceRoot(raw: string | null | undefined): string {

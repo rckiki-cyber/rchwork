@@ -62,6 +62,10 @@ export type GuiSkillListResult =
   | { ok: true; skills: GuiSkillSummary[]; validationErrors: Array<{ root: string; message: string }> }
   | { ok: false; message: string }
 
+export type GuiSkillReadResult =
+  | { ok: true; path: string; content: string }
+  | { ok: false; message: string }
+
 export type GuiSkillRoot = {
   path: string
   scope: GuiSkillScope
@@ -157,6 +161,39 @@ export async function listGuiSkills(
   }
 }
 
+export async function readGuiSkillFile(rootPath: string, entryPath: string): Promise<GuiSkillReadResult> {
+  try {
+    const root = resolve(expandHomePath(rootPath))
+    const entry = resolve(expandHomePath(entryPath))
+    const [rootReal, entryReal] = await Promise.all([
+      realpath(root),
+      realpath(entry)
+    ])
+    const relativePath = relative(rootReal, entryReal)
+    if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
+      return { ok: false, message: 'Skill file must be inside the Skill directory.' }
+    }
+    const ext = extname(entryReal).toLowerCase()
+    if (ext !== '.md' && ext !== '.markdown') {
+      return { ok: false, message: 'Only Markdown Skill previews are supported.' }
+    }
+    const fileStat = await stat(entryReal)
+    if (!fileStat.isFile()) {
+      return { ok: false, message: 'Skill preview target is not a file.' }
+    }
+    if (fileStat.size > 1_000_000) {
+      return { ok: false, message: 'Skill file is too large to preview.' }
+    }
+    return {
+      ok: true,
+      path: entryReal,
+      content: await readFile(entryReal, 'utf8')
+    }
+  } catch (error) {
+    return { ok: false, message: errorMessage(error) }
+  }
+}
+
 export async function importGuiSkillFromPath(
   sourcePath: string,
   targetRoot = USER_INSTALLED_SKILL_ROOT
@@ -218,6 +255,26 @@ function isHiddenDirectory(name: string): boolean {
   return name.startsWith('.') && name !== '.codex' && name !== '.agents'
 }
 
+// macOS TCC 受保护位置：读取 ~/Pictures、~/Music、~/Movies 或系统媒体库包
+// （如 Photos Library.photoslibrary）会触发相册 / 媒体库权限弹窗。Skill 根目录
+// 不可能位于这些位置，扫描时直接跳过，避免首次启动弹出与功能无关的权限请求。
+const MACOS_PROTECTED_MEDIA_DIRS = new Set(['Pictures', 'Music', 'Movies'])
+const MACOS_LIBRARY_PACKAGE_EXTENSIONS = [
+  '.photoslibrary',
+  '.photolibrary',
+  '.musiclibrary',
+  '.itlibrary',
+  '.aplibrary',
+  '.tvlibrary',
+  '.imovielibrary'
+]
+
+export function shouldSkipSkillScanEntry(root: string, name: string): boolean {
+  const lower = name.toLowerCase()
+  if (MACOS_LIBRARY_PACKAGE_EXTENSIONS.some((ext) => lower.endsWith(ext))) return true
+  return root === homedir() && MACOS_PROTECTED_MEDIA_DIRS.has(name)
+}
+
 async function discoverComputerWideSkillRoots(): Promise<string[]> {
   const roots: string[] = []
   const userHome = homedir()
@@ -268,6 +325,7 @@ async function findSkillRootsUnder(root: string, maxDepth: number): Promise<stri
       if (!entry.isDirectory()) continue
       const name = entry.name
       if (isHiddenDirectory(name)) continue
+      if (shouldSkipSkillScanEntry(root, name)) continue
       const fullPath = join(root, name)
       if (skillRootHasPackages(fullPath)) {
         results.push(fullPath)

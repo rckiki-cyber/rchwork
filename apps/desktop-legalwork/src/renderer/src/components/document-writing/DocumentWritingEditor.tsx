@@ -1,6 +1,8 @@
 import type { ChangeEvent, ReactElement } from 'react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   AlertCircle,
   FileText,
@@ -12,10 +14,12 @@ import {
 import type { LegalTemplate, LegalTemplateField } from './legal-templates'
 
 type UploadedMaterial = {
+  id: string
   file: File
   name: string
   content: string
   loaded: boolean
+  error?: string
 }
 
 type Props = {
@@ -127,6 +131,13 @@ export function DocumentWritingEditor({
       .map((f) => f.label)
   }, [template, fieldValues])
 
+  const missingExplicitFields = useMemo(() => {
+    if (!template) return []
+    return template.fields
+      .filter((f) => f.required && f.type === 'select' && !fieldValues[f.id]?.trim())
+      .map((f) => f.label)
+  }, [template, fieldValues])
+
   const visibleFields = useMemo(() => {
     if (!template) return []
     if (showAllFields || template.fields.length <= MAX_FIELDS_VISIBLE) {
@@ -182,8 +193,8 @@ export function DocumentWritingEditor({
         <div className="flex flex-1 flex-col overflow-hidden">
           {generatedContent ? (
             <div className="flex-1 overflow-y-auto p-6">
-              <div className="prose prose-sm max-w-none whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--ds-ink)]">
-                {generatedContent}
+              <div className="ds-markdown ds-chat-answer max-w-none text-[13px] leading-relaxed text-[var(--ds-ink)]">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{generatedContent}</ReactMarkdown>
               </div>
               {/* Show generation hints */}
               <div className="mt-6 rounded-[8px] border border-[var(--ds-sidebar-row-ring)] bg-[var(--ds-sidebar-field-bg)]/50 px-4 py-3 text-[12px] text-[var(--ds-faint)]">
@@ -234,7 +245,7 @@ export function DocumentWritingEditor({
                   <div className="border-t border-[var(--ds-sidebar-divider)] pt-4">
                     <label className="mb-2 block text-[13px] font-medium text-[var(--ds-ink)]">
                       上传参考材料
-                      <span className="ml-1 text-[11px] text-[var(--ds-faint)]">（可选，AI 自动分析参考填写的材料后生成）</span>
+                      <span className="ml-1 text-[11px] text-[var(--ds-faint)]">（可选；AI 会读取材料并用于生成）</span>
                     </label>
                     <div className="space-y-2">
                       {uploadedMaterials.map((mat, idx) => (
@@ -246,7 +257,9 @@ export function DocumentWritingEditor({
                           <span className="flex-1 truncate text-[13px] text-[var(--ds-ink)]">
                             {mat.name}
                           </span>
-                          {mat.loaded ? (
+                          {mat.error ? (
+                            <span className="shrink-0 text-[11px] text-red-600 dark:text-red-400">读取失败</span>
+                          ) : mat.loaded ? (
                             <span className="shrink-0 text-[11px] text-green-600 dark:text-green-400">已加载</span>
                           ) : (
                             <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--ds-faint)]" />
@@ -273,7 +286,7 @@ export function DocumentWritingEditor({
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".docx,.pdf,.txt,.md,.jpg,.png"
+                        accept=".docx,.pdf,.txt,.md,.markdown"
                         onChange={(e) => {
                           const file = e.target.files?.[0]
                           if (file && onAddMaterial) {
@@ -313,7 +326,7 @@ export function DocumentWritingEditor({
           <button
             type="button"
             onClick={onGenerate}
-            disabled={generating}
+            disabled={generating || missingExplicitFields.length > 0}
             className="ds-no-drag mb-3 flex items-center justify-center gap-2 rounded-[8px] bg-[var(--ds-accent)] px-4 py-2.5 text-[13px] font-medium text-white transition hover:brightness-110 disabled:opacity-50"
           >
             {generating ? (
@@ -329,7 +342,9 @@ export function DocumentWritingEditor({
           {/* Show missing required fields warning */}
           {!generatedContent && missingRequiredFields.length > 0 && (
             <div className="mb-3 rounded-[6px] bg-amber-50 px-3 py-2 text-[11px] text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-              请填写必填字段：{missingRequiredFields.join('、')}
+              {missingExplicitFields.length > 0
+                ? `请先选择：${missingExplicitFields.join('、')}`
+                : `请填写必填字段，或上传案件材料供 AI 提取：${missingRequiredFields.join('、')}`}
             </div>
           )}
 

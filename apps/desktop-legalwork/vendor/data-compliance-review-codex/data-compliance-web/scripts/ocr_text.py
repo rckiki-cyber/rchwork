@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -45,6 +46,114 @@ _PADDLE_ENGINE = None
 
 class OcrUnavailable(RuntimeError):
     pass
+
+
+def _bbox_rect(box) -> tuple[float, float, float, float] | None:
+    try:
+        if hasattr(box, 'tolist'):
+            box = box.tolist()
+        if len(box) == 4 and all(isinstance(item, (int, float)) for item in box):
+            x0, y0, x1, y1 = [float(item) for item in box]
+            return min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)
+        points = []
+        for point in box:
+            if hasattr(point, 'tolist'):
+                point = point.tolist()
+            if len(point) >= 2:
+                points.append((float(point[0]), float(point[1])))
+        if points:
+            xs = [point[0] for point in points]
+            ys = [point[1] for point in points]
+            return min(xs), min(ys), max(xs), max(ys)
+    except Exception:
+        return None
+    return None
+
+
+def _median(values: list[float], default: float) -> float:
+    values = sorted(value for value in values if value > 0)
+    if not values:
+        return default
+    mid = len(values) // 2
+    if len(values) % 2:
+        return values[mid]
+    return (values[mid - 1] + values[mid]) / 2
+
+
+def _is_cjk_or_punctuation(char: str) -> bool:
+    return bool(re.match(r'[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef，。；：？！、）】》」』]', char))
+
+
+def _needs_space(previous: str, current: str, gap: float, median_height: float) -> bool:
+    if not previous or not current:
+        return False
+    if _is_cjk_or_punctuation(previous[-1]) or _is_cjk_or_punctuation(current[0]):
+        return False
+    return gap > max(2.0, median_height * 0.12)
+
+
+def _assemble_ocr_rows(rows: list[tuple[list[list[float]], str, float]]) -> str:
+    positioned = []
+    unpositioned: list[str] = []
+    for box, text, _score in rows:
+        clean = str(text).strip()
+        if not clean:
+            continue
+        rect = _bbox_rect(box)
+        if rect is None:
+            unpositioned.append(clean)
+            continue
+        x0, y0, x1, y1 = rect
+        positioned.append({
+            'text': clean,
+            'x0': x0,
+            'y0': y0,
+            'x1': x1,
+            'y1': y1,
+            'cy': (y0 + y1) / 2,
+            'height': max(1.0, y1 - y0),
+        })
+
+    if not positioned:
+        return '\n'.join(unpositioned).strip()
+
+    median_height = _median([item['height'] for item in positioned], 14.0)
+    line_threshold = max(4.0, median_height * 0.65)
+    lines: list[list[dict]] = []
+    for item in sorted(positioned, key=lambda part: (part['cy'], part['x0'])):
+        target = None
+        for line in reversed(lines[-3:]):
+            line_center = sum(part['cy'] for part in line) / len(line)
+            if abs(item['cy'] - line_center) <= line_threshold:
+                target = line
+                break
+        if target is None:
+            lines.append([item])
+        else:
+            target.append(item)
+
+    output_lines: list[str] = []
+    previous_bottom: float | None = None
+    paragraph_gap = max(10.0, median_height * 1.65)
+    for line in lines:
+        line.sort(key=lambda part: part['x0'])
+        line_top = min(part['y0'] for part in line)
+        line_bottom = max(part['y1'] for part in line)
+        if previous_bottom is not None and line_top - previous_bottom > paragraph_gap:
+            output_lines.append('')
+        parts: list[str] = []
+        previous_right: float | None = None
+        for item in line:
+            if parts and previous_right is not None and _needs_space(parts[-1], item['text'], item['x0'] - previous_right, median_height):
+                parts.append(' ')
+            parts.append(item['text'])
+            previous_right = item['x1']
+        output_lines.append(''.join(parts).strip())
+        previous_bottom = line_bottom
+
+    if unpositioned:
+        output_lines.extend(unpositioned)
+    return '\n'.join(output_lines).strip()
 
 
 def _paddle_engine():
@@ -147,7 +256,7 @@ def _normalize_paddle_result(result) -> list[tuple[list[list[float]], str, float
     if isinstance(result, dict):
         texts = result.get('rec_texts') or result.get('texts') or []
         scores = result.get('rec_scores') or result.get('scores') or []
-        boxes = result.get('rec_polys') or result.get('dt_polys') or result.get('boxes') or []
+        boxes = result.get('rec_polys') or result.get('rec_boxes') or result.get('dt_polys') or result.get('boxes') or []
         for index, text in enumerate(texts):
             if not text:
                 continue
@@ -185,7 +294,7 @@ def _paddle_ocr_rows(image) -> list[tuple[list[list[float]], str, float]]:
 
 def _paddle_image_to_string(image) -> str:
     rows = _paddle_ocr_rows(image)
-    return '\n'.join(text for _box, text, _score in rows).strip()
+    return _assemble_ocr_rows(rows)
 
 
 def _paddle_image_to_data(image) -> dict:

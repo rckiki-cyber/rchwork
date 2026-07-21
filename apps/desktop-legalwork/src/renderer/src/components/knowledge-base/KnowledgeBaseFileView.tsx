@@ -61,14 +61,15 @@ function fileExtension(node: KnowledgeTreeNode): string {
   return raw.replace(/^\./, '').replace(/[^a-z0-9]/g, '')
 }
 
-type PreviewType = 'text' | 'pdf' | 'image' | 'audio' | 'document' | 'unsupported'
+type PreviewType = 'text' | 'markdown' | 'pdf' | 'image' | 'audio' | 'document' | 'unsupported'
 
 function previewType(node: KnowledgeTreeNode): PreviewType {
   const ext = fileExtension(node)
   if (ext === 'pdf') return 'pdf'
   if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) return 'image'
   if (['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg'].includes(ext)) return 'audio'
-  if (['txt', 'md', 'markdown', 'json', 'jsonl', 'csv', 'tsv', 'yaml', 'yml', 'html', 'xml'].includes(ext)) return 'text'
+  if (['md', 'markdown'].includes(ext)) return 'markdown'
+  if (['txt', 'json', 'jsonl', 'csv', 'tsv', 'yaml', 'yml', 'html', 'xml'].includes(ext)) return 'text'
   if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) return 'document'
   return 'unsupported'
 }
@@ -170,7 +171,7 @@ function DocumentPreview({ text, fileName }: { text: string; fileName: string })
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-6">
         {text ? (
-          <pre className="whitespace-pre-wrap font-mono text-[13px] leading-[22px] text-[var(--ds-ink)]">
+          <pre className="whitespace-pre-wrap font-sans text-[13px] leading-[22px] text-[var(--ds-ink)]">
             {text}
           </pre>
         ) : (
@@ -768,6 +769,12 @@ ${question.trim()}
                 </div>
               ) : fileContent.type === 'document' ? (
                 <DocumentPreview text={fileContent.content} fileName={node.name} />
+              ) : fileContent.type === 'markdown' ? (
+                <AssistantMarkdown
+                  text={fileContent.content}
+                  streaming={false}
+                  className="ds-markdown ds-chat-answer break-words px-6 py-5 text-[14px] leading-7 text-[var(--ds-ink)]"
+                />
               ) : fileContent.type === 'text' ? (
                 <pre className="whitespace-pre-wrap p-6 font-mono text-[13px] leading-[22px] text-[var(--ds-ink)]">
                   {fileContent.content}

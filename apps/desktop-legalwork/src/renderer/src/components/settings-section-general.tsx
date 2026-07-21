@@ -24,6 +24,7 @@ import {
   SettingRow,
   Toggle
 } from './settings-controls'
+import { ModelListPicker } from './settings-model-list-picker'
 
 export function GeneralSettingsSection({ ctx }: { ctx: Record<string, any> }): ReactElement {
   const {
@@ -224,15 +225,14 @@ export function GeneralSettingsSection({ ctx }: { ctx: Record<string, any> }): R
                   title={t('modelProviderModels')}
                   description={t('modelProviderModelsDesc')}
                   control={
-                    <textarea
-                      rows={4}
-                      className="w-full min-w-0 resize-none rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[13px] leading-5 text-ds-ink shadow-sm focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/30 md:max-w-md"
-                      value={activeProvider.models.join('\n')}
-                      onChange={(e) =>
-                        updateActiveProviderProfile({
-                          models: e.target.value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean)
-                        })
-                      }
+                    <ModelListPicker
+                      providerId={activeProvider.id}
+                      endpointFormat={activeProvider.endpointFormat}
+                      baseUrl={activeProvider.baseUrl}
+                      apiKey={activeProvider.apiKey}
+                      models={activeProvider.models}
+                      onChange={(models) => updateActiveProviderProfile({ models })}
+                      t={t}
                     />
                   }
                 />

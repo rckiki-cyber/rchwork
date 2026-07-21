@@ -27,11 +27,11 @@ function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequest): {
   systemPrompt: string
   userPrompt: string
 } {
-  const fieldValuesText = Object.entries(request.fieldValues)
-    .filter(([, v]) => v)
-    .map(([id, value]) => {
-      const fieldDef = request.template.fields.find((f) => f.id === id)
-      return `- ${fieldDef?.label || id}：${value}`
+  const fieldValuesText = request.template.fields
+    .map((field) => {
+      const value = request.fieldValues[field.id]?.trim()
+      const required = field.required ? '（必填）' : ''
+      return `- ${field.label}${required}：${value || '（未填写，请优先从参考材料提取；材料也没有的，使用【待核实：字段名】标注）'}`
     })
     .join('\n')
 
@@ -58,8 +58,10 @@ function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequest): {
 4. 按照用户选择的模板类型生成相应的文书内容
 5. 使用专业、规范的法律语言
 6. 将用户填写的信息和参考材料中的相关内容自然地融入文书中
-7. 如果用户提供了参考材料，从中提取关键事实和信息来丰富文书内容
-8. 对于用户未填写的可选字段，根据上下文合理推断补充
+7. 如果用户提供了参考材料，必须先从材料中提取当事人、案号、法院、请求、事实、证据等关键事实，再写入文书
+8. 用户已填写字段的内容优先级高于参考材料；参考材料与填写字段冲突时，以用户填写字段为准，并在相应位置用【待核实：冲突信息】提示
+9. 对材料或字段均未提供的信息，不得编造；确需保留的必要信息用【待核实：字段名】标注
+10. 直接输出 Markdown 正文，不要包裹代码块，不要输出说明文字
 
 生成完整的法律文书，包含标题、当事人信息、案由、诉讼请求/申请事项、事实与理由、此致、落款等必要部分。`
 
@@ -71,9 +73,7 @@ function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequest): {
     userPrompt += `\n\n法律依据：\n${request.template.legalBasis.map((b) => `- ${b}`).join('\n')}`
   }
 
-  if (fieldValuesText) {
-    userPrompt += `\n\n用户填写的信息：\n${fieldValuesText}`
-  }
+  userPrompt += `\n\n字段信息：\n${fieldValuesText}`
 
   if (materialsText) {
     userPrompt += `\n\n参考材料（请从中提取相关信息用于文书）：\n${materialsText}`
@@ -85,9 +85,15 @@ function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequest): {
     userPrompt += instructionsText
   }
 
-  userPrompt += `\n\n请生成完整、规范的法律文书。`
+  userPrompt += `\n\n请生成完整、规范的法律文书。只输出文书 Markdown 正文。`
 
   return { systemPrompt, userPrompt }
+}
+
+function normalizeGeneratedMarkdown(content: string): string {
+  const trimmed = content.trim()
+  const fenceMatch = trimmed.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i)
+  return (fenceMatch?.[1] ?? trimmed).trim()
 }
 
 export async function generateFromTemplate(
@@ -147,7 +153,7 @@ export async function generateFromTemplate(
       return { ok: false, message: 'AI 返回内容为空，请重试。' }
     }
 
-    return { ok: true, content, model }
+    return { ok: true, content: normalizeGeneratedMarkdown(content), model }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return { ok: false, message: `AI 生成失败: ${message}` }

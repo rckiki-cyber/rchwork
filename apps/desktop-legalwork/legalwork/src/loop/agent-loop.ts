@@ -74,7 +74,9 @@ import { LEGALWORK_SYSTEM_PROMPT } from '../prompt/legalwork-system-prompt.js'
 
 const PARALLEL_READ_ONLY_TOOL_NAMES = new Set(['read', 'grep', 'find', 'ls'])
 const MAX_PARALLEL_TOOL_CALLS = 3
-const MAX_AGENT_LOOP_STEPS = 32
+export const DEFAULT_MAX_AGENT_LOOP_STEPS = 1024
+export const MAX_AGENT_LOOP_STEPS_ENV = 'LEGALWORK_MAX_AGENT_LOOP_STEPS'
+export const MAX_AGENT_LOOP_STEPS_ENV_CAP = 4_096
 const MAX_GOAL_NO_TOOL_CONTINUATIONS = 2
 const DEFAULT_COMPACTION_SUMMARY_TIMEOUT_MS = 15_000
 const DEFAULT_COMPACTION_SUMMARY_MAX_TOKENS = 1_200
@@ -140,6 +142,14 @@ const PLAN_READ_ONLY_TOOL_NAMES = new Set([
   'web_search',
   'web_fetch'
 ])
+
+export function resolveMaxAgentLoopSteps(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[MAX_AGENT_LOOP_STEPS_ENV]?.trim()
+  if (!raw) return DEFAULT_MAX_AGENT_LOOP_STEPS
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_MAX_AGENT_LOOP_STEPS
+  return Math.min(parsed, MAX_AGENT_LOOP_STEPS_ENV_CAP)
+}
 
 /**
  * Resolve the tool list for a Plan-mode turn step. Extracted as a pure
@@ -497,7 +507,8 @@ export class AgentLoop {
     turnId: string,
     signal: AbortSignal
   ): Promise<'completed' | 'failed' | 'aborted'> {
-    for (let step = 0; step < MAX_AGENT_LOOP_STEPS; step += 1) {
+    const maxSteps = resolveMaxAgentLoopSteps()
+    for (let step = 0; step < maxSteps; step += 1) {
       if (signal.aborted) return 'aborted'
       await this.drainSteering(threadId, turnId, signal)
       const stepResult = await this.modelStep(threadId, turnId, signal, step)
@@ -505,7 +516,7 @@ export class AgentLoop {
       if (stepResult === 'failed') return 'failed'
       if (stepResult === 'aborted') return 'aborted'
     }
-    const message = `Stopped turn after ${MAX_AGENT_LOOP_STEPS} model/tool steps to avoid an infinite agent loop.`
+    const message = `Stopped turn after ${maxSteps} model/tool steps to avoid an infinite agent loop.`
     await this.opts.events.record({
       kind: 'error',
       threadId,
@@ -1187,15 +1198,37 @@ export class AgentLoop {
         turnId: input.turnId,
         callId: input.call.callId
       },
-      () => this.opts.toolHost.execute(input.call, input.context, async (item) => {
-        const existing = await this.opts.turns.updateItem(input.threadId, item.id, {
-          output: item.kind === 'tool_result' ? item.output : undefined,
-          isError: item.kind === 'tool_result' ? item.isError : undefined,
-          status: 'running'
-        } as Partial<TurnItem>)
-        if (existing) return
-        await this.opts.turns.applyItem(input.threadId, item)
-      })
+      async () => {
+        try {
+          return await this.opts.toolHost.execute(input.call, input.context, async (item) => {
+            const existing = await this.opts.turns.updateItem(input.threadId, item.id, {
+              output: item.kind === 'tool_result' ? item.output : undefined,
+              isError: item.kind === 'tool_result' ? item.isError : undefined,
+              status: 'running'
+            } as Partial<TurnItem>)
+            if (existing) return
+            await this.opts.turns.applyItem(input.threadId, item)
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          return {
+            item: makeToolResultItem({
+              id: `item_${input.call.callId}_error`,
+              turnId: input.turnId,
+              threadId: input.threadId,
+              callId: input.call.callId,
+              toolName: input.call.toolName,
+              toolKind: input.call.toolKind ?? 'tool_call',
+              output: {
+                error: message,
+                note: 'The tool call was rejected by the active Legalwork runtime policy. Continue with the tools advertised in this turn.'
+              },
+              isError: true
+            }),
+            approved: false
+          }
+        }
+      }
     )
   }
 

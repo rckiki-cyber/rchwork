@@ -4,14 +4,19 @@ import { useTranslation } from 'react-i18next'
 import {
   Check,
   ChevronDown,
+  Copy,
+  ExternalLink,
   FolderOpen,
   Info,
   Loader2,
+  MoreHorizontal,
   Plus,
+  PlayCircle,
   RefreshCw,
   Search,
   Settings,
-  Upload
+  Upload,
+  X
 } from 'lucide-react'
 import {
   joinFsPath,
@@ -29,6 +34,7 @@ import type {
 } from '../agent/legalwork-contract'
 import { useChatStore } from '../store/chat-store'
 import { NoticeView, TabButton, type MarketplaceNotice } from './PluginMarketplaceParts'
+import { AssistantMarkdown } from './chat/AssistantMarkdown'
 import {
   buildMcpMarketplaceOverlay,
   type McpMarketplaceOverlay,
@@ -74,6 +80,8 @@ type MarketplaceItem = {
   needsToken?: boolean
   mcpConfig?: (workspaceRoot: string) => JsonRecord
   skillInstructions?: string
+  skillRoot?: string
+  skillEntryPath?: string
 }
 
 type JsonRecord = Record<string, unknown>
@@ -89,15 +97,15 @@ const INSTALLED_STORAGE_KEY = 'legalwork.installedPlugins'
 const LEGALWORK_SCHEDULE_MCP_SERVER_ID = 'legalwork_schedule'
 const PKULAW_MCP_GROUP_ID = 'pkulaw'
 const PKULAW_MCP_ENDPOINTS = [
-  { id: 'pkulaw-law-keyword', url: 'https://apim-gateway.pkulaw.com/mcp-law', enabledByDefault: true },
-  { id: 'pkulaw-case-keyword', url: 'https://apim-gateway.pkulaw.com/mcp-case', enabledByDefault: true },
-  { id: 'pkulaw-law-search', url: 'https://apim-gateway.pkulaw.com/mcp-law-search-service', enabledByDefault: false },
-  { id: 'pkulaw-case-semantic-search', url: 'https://apim-gateway.pkulaw.com/mcp-case-search-service', enabledByDefault: false },
-  { id: 'pkulaw-law-item-keyword', url: 'https://apim-gateway.pkulaw.com/mcp-fatiao', enabledByDefault: false },
-  { id: 'pkulaw-law-recognition', url: 'https://apim-gateway.pkulaw.com/law_recognition', enabledByDefault: false },
-  { id: 'pkulaw-case-number-recognition', url: 'https://apim-gateway.pkulaw.com/case_number_recognition', enabledByDefault: false },
-  { id: 'pkulaw-citation-validator', url: 'https://apim-gateway.pkulaw.com/pku_citation_validator', enabledByDefault: false },
-  { id: 'pkulaw-doc-link', url: 'https://apim-gateway.pkulaw.com/add-doc-link', enabledByDefault: false }
+  { id: 'pkulaw-law-keyword', url: 'https://apim-gateway.pkulaw.com/mcp-law' },
+  { id: 'pkulaw-case-keyword', url: 'https://apim-gateway.pkulaw.com/mcp-case' },
+  { id: 'pkulaw-law-search', url: 'https://apim-gateway.pkulaw.com/mcp-law-search-service' },
+  { id: 'pkulaw-case-semantic-search', url: 'https://apim-gateway.pkulaw.com/mcp-case-search-service' },
+  { id: 'pkulaw-law-item-keyword', url: 'https://apim-gateway.pkulaw.com/mcp-fatiao' },
+  { id: 'pkulaw-law-recognition', url: 'https://apim-gateway.pkulaw.com/law_recognition' },
+  { id: 'pkulaw-case-number-recognition', url: 'https://apim-gateway.pkulaw.com/case_number_recognition' },
+  { id: 'pkulaw-citation-validator', url: 'https://apim-gateway.pkulaw.com/pku_citation_validator' },
+  { id: 'pkulaw-doc-link', url: 'https://apim-gateway.pkulaw.com/add-doc-link' }
 ] as const
 const PKULAW_MCP_ENDPOINT_IDS = new Set(PKULAW_MCP_ENDPOINTS.map((endpoint) => endpoint.id))
 const YUANDIAN_MCP_GROUP_ID = 'yuandian'
@@ -279,12 +287,12 @@ export function buildMcpConfig(
   }
 }
 
-function buildPkulawMcpConfig(token: string): JsonRecord {
+export function buildPkulawMcpConfig(token: string): JsonRecord {
   const authorization = `Bearer ${token.trim()}`
   const servers: JsonRecord = {}
-  for (const { id, url, enabledByDefault } of PKULAW_MCP_ENDPOINTS) {
+  for (const { id, url } of PKULAW_MCP_ENDPOINTS) {
     servers[id] = {
-      enabled: enabledByDefault,
+      enabled: true,
       transport: 'streamable-http',
       url,
       headers: { Authorization: authorization },
@@ -410,7 +418,11 @@ export function mergeMcpJsonConfig(content: string, fragment: JsonRecord): { alr
   return { alreadyExists: false, text: `${JSON.stringify(next, null, 2)}\n` }
 }
 
-export function upsertMcpJsonConfig(content: string, fragment: JsonRecord): string {
+export function upsertMcpJsonConfig(
+  content: string,
+  fragment: JsonRecord,
+  options?: { preserveDisabled?: boolean }
+): string {
   const current = parseMcpJsonConfig(content)
   const currentServers = mcpServersFromConfig(current)
   const fragmentServers = mcpServersFromConfig(fragment)
@@ -425,7 +437,9 @@ export function upsertMcpJsonConfig(content: string, fragment: JsonRecord): stri
     nextServers[serverId] = {
       ...currentServer,
       ...fragmentServer,
-      enabled: currentServer.enabled === false ? false : fragmentServer.enabled
+      enabled: options?.preserveDisabled === false
+        ? fragmentServer.enabled
+        : currentServer.enabled === false ? false : fragmentServer.enabled
     }
   }
   return `${JSON.stringify({
@@ -445,6 +459,26 @@ function buildSkillContent(id: string, title: string, description: string, instr
     '',
     instructions
   ].join('\n')
+}
+
+function stripSkillFrontmatter(content: string): string {
+  return content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
+}
+
+function previewMarkdownFromSkillItem(
+  item: MarketplaceItem,
+  t: (key: string) => string,
+  content?: string
+): string {
+  const existing = stripSkillFrontmatter(content ?? '')
+  if (existing) return existing
+  if (item.kind !== 'skill') return itemDescription(item, t)
+  return stripSkillFrontmatter(buildSkillContent(
+    item.id,
+    itemTitle(item, t),
+    itemDescription(item, t),
+    item.skillInstructions ?? itemDescription(item, t)
+  ))
 }
 
 function itemTitle(item: MarketplaceItem, t: (key: string) => string): string {
@@ -526,6 +560,8 @@ export function skillMarketplaceItemsFromDiscoveredSkills(
     title: skill.name,
     description: skill.description ?? skill.root,
     group: 'personal' as const,
+    skillRoot: skill.root,
+    skillEntryPath: skill.entryPath,
     sourceLabel:
       skill.userInstalled ? labels.userInstalled :
       skill.scope === 'builtin' ? labels.builtin :
@@ -910,6 +946,10 @@ export function PluginMarketplaceView(): ReactElement {
   const [discoveredSkills, setDiscoveredSkills] = useState<SkillListItem[]>([])
   const [skillListLoading, setSkillListLoading] = useState(false)
   const [skillListError, setSkillListError] = useState('')
+  const [previewItem, setPreviewItem] = useState<MarketplaceItem | null>(null)
+  const [previewMarkdown, setPreviewMarkdown] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState('')
 
   const skillRootOptions = useMemo<SkillRootOption[]>(() => {
     const hasWorkspace = !!workspaceRoot
@@ -1064,6 +1104,9 @@ export function PluginMarketplaceView(): ReactElement {
     setConfiguringItemId(null)
     setPkulawToken('')
     setYuandianApiKey('')
+    setPreviewItem(null)
+    setPreviewMarkdown('')
+    setPreviewError('')
   }, [activeKind])
 
   const markInstalled = (key: string): void => {
@@ -1185,9 +1228,13 @@ export function PluginMarketplaceView(): ReactElement {
     setNotice({ tone: 'success', message: t('pluginMcpAdded', { path: result.path }) })
   }
 
-  const upsertMcpConfig = async (id: string, config: JsonRecord): Promise<void> => {
+  const upsertMcpConfig = async (
+    id: string,
+    config: JsonRecord,
+    options?: { preserveDisabled?: boolean }
+  ): Promise<void> => {
     const content = mcpLoaded ? mcpConfigText : await readMcpConfig()
-    const text = upsertMcpJsonConfig(content, config)
+    const text = upsertMcpJsonConfig(content, config, options)
     const result = await window.dsGui.setDeepseekConfigFile(text)
     setMcpConfigText(text)
     setMcpLoaded(true)
@@ -1246,7 +1293,7 @@ export function PluginMarketplaceView(): ReactElement {
     setBusyId(storageKey('mcp', 'pkulaw'))
     setNotice(null)
     try {
-      await upsertMcpConfig('pkulaw', buildPkulawMcpConfig(token))
+      await upsertMcpConfig('pkulaw', buildPkulawMcpConfig(token), { preserveDisabled: false })
       setConfiguringItemId(null)
       setPkulawToken('')
     } catch (e) {
@@ -1347,6 +1394,62 @@ export function PluginMarketplaceView(): ReactElement {
       setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
     } finally {
       setBusyId(null)
+    }
+  }
+
+  const openSkillPreview = async (item: MarketplaceItem): Promise<void> => {
+    if (item.kind !== 'skill') return
+    setPreviewItem(item)
+    setPreviewMarkdown(previewMarkdownFromSkillItem(item, t))
+    setPreviewError('')
+    setPreviewLoading(false)
+    if (!item.skillRoot || !item.skillEntryPath || typeof window.dsGui?.readSkillFile !== 'function') return
+    setPreviewLoading(true)
+    try {
+      const result = await window.dsGui.readSkillFile(item.skillRoot, item.skillEntryPath)
+      if (!result.ok) {
+        setPreviewError(result.message)
+        return
+      }
+      setPreviewMarkdown(previewMarkdownFromSkillItem(item, t, result.content))
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const closeSkillPreview = (): void => {
+    setPreviewItem(null)
+    setPreviewMarkdown('')
+    setPreviewError('')
+    setPreviewLoading(false)
+  }
+
+  const copySkillPrompt = async (item: MarketplaceItem): Promise<void> => {
+    const prompt = `/skill:${item.id} `
+    try {
+      await navigator.clipboard.writeText(prompt)
+      setNotice({ tone: 'success', message: t('pluginSkillTryCopied', { command: prompt }) })
+    } catch (error) {
+      setNotice({
+        tone: 'error',
+        message: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
+  const openSkillLocation = async (item: MarketplaceItem): Promise<void> => {
+    const rootPath = item.skillRoot || selectedSkillRoot?.path
+    if (!rootPath) {
+      setNotice({ tone: 'error', message: t('pluginSkillRootMissing') })
+      return
+    }
+    try {
+      const result = await window.dsGui.openSkillRoot(rootPath)
+      if (!result.ok) setNotice({ tone: 'error', message: result.message ?? t('pluginActionFailed') })
+    } catch (error) {
+      setNotice({ tone: 'error', message: error instanceof Error ? error.message : String(error) })
     }
   }
 
@@ -1555,6 +1658,7 @@ export function PluginMarketplaceView(): ReactElement {
             busyId={busyId}
             isInstalled={isInstalled}
             onAdd={addItem}
+            onPreview={(item) => void openSkillPreview(item)}
             configuringItemId={configuringItemId}
             renderConfig={renderConfigPanel}
             t={t}
@@ -1569,6 +1673,7 @@ export function PluginMarketplaceView(): ReactElement {
             busyId={busyId}
             isInstalled={isInstalled}
             onAdd={addItem}
+            onPreview={(item) => void openSkillPreview(item)}
             configuringItemId={configuringItemId}
             renderConfig={renderConfigPanel}
             t={t}
@@ -1582,6 +1687,7 @@ export function PluginMarketplaceView(): ReactElement {
           busyId={busyId}
           isInstalled={isInstalled}
           onAdd={addItem}
+          onPreview={(item) => void openSkillPreview(item)}
           configuringItemId={configuringItemId}
           renderConfig={renderConfigPanel}
           t={t}
@@ -1594,6 +1700,7 @@ export function PluginMarketplaceView(): ReactElement {
           busyId={busyId}
           isInstalled={isInstalled}
           onAdd={addItem}
+          onPreview={(item) => void openSkillPreview(item)}
           configuringItemId={configuringItemId}
           renderConfig={renderConfigPanel}
           t={t}
@@ -1606,6 +1713,21 @@ export function PluginMarketplaceView(): ReactElement {
           </div>
         ) : null}
       </div>
+      {previewItem ? (
+        <SkillPreviewDialog
+          item={previewItem}
+          markdown={previewMarkdown}
+          loading={previewLoading}
+          error={previewError}
+          installed={isInstalled(previewItem)}
+          busy={busyId === storageKey(previewItem.kind, previewItem.id)}
+          onClose={closeSkillPreview}
+          onAdd={() => void addItem(previewItem)}
+          onTry={() => void copySkillPrompt(previewItem)}
+          onOpenLocation={() => void openSkillLocation(previewItem)}
+          t={t}
+        />
+      ) : null}
     </div>
   )
 }
@@ -1766,6 +1888,7 @@ function PluginSection({
   busyId,
   isInstalled,
   onAdd,
+  onPreview,
   configuringItemId,
   renderConfig,
   t
@@ -1776,6 +1899,7 @@ function PluginSection({
   busyId: string | null
   isInstalled: (item: Pick<MarketplaceItem, 'kind' | 'id'>) => boolean
   onAdd: (item: MarketplaceItem) => Promise<void>
+  onPreview?: (item: MarketplaceItem) => void
   configuringItemId?: string | null
   renderConfig?: (item: MarketplaceItem) => ReactNode
   t: (key: string, values?: Record<string, unknown>) => string
@@ -1807,10 +1931,20 @@ function PluginSection({
                   const needsConfiguration = installed && item.configurable && item.needsToken
                   const busy = busyId === itemKey
                   const configuring = configuringItemId === item.id
+                  const previewable = item.kind === 'skill' && !!onPreview
                   return (
                     <div
                       key={itemKey}
-                      className={`flex flex-wrap items-center gap-5 border-b border-ds-border-muted py-5 ${configuring ? 'col-span-full md:col-span-2' : 'min-h-[92px]'}`}
+                      role={previewable ? 'button' : undefined}
+                      tabIndex={previewable ? 0 : undefined}
+                      onClick={previewable ? () => onPreview(item) : undefined}
+                      onKeyDown={previewable ? (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onPreview(item)
+                        }
+                      } : undefined}
+                      className={`flex flex-wrap items-center gap-5 border-b border-ds-border-muted py-5 outline-none transition ${previewable ? 'cursor-pointer rounded-lg px-2 hover:bg-ds-subtle/70 focus-visible:ring-2 focus-visible:ring-accent/30' : ''} ${configuring ? 'col-span-full md:col-span-2' : 'min-h-[92px]'}`}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-2">
@@ -1832,7 +1966,10 @@ function PluginSection({
                       <button
                         type="button"
                         disabled={(installed && !needsConfiguration) || busy}
-                        onClick={() => void onAdd(item)}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void onAdd(item)
+                        }}
                         title={needsConfiguration ? t('pluginConfigureToken') : installed ? t('pluginAdded') : t('pluginAdd')}
                         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
                           installed && !needsConfiguration
@@ -1862,6 +1999,169 @@ function PluginSection({
         </div>
       )}
     </section>
+  )
+}
+
+function SkillPreviewDialog({
+  item,
+  markdown,
+  loading,
+  error,
+  installed,
+  busy,
+  onClose,
+  onAdd,
+  onTry,
+  onOpenLocation,
+  t
+}: {
+  item: MarketplaceItem
+  markdown: string
+  loading: boolean
+  error: string
+  installed: boolean
+  busy: boolean
+  onClose: () => void
+  onAdd: () => void
+  onTry: () => void
+  onOpenLocation: () => void
+  t: (key: string, values?: Record<string, unknown>) => string
+}): ReactElement {
+  const title = itemTitle(item, t)
+  const description = itemDescription(item, t)
+  const source = item.sourceLabel || marketplaceCategoryLabel(inferMarketplaceCategory(item), t)
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-4 py-8 backdrop-blur-[1px]"
+      onClick={onClose}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="flex max-h-[88vh] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-ds-border bg-ds-card shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 px-6 pt-6">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-ds-border bg-ds-subtle text-ds-ink shadow-sm">
+              <span className="text-[18px] font-semibold">{title.slice(0, 1).toUpperCase()}</span>
+            </div>
+            <div className="min-w-0 pt-1">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                <h2 className="truncate text-[24px] font-semibold leading-tight text-ds-ink">
+                  {title}
+                </h2>
+                <span className="text-[20px] font-medium text-ds-faint">Skill</span>
+              </div>
+              {description ? (
+                <p className="mt-2 max-w-[620px] text-[16px] leading-7 text-ds-muted">
+                  {description}
+                </p>
+              ) : null}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${marketplaceSourceTone(item.statusTone)}`}>
+                  {source}
+                </span>
+                <span className="rounded-md border border-ds-border-muted bg-ds-subtle px-2 py-0.5 font-mono text-[11px] text-ds-muted">
+                  /skill:{item.id}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={installed ? undefined : onAdd}
+              disabled={installed || busy}
+              title={installed ? t('pluginAdded') : t('pluginAdd')}
+              className={`relative h-7 w-[48px] rounded-full transition ${installed ? 'bg-accent' : 'bg-ds-subtle hover:bg-ds-hover'} disabled:cursor-default`}
+            >
+              <span
+                className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition ${installed ? 'left-[22px]' : 'left-1'}`}
+              />
+              {busy ? <Loader2 className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 animate-spin text-ds-ink" /> : null}
+            </button>
+            <button
+              type="button"
+              onClick={onOpenLocation}
+              title={t('pluginSkillPreviewOpenLocation')}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
+            >
+              <MoreHorizontal className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              title={t('pluginSkillPreviewClose')}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
+            >
+              <X className="h-4 w-4" strokeWidth={1.9} />
+            </button>
+          </div>
+        </div>
+
+        <div className="mx-6 mt-6 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-ds-border bg-ds-main/40 px-5 py-4">
+          {loading ? (
+            <div className="flex items-center gap-2 py-8 text-[13px] text-ds-muted">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t('pluginSkillPreviewLoading')}
+            </div>
+          ) : (
+            <AssistantMarkdown
+              text={markdown || t('pluginSkillPreviewEmpty')}
+              streaming={false}
+              className="ds-markdown ds-chat-answer max-w-none break-words text-[14px] leading-6 text-ds-ink"
+            />
+          )}
+          {error ? (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
+              {error}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5">
+          <button
+            type="button"
+            onClick={onOpenLocation}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-red-50 px-3 text-[13px] font-semibold text-red-600 transition hover:bg-red-100 dark:bg-red-950/20 dark:text-red-300 dark:hover:bg-red-950/35"
+          >
+            <ExternalLink className="h-4 w-4" strokeWidth={1.8} />
+            {t('pluginSkillPreviewOpenLocation')}
+          </button>
+          <div className="flex items-center gap-2">
+            {!installed ? (
+              <button
+                type="button"
+                onClick={onAdd}
+                disabled={busy}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-ds-border bg-ds-card px-3 text-[13px] font-semibold text-ds-ink shadow-sm transition hover:bg-ds-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {t('pluginAdd')}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onTry}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--ds-text)] px-4 text-[13px] font-semibold text-[var(--ds-bg-main)] shadow-sm transition hover:opacity-90"
+            >
+              <PlayCircle className="h-4 w-4" strokeWidth={1.8} />
+              {t('pluginSkillPreviewTry')}
+            </button>
+            <button
+              type="button"
+              onClick={onTry}
+              title={t('pluginSkillPreviewCopyCommand')}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-ds-border bg-ds-card text-ds-muted shadow-sm transition hover:bg-ds-hover hover:text-ds-ink"
+            >
+              <Copy className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
   )
 }
 

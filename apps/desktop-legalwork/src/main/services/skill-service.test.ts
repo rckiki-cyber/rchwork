@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -11,7 +11,7 @@ import {
   defaultWriteSettings,
   type AppSettingsV1
 } from '../../shared/app-settings'
-import { importGuiSkillFromPath, listGuiSkills } from './skill-service'
+import { importGuiSkillFromPath, listGuiSkills, shouldSkipSkillScanEntry } from './skill-service'
 
 describe('skill-service', () => {
   let tempRoot = ''
@@ -159,6 +159,23 @@ describe('skill-service', () => {
     ])
     await expect(readFile(join(targetRoot, 'source-skill', 'SKILL.md'), 'utf8'))
       .resolves.toContain('Imported from disk.')
+  })
+
+  it('skips macOS TCC-protected media locations during skill scans', () => {
+    const home = homedir()
+    // 家目录下一级媒体文件夹（读取会触发相册 / 媒体库权限弹窗）
+    expect(shouldSkipSkillScanEntry(home, 'Pictures')).toBe(true)
+    expect(shouldSkipSkillScanEntry(home, 'Music')).toBe(true)
+    expect(shouldSkipSkillScanEntry(home, 'Movies')).toBe(true)
+    // 任意深度的系统媒体库包（读取包内文件会触发 kTCCServicePhotos 等授权）
+    expect(shouldSkipSkillScanEntry(home, 'Photos Library.photoslibrary')).toBe(true)
+    expect(shouldSkipSkillScanEntry('/some/nested/dir', 'Photos Library.photoslibrary')).toBe(true)
+    expect(shouldSkipSkillScanEntry('/some/nested/dir', 'iTunes Library.itlibrary')).toBe(true)
+    expect(shouldSkipSkillScanEntry('/some/nested/dir', 'Photo Library.photolibrary')).toBe(true)
+    // 正常目录不受影响
+    expect(shouldSkipSkillScanEntry(home, 'Projects')).toBe(false)
+    expect(shouldSkipSkillScanEntry(home, 'skills')).toBe(false)
+    expect(shouldSkipSkillScanEntry('/some/nested/dir', 'my-skills')).toBe(false)
   })
 
   function createSettings(workspaceRoot: string): AppSettingsV1 {

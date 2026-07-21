@@ -45,6 +45,118 @@ export interface LegalTemplate {
   icon: string
 }
 
+const inferredFieldDefaults: Record<string, Omit<LegalTemplateField, 'id'>> = {
+  originalRole: {
+    label: '我方在原审中的诉讼地位',
+    type: 'select',
+    options: ['原审原告', '原审被告', '原审第三人', '一审申请人', '一审被申请人'],
+    placeholder: '请选择我方原审地位',
+    required: true
+  },
+  originalRole2: {
+    label: '对方在原审中的诉讼地位',
+    type: 'select',
+    options: ['原审原告', '原审被告', '原审第三人', '一审申请人', '一审被申请人'],
+    placeholder: '请选择对方原审地位',
+    required: true
+  },
+  litigationRole: {
+    label: '异议人在本案中的诉讼地位',
+    type: 'select',
+    options: ['原告', '被告', '第三人', '申请人', '被申请人'],
+    placeholder: '请选择诉讼地位',
+    required: true
+  },
+  originalCourt: {
+    label: '原审法院',
+    type: 'text',
+    placeholder: '作出原审裁判的人民法院',
+    required: true
+  },
+  originalCaseNumber: {
+    label: '原审案号',
+    type: 'text',
+    placeholder: '如：（2026）沪0101民初123号',
+    required: true
+  },
+  caseNumber: {
+    label: '原审案号',
+    type: 'text',
+    placeholder: '如：（2026）沪0101民初123号',
+    required: true
+  },
+  caseName: {
+    label: '案由/案件名称',
+    type: 'text',
+    placeholder: '如：买卖合同纠纷',
+    required: true
+  },
+  judgmentType: {
+    label: '原审法律文书类型',
+    type: 'select',
+    options: ['判决', '裁定', '调解书'],
+    placeholder: '请选择文书类型',
+    required: true
+  },
+  qualityStandard: { label: '质量标准', type: 'textarea', placeholder: '质量要求、验收标准' },
+  packagingStandard: { label: '包装标准', type: 'textarea', placeholder: '包装方式、运输保护要求' },
+  signPlace: { label: '签订地点', type: 'text', placeholder: '合同签订地点' },
+  otherTerms: { label: '其他约定', type: 'textarea', placeholder: '其他需要写入文书的事项' },
+  defaultClause: { label: '违约责任', type: 'textarea', placeholder: '违约情形、责任承担方式' },
+  laborProtection: { label: '劳动保护', type: 'textarea', placeholder: '劳动条件、职业危害防护等' },
+  capitalContribution: { label: '出资情况', type: 'textarea', placeholder: '出资额、出资方式、实缴情况' },
+  closingConditions: { label: '交割条件', type: 'textarea', placeholder: '交割前提、交割安排' },
+  contributionDetails: { label: '出资明细', type: 'textarea', placeholder: '各合伙人出资方式与比例' },
+  managementAuthority: { label: '事务执行权限', type: 'textarea', placeholder: '合伙事务执行与表决机制' },
+  entryExitTerms: { label: '入伙退伙', type: 'textarea', placeholder: '入伙、退伙条件和程序' },
+  dissolutionTerms: { label: '解散清算', type: 'textarea', placeholder: '解散事由和清算安排' },
+  exceptions: { label: '例外事项', type: 'textarea', placeholder: '不属于保密义务的例外情形' },
+  caseTitle: { label: '事项名称', type: 'text', placeholder: '律师函涉及的事项/案由' },
+  legalConsequences: { label: '法律后果', type: 'textarea', placeholder: '未按函告履行可能承担的法律后果' },
+  legalAnalysis: { label: '法律分析', type: 'textarea', placeholder: '主要法律分析意见' },
+  ddMethod: { label: '尽调方法', type: 'textarea', placeholder: '资料审阅、访谈、公开查询等方法' },
+  ddRiskAnalysis: { label: '风险分析', type: 'textarea', placeholder: '重点风险及影响分析' },
+  financeClause: { label: '财务会计制度', type: 'textarea', placeholder: '财务、会计、利润分配规则' },
+  mergerClause: { label: '合并分立解散', type: 'textarea', placeholder: '合并、分立、解散、清算规则' },
+  marriageDate: { label: '结婚日期', type: 'date' },
+  marriagePlace: { label: '结婚登记地', type: 'text', placeholder: '登记机关/登记地' },
+  testatorId: { label: '遗嘱人身份证号', type: 'text', placeholder: '身份证号码' },
+  testatorAddress: { label: '遗嘱人住址', type: 'text', placeholder: '经常居住地/户籍地址' },
+  copies: { label: '遗嘱份数', type: 'text', placeholder: '遗嘱正本、副本份数' },
+  holder: { label: '遗嘱保管人', type: 'text', placeholder: '保管人姓名/机构' },
+  witness: { label: '见证人', type: 'textarea', placeholder: '见证人身份信息' },
+  revocationTerms: { label: '撤销条件', type: 'textarea', placeholder: '赠与撤销或解除条件' },
+  paymentTerms: { label: '付款安排', type: 'textarea', placeholder: '付款金额、期限、方式' },
+  releaseClause: { label: '权利义务结清', type: 'textarea', placeholder: '互不追究、放弃权利等约定' }
+}
+
+function labelFromPlaceholder(id: string): string {
+  return id.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())
+}
+
+export function withInferredTemplateFields(template: LegalTemplate): LegalTemplate {
+  const knownIds = new Set(template.fields.map((field) => field.id))
+  const placeholders = [...template.content.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)]
+    .map((match) => match[1])
+    .filter((id, index, all) => all.indexOf(id) === index && !knownIds.has(id))
+
+  if (placeholders.length === 0) return template
+
+  const inferred = placeholders.map((id): LegalTemplateField => ({
+    id,
+    ...(inferredFieldDefaults[id] ?? {
+      label: labelFromPlaceholder(id),
+      type: 'textarea',
+      placeholder: '请填写该占位字段'
+    })
+  }))
+
+  return {
+    ...template,
+    fields: [...template.fields, ...inferred]
+  }
+}
+
 /** 诉讼文书模板 */
 const litigationTemplates: LegalTemplate[] = [
   {

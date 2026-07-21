@@ -19,12 +19,14 @@ type Props = {
   compact: boolean
   mode: 'select' | 'combobox'
   composerModel: string
+  composerProviderId?: string
   composerPickList: string[]
   composerModelGroups?: ModelProviderModelGroup[]
   canChangeModel: boolean
   stretch?: boolean
   composerReasoningEffort?: string
-  onComposerModelChange: (modelId: string) => void
+  onComposerModelChange: (modelId: string, providerId?: string) => void
+  onModelMenuOpen?: () => void
   onComposerReasoningEffortChange?: (effort: ComposerReasoningEffort) => void
 }
 
@@ -74,12 +76,14 @@ export function FloatingComposerModelPicker({
   compact,
   mode,
   composerModel,
+  composerProviderId = '',
   composerPickList,
   composerModelGroups = [],
   canChangeModel,
   stretch = false,
   composerReasoningEffort = 'max',
   onComposerModelChange,
+  onModelMenuOpen,
   onComposerReasoningEffortChange
 }: Props): ReactElement {
   const { t } = useTranslation('common')
@@ -102,14 +106,16 @@ export function FloatingComposerModelPicker({
     return [...ordered]
   }, [composerModel, composerPickList])
   const providerMenuGroups = useMemo<ComposerModelMenuGroup[]>(() => {
-    const seen = new Set<string>()
+    const groupedModelIds = new Set<string>()
     const groups = composerModelGroups
       .map((group) => {
+        const seenInGroup = new Set<string>()
         const ids = group.modelIds
           .map((id) => id.trim())
           .filter((id) => {
-            if (!id || seen.has(id)) return false
-            seen.add(id)
+            if (!id || seenInGroup.has(id)) return false
+            seenInGroup.add(id)
+            groupedModelIds.add(id)
             return true
           })
         return {
@@ -119,7 +125,7 @@ export function FloatingComposerModelPicker({
         }
       })
       .filter((group) => group.modelIds.length > 0)
-    const ungrouped = modelOptions.filter((id) => id !== 'auto' && !seen.has(id))
+    const ungrouped = modelOptions.filter((id) => id !== 'auto' && !groupedModelIds.has(id))
     if (ungrouped.length > 0) {
       groups.push({
         providerId: UNGROUPED_MODEL_PROVIDER_ID,
@@ -139,9 +145,9 @@ export function FloatingComposerModelPicker({
     ? `${modelLabel} / ${currentReasoningLabel}`
     : modelLabel
   const currentModel = composerModel.trim()
-  const selectedProviderId = providerMenuGroups.find((group) =>
-    group.modelIds.includes(currentModel)
-  )?.providerId ?? null
+  const selectedProviderId = composerProviderId
+    || providerMenuGroups.find((group) => group.modelIds.includes(currentModel))?.providerId
+    || null
   const activeProviderGroup =
     providerMenuGroups.find((group) => group.providerId === activeProviderId) ?? null
   const comboboxWidthClass = stretch
@@ -149,6 +155,10 @@ export function FloatingComposerModelPicker({
     : compact
       ? 'w-[184px] max-w-[184px] shrink-0'
       : 'w-[248px] max-w-[260px] shrink-0'
+  const toggleMenu = (): void => {
+    if (!menuOpen) onModelMenuOpen?.()
+    setMenuOpen(!menuOpen)
+  }
 
   useEffect(() => {
     if (!menuOpen) return
@@ -320,7 +330,9 @@ export function FloatingComposerModelPicker({
             }}
           />
           {providerMenuGroups.map((group) => {
-            const selectedModel = group.modelIds.includes(currentModel) ? currentModel : ''
+            const selectedModel = selectedProviderId === group.providerId && group.modelIds.includes(currentModel)
+              ? currentModel
+              : ''
             return (
               <ProviderRow
                 key={group.providerId}
@@ -354,11 +366,11 @@ export function FloatingComposerModelPicker({
             {activeProviderGroup.modelIds.map((id) => (
               <PickerRow
                 key={`${activeProviderGroup.providerId}:${id}`}
-                selected={currentModel === id}
+                selected={selectedProviderId === activeProviderGroup.providerId && currentModel === id}
                 brand={brandForModel(id, composerModelGroups)}
                 title={id}
                 onClick={() => {
-                  onComposerModelChange(id)
+                  onComposerModelChange(id, activeProviderGroup.providerId)
                   setMenuOpen(false)
                 }}
               />
@@ -387,7 +399,7 @@ export function FloatingComposerModelPicker({
         <button
           type="button"
           disabled={!canChangeModel}
-          onClick={() => setMenuOpen((open) => !open)}
+          onClick={toggleMenu}
           title={controlsTitle}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
@@ -430,7 +442,7 @@ export function FloatingComposerModelPicker({
       <button
         type="button"
         disabled={!canChangeModel}
-        onClick={() => setMenuOpen((open) => !open)}
+        onClick={toggleMenu}
         className={`flex h-9 max-w-full items-center gap-1.5 rounded-full px-2.5 text-[13.5px] font-semibold transition disabled:cursor-not-allowed ${
           canChangeModel ? 'hover:bg-ds-hover' : ''
         }`}

@@ -53,13 +53,52 @@ export function createAppActions(options: CreateAppActionsOptions): Pick<
     workspaceLabelFromPath,
     normalizeWorkspaceRoot
   } = options
+  let modelSwitchSequence = 0
 
   return {
     setError: (message) => set({ error: message }),
 
-    setComposerModel: (modelId) => {
+    setComposerModel: (modelId, requestedProviderId) => {
+      const previousModel = get().composerModel
+      const previousProviderId = get().composerProviderId
+      const providerId = requestedProviderId?.trim()
+        || get().composerModelGroups.find((group) => group.modelIds.includes(modelId))?.providerId
+        || ''
       persistComposerModel(modelId)
-      set({ composerModel: modelId })
+      set({ composerModel: modelId, ...(providerId ? { composerProviderId: providerId } : {}) })
+      if (!modelId.trim() || modelId.trim() === 'auto') return
+      if (!providerId) return
+
+      const sequence = ++modelSwitchSequence
+      set({ runtimeConnection: 'checking', error: null, runtimeErrorDetail: null })
+      void (async () => {
+        try {
+          const settings = await rendererRuntimeClient.getSettings({ forceRefresh: true })
+          if (
+            settings.agents.legalwork.providerId !== providerId
+            || settings.agents.legalwork.model !== modelId
+          ) {
+            await rendererRuntimeClient.setSettings({
+              agents: { legalwork: { providerId, model: modelId } }
+            })
+            await rendererRuntimeClient.reconnectRuntime()
+          }
+          if (sequence === modelSwitchSequence) {
+            set({ runtimeConnection: 'ready', error: null, runtimeErrorDetail: null })
+          }
+        } catch (error) {
+          if (sequence !== modelSwitchSequence) return
+          const message = error instanceof Error ? error.message : String(error)
+          persistComposerModel(previousModel)
+          set({
+            composerModel: previousModel,
+            composerProviderId: previousProviderId,
+            runtimeConnection: 'offline',
+            error: i18n.t('common:modelProviderSwitchFailed', { message }),
+            runtimeErrorDetail: message
+          })
+        }
+      })()
     },
 
     loadComposerModels: async () => {
@@ -67,6 +106,7 @@ export function createAppActions(options: CreateAppActionsOptions): Pick<
       if (typeof window.dsGui === 'undefined') return
       const task = (async () => {
         const res = await window.dsGui.fetchUpstreamModels()
+        const settings = await rendererRuntimeClient.getSettings()
         const pick = mergeComposerPickList(res.ok, res.ok ? res.modelIds : [])
         const groups = res.ok ? res.modelGroups ?? [] : []
         const allowed = new Set(pick)
@@ -77,7 +117,12 @@ export function createAppActions(options: CreateAppActionsOptions): Pick<
           }
           if (model !== '' && !allowed.has(model)) model = ''
           if (model !== state.composerModel) persistComposerModel(model)
-          return { composerPickList: pick, composerModel: model, composerModelGroups: groups }
+          return {
+            composerPickList: pick,
+            composerModel: model,
+            composerProviderId: settings.agents.legalwork.providerId,
+            composerModelGroups: groups
+          }
         })
       })().finally(() => {
         setComposerModelLoadPromise(null)

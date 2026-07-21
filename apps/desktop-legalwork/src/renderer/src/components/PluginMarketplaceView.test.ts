@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildPkulawMcpConfig,
   buildMcpConfig,
   customMcpConfigFragment,
   inferMarketplaceCategory,
   mcpConfigHasServer,
   mcpMarketplaceItemsFromConfigAndDiagnostics,
   mergeMcpJsonConfig,
+  upsertMcpJsonConfig,
   skillMarketplaceItemsFromDiscoveredSkills
 } from './PluginMarketplaceView'
 
@@ -77,6 +79,32 @@ describe('PluginMarketplaceView MCP config helpers', () => {
     })
 
     expect(mcpConfigHasServer(content, 'pkulaw')).toBe(true)
+  })
+
+  it('enables every PKULaw endpoint in the token config', () => {
+    const config = buildPkulawMcpConfig('token')
+    const servers = config.servers as Record<string, any>
+
+    expect(Object.keys(servers)).toHaveLength(9)
+    expect(Object.values(servers).every((server) => server.enabled === true)).toBe(true)
+  })
+
+  it('can re-enable previously disabled PKULaw endpoints when refreshing the token config', () => {
+    const existing = JSON.stringify({
+      servers: {
+        'pkulaw-law-search': {
+          enabled: false,
+          transport: 'streamable-http',
+          url: 'https://apim-gateway.pkulaw.com/mcp-law-search-service'
+        }
+      }
+    })
+
+    const next = JSON.parse(
+      upsertMcpJsonConfig(existing, buildPkulawMcpConfig('new-token'), { preserveDisabled: false })
+    ) as Record<string, any>
+
+    expect(next.servers['pkulaw-law-search'].enabled).toBe(true)
   })
 
   it('treats Yuandian endpoint servers as the single Yuandian install', () => {
@@ -350,7 +378,9 @@ describe('skillMarketplaceItemsFromDiscoveredSkills', () => {
         id: 'openspec-apply-change',
         group: 'personal',
         title: 'Openspec Apply Change',
-        sourceLabel: 'Project'
+        sourceLabel: 'Project',
+        skillRoot: '/workspace/.codex/skills/openspec-apply-change',
+        skillEntryPath: '/workspace/.codex/skills/openspec-apply-change/SKILL.md'
       }),
       expect.objectContaining({
         id: 'frontend-polish',

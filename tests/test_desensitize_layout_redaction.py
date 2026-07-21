@@ -70,3 +70,18 @@ def test_redact_image_draws_legal_subject_without_privacy_finding(tmp_path, monk
 
     redacted = Image.open(output).convert("RGB")
     assert redacted.getpixel((230, 30)) == de.REDACTION_FILL
+
+
+def test_desensitize_keeps_public_legal_norm_names():
+    engine = de.Desensitizer()
+    text = "根据《中华人民共和国公司法》第五条，北京小米科技有限公司应履行合同。"
+
+    redacted, findings, subjects = de.sanitize_text_and_subjects(
+        text, engine, surface="text", locator="全文"
+    )
+
+    assert findings == []
+    assert "《中华人民共和国公司法》" in redacted
+    assert "A公司法" not in redacted
+    assert any(item.original == "北京小米科技有限公司" for item in subjects)
+    assert all(item.original != "中华人民共和国公司" for item in subjects)

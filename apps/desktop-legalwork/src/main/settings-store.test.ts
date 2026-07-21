@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -18,12 +18,32 @@ describe('JsonSettingsStore', () => {
     const loaded = await store.load()
 
     expect(loaded.guiUpdate.channel).toBe(DEFAULT_GUI_UPDATE_CHANNEL)
+    expect(loaded.workspaceRoot).toBe(join(homedir(), 'Desktop'))
     expect(loaded.agents.legalwork.approvalPolicy).toBe(DEFAULT_APPROVAL_POLICY)
     expect(loaded.appBehavior).toEqual({
       openAtLogin: false,
       startMinimized: false,
       closeToTray: false
     })
+  })
+
+  it('migrates the legacy default code workspace to Desktop', async () => {
+    const userDataDir = await mkdtemp(join(tmpdir(), 'ds-gui-settings-'))
+    const legacyWorkspaceRoot = join(homedir(), '.legalwork', 'default_workspace')
+
+    await writeFile(
+      join(userDataDir, 'legalwork-settings.json'),
+      JSON.stringify({
+        version: 1,
+        workspaceRoot: legacyWorkspaceRoot
+      }),
+      'utf8'
+    )
+
+    const store = new JsonSettingsStore(userDataDir)
+    const loaded = await store.load()
+
+    expect(loaded.workspaceRoot).toBe(join(homedir(), 'Desktop'))
   })
 
   it('creates a default write workspace with welcome.md', async () => {

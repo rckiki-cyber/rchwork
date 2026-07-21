@@ -9,6 +9,12 @@ import { GET_GOAL_TOOL_NAME, UPDATE_GOAL_TOOL_NAME } from '../src/adapters/tool/
 import { FileThreadStore, FileSessionStore } from '../src/adapters/file/index.js'
 import { RuntimeEventRecorder } from '../src/services/runtime-event-recorder.js'
 import { ContextCompactor } from '../src/loop/context-compactor.js'
+import {
+  DEFAULT_MAX_AGENT_LOOP_STEPS,
+  MAX_AGENT_LOOP_STEPS_ENV,
+  MAX_AGENT_LOOP_STEPS_ENV_CAP,
+  resolveMaxAgentLoopSteps
+} from '../src/loop/agent-loop.js'
 import { resolveModelContextProfile } from '../src/loop/model-context-profile.js'
 import { makeAssistantTextItem, makeToolCallItem, makeUserItem } from '../src/domain/item.js'
 import { createThreadRecord } from '../src/domain/thread.js'
@@ -24,6 +30,15 @@ import {
 } from './loop-test-harness.js'
 
 describe('AgentLoop', () => {
+  it('resolves a configurable agent loop step limit', () => {
+    expect(resolveMaxAgentLoopSteps({} as NodeJS.ProcessEnv)).toBe(DEFAULT_MAX_AGENT_LOOP_STEPS)
+    expect(resolveMaxAgentLoopSteps({ [MAX_AGENT_LOOP_STEPS_ENV]: '1024' } as NodeJS.ProcessEnv)).toBe(1024)
+    expect(resolveMaxAgentLoopSteps({ [MAX_AGENT_LOOP_STEPS_ENV]: '0' } as NodeJS.ProcessEnv))
+      .toBe(DEFAULT_MAX_AGENT_LOOP_STEPS)
+    expect(resolveMaxAgentLoopSteps({ [MAX_AGENT_LOOP_STEPS_ENV]: '999999' } as NodeJS.ProcessEnv))
+      .toBe(MAX_AGENT_LOOP_STEPS_ENV_CAP)
+  })
+
   it('finishes a silent model run as completed', async () => {
     const h = makeHarness(makeSilentModel())
     await bootstrapThread(h)
@@ -1087,6 +1102,55 @@ describe('AgentLoop', () => {
     expect(status).toBe('completed')
     expect(toolCall).toMatchObject({ kind: 'tool_call', toolKind: 'file_change' })
     expect(toolResult).toMatchObject({ kind: 'tool_result', toolKind: 'file_change' })
+  })
+
+  it('records non-advertised tool calls as recoverable tool errors', async () => {
+    let calls = 0
+    const h = makeHarness(
+      {
+        provider: 'policy-recovery',
+        model: 'policy-recovery',
+        async *stream(): AsyncIterable<ModelStreamChunk> {
+          calls += 1
+          if (calls === 1) {
+            yield {
+              kind: 'tool_call_complete',
+              callId: 'call_read',
+              toolName: 'read',
+              arguments: { path: 'draft.md' }
+            }
+            yield { kind: 'completed', stopReason: 'tool_calls' }
+            return
+          }
+          yield { kind: 'assistant_text_delta', text: '继续使用已开放工具。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      },
+      {
+        tools: buildDefaultLocalTools(),
+        skillRuntime: {
+          resolveTurn: () => ({
+            activeSkillIds: ['knowledge-only'],
+            activations: [],
+            instructions: [],
+            allowedToolNames: ['bash'],
+            injectedBytes: 0
+          })
+        } as never
+      }
+    )
+    await bootstrapThread(h)
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(calls).toBe(2)
+    const result = (await h.sessionStore.loadItems(h.threadId)).find(
+      (item) => item.kind === 'tool_result' && item.callId === 'call_read'
+    )
+    expect(result).toMatchObject({ kind: 'tool_result', isError: true, toolName: 'read' })
+    expect(result?.kind === 'tool_result' ? JSON.stringify(result.output) : '')
+      .toContain('not advertised by active tool policy')
   })
 
   it('omits create_plan from normal agent model requests', async () => {

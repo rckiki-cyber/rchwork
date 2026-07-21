@@ -153,6 +153,7 @@ export type ChatState = {
   turnReasoningLastAtByUserId: Record<string, number>
   inspectorSelectedId: string | null
   composerModel: string
+  composerProviderId: string
   composerPickList: string[]
   composerModelGroups: ModelProviderModelGroup[]
   queuedMessages: QueuedUserMessage[]
@@ -168,7 +169,7 @@ export type ChatState = {
   activeClawChannelId: string
   appendLocalClawTurn: (userText: string, replyText: string) => void
   setError: (message: string | null) => void
-  setComposerModel: (modelId: string) => void
+  setComposerModel: (modelId: string, providerId?: string) => void
   loadComposerModels: () => Promise<void>
   setRoute: (r: AppRoute) => void
   openCode: () => Promise<void>

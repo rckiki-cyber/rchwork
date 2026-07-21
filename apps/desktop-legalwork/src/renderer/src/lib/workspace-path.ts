@@ -44,8 +44,10 @@ export function isInternalDeepSeekGuiWorkspace(path?: string): boolean {
   const normalized = normalizePathForMatch(trimmed)
   return (
     normalized === '~/.legalwork/write_workspace'
+    || normalized === '~/.legalwork/default_workspace'
     || normalized === '~/.deepseekgui/write_workspace'
     || normalized.endsWith('/.legalwork/write_workspace')
+    || normalized.endsWith('/.legalwork/default_workspace')
     || normalized.endsWith('/.deepseekgui/write_workspace')
   )
 }

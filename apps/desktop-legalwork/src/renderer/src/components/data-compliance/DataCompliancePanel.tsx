@@ -1773,7 +1773,7 @@ export function DataCompliancePanel({
             className="mt-1.5 w-full rounded-[12px] border border-ds-border bg-ds-card px-3 py-2 text-[13.5px] text-ds-ink outline-none transition focus:border-accent/40 focus:ring-2 focus:ring-accent/15"
           />
         </label>
-        <label className="block">
+        <div className="block">
           <span className="text-[12px] font-medium text-ds-muted">上传文件</span>
           <div
             onDragOver={onDragOver}
@@ -1790,6 +1790,7 @@ export function DataCompliancePanel({
               ref={fileInputRef}
               type="file"
               multiple
+              onClick={(event) => event.stopPropagation()}
               onChange={onPickFile}
               className="hidden"
             />
@@ -1855,7 +1856,7 @@ export function DataCompliancePanel({
               </div>
             )}
           </div>
-        </label>
+        </div>
         <label className="block">
           <span className="text-[12px] font-medium text-ds-muted">直接输入</span>
           <textarea

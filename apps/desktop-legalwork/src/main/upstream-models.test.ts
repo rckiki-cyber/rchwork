@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { mkdtempSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   defaultClawSettings,
   defaultLegalworkRuntimeSettings,
@@ -12,7 +12,15 @@ import {
   defaultKeyboardShortcuts,
   type AppSettingsV1
 } from '../shared/app-settings'
-import { fetchUpstreamModelIds, readConfiguredLegalworkModelIds } from './upstream-models'
+import {
+  fetchUpstreamModelIds,
+  isSelectableConversationModel,
+  readConfiguredLegalworkModelIds
+} from './upstream-models'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 function settings(dataDir: string, model = 'settings-model'): AppSettingsV1 {
   const provider = defaultModelProviderSettings()
@@ -90,42 +98,66 @@ describe('upstream model picker list', () => {
     ]))
   })
 
-  it('falls back to configured model ids when upstream cannot be queried', async () => {
+  it('lists only dynamically fetched models from providers with working API keys', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'legalwork-models-'))
     await mkdir(dataDir, { recursive: true })
-    await writeFile(
-      join(dataDir, 'config.json'),
-      JSON.stringify({
-        models: {
-          profiles: {
-            'deepseek-v4-flash': {
-              aliases: ['deepseek-chat', 'deepseek-reasoner']
-            }
-          }
-        }
-      }),
-      'utf8'
-    )
-    const result = await fetchUpstreamModelIds(settings(dataDir, 'local-only-model'), '')
+    const configured = settings(dataDir, 'local-only-model')
+    configured.provider.providers.push({
+      id: 'expired-provider',
+      name: 'Expired Provider',
+      apiKey: 'sk-expired',
+      baseUrl: 'https://expired.example/v1',
+      endpointFormat: 'chat_completions',
+      models: ['stale-expired-model']
+    })
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.includes('expired.example')) {
+        return new Response(JSON.stringify({ error: { message: 'membership expired' } }), {
+          status: 402,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      }
+      return new Response(JSON.stringify({
+        data: [
+          { id: 'vendor-chat-latest' },
+          { id: 'vendor-chat-2026-07-01' },
+          { id: 'text-embedding-3-large' }
+        ]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+
+    const result = await fetchUpstreamModelIds(configured)
 
     expect(result).toMatchObject({ ok: true })
     if (result.ok) {
-      expect(result.modelIds).toContain('local-only-model')
-      expect(result.modelIds).toContain('custom-provider-model')
-      expect(result.modelIds).not.toContain('deepseek-v4-pro')
-      expect(result.modelIds).not.toContain('gpt-4o')
-      expect(result.modelGroups).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          providerId: 'custom-provider',
-          label: 'Custom Provider',
-          modelIds: expect.arrayContaining(['custom-provider-model'])
-        }),
-        expect.objectContaining({
-          providerId: 'deepseek',
-          label: 'DeepSeek',
-          modelIds: expect.arrayContaining(['deepseek-chat', 'deepseek-reasoner'])
-        })
-      ]))
+      expect(result.modelIds).toEqual(['auto', 'vendor-chat-2026-07-01', 'vendor-chat-latest'])
+      expect(result.modelGroups).toEqual([{
+        providerId: 'custom-provider',
+        label: 'Custom Provider',
+        modelIds: ['vendor-chat-2026-07-01', 'vendor-chat-latest']
+      }])
     }
+  })
+
+  it('does not expose manually configured models when no provider API key can be queried', async () => {
+    const configured = settings(mkdtempSync(join(tmpdir(), 'legalwork-models-')))
+    configured.provider.providers = configured.provider.providers.map((provider) => ({
+      ...provider,
+      apiKey: ''
+    }))
+
+    const result = await fetchUpstreamModelIds(configured)
+
+    expect(result).toEqual({ ok: false, message: 'No model provider API keys are configured.' })
+  })
+
+  it('filters capability-only model families without maintaining version allowlists', () => {
+    expect(isSelectableConversationModel('gpt-5.2-2026-06-30')).toBe(true)
+    expect(isSelectableConversationModel('glm-5.2')).toBe(true)
+    expect(isSelectableConversationModel('kimi-k2.7-code')).toBe(true)
+    expect(isSelectableConversationModel('text-embedding-3-large')).toBe(false)
+    expect(isSelectableConversationModel('gpt-image-1')).toBe(false)
+    expect(isSelectableConversationModel('gpt-4o-realtime-preview')).toBe(false)
   })
 })

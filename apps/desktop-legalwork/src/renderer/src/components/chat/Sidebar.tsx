@@ -41,6 +41,7 @@ import {
 import { LegalResearchSidebar } from '../legal-research/LegalResearchSidebar'
 import type { ResearchRecord } from '../legal-research/useLegalResearch'
 import { KnowledgeBaseChatSidebar } from '../knowledge-base/KnowledgeBaseChatSidebar'
+import { DocumentWritingSidebarContent } from '../document-writing/DocumentWritingSidebarContent'
 
 type Props = {
   threads: NormalizedThread[]
@@ -275,11 +276,7 @@ export function Sidebar({
           t={t}
         />
       ) : activeView === 'documentWriting' ? (
-        <div className="ds-no-drag flex min-h-0 flex-1 flex-col px-2 pt-1">
-          <div className="px-1 text-[13px] font-medium text-ds-faint">
-            {t('documentWriting')}
-          </div>
-        </div>
+        <DocumentWritingSidebarContent />
       ) : activeView === 'legalResearch' ? (
         <LegalResearchSidebar
           records={legalResearchRecords}

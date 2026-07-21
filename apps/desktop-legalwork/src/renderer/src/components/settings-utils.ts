@@ -25,7 +25,7 @@ import type { GuiUpdateInfo } from '@shared/gui-update'
 type RendererSettingsShape = AppSettingsPatch
 type SettingsPatch = AppSettingsPatch
 
-export const DEFAULT_WORKSPACE_ROOT = '~/.legalwork/default_workspace'
+export const DEFAULT_WORKSPACE_ROOT = '~/Desktop'
 
 export function splitSettingsList(raw: string): string[] {
   return raw

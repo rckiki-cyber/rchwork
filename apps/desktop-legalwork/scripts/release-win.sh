@@ -79,6 +79,8 @@ release_clean_dist_artifacts
 
 cyan "Building Windows (tag ${TAG_NAME}, channel ${RELEASE_CHANNEL})..."
 npm run dist:win || die "Windows build failed"
+node "${ROOT}/scripts/normalize-windows-latest.cjs" "${ROOT}/dist" \
+  || die "Failed to normalize Windows update metadata"
 
 ASSETS=()
 collect() {

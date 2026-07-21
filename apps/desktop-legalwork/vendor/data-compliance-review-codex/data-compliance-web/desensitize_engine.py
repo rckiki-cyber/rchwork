@@ -146,6 +146,8 @@ GENERIC_ORG_TERMS = {
     '项目公司', '法人公司', '公司', '新设立的公司', '新注册成立的两家公司',
     '注册公司', '管理公司', '开发公司', '法人公司', '两家公司', '合作公司在丰满区分别注册成立商业管理公司',
 }
+LEGAL_NORM_TITLE_PATTERN = re.compile(r'(法|法律|法典|条例|规定|办法|规则|细则|解释|决定|意见|通知)$')
+ENGLISH_LEGAL_NORM_FOLLOWING_PATTERN = re.compile(r'^\s+(?:Law|Act|Code|Regulation|Regulations|Rules)\b', re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -337,6 +339,31 @@ def _looks_like_legal_org(value: str) -> bool:
     return bool(re.search(ORG_SUFFIX_PATTERN, name))
 
 
+def _is_public_legal_norm_subject(text: str, entity: Any) -> bool:
+    """公开法律规范名称不作为案件主体替换。"""
+    start = int(getattr(entity, 'start', 0))
+    end = int(getattr(entity, 'end', 0))
+    original = str(getattr(entity, 'text', ''))
+    if not original or end <= start:
+        return False
+
+    following = text[end:end + 24]
+    if ENGLISH_LEGAL_NORM_FOLLOWING_PATTERN.match(following):
+        return True
+
+    left = text.rfind('《', 0, start + 1)
+    right = text.find('》', end)
+    if left >= 0 and right >= 0 and text.find('》', left, start) < 0:
+        title = text[left + 1:right]
+        if LEGAL_NORM_TITLE_PATTERN.search(re.sub(r'\s+', '', title)):
+            return True
+
+    context = re.sub(r'\s+', '', text[max(0, start - 8):end + 12])
+    if any(marker in context for marker in ('根据', '依据', '适用', '依照')) and LEGAL_NORM_TITLE_PATTERN.search(context):
+        return True
+    return False
+
+
 def _detect_person_subjects(text: str) -> list[Any]:
     """用轻量规则识别常见中文自然人姓名，避免为人名加载重型 NER。"""
     entities: list[Any] = []
@@ -478,6 +505,7 @@ def redact_legal_subjects(
         entities.extend(detector.detect(text, entity_types=FAST_SUBJECT_TYPES, use_semantic=False))
     entities.extend(_detect_legal_org_subjects(text))
     entities.extend(_detect_person_subjects(text))
+    entities = [entity for entity in entities if not _is_public_legal_norm_subject(text, entity)]
     if not entities:
         return text, []
 

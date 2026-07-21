@@ -31,11 +31,12 @@ import {
 } from 'lucide-react'
 import { SendIcon } from '../icons/SendIcon'
 import { getProvider } from '../../agent/registry'
-import type { ChatBlock } from '../../agent/types'
+import { AssistantMarkdown } from '../chat/AssistantMarkdown'
 import {
   LEGALWORK_KNOWLEDGE_CLASSIFY_PATH,
   LEGALWORK_KNOWLEDGE_CREATE_FOLDER_PATH,
   LEGALWORK_KNOWLEDGE_DELETE_FILE_PATH,
+  LEGALWORK_KNOWLEDGE_EXTRACT_TEXT_PATH,
   LEGALWORK_KNOWLEDGE_MOVE_PATH,
   LEGALWORK_KNOWLEDGE_READ_FILE_PATH,
   LEGALWORK_KNOWLEDGE_RETRIEVE_PATH,
@@ -45,6 +46,8 @@ import {
 
 import type { KnowledgeTreeNode } from './types'
 import { KnowledgeBaseFileView } from './KnowledgeBaseFileView'
+import type { ChatMessage, KnowledgeChatContext } from './knowledge-chat-history'
+import { knowledgeChatHistoryFromBlocks } from './knowledge-chat-history'
 import { PdfJsPreview } from './PdfJsPreview'
 type TreeNode = KnowledgeTreeNode
 
@@ -345,38 +348,9 @@ type PreviewFile = {
   objectUrl?: string
 }
 
-type PreviewType = 'text' | 'pdf' | 'image' | 'audio' | 'unsupported'
+type PreviewType = 'text' | 'markdown' | 'pdf' | 'image' | 'audio' | 'document' | 'unsupported'
 
 // ── AI Chat types ──
-
-type ChatMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: number
-}
-
-function blocksToKnowledgeChatMessages(blocks: ChatBlock[]): ChatMessage[] {
-  const messages: ChatMessage[] = []
-  for (const block of blocks) {
-    if (block.kind === 'user') {
-      messages.push({
-        id: block.id,
-        role: 'user',
-        content: block.text,
-        timestamp: block.createdAt ? new Date(block.createdAt).getTime() : Date.now()
-      })
-    } else if (block.kind === 'assistant') {
-      messages.push({
-        id: block.id,
-        role: 'assistant',
-        content: block.text,
-        timestamp: block.createdAt ? new Date(block.createdAt).getTime() : Date.now()
-      })
-    }
-  }
-  return messages
-}
 
 function knowledgeChatTitle(question: string): string {
   const trimmed = question.trim()
@@ -422,7 +396,9 @@ function previewType(node: TreeNode): PreviewType {
   if (['pdf'].includes(ext)) return 'pdf'
   if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) return 'image'
   if (['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg'].includes(ext)) return 'audio'
-  if (['txt', 'md', 'markdown', 'json', 'jsonl', 'csv', 'tsv', 'yaml', 'yml', 'html', 'xml'].includes(ext)) return 'text'
+  if (['md', 'markdown'].includes(ext)) return 'markdown'
+  if (['txt', 'json', 'jsonl', 'csv', 'tsv', 'yaml', 'yml', 'html', 'xml'].includes(ext)) return 'text'
+  if (['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(ext)) return 'document'
   return 'unsupported'
 }
 
@@ -531,6 +507,7 @@ export function KnowledgeBaseView({
   const [chatSending, setChatSending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   const [activeChatThreadId, setActiveChatThreadId] = useState<string | null>(null)
+  const [chatContext, setChatContext] = useState<KnowledgeChatContext>({ kind: 'global' })
   const chatMessagesEndRef = useRef<HTMLDivElement>(null)
 
   // Load a selected knowledge-chat thread into the AI chat panel.
@@ -543,7 +520,9 @@ export function KnowledgeBaseView({
         const provider = getProvider()
         const { blocks } = await provider.getThreadDetail(threadId)
         if (cancelled) return
-        setChatMessages(blocksToKnowledgeChatMessages(blocks))
+        const history = knowledgeChatHistoryFromBlocks(blocks)
+        setChatMessages(history.messages)
+        setChatContext(history.context)
         setActiveChatThreadId(threadId)
         setChatOpen(true)
       } catch (err) {
@@ -707,10 +686,6 @@ export function KnowledgeBaseView({
     }
     const type = previewType(node)
     if (type === 'unsupported') {
-      if (['doc', 'docx'].includes(fileExtension(node))) {
-        void openInSystemApp(node)
-        return
-      }
       setError(`暂不支持预览 ${fileTypeLabel(node)} 文件`)
       return
     }
@@ -718,6 +693,13 @@ export function KnowledgeBaseView({
     setError(null)
     closePreview()
     try {
+      if (type === 'document') {
+        const data = await requestJson<{ path: string; text: string; extension: string }>(
+          `${LEGALWORK_KNOWLEDGE_EXTRACT_TEXT_PATH}?path=${encodeURIComponent(node.path)}`
+        )
+        setPreview({ node, content: data.text, encoding: 'utf8' })
+        return
+      }
       const isBinary = type === 'pdf' || type === 'image' || type === 'audio'
       const data = await requestJson<{ path: string; content: string; encoding: 'utf8' | 'base64' }>(
         `${LEGALWORK_KNOWLEDGE_READ_FILE_PATH}?path=${encodeURIComponent(node.path)}${isBinary ? '&encoding=base64' : ''}`
@@ -737,7 +719,7 @@ export function KnowledgeBaseView({
     } finally {
       setPreviewLoading(false)
     }
-  }, [closePreview, openInSystemApp])
+  }, [closePreview])
 
   const openFileView = useCallback((node: TreeNode): void => {
     if (node.kind === 'folder') {
@@ -856,6 +838,7 @@ export function KnowledgeBaseView({
       timestamp: Date.now()
     }
     setChatMessages((prev) => [...prev, userMsg])
+    setChatContext({ kind: 'global' })
     setChatInput('')
     setChatSending(true)
     setChatError(null)
@@ -928,6 +911,7 @@ ${question.trim()}
     setChatMessages([])
     setChatError(null)
     setActiveChatThreadId(null)
+    setChatContext({ kind: 'global' })
     onSelectThread?.(null)
   }, [onSelectThread])
 
@@ -1469,6 +1453,16 @@ ${question.trim()}
                   <audio src={preview.objectUrl} controls className="w-full max-w-md" />
                   <div className="text-[12px] text-[var(--ds-muted)]">{preview.node.name}</div>
                 </div>
+              ) : previewType(preview.node) === 'markdown' ? (
+                <AssistantMarkdown
+                  text={preview.content}
+                  streaming={false}
+                  className="ds-markdown ds-chat-answer break-words px-5 py-4 text-[13px] leading-6 text-[var(--ds-ink)]"
+                />
+              ) : previewType(preview.node) === 'document' ? (
+                <pre className="whitespace-pre-wrap p-5 font-sans text-[13px] leading-[22px] text-[var(--ds-ink)]">
+                  {preview.content || '未能从该文档中提取到可预览文本。'}
+                </pre>
               ) : previewType(preview.node) === 'text' ? (
                 <pre className="whitespace-pre-wrap p-5 font-mono text-[12px] leading-[20px] text-[var(--ds-ink)]">
                   {preview.content}
@@ -1483,7 +1477,7 @@ ${question.trim()}
             <div className="flex shrink-0 items-center justify-between border-t border-ds-border px-4 py-2 text-[12px] text-[var(--ds-muted)]">
               <span>{fileTypeLabel(preview.node)} · {formatBytes(preview.node.sizeBytes)}</span>
               <div className="flex items-center gap-1">
-                {previewType(preview.node) !== 'text' ? (
+                {!['text', 'markdown', 'document'].includes(previewType(preview.node)) ? (
                   <button
                     type="button"
                     onClick={() => void openInSystemApp(preview.node)}
@@ -1507,11 +1501,16 @@ ${question.trim()}
 
         {/* AI Chat sidebar */}
         {chatOpen ? (
-          <aside className="ds-no-drag flex h-full w-[380px] min-w-[320px] flex-col border-l border-ds-border bg-ds-card">
-            <div className="flex h-12 shrink-0 items-center justify-between border-b border-ds-border px-4">
-              <div className="flex items-center gap-2">
+          <aside className="ds-no-drag flex h-full w-[min(42vw,520px)] min-w-[360px] max-w-[520px] flex-col border-l border-ds-border bg-ds-card">
+            <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ds-border px-4">
+              <div className="flex min-w-0 items-center gap-2">
                 <Sparkles className="h-4 w-4 text-[var(--ds-accent)]" strokeWidth={1.8} />
-                <span className="text-[13px] font-medium text-[var(--ds-ink)]">知识库 AI 对话</span>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium text-[var(--ds-ink)]">知识库 AI 对话</div>
+                  <div className="truncate text-[11px] text-[var(--ds-muted)]">
+                    {chatContext.kind === 'file' ? `当前文件：${chatContext.fileName}` : '全局知识库'}
+                  </div>
+                </div>
               </div>
               {chatMessages.length > 0 ? (
                 <button
@@ -1547,7 +1546,15 @@ ${question.trim()}
                           : 'border border-ds-border bg-[var(--ds-main)] text-[var(--ds-ink)]'
                       }`}
                     >
-                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                      {msg.role === 'assistant' ? (
+                        <AssistantMarkdown
+                          text={msg.content}
+                          streaming={false}
+                          className="ds-markdown ds-chat-answer break-words text-[13px] leading-relaxed"
+                        />
+                      ) : (
+                        <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                      )}
                       <div
                         className={`mt-1 text-[10px] ${
                           msg.role === 'user' ? 'text-white/60' : 'text-[var(--ds-muted)]'

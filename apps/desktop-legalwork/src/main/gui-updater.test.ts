@@ -159,6 +159,53 @@ describe('downloadGuiUpdate', () => {
     expect(JSON.stringify(info)).not.toContain('<code>')
   })
 
+  it('renders release highlights without markdown markers or build metadata', async () => {
+    process.env.LEGALWORK_GITHUB_REPO = 'sunyifeisb-art/legalwork'
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v0.2.9',
+        name: 'LegalWork 0.2.9',
+        published_at: '2026-07-14T14:06:10.000Z',
+        body: [
+          '## v0.2.9',
+          '',
+          '- **OfficeCLI 集成**：新增 @officecli/officecli 支持，运行时自动注入 officecli MCP server。',
+          '- **Agent 附件本地路径引用**：附件支持 `localFilePath`，Agent 可直接引用本地文件路径。',
+          '',
+          '---',
+          '',
+          '### 构建信息',
+          '',
+          '- Release version: `0.2.9`',
+          '- Release channel: `stable`',
+          '- Base version: `0.2.8`',
+          '- Branch: `main`',
+          '- Commit: `abc1234`',
+          '- macOS: ✅ Developer ID 签名 + 公证'
+        ].join('\n')
+      })
+    })))
+    updater.checkForUpdates.mockRejectedValueOnce(new Error('latest-mac.yml is missing'))
+
+    const module = await import('./gui-updater')
+    module.initializeGuiUpdater(() => null, () => 'stable')
+
+    const info = await module.checkGuiUpdate('stable')
+
+    expect(info).toMatchObject({
+      ok: true,
+      latestVersion: '0.2.9',
+      releaseHighlights: [
+        'OfficeCLI 集成：新增 @officecli/officecli 支持，运行时自动注入 officecli MCP server。',
+        'Agent 附件本地路径引用：附件支持 localFilePath，Agent 可直接引用本地文件路径。'
+      ]
+    })
+    expect(JSON.stringify(info)).not.toContain('**')
+    expect(JSON.stringify(info)).not.toContain('Release version')
+    expect(JSON.stringify(info)).not.toContain('Developer ID')
+  })
+
   it('retries the packaged updater when the previous check only found a manual GitHub fallback', async () => {
     process.env.LEGALWORK_GITHUB_REPO = 'sunyifeisb-art/legalwork'
     vi.stubGlobal('fetch', vi.fn(async () => ({

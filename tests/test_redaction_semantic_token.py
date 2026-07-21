@@ -65,7 +65,24 @@ def test_restore_semantic_token():
     assert "深圳某腾讯计算机系统有限公司" in redacted_tokens
 
 
+def test_public_legal_norms_are_not_redacted():
+    pipeline = RedactionPipeline()
+    result = pipeline.process_text(
+        text="根据《中华人民共和国公司法》第五条，北京小米科技有限公司应当履行合同义务。",
+        policy_name="external_client",
+        entity_types=["company_name"],
+    )
+
+    redacted = result["redacted_text"]
+    assert "《中华人民共和国公司法》" in redacted
+    assert "A公司法" not in redacted
+    assert "北京小米科技有限公司" not in redacted
+    assert any(mapping.original == "北京小米科技有限公司" for mapping in result["mappings"])
+    assert all(mapping.original != "中华人民共和国公司" for mapping in result["mappings"])
+
+
 if __name__ == "__main__":
     test_semantic_company_token()
     test_restore_semantic_token()
+    test_public_legal_norms_are_not_redacted()
     print("semantic token tests passed")

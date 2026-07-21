@@ -28,7 +28,7 @@ v0.3 增强：
 """
 
 import re
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -77,6 +77,11 @@ class RedactionDetector:
         r"该公司", r"该企业", r"该司", r"本单位", r"本机关",
         r"其", r"己方", r"对方", r"相对方", r"目标公司",
         r"标的公司", r"被收购方", r"收购方", r"重组方",
+    ]
+
+    LEGAL_NORM_KEYWORDS = [
+        "法", "法律", "法典", "条例", "规定", "办法", "规则",
+        "细则", "解释", "决定", "意见", "通知", "司法解释",
     ]
 
     def __init__(self, model_router: Optional[Any] = None, use_llm: bool = False):
@@ -239,6 +244,10 @@ class RedactionDetector:
                     if matched_text in generic_pronouns:
                         continue
 
+                    # 法律规范、法条引用是公开文本，不属于应匿名主体。
+                    if self._is_public_legal_norm_reference(text, name_start, suffix_end, matched_text):
+                        continue
+
                     # 过滤常见的非主体词开头
                     noise_prefixes = ["关于", "有关", "对于", "根据", "依据", "按照"]
                     if any(matched_text.startswith(n) for n in noise_prefixes):
@@ -363,6 +372,9 @@ class RedactionDetector:
                         start, end = idx, idx + len(name)
                     else:
                         continue
+
+                if self._is_public_legal_norm_reference(text, start, end, name):
+                    continue
 
                 entities.append(SensitiveEntity(
                     entity_id="",
@@ -493,6 +505,66 @@ class RedactionDetector:
         """判断是否为司法机构（不应作为公司名主体）"""
         judicial_suffixes = ["人民法院", "人民检察院", "仲裁委员会", "公证处"]
         return any(js in text for js in judicial_suffixes)
+
+    def _is_public_legal_norm_reference(
+        self,
+        full_text: str,
+        start: int,
+        end: int,
+        matched_text: str,
+    ) -> bool:
+        """判断候选主体是否只是公开法律规范标题的一部分。"""
+        if not matched_text:
+            return False
+
+        title = self._enclosing_title(full_text, start, end)
+        if title and self._looks_like_legal_norm_title(title):
+            return True
+
+        following = full_text[end:end + 8]
+        if following and any(following.startswith(keyword) for keyword in self.LEGAL_NORM_KEYWORDS):
+            prefix = full_text[max(0, start - 8):start]
+            context = full_text[max(0, start - 12):end + 12]
+            if (
+                matched_text.startswith("中华人民共和国")
+                or "根据" in prefix
+                or "依据" in prefix
+                or "适用" in context
+                or "第" in following
+            ):
+                return True
+
+        context = full_text[max(0, start - 4):end + 12]
+        return self._looks_like_legal_norm_title(context) and bool(
+            re.search(r"[《〈（(]?$", full_text[max(0, start - 1):start])
+        )
+
+    def _enclosing_title(self, text: str, start: int, end: int) -> Optional[str]:
+        """返回包含候选片段的中文书名号标题。"""
+        left = text.rfind("《", 0, start + 1)
+        right = text.find("》", end)
+        if left < 0 or right < 0:
+            return None
+        if text.find("》", left, start) >= 0:
+            return None
+        if text.find("《", start + 1, right) >= 0:
+            return None
+        return text[left + 1:right]
+
+    def _looks_like_legal_norm_title(self, title: str) -> bool:
+        """识别法律、行政法规、司法解释等公开规范标题。"""
+        normalized = re.sub(r"\s+", "", title or "")
+        if not normalized:
+            return False
+        legal_authorities = [
+            "全国人民代表大会", "国务院", "最高人民法院", "最高人民检察院",
+            "人民法院", "人民检察院", "人民政府", "市场监督管理局",
+        ]
+        if any(authority in normalized for authority in legal_authorities) and any(
+            keyword in normalized for keyword in self.LEGAL_NORM_KEYWORDS
+        ):
+            return True
+        return bool(re.search(r"(法|法律|法典|条例|规定|办法|规则|细则|解释|决定|意见|通知)$", normalized))
 
     def _strip_quotes(self, text: str, start: int, end: int) -> tuple:
         """去除名称前后的引号、括号，并调整起止位置"""

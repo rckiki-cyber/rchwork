@@ -6,6 +6,7 @@ import { MessageBubble } from '../chat/message-timeline-bubbles'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
 import type { ChatBlock } from '../../agent/types'
 import type { ReturnUseLegalResearch } from './useLegalResearch'
+import { preprocessLegalResearchSummary } from './legal-research-markdown'
 
 export type LegalResearchPanelProps = {
   legalResearch: ReturnUseLegalResearch
@@ -251,20 +252,6 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     return merged
   }
 
-  // Preprocess summary text to handle non-standard table/flowchart formatting from AI
-  const preprocessSummary = (text: string): string => {
-    if (!text) return ''
-    return text
-      .replace(/\|\|\|/g, '\n  - ')
-      .replace(/\|\|/g, '\n  - ')
-      .replace(/^\|(?![-\s])/gm, '')
-      .replace(/(?<!\|)\|(?!\||[\s\-:])/g, '')
-      .replace(/\n{4,}/g, '\n\n')
-      .split('\n')
-      .map((line) => line.trimEnd())
-      .join('\n')
-  }
-
   const formatDuration = (milliseconds: number): string => {
     const seconds = Math.max(0, Math.floor(milliseconds / 1000))
     if (seconds < 60) return `${seconds}s`
@@ -479,7 +466,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                     </span>
                   </div>
                   <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed text-[var(--ds-ink)] [overflow-wrap:anywhere]">
-                    <AssistantMarkdown text={preprocessSummary(activeRecord.summary)} streaming={false} />
+                    <AssistantMarkdown text={preprocessLegalResearchSummary(activeRecord.summary)} streaming={false} />
                   </div>
                 </div>
               )}

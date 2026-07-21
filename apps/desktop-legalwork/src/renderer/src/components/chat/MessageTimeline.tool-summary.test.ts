@@ -352,7 +352,7 @@ describe('MessageTimeline Legalwork runtime metadata smoke', () => {
     expect(html).not.toContain('grep detail should stay tucked away')
   })
 
-  it('keeps the live work timeline summarized by default', () => {
+  it('keeps the live work process visible while single tool details stay collapsed', () => {
     const blocks: ChatBlock[] = [
       {
         kind: 'user',
@@ -385,7 +385,7 @@ describe('MessageTimeline Legalwork runtime metadata smoke', () => {
       })
     )
 
-    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('1')
     expect(html).not.toContain('running timeline detail should stay collapsed')
   })

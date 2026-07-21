@@ -73,6 +73,7 @@ import {
   mergeComposerFileReferences,
   type ComposerFileContextEntry
 } from '../lib/composer-file-references'
+import { DocumentWritingProvider } from './document-writing/DocumentWritingContext'
 
 const ChangeInspector = lazy(() =>
   import('./ChangeInspector').then((module) => ({ default: module.ChangeInspector }))
@@ -284,8 +285,10 @@ export function Workbench(): ReactElement {
     interrupt,
     probeRuntime,
     composerModel,
+    composerProviderId,
     composerPickList,
     composerModelGroups,
+    loadComposerModels,
     setComposerModel,
     setThreadSearch,
     setShowArchivedThreads,
@@ -343,8 +346,10 @@ export function Workbench(): ReactElement {
       interrupt: s.interrupt,
       probeRuntime: s.probeRuntime,
       composerModel: s.composerModel,
+      composerProviderId: s.composerProviderId,
       composerPickList: s.composerPickList,
       composerModelGroups: s.composerModelGroups,
+      loadComposerModels: s.loadComposerModels,
       setComposerModel: s.setComposerModel,
       setThreadSearch: s.setThreadSearch,
       setShowArchivedThreads: s.setShowArchivedThreads,
@@ -1663,6 +1668,7 @@ export function Workbench(): ReactElement {
   }
 
   return (
+    <DocumentWritingProvider>
     <div
       ref={shellRef}
       className="ds-workbench-shell ds-drag flex h-full min-h-0 w-full min-w-0 bg-ds-main"
@@ -1958,17 +1964,21 @@ export function Workbench(): ReactElement {
                     ? clawChannels.find((channel) => channel.id === activeClawChannelId)?.model ?? 'auto'
                     : composerModel
                 }
+                composerProviderId={route === 'claw' ? undefined : composerProviderId}
                 composerPickList={composerPickList}
                 composerModelGroups={composerModelGroups}
                 composerReasoningEffort={
                   route === 'chat' || route === 'claw' ? composerReasoningEffort : undefined
                 }
-                onComposerModelChange={(modelId) => {
+                onComposerModelChange={(modelId, providerId) => {
                   if (route === 'claw' && activeClawChannelId) {
                     void setClawChannelModel(activeClawChannelId, modelId)
                     return
                   }
-                  setComposerModel(modelId)
+                  setComposerModel(modelId, providerId)
+                }}
+                onModelMenuOpen={() => {
+                  void loadComposerModels()
                 }}
                 onComposerReasoningEffortChange={
                   route === 'chat' || route === 'claw' ? setComposerReasoningEffort : undefined
@@ -2021,5 +2031,6 @@ export function Workbench(): ReactElement {
         )}
       </main>
     </div>
+    </DocumentWritingProvider>
   )
 }

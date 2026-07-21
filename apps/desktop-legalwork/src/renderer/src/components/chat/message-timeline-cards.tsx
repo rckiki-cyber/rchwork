@@ -298,7 +298,7 @@ export function TurnChangeSummary({
   )
 }
 
-/** Turn-level work-process summary. Details stay collapsed until the user opens them. */
+/** Turn-level work-process summary. */
 export function WorkMetaRow({
   processing,
   stepCount,

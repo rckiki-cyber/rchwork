@@ -612,6 +612,13 @@ export const skillSaveFilePayloadSchema = z
   })
   .strict()
 
+export const skillReadFilePayloadSchema = z
+  .object({
+    rootPath: trimmedString(MAX_PATH_LENGTH),
+    entryPath: trimmedString(MAX_PATH_LENGTH)
+  })
+  .strict()
+
 export const skillListPayloadSchema = z
   .object({
     workspaceRoot: z.string().trim().max(MAX_PATH_LENGTH).optional()
@@ -982,6 +989,14 @@ export const templateGenerateWithMaterialsRequestSchema = z
       .max(20)
       .optional(),
     instructions: z.string().max(5000).optional()
+  })
+  .strict()
+
+export const documentMaterialExtractionPayloadSchema = z
+  .object({
+    fileName: z.string().min(1).max(500),
+    mimeType: z.string().max(200).optional(),
+    dataBase64: z.string().min(1).max(80_000_000)
   })
   .strict()
 

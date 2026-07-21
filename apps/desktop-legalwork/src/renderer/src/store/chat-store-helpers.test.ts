@@ -87,6 +87,7 @@ describe('chat-store Claw helpers', () => {
         '/Users/zxy/project-a/',
         '/tmp/transient',
         '/Users/zxy/.deepseekgui/claw/agent/conversations/chat',
+        '/Users/zxy/.legalwork/default_workspace',
         '/Users/zxy/.deepseekgui/default_workspace',
         '~/.deepseekgui/write_workspace',
         '',

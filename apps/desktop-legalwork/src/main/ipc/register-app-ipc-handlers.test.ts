@@ -61,6 +61,7 @@ function registerOptions(overrides: Partial<Parameters<typeof import('./register
     runtimeRequest: vi.fn() as never,
     reconnectRuntime: vi.fn(async () => settings()),
     fetchUpstreamModels: vi.fn() as never,
+    fetchEndpointModels: vi.fn() as never,
     getClawRuntime: () => null,
     getScheduleRuntime: () => null,
     startFeishuInstallQrcode: vi.fn() as never,
@@ -274,6 +275,52 @@ describe('registerAppIpcHandlers', () => {
     } finally {
       rmSync(tempRoot, { recursive: true, force: true })
     }
+  })
+
+  it('forwards data compliance upload file paths in the submit payload', async () => {
+    const { registerAppIpcHandlers } = await import('./register-app-ipc-handlers')
+    const sourcePath = '/tmp/legalwork-upload/privacy-policy.pdf'
+    const runtimeRequest = vi.fn(async () => ({
+      ok: true,
+      status: 201,
+      body: JSON.stringify({ task_id: 'task_123' })
+    }))
+
+    registerAppIpcHandlers(registerOptions({ runtimeRequest: runtimeRequest as never }))
+
+    await expect(
+      handlers.get('data-compliance:submit')?.({}, {
+        mode: 'review',
+        documentName: '隐私政策',
+        reviewType: 'document',
+        file: {
+          name: 'privacy-policy.pdf',
+          type: 'application/pdf',
+          filePath: sourcePath
+        }
+      })
+    ).resolves.toEqual({
+      ok: true,
+      status: 201,
+      body: JSON.stringify({ task_id: 'task_123' })
+    })
+
+    expect(runtimeRequest).toHaveBeenCalledWith(
+      '/data-compliance/tasks',
+      'POST',
+      expect.any(String)
+    )
+    const [, , body] = runtimeRequest.mock.calls[0] as unknown as [string, string, string]
+    expect(JSON.parse(String(body))).toMatchObject({
+      mode: 'review',
+      documentName: '隐私政策',
+      reviewType: 'document',
+      file: {
+        name: 'privacy-policy.pdf',
+        type: 'application/pdf',
+        filePath: sourcePath
+      }
+    })
   })
 
   it('uses the GUI-managed WeChat bridge for WeChat install handlers', async () => {

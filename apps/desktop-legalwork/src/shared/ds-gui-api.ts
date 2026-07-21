@@ -150,6 +150,7 @@ export const DESKTOP_COMMANDS = [
 ] as const
 export type DesktopCommand = typeof DESKTOP_COMMANDS[number]
 export type SkillSaveResult = { ok: true; path: string } | { ok: false; message: string }
+export type SkillReadResult = { ok: true; path: string; content: string } | { ok: false; message: string }
 export type SkillImportResult =
   | {
       ok: true
@@ -190,6 +191,13 @@ export type ClawChannelMirrorResult =
 export type UpstreamModelsResult =
   | { ok: true; modelIds: string[]; modelGroups?: ModelProviderModelGroup[] }
   | { ok: false; message: string }
+export type EndpointModelsResult =
+  | { ok: true; modelIds: string[] }
+  | { ok: false; message: string }
+export type EndpointModelsOptions = {
+  providerId?: string
+  endpointFormat?: string
+}
 export type ModelProviderModelGroup = {
   providerId: string
   label: string
@@ -216,6 +224,16 @@ export type LegalResearchExportPayload = {
   defaultName: string
 }
 
+export type DocumentMaterialExtractionPayload = {
+  fileName: string
+  mimeType?: string
+  dataBase64: string
+}
+
+export type DocumentMaterialExtractionResult =
+  | { ok: true; content: string }
+  | { ok: false; message: string }
+
 export type DsGuiApi = {
   platform: string
   getSettings: () => Promise<AppSettingsV1>
@@ -238,6 +256,11 @@ export type DsGuiApi = {
     fileKey: string
   ) => Promise<DataComplianceDownloadResult>
   fetchUpstreamModels: () => Promise<UpstreamModelsResult>
+  fetchEndpointModels: (
+    baseUrl: string,
+    apiKey: string,
+    options?: EndpointModelsOptions
+  ) => Promise<EndpointModelsResult>
   getClawStatus: () => Promise<ClawRuntimeStatus>
   runClawTask: (taskId: string) => Promise<ClawRunResult>
   getScheduleStatus: () => Promise<ScheduleRuntimeStatus>
@@ -252,6 +275,7 @@ export type DsGuiApi = {
   ) => Promise<ClawImInstallPollResult>
   pickWorkspaceDirectory: (defaultPath?: string) => Promise<WorkspacePickResult>
   listSkills: (workspaceRoot?: string) => Promise<SkillListResult>
+  readSkillFile: (rootPath: string, entryPath: string) => Promise<SkillReadResult>
   saveSkillFile: (rootPath: string, skillName: string, content: string) => Promise<SkillSaveResult>
   importSkill: () => Promise<SkillImportResult>
   openSkillRoot: (rootPath: string) => Promise<PathOpenResult>
@@ -305,6 +329,10 @@ export type DsGuiApi = {
   generateDocumentFromTemplate: (
     payload: TemplateGenerateWithMaterialsRequest
   ) => Promise<TemplateGenerateWithMaterialsResult>
+  /** Extract plain text from an uploaded case material */
+  extractDocumentMaterial: (
+    payload: DocumentMaterialExtractionPayload
+  ) => Promise<DocumentMaterialExtractionResult>
   /** List document generation history summaries */
   listDocumentHistory: () => Promise<DocumentHistorySummary[]>
   /** Get a full history record by id */
