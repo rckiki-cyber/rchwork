@@ -426,6 +426,23 @@ describe('LegalworkRuntimeProvider', () => {
           })
         }
       }
+      if (path === '/v1/attachments/att_1') {
+        return {
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            attachment: {
+              id: 'att_1',
+              name: 'shot.png',
+              mimeType: 'image/png',
+              byteSize: 3,
+              hash: 'hash',
+              createdAt: 't0',
+              updatedAt: 't0'
+            }
+          })
+        }
+      }
       return { ok: true, status: 200, body: '{}' }
     })
     installDsGui({ runtimeRequest })
@@ -458,6 +475,11 @@ describe('LegalworkRuntimeProvider', () => {
       },
       threadId: 'thr_1'
     })).resolves.toMatchObject({ id: 'att_1', name: 'shot.png' })
+    await expect(provider.getAttachmentMetadata('att_1')).resolves.toMatchObject({
+      id: 'att_1',
+      name: 'shot.png',
+      mimeType: 'image/png'
+    })
     await expect(provider.getAttachmentContent('att_1', { threadId: 'thr_1' })).resolves.toMatchObject({
       attachment: { id: 'att_1', mimeType: 'image/png' },
       dataBase64: 'abc'
@@ -480,6 +502,7 @@ describe('LegalworkRuntimeProvider', () => {
         threadId: 'thr_1'
       })
     )
+    expect(runtimeRequest).toHaveBeenCalledWith('/v1/attachments/att_1', 'GET')
   })
 
   it('lists, disables, and deletes memory records through Legalwork endpoints', async () => {

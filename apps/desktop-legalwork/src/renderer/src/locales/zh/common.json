@@ -1353,6 +1353,7 @@
   "workedFor": "用时 {{duration}}",
   "workingFor": "已用 {{duration}}",
   "working": "推进中…",
+  "waitingForUserInput": "等待你的输入",
   "processSteps": "工作过程（{{count}} 步）",
   "processTextLabel": "文本输出",
   "thinkingLabel": "思考过程",

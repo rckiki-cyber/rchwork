@@ -124,6 +124,7 @@ function scheduleThreadStreamRecovery(get: ChatStoreGet, threadId: string): void
 export function createThreadActions(
   { set, get, sseAbortRef }: StoreActionContext
 ): Pick<ChatState, 'createThread' | 'recoverActiveTurn' | 'selectThread' | 'drainQueuedMessages' | 'removeQueuedMessage' | 'sendMessage' | 'reviewActiveThread'> {
+  let activeTurnRecovery: { threadId: string; promise: Promise<boolean> } | null = null
   return {
   createThread: async (options = {}) => {
     if (!(await ensureRuntimeReadyForAction(set, get))) {
@@ -188,72 +189,87 @@ export function createThreadActions(
     }
   },
 
-  recoverActiveTurn: async () => {
+  recoverActiveTurn: () => {
     const state = get()
-    if (!state.activeThreadId) return false
+    if (!state.activeThreadId) return Promise.resolve(false)
     const { activeThreadId } = state
-    const p = getProvider()
-    sseAbortRef.current?.abort()
-    sseAbortRef.current = null
-    clearBusyWatchdog()
-    set({ error: runtimeStreamRecoveringMessage() })
-    try {
-      const {
-        blocks: rawBlocks,
-        latestSeq,
-        threadStatus,
-        latestTurnId,
-        latestUserMessageId,
-        turnDurationByUserId = {},
-        goal,
-        todos
-      } = await p.getThreadDetail(activeThreadId)
-      const blocks = hydrateBlockModelLabels(activeThreadId, rawBlocks)
-      const busy = threadSnapshotLooksRunning(blocks, threadStatus)
-      const currentTurnUserId = busy
-        ? state.currentTurnUserId ?? latestUserMessageId ?? findLatestUserBlockId(blocks)
-        : null
-      const currentTurnId = busy ? state.currentTurnId ?? latestTurnId ?? null : null
-
-      set((s) => ({
-        activeThreadId,
-        activeThreadGoal: goal ?? null,
-        activeThreadTodos: todos ?? null,
-        blocks,
-        lastSeq: latestSeq,
-        liveReasoning: '',
-        liveAssistant: '',
-        error: busy ? runtimeStreamRecoveringMessage() : null,
-        busy,
-        currentTurnId,
-        currentTurnUserId,
-        turnDurationByUserId,
-        queuedMessages: s.queuedMessages
-      }))
-
-      const ac = new AbortController()
-      sseAbortRef.current = ac
-      const sink = buildThreadEventSink(set, get, { threadId: activeThreadId, signal: ac.signal })
-      subscribeThreadEventsWithRecovery(p, activeThreadId, latestSeq, sink, ac.signal, get)
-      if (busy) {
-        armBusyWatchdog(set, get)
-      } else {
-        resetBusyRecoveryAttempts()
-        if (get().queuedMessages.length > 0) {
-          void get().drainQueuedMessages()
-        }
-      }
-      return busy
-    } catch (e) {
-      set({
-        error: formatRuntimeError(e),
-        ...(shouldOpenSettingsForError(e)
-          ? { route: 'settings' as const, settingsSection: 'agents' as const }
-          : {})
-      })
-      if (state.busy) armBusyWatchdog(set, get)
-      return state.busy
+    if (activeTurnRecovery?.threadId === activeThreadId) {
+      return activeTurnRecovery.promise
     }
+
+    const task = (async (): Promise<boolean> => {
+      const p = getProvider()
+      sseAbortRef.current?.abort()
+      sseAbortRef.current = null
+      clearBusyWatchdog()
+      set({ error: runtimeStreamRecoveringMessage() })
+      try {
+        const {
+          blocks: rawBlocks,
+          latestSeq,
+          threadStatus,
+          latestTurnId,
+          latestUserMessageId,
+          turnDurationByUserId = {},
+          goal,
+          todos
+        } = await p.getThreadDetail(activeThreadId)
+        if (get().activeThreadId !== activeThreadId) return false
+        const blocks = hydrateBlockModelLabels(activeThreadId, rawBlocks)
+        const busy = threadSnapshotLooksRunning(blocks, threadStatus)
+        const currentTurnUserId = busy
+          ? state.currentTurnUserId ?? latestUserMessageId ?? findLatestUserBlockId(blocks)
+          : null
+        const currentTurnId = busy ? state.currentTurnId ?? latestTurnId ?? null : null
+
+        set((s) => ({
+          activeThreadId,
+          activeThreadGoal: goal ?? null,
+          activeThreadTodos: todos ?? null,
+          blocks,
+          lastSeq: latestSeq,
+          liveReasoning: '',
+          liveAssistant: '',
+          error: busy ? runtimeStreamRecoveringMessage() : null,
+          busy,
+          currentTurnId,
+          currentTurnUserId,
+          turnDurationByUserId,
+          queuedMessages: s.queuedMessages
+        }))
+
+        const ac = new AbortController()
+        sseAbortRef.current = ac
+        const sink = buildThreadEventSink(set, get, { threadId: activeThreadId, signal: ac.signal })
+        subscribeThreadEventsWithRecovery(p, activeThreadId, latestSeq, sink, ac.signal, get)
+        if (busy) {
+          armBusyWatchdog(set, get)
+        } else {
+          resetBusyRecoveryAttempts()
+          if (get().queuedMessages.length > 0) {
+            void get().drainQueuedMessages()
+          }
+        }
+        return busy
+      } catch (e) {
+        if (get().activeThreadId !== activeThreadId) return false
+        set({
+          error: formatRuntimeError(e),
+          ...(shouldOpenSettingsForError(e)
+            ? { route: 'settings' as const, settingsSection: 'agents' as const }
+            : {})
+        })
+        if (state.busy) armBusyWatchdog(set, get)
+        return state.busy
+      }
+    })()
+    const entry = { threadId: activeThreadId, promise: task }
+    activeTurnRecovery = entry
+    const clearEntry = (): void => {
+      if (activeTurnRecovery === entry) activeTurnRecovery = null
+    }
+    void task.then(clearEntry, clearEntry)
+    return task
   },
 
   selectThread: async (id) => {

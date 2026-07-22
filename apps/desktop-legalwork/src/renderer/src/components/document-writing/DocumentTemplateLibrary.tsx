@@ -99,11 +99,11 @@ export function DocumentTemplateLibrary({
 
       {/* Category tabs */}
       <div className="ds-no-drag shrink-0 px-4 pb-3">
-        <div className="flex gap-1 rounded-[8px] border border-[var(--ds-sidebar-row-ring)] bg-[color-mix(in_srgb,var(--ds-sidebar-field-bg)_84%,transparent)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)] dark:bg-white/[0.035] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+        <div className="grid grid-cols-2 gap-1 rounded-[8px] border border-[var(--ds-sidebar-row-ring)] bg-[color-mix(in_srgb,var(--ds-sidebar-field-bg)_84%,transparent)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)] dark:bg-white/[0.035] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
           <button
             type="button"
             onClick={() => onCategoryChange('all')}
-            className={`group inline-flex min-h-[30px] flex-1 items-center justify-center gap-1.5 rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition ${
+            className={`group inline-flex min-h-[30px] w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition ${
               activeCategory === 'all'
                 ? 'bg-[var(--ds-sidebar-field-focus)] text-[#182230] shadow-[0_1px_3px_rgba(15,23,42,0.07),inset_0_0_0_1px_var(--ds-sidebar-row-ring),inset_0_1px_0_rgba(255,255,255,0.78)] dark:bg-white/[0.09] dark:text-white'
                 : 'text-[#5c6675] hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)] hover:text-[#1f2733] dark:text-white/58 dark:hover:bg-white/[0.055] dark:hover:text-white/88'
@@ -114,7 +114,7 @@ export function DocumentTemplateLibrary({
           <button
             type="button"
             onClick={() => onCategoryChange('litigation')}
-            className={`group inline-flex min-h-[30px] flex-1 items-center justify-center gap-1.5 rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition ${
+            className={`group inline-flex min-h-[30px] w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition ${
               activeCategory === 'litigation'
                 ? 'bg-[var(--ds-sidebar-field-focus)] text-[#182230] shadow-[0_1px_3px_rgba(15,23,42,0.07),inset_0_0_0_1px_var(--ds-sidebar-row-ring),inset_0_1px_0_rgba(255,255,255,0.78)] dark:bg-white/[0.09] dark:text-white'
                 : 'text-[#5c6675] hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)] hover:text-[#1f2733] dark:text-white/58 dark:hover:bg-white/[0.055] dark:hover:text-white/88'
@@ -126,7 +126,7 @@ export function DocumentTemplateLibrary({
           <button
             type="button"
             onClick={() => onCategoryChange('non-litigation')}
-            className={`group inline-flex min-h-[30px] flex-1 items-center justify-center gap-1.5 rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition ${
+            className={`group inline-flex min-h-[30px] w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition ${
               activeCategory === 'non-litigation'
                 ? 'bg-[var(--ds-sidebar-field-focus)] text-[#182230] shadow-[0_1px_3px_rgba(15,23,42,0.07),inset_0_0_0_1px_var(--ds-sidebar-row-ring),inset_0_1px_0_rgba(255,255,255,0.78)] dark:bg-white/[0.09] dark:text-white'
                 : 'text-[#5c6675] hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)] hover:text-[#1f2733] dark:text-white/58 dark:hover:bg-white/[0.055] dark:hover:text-white/88'
@@ -138,7 +138,7 @@ export function DocumentTemplateLibrary({
           <button
             type="button"
             onClick={() => onCategoryChange('custom')}
-            className={`group inline-flex min-h-[30px] flex-1 items-center justify-center gap-1.5 rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition ${
+            className={`group inline-flex min-h-[30px] w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition ${
               activeCategory === 'custom'
                 ? 'bg-[var(--ds-sidebar-field-focus)] text-[#182230] shadow-[0_1px_3px_rgba(15,23,42,0.07),inset_0_0_0_1px_var(--ds-sidebar-row-ring),inset_0_1px_0_rgba(255,255,255,0.78)] dark:bg-white/[0.09] dark:text-white'
                 : 'text-[#5c6675] hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)] hover:text-[#1f2733] dark:text-white/58 dark:hover:bg-white/[0.055] dark:hover:text-white/88'

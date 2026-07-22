@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import {
   defaultLegalworkTokenEconomySettings,
   isLegalworkRuntimeInsecure,
@@ -290,9 +290,15 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
     insecure: isLegalworkRuntimeInsecure(runtime)
   })
   const webRoot = join(root, 'vendor', 'data-compliance-review-codex', 'data-compliance-web')
+  const runtimePath = buildBundledOfficeCliPath(
+    process.env.PATH,
+    app.getAppPath(),
+    app.isPackaged
+  )
   child = spawn(resolution.command, args, {
     env: {
       ...process.env,
+      PATH: runtimePath,
       ELECTRON_RUN_AS_NODE: '1',
       LEGALWORK_RUNTIME_TOKEN: runtime.runtimeToken,
       LEGALWORK_COMPLIANCE_WEB_ROOT: webRoot,
@@ -478,14 +484,35 @@ function resolveOfficeCliBinaryPath(
   appPath: string,
   isPackaged: boolean
 ): { command: string; args: string[] } {
-  const root = isPackaged ? appPath.replace(/app\.asar$/, 'app.asar.unpacked') : appPath
-  const officeCliRoot = join(root, 'legalwork', 'node_modules', '@officecli', 'officecli')
+  const officeCliRoot = resolveOfficeCliRoot(appPath, isPackaged)
   const binaryPath = join(officeCliRoot, 'vendor', 'officecli')
   if (existsSync(binaryPath)) {
     return { command: binaryPath, args: ['mcp'] }
   }
   const shimPath = join(officeCliRoot, 'officecli.js')
   return { command: process.execPath, args: [shimPath, 'mcp'] }
+}
+
+function resolveOfficeCliRoot(appPath: string, isPackaged: boolean): string {
+  const root = isPackaged ? appPath.replace(/app\.asar$/, 'app.asar.unpacked') : appPath
+  return join(root, 'legalwork', 'node_modules', '@officecli', 'officecli')
+}
+
+export function buildBundledOfficeCliPath(
+  currentPath: string | undefined,
+  appPath: string,
+  isPackaged: boolean
+): string {
+  const bundledBinDir = join(resolveOfficeCliRoot(appPath, isPackaged), 'vendor')
+  const seen = new Set<string>()
+  const entries: string[] = []
+  for (const entry of [bundledBinDir, ...(currentPath ?? '').split(delimiter)]) {
+    const normalized = entry.trim()
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    entries.push(normalized)
+  }
+  return entries.join(delimiter)
 }
 
 function buildOfficeCliLegalworkMcpServer(

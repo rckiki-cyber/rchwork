@@ -1211,7 +1211,7 @@ export class ClawRuntime {
       await this.sendFeishuMessage(
         bridge,
         message.chatId,
-        { text: replyText },
+        { markdown: replyText },
         replyOptions,
         {
           purpose: 'agent-reply',

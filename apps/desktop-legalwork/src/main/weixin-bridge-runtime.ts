@@ -40,6 +40,28 @@ const MessageState = {
   FINISH: 2
 } as const
 
+const CJK_TEXT_PATTERN = '[\\u3040-\\u30ff\\u3400-\\u9fff\\uac00-\\ud7af]'
+
+/**
+ * Keep the Markdown subset supported by WeChat bot text messages and remove
+ * constructs that the client would otherwise expose as raw source markers.
+ * This mirrors the filtering performed by the bundled Tencent channel plugin.
+ */
+function formatWeixinMarkdown(text: string): string {
+  return text
+    .trim()
+    .replace(/!\[[^\]]*\]\([^\n)]*\)/g, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/^#{5,6}\s+/gm, '')
+    .replace(/~~([^\n~]+)~~/g, '$1')
+    .replace(new RegExp(`\\*\\*\\*([^*\\n]*${CJK_TEXT_PATTERN}[^*\\n]*)\\*\\*\\*`, 'g'), '$1')
+    .replace(new RegExp(`___([^_\\n]*${CJK_TEXT_PATTERN}[^_\\n]*)___`, 'g'), '$1')
+    .replace(new RegExp(`(^|[^*])\\*([^*\\n]*${CJK_TEXT_PATTERN}[^*\\n]*)\\*(?!\\*)`, 'g'), '$1$2')
+    .replace(new RegExp(`(^|[^_])_([^_\\n]*${CJK_TEXT_PATTERN}[^_\\n]*)_(?!_)`, 'g'), '$1$2')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 type JsonRecord = Record<string, unknown>
 
 type WeixinBridgeRuntimeContext = {
@@ -881,7 +903,7 @@ async function monitorWeixinAccount(accountId: string, signal: AbortSignal): Pro
         await sendMessageWeixin({
           account,
           to,
-          text: reply,
+          text: formatWeixinMarkdown(reply),
           contextToken
         })
       }
@@ -1081,7 +1103,7 @@ export async function sendWeixinBridgeMessage(options: {
 }): Promise<WeixinBridgeSendResult> {
   const accountId = normalizeAccountId(options.accountId)
   const to = options.to.trim()
-  const text = options.text.trim()
+  const text = formatWeixinMarkdown(options.text)
   if (!accountId) return { ok: false, message: 'WeChat account id is missing.' }
   if (!to) return { ok: false, message: 'WeChat recipient is missing.' }
   if (!text) return { ok: false, message: 'Message is empty.' }
@@ -1125,5 +1147,6 @@ export function stopWeixinBridgeRuntime(): void {
 
 export const weixinBridgeRuntimeInternals = {
   buildBaseInfo,
+  formatWeixinMarkdown,
   normalizeAccountId
 }

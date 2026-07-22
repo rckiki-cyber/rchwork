@@ -616,6 +616,72 @@ describe('ClawRuntime', () => {
     )
   })
 
+  it('sends Feishu agent replies as Markdown posts', async () => {
+    const settings = buildSettings()
+    settings.claw.im.enabled = true
+    settings.claw.channels = [buildChannel()]
+    const { store } = mutableSettingsStore(settings)
+    const send = vi.fn(async () => ({ messageId: 'om_markdown' }))
+    const runtime = createClawRuntime({
+      store: store as never,
+      runtimeRequest: vi.fn() as never,
+      logError: () => undefined,
+      createScheduledTaskFromText: vi.fn(async () => ({ kind: 'noop' as const }))
+    })
+    ;(runtime as unknown as { feishuChannels: Map<string, { send: typeof send }> })
+      .feishuChannels
+      .set('channel_1', { send })
+    ;(runtime as unknown as {
+      processIncomingImPrompt: () => Promise<{
+        ok: true
+        threadId: string
+        turnId: string
+        text: string
+        files: []
+      }>
+    }).processIncomingImPrompt = vi.fn(async () => ({
+      ok: true as const,
+      threadId: 'thr_markdown',
+      turnId: 'turn_markdown',
+      text: '### 文件概览\n\n| 名称 | 状态 |\n| --- | --- |\n| **合同** | 完成 |',
+      files: [] as []
+    }))
+
+    await (runtime as unknown as {
+      handleFeishuMessage: (channelId: string, message: {
+        chatId: string
+        messageId: string
+        senderId: string
+        senderName?: string
+        chatType: 'p2p' | 'group'
+        mentionedBot: boolean
+        mentionAll: boolean
+        content: string
+        rawContentType: string
+        mentions: unknown[]
+      }) => Promise<void>
+    }).handleFeishuMessage('channel_1', {
+      chatId: 'oc_chat_a',
+      messageId: 'om_inbound',
+      senderId: 'ou_1',
+      senderName: 'Alice',
+      chatType: 'p2p',
+      mentionedBot: false,
+      mentionAll: false,
+      content: '请整理文件',
+      rawContentType: 'text',
+      mentions: []
+    })
+
+    expect(send).toHaveBeenCalledWith(
+      'oc_chat_a',
+      {
+        markdown: '### 文件概览\n\n| 名称 | 状态 |\n| --- | --- |\n| **合同** | 完成 |'
+      },
+      { replyTo: 'om_inbound', replyInThread: false }
+    )
+  })
+
   it('handles Feishu /new locally by clearing the mapped IM thread', async () => {
     const settings = buildSettings()
     settings.claw.im.enabled = true

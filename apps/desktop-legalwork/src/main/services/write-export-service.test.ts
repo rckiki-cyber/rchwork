@@ -52,6 +52,16 @@ describe('write-export-service helpers', () => {
     expect(html).toContain(`href="${pathToFileURL(join(workspaceRoot, 'notes.md')).href}"`)
   })
 
+  it('uses SimSun as the default font for exported documents', async () => {
+    const html = await buildWriteExportHtmlDocument({
+      sourcePath: join(workspaceRoot, 'draft.md'),
+      content: '# 标题\n\n正文'
+    })
+
+    expect(html).toContain('font-family: "SimSun", "宋体", serif;')
+    expect(html).not.toContain('font-family: -apple-system')
+  })
+
   it('renders clipboard html fragments for markdown content', async () => {
     const sourcePath = join(workspaceRoot, 'draft.md')
     const html = await buildWriteClipboardHtmlFragment({

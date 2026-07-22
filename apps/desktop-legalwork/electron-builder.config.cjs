@@ -98,6 +98,15 @@ module.exports = {
       from: 'vendor/ocr-runtime',
       to: 'ocr-runtime',
       filter: ['**/*']
+    },
+    {
+      from: '../../ocr_agent.py',
+      to: 'ocr_agent.py'
+    },
+    {
+      from: '../../document',
+      to: 'document',
+      filter: ['**/*', '!**/__pycache__/**/*', '!**/*.pyc', '!**/*.pyo', '!.DS_Store']
     }
   ],
   files: [

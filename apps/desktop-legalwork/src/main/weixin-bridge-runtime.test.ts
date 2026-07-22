@@ -34,6 +34,35 @@ describe('weixin bridge runtime', () => {
     expect(normalizeAccountId('__proto__')).toBe('default')
   })
 
+  it('keeps supported WeChat Markdown while removing unsupported source markers', () => {
+    const { formatWeixinMarkdown } = weixinBridgeRuntimeInternals
+
+    expect(formatWeixinMarkdown([
+      '### 文件概览',
+      '',
+      '> 引用内容',
+      '',
+      '| 名称 | 状态 |',
+      '| --- | --- |',
+      '| **合同** | 完成 |',
+      '',
+      '##### 补充说明',
+      '~~已删除~~，*中文斜体*，*italic*',
+      '![preview](https://example.com/image.png)'
+    ].join('\n'))).toBe([
+      '### 文件概览',
+      '',
+      '引用内容',
+      '',
+      '| 名称 | 状态 |',
+      '| --- | --- |',
+      '| **合同** | 完成 |',
+      '',
+      '补充说明',
+      '已删除，中文斜体，*italic*'
+    ].join('\n'))
+  })
+
   it('does not expose the removed OpenClaw adapter builders', () => {
     expect(Object.keys(weixinBridgeRuntimeInternals)).not.toContain('buildGuiManagedOpenClawConfig')
     expect(Object.keys(weixinBridgeRuntimeInternals)).not.toContain('buildWeixinBridgeAdapterSource')

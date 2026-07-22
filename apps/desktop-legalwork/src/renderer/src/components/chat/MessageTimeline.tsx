@@ -294,8 +294,7 @@ function MessageTurn({
   }, [turn.blocks, isProcessing])
   const { think: liveThink, content: liveContent } = splitThink(live)
   const liveProcessText = [liveReasoning, liveThink].filter(Boolean).join('\n\n')
-  const [workExpandedOverride, setWorkExpandedOverride] = useState<boolean | null>(null)
-  const workExpanded = workExpandedOverride ?? defaultWorkExpanded()
+  const [workExpandedByUser, setWorkExpandedByUser] = useState(false)
   const turnModelBrand = turn.user?.modelLabel
     ? brandForModel(turn.user.modelLabel)
     : modelBrand
@@ -315,6 +314,21 @@ function MessageTurn({
     () => turn.blocks.filter((block) => block.kind === 'review'),
     [turn.blocks]
   )
+  const waitingForUserInput = processBlocks.some(
+    (block) => block.kind === 'user_input' && block.status === 'pending'
+  )
+  const waitingForApproval = processBlocks.some(
+    (block) => block.kind === 'approval' && block.status === 'pending'
+  )
+  const workAutoExpanded = defaultWorkExpanded(
+    isProcessing,
+    waitingForUserInput || waitingForApproval
+  )
+  const workExpanded = workAutoExpanded || workExpandedByUser
+
+  useEffect(() => {
+    if (workAutoExpanded) setWorkExpandedByUser(false)
+  }, [workAutoExpanded])
 
   const processSections = useMemo(
     () => (workExpanded ? groupProcessSections(processBlocks) : []),
@@ -334,9 +348,6 @@ function MessageTurn({
   )
   const showLiveAssistant = !isProcessing && !!liveContent.trim()
 
-  // Keep the work process visible by default so tool calls and runtime
-  // reasoning summaries are inspectable without an extra click.
-
   const hasProcess = isProcessing || processBlocks.length > 0
 
   return (
@@ -352,7 +363,9 @@ function MessageTurn({
             durationMs={durationMs}
             reasoningDurationMs={reasoningDurationMs}
             expanded={workExpanded}
-            onToggle={() => setWorkExpandedOverride((value) => !(value ?? defaultWorkExpanded()))}
+            onToggle={() => {
+              if (!workAutoExpanded) setWorkExpandedByUser((value) => !value)
+            }}
           />
           {!workExpanded && attentionProcessBlocks.length > 0 ? (
             <div className="mt-1 flex flex-col gap-2">
@@ -390,7 +403,12 @@ function MessageTurn({
         <ReviewSummaryCard key={review.id} review={review} />
       ))}
 
-      {isProcessing ? <LiveTurnProgressRow modelBrand={turnModelBrand} /> : null}
+      {isProcessing ? (
+        <LiveTurnProgressRow
+          modelBrand={turnModelBrand}
+          waitingForUserInput={waitingForUserInput}
+        />
+      ) : null}
 
       {!isProcessing && devPreviewCard ? devPreviewCard : null}
 
@@ -411,15 +429,31 @@ function MessageTurn({
   )
 }
 
-function LiveTurnProgressRow({ modelBrand }: { modelBrand: ReturnType<typeof brandForModel> }): ReactElement {
+function LiveTurnProgressRow({
+  modelBrand,
+  waitingForUserInput
+}: {
+  modelBrand: ReturnType<typeof brandForModel>
+  waitingForUserInput: boolean
+}): ReactElement {
   const { t } = useTranslation('common')
 
   return (
-    <div className="flex w-fit max-w-full items-center gap-2 py-0.5 text-[14px] font-medium text-ds-muted">
+    <div
+      className={`flex w-fit max-w-full items-center gap-2 py-0.5 text-[14px] font-medium ${
+        waitingForUserInput ? 'text-accent' : 'text-ds-muted'
+      }`}
+    >
       <span className="ds-work-logo-slot ds-work-logo-slot-sm mr-0.5">
-        <AnimatedWorkLogo active brand={modelBrand} phase="trail" size="sm" />
+        {waitingForUserInput ? (
+          <span className="block h-2.5 w-2.5 rounded-full bg-accent" />
+        ) : (
+          <AnimatedWorkLogo active brand={modelBrand} phase="trail" size="sm" />
+        )}
       </span>
-      <span className="ds-shiny-text">{t('working')}</span>
+      <span className={waitingForUserInput ? '' : 'ds-shiny-text'}>
+        {t(waitingForUserInput ? 'waitingForUserInput' : 'working')}
+      </span>
     </div>
   )
 }

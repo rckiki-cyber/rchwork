@@ -116,6 +116,14 @@ describe('electron-builder Legalwork packaging', () => {
       expect.objectContaining({
         from: 'vendor/ocr-runtime',
         to: 'ocr-runtime'
+      }),
+      expect.objectContaining({
+        from: '../../ocr_agent.py',
+        to: 'ocr_agent.py'
+      }),
+      expect.objectContaining({
+        from: '../../document',
+        to: 'document'
       })
     ]))
     expect(builderConfig.files).toEqual(expect.arrayContaining([
@@ -129,6 +137,25 @@ describe('electron-builder Legalwork packaging', () => {
       '**/vendor/data-compliance-review-codex/data-compliance-web/**/*',
       '**/vendor/data-compliance-review-codex/projects/data-compliance-ai-project-kit/**/*'
     ]))
+  })
+
+  it('validates the packaged document OCR entrypoint and modules', () => {
+    const root = tempRoot()
+    const context = createMacPackContext(root)
+    const resourcesRoot = afterPack._internals.packedResourcesDir(context)
+
+    for (const relativePath of afterPack.DOCUMENT_OCR_REQUIRED_PATHS) {
+      touch(join(resourcesRoot, relativePath))
+    }
+    mkdirSync(join(resourcesRoot, 'ocr-runtime'), { recursive: true })
+
+    expect(() => afterPack._internals.validateBundledDocumentOcrRuntime(context)).not.toThrow()
+
+    rmSync(join(resourcesRoot, 'ocr_agent.py'), { force: true })
+
+    expect(() => afterPack._internals.validateBundledDocumentOcrRuntime(context)).toThrow(
+      /ocr_agent\.py/
+    )
   })
 
   it('validates the unpacked data compliance runtime before release artifacts are created', () => {

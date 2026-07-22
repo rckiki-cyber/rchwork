@@ -341,10 +341,13 @@ function createMcpLocalTool(
   state: McpConnectionState,
   descriptor: McpToolDescriptor
 ): LocalTool {
+  const officeCliDocuments = isOfficeCliTool(state.serverId, descriptor.name)
+    ? new Map<string, string>()
+    : undefined
   return LocalToolHost.defineTool({
     name: normalizeMcpToolName(state.serverId, descriptor.name),
     description: descriptor.description ?? `MCP tool ${descriptor.name} from ${state.serverId}`,
-    inputSchema: descriptor.inputSchema ?? { type: 'object' },
+    inputSchema: normalizeMcpInputSchema(state.serverId, descriptor),
     policy: policyFromAnnotations(descriptor.annotations),
     shouldAdvertise: (context: ToolHostContext) => isMcpServerTrusted(state.server, context.workspace),
     execute: async (args, context) => {
@@ -354,11 +357,30 @@ function createMcpLocalTool(
           isError: true
         }
       }
+      const normalized = officeCliDocuments
+        ? normalizeOfficeCliArguments(args, officeCliDocuments.get(context.threadId))
+        : { arguments: args }
+      if (normalized.error) {
+        return {
+          output: {
+            error: normalized.error,
+            hint: 'Pass the complete OfficeCLI command in the command field, including the document file path.'
+          },
+          isError: true
+        }
+      }
       const result = await callMcpToolWithReconnect(
         state,
-        { name: descriptor.name, arguments: args },
+        { name: descriptor.name, arguments: normalized.arguments },
         context.abortSignal
       )
+      if (officeCliDocuments && !mcpResultIsError(result)) {
+        rememberOfficeCliDocument(
+          officeCliDocuments,
+          context.threadId,
+          normalized.arguments.command
+        )
+      }
       return {
         output: {
           serverId: state.serverId,
@@ -369,6 +391,201 @@ function createMcpLocalTool(
       }
     }
   })
+}
+
+type OfficeCliNormalization = {
+  arguments: Record<string, unknown>
+  error?: string
+}
+
+function isOfficeCliTool(serverId: string, toolName: string): boolean {
+  return serverId.toLowerCase() === 'officecli' && toolName.toLowerCase() === 'officecli'
+}
+
+function normalizeMcpInputSchema(
+  serverId: string,
+  descriptor: McpToolDescriptor
+): Record<string, unknown> {
+  const schema = descriptor.inputSchema ?? { type: 'object' }
+  if (!isOfficeCliTool(serverId, descriptor.name)) return schema
+  return {
+    ...schema,
+    additionalProperties: false
+  }
+}
+
+/**
+ * OfficeCLI exposes one `command` argument, but some OpenAI-compatible models
+ * occasionally split CLI flags into tool-call fields. Recover the safe subset
+ * here so a resident document can still be edited instead of executing a bare
+ * `add`/`set` command and dumping CLI help into the conversation.
+ */
+export function normalizeOfficeCliArguments(
+  input: Record<string, unknown>,
+  activeDocument?: string
+): OfficeCliNormalization {
+  const rawCommand = input.command
+  const parsedArray = parseJsonStringArray(rawCommand)
+  if (parsedArray) return { arguments: { command: parsedArray } }
+  if (Array.isArray(rawCommand)) {
+    if (!rawCommand.every((part) => typeof part === 'string')) {
+      return { arguments: {}, error: 'OfficeCLI command arrays may only contain strings.' }
+    }
+    return { arguments: { command: rawCommand } }
+  }
+  if (typeof rawCommand !== 'string' || !rawCommand.trim()) {
+    return { arguments: {}, error: 'OfficeCLI command is required.' }
+  }
+
+  const words = officeCliCommandWords(rawCommand)
+  if (words.length !== 1) return { arguments: { command: rawCommand } }
+  const verb = words[0]?.toLowerCase()
+  if (!verb || !OFFICECLI_FILE_COMMANDS.has(verb)) {
+    return { arguments: { command: rawCommand } }
+  }
+
+  const file = scalarToolArgument(input.file)
+    ?? scalarToolArgument(input.document)
+    ?? scalarToolArgument(input.path)
+    ?? activeDocument
+  if (!file) {
+    return {
+      arguments: {},
+      error: `OfficeCLI ${verb} requires a document file path; no active document is recorded for this task.`
+    }
+  }
+
+  const command = [verb, file]
+  if (OFFICECLI_PARENT_COMMANDS.has(verb)) {
+    const parent = scalarToolArgument(input.parent)
+      ?? scalarToolArgument(input.target)
+      ?? scalarToolArgument(input.element)
+    if (!parent) {
+      return {
+        arguments: {},
+        error: `OfficeCLI ${verb} requires a document element path such as /body.`
+      }
+    }
+    command.push(parent)
+  }
+  appendOfficeCliOptions(command, input)
+  return { arguments: { command } }
+}
+
+const OFFICECLI_FILE_COMMANDS = new Set([
+  'create', 'open', 'close', 'save', 'view', 'validate', 'get', 'query', 'set', 'add', 'remove', 'move', 'swap', 'batch', 'raw'
+])
+const OFFICECLI_PARENT_COMMANDS = new Set(['get', 'set', 'add', 'remove', 'move', 'swap'])
+
+function appendOfficeCliOptions(command: string[], input: Record<string, unknown>): void {
+  const type = scalarToolArgument(input.type)
+  if (type) command.push('--type', type)
+  for (const [name, value] of Object.entries(objectToolArgument(input.props) ?? objectToolArgument(input.properties) ?? {})) {
+    const normalized = scalarToolArgument(value)
+    if (normalized !== undefined) command.push('--prop', `${name}=${normalized}`)
+  }
+  for (const option of ['from', 'index', 'after', 'before', 'input'] as const) {
+    const value = scalarToolArgument(input[option])
+    if (value !== undefined) command.push(`--${option}`, value)
+  }
+  if (input.force === true) command.push('--force')
+  if (input.json === true) command.push('--json')
+  const additional = input.additionalArguments ?? input.additional_arguments
+  if (Array.isArray(additional)) {
+    for (const value of additional) {
+      const normalized = scalarToolArgument(value)
+      if (normalized !== undefined) command.push(normalized)
+    }
+  }
+}
+
+function scalarToolArgument(value: unknown): string | undefined {
+  if (typeof value === 'string') return value.trim() || undefined
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return undefined
+}
+
+function objectToolArgument(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+}
+
+function parseJsonStringArray(value: unknown): string[] | undefined {
+  if (typeof value !== 'string' || !value.trim().startsWith('[')) return undefined
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return Array.isArray(parsed) && parsed.every((part) => typeof part === 'string')
+      ? parsed
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function officeCliCommandWords(command: unknown): string[] {
+  if (Array.isArray(command)) {
+    return command.filter((part): part is string => typeof part === 'string')
+  }
+  if (typeof command !== 'string') return []
+  const words: string[] = []
+  let current = ''
+  let quote: '"' | "'" | undefined
+  let escaped = false
+  for (const char of command.trim()) {
+    if (escaped) {
+      current += char
+      escaped = false
+      continue
+    }
+    if (char === '\\' && quote !== "'") {
+      escaped = true
+      continue
+    }
+    if (quote) {
+      if (char === quote) quote = undefined
+      else current += char
+      continue
+    }
+    if (char === '"' || char === "'") {
+      quote = char
+      continue
+    }
+    if (/\s/.test(char)) {
+      if (current) {
+        words.push(current)
+        current = ''
+      }
+      continue
+    }
+    current += char
+  }
+  if (escaped) current += '\\'
+  if (current) words.push(current)
+  if (words[0]?.toLowerCase() === 'officecli') words.shift()
+  return words
+}
+
+function rememberOfficeCliDocument(
+  documents: Map<string, string>,
+  threadId: string,
+  command: unknown
+): void {
+  const words = officeCliCommandWords(command)
+  const verb = words[0]?.toLowerCase()
+  const file = words[1]
+  if (!verb || !file) return
+  if (verb === 'create' || verb === 'open') {
+    documents.set(threadId, file)
+  } else if (verb === 'close' && documents.get(threadId) === file) {
+    documents.delete(threadId)
+  }
+}
+
+function mcpResultIsError(result: unknown): boolean {
+  return typeof result === 'object'
+    && result !== null
+    && (result as { isError?: boolean }).isError === true
 }
 
 async function listAllMcpTools(client: McpClientLike, timeout: number): Promise<McpToolDescriptor[]> {

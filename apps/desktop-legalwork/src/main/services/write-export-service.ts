@@ -55,8 +55,7 @@ const EXPORT_CSS = `
     margin: 0;
     background: #ffffff;
     color: #111827;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-family: "SimSun", "宋体", serif;
     font-size: 15px;
     line-height: 1.72;
   }
@@ -140,7 +139,7 @@ const EXPORT_CSS = `
   }
 
   .markdown-body code {
-    font-family: "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace;
+    font-family: "SimSun", "宋体", serif;
     font-size: 0.92em;
   }
 
@@ -206,7 +205,7 @@ const EXPORT_CSS = `
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace;
+    font-family: "SimSun", "宋体", serif;
   }
 
   @page {
@@ -550,7 +549,7 @@ export async function exportWriteDocument(
         creator: 'legalwork',
         keywords: ['markdown', 'export'],
         description: `Exported from ${basename(sourcePath)}`,
-        font: 'Arial',
+        font: 'SimSun',
         fontSize: 24
       })
       await writeFile(targetPath, await bufferFromDocxResult(docx))

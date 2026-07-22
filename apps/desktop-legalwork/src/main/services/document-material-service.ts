@@ -22,9 +22,13 @@ type MammothModule = {
   extractRawText?: (input: { buffer: Buffer }) => Promise<{ value?: string }>
 }
 
-type PdfParse = (buffer: Buffer) => Promise<{ text?: string }>
+type PdfParser = {
+  getText: () => Promise<{ text?: string }>
+  destroy: () => Promise<void>
+}
 
-const MEANINGFUL_PDF_TEXT_MIN_CHARS = 30
+type PdfParseConstructor = new (options: { data: Buffer }) => PdfParser
+
 const OCR_TIMEOUT_MS = 180_000
 const OCR_OUTPUT_MAX_BYTES = 20 * 1024 * 1024
 
@@ -36,8 +40,22 @@ function decodeBase64(dataBase64: string): Buffer {
   return Buffer.from(dataBase64, 'base64')
 }
 
-function meaningfulText(text: string): boolean {
-  return text.replace(/\s/g, '').length >= MEANINGFUL_PDF_TEXT_MIN_CHARS
+async function extractPdfTextLayer(buffer: Buffer): Promise<DocumentMaterialExtractionResult> {
+  let parser: PdfParser | null = null
+  try {
+    const pdfModule = await import('pdf-parse') as { PDFParse?: PdfParseConstructor }
+    if (!pdfModule.PDFParse) {
+      return { ok: false, message: '当前环境缺少 PDF 文本解析能力。' }
+    }
+    parser = new pdfModule.PDFParse({ data: buffer })
+    const result = await parser.getText()
+    return { ok: true, content: result.text?.trim() ?? '' }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    return { ok: false, message: `PDF 文本解析失败：${detail}` }
+  } finally {
+    await parser?.destroy().catch(() => undefined)
+  }
 }
 
 function uniqueExistingDirs(paths: string[]): string[] {
@@ -249,18 +267,11 @@ export async function extractDocumentMaterial(
     }
 
     if (ext === 'pdf') {
-      try {
-        const pdfModule = await import('pdf-parse') as { default?: PdfParse }
-        const parse = pdfModule.default
-        if (parse) {
-          const result = await parse(buffer)
-          const content = result.text?.trim() ?? ''
-          if (meaningfulText(content)) return { ok: true, content }
-        }
-      } catch {
-        // Fall through to OCR. Some scanned PDFs or damaged text layers make
-        // text extraction fail before we can determine whether OCR is needed.
-      }
+      const textResult = await extractPdfTextLayer(buffer)
+      if (!textResult.ok) return textResult
+      // Any non-whitespace extracted text proves that the PDF has a text layer.
+      // OCR is only appropriate when the parser succeeds but finds no text at all.
+      if (textResult.content.trim()) return textResult
       return extractScannedPdfWithOcr(request.fileName, buffer)
     }
 

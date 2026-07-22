@@ -87,6 +87,6 @@ export function summarizeProcessBlocks(
   return parts.join(' · ') || t('processSteps', { count: blocks.length })
 }
 
-export function defaultWorkExpanded(): boolean {
-  return true
+export function defaultWorkExpanded(processing = false, requiresAction = false): boolean {
+  return processing || requiresAction
 }

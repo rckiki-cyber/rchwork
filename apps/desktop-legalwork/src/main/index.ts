@@ -63,6 +63,8 @@ import {
 } from './weixin-bridge-runtime'
 import { webhookUrl } from './claw-runtime-helpers'
 import { isLegalworkHealthResponseBody } from './legalwork-health'
+import { FingerprintedSingleFlight } from './runtime/fingerprinted-single-flight'
+import { continueAppQuitAfterCleanup } from './continue-app-quit'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const HIDDEN_START_ARG = '--hidden'
@@ -71,6 +73,7 @@ const startupTraceStart = Date.now()
 const RUNTIME_ENSURE_SLOW_MS = 2_500
 const RUNTIME_EXISTING_HEALTH_FAST_MS = 400
 const RUNTIME_PORT_CONFLICT_HEALTH_RECHECK_MS = 2_000
+const RUNTIME_THREAD_API_PROBE_TIMEOUT_MS = 5_000
 
 function traceStartup(label: string, detail?: unknown): void {
   if (!startupTraceEnabled) return
@@ -166,6 +169,7 @@ let appBehavior: AppBehaviorConfigV1 = normalizeAppBehaviorSettings()
 let tray: Tray | null = null
 let isQuitting = false
 let isQuittingForGuiUpdate = false
+let quitContinuationStarted = false
 
 type GuiUpdaterModule = typeof import('./gui-updater')
 
@@ -177,7 +181,8 @@ function emitClawChannelActivity(payload: { channelId: string; threadId: string 
   mainWindow.webContents.send('claw:channel-activity', payload)
 }
 
-const MANAGED_STOP_TIMEOUT_MS = 1200
+const MANAGED_STOP_TIMEOUT_MS = 1_600
+const FORCE_QUIT_TIMEOUT_MS = 2_000
 
 async function stopManagedRuntimesForQuit(): Promise<void> {
   if (managedRuntimesStoppedForQuit) return
@@ -435,7 +440,7 @@ async function probeThreadApi(settings: AppSettingsV1): Promise<
   try {
     const res = await fetch(`${base}/v1/threads?limit=1`, {
       headers,
-      signal: AbortSignal.timeout(2_000)
+      signal: AbortSignal.timeout(RUNTIME_THREAD_API_PROBE_TIMEOUT_MS)
     })
     if (res.ok) return { ok: true }
     const info = parseRuntimeErrorBody(
@@ -500,8 +505,7 @@ async function sleepWithAbort(ms: number, signal: AbortSignal): Promise<void> {
   })
 }
 
-let runtimeEnsurePromise: Promise<void> | null = null
-let runtimeEnsureFingerprint: string | null = null
+const runtimeEnsureSingleFlight = new FingerprintedSingleFlight()
 let runtimeSettingsApplyPromise: Promise<void> | null = null
 let lastAppliedSettings: AppSettingsV1 | null = null
 
@@ -566,10 +570,8 @@ async function waitForQueuedRuntimeSettingsApply(): Promise<void> {
 
 /**
  * Build a stable fingerprint of the settings that affect the
- * Legalwork runtime so that `ensureRuntime` can debounce on real
- * state instead of on a single in-flight promise. Without this,
- * a fresh call that arrives while a failing ensure is still pending
- * would re-throw the old error.
+ * Legalwork runtime. Calls for the same configuration share one
+ * result, while a changed configuration waits and starts a new check.
  */
 function runtimeFingerprint(settings: AppSettingsV1): string {
   return stableSettingsStringify(resolveLegalworkRuntimeSettings(settings))
@@ -577,45 +579,26 @@ function runtimeFingerprint(settings: AppSettingsV1): string {
 
 async function ensureRuntime(settings: AppSettingsV1): Promise<void> {
   const fingerprint = runtimeFingerprint(settings)
-  const pending = runtimeEnsurePromise
-  if (pending) {
-    const pendingFingerprint = runtimeEnsureFingerprint
-    // Wait for the in-flight ensure, then re-evaluate against the
-    // fingerprint so callers don't inherit a stale result.
-    let pendingFailed = false
+  await runtimeEnsureSingleFlight.run(fingerprint, async () => {
+    const startedAt = Date.now()
+    let failure: unknown
     try {
-      await pending
-    } catch {
-      pendingFailed = true
-      /* fall through to retry with the current settings */
+      await ensureRuntimeOnce(settings)
+    } catch (error) {
+      failure = error
+      throw error
+    } finally {
+      const durationMs = Date.now() - startedAt
+      if (failure) {
+        logWarn('runtime-ensure', 'Legalwork runtime ensure failed.', {
+          durationMs,
+          message: failure instanceof Error ? failure.message : String(failure)
+        })
+      } else if (durationMs >= RUNTIME_ENSURE_SLOW_MS) {
+        logWarn('runtime-ensure', 'Legalwork runtime ensure was slow.', { durationMs })
+      }
     }
-    if (!pendingFailed && pendingFingerprint === fingerprint) return
-  }
-  const task = ensureRuntimeOnce(settings)
-  runtimeEnsurePromise = task
-  runtimeEnsureFingerprint = fingerprint
-  const startedAt = Date.now()
-  let failure: unknown
-  try {
-    await task
-  } catch (error) {
-    failure = error
-    throw error
-  } finally {
-    const durationMs = Date.now() - startedAt
-    if (failure) {
-      logWarn('runtime-ensure', 'Legalwork runtime ensure failed.', {
-        durationMs,
-        message: failure instanceof Error ? failure.message : String(failure)
-      })
-    } else if (durationMs >= RUNTIME_ENSURE_SLOW_MS) {
-      logWarn('runtime-ensure', 'Legalwork runtime ensure was slow.', { durationMs })
-    }
-    if (runtimeEnsurePromise === task) {
-      runtimeEnsurePromise = null
-      runtimeEnsureFingerprint = null
-    }
-  }
+  })
 }
 
 async function ensureRuntimeOnce(settings: AppSettingsV1): Promise<void> {
@@ -1087,22 +1070,18 @@ app.on('before-quit', (event) => {
   if (isQuittingForGuiUpdate) return
   if (managedRuntimesStoppedForQuit) return
   event.preventDefault()
+  if (quitContinuationStarted) return
+  quitContinuationStarted = true
 
-  // Force-quit guard: if backend doesn't exit within 1500ms, force quit
-  const forceQuitTimer = setTimeout(() => {
-    if (!managedRuntimesStoppedForQuit) {
+  continueAppQuitAfterCleanup({
+    cleanup: stopManagedRuntimesForQuit,
+    quit: () => {
       managedRuntimesStoppedForQuit = true
       app.quit()
+    },
+    forceAfterMs: FORCE_QUIT_TIMEOUT_MS,
+    onCleanupError: (error) => {
+      console.warn('[legalwork] failed to stop managed runtimes before quit:', error)
     }
-  }, 1500)
-
-  void stopManagedRuntimesForQuit()
-    .catch(() => {})
-    .finally(() => {
-      clearTimeout(forceQuitTimer)
-      if (!managedRuntimesStoppedForQuit) {
-        managedRuntimesStoppedForQuit = true
-        app.quit()
-      }
-    })
+  })
 })

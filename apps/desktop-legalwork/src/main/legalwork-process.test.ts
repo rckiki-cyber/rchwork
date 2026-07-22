@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type AddressInfo } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureLogger } from './logger'
 import {
@@ -370,6 +370,31 @@ describe('syncGuiManagedLegalworkConfig', () => {
       join('/Applications/legalwork.app/Contents/Resources/app.asar.unpacked', 'legalwork', 'node_modules', '@officecli', 'officecli', 'vendor', 'officecli')
     )
     expect(parsed.capabilities.mcp.servers.officecli.args).toEqual(['mcp'])
+  })
+
+  it('places the bundled OfficeCLI ahead of system binaries in the runtime PATH', async () => {
+    const module = await import('./legalwork-process')
+    const appPath = '/Applications/legalwork.app/Contents/Resources/app.asar'
+    const bundledVendor = join(
+      '/Applications/legalwork.app/Contents/Resources/app.asar.unpacked',
+      'legalwork',
+      'node_modules',
+      '@officecli',
+      'officecli',
+      'vendor'
+    )
+
+    const result = module.buildBundledOfficeCliPath(
+      ['/opt/homebrew/bin', bundledVendor, '/usr/bin'].join(delimiter),
+      appPath,
+      true
+    )
+
+    expect(result.split(delimiter)).toEqual([
+      bundledVendor,
+      '/opt/homebrew/bin',
+      '/usr/bin'
+    ])
   })
 
   it('adds GUI project and configured global skill roots to Legalwork runtime capabilities', async () => {

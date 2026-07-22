@@ -32,8 +32,10 @@ function t(key: string, opts?: Record<string, unknown>): string {
 }
 
 describe('message timeline process summary', () => {
-  it('shows completed work details by default', () => {
-    expect(defaultWorkExpanded()).toBe(true)
+  it('expands active or action-required work and collapses completed work', () => {
+    expect(defaultWorkExpanded(true)).toBe(true)
+    expect(defaultWorkExpanded(false, true)).toBe(true)
+    expect(defaultWorkExpanded(false)).toBe(false)
   })
 
   it('summarizes execution work into a compact result-first label', () => {

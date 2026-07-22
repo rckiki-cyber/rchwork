@@ -136,6 +136,9 @@ describe('workspace-service boundary checks', () => {
     expect(createdBytes.subarray(0, 2).toString('utf8')).toBe('PK')
     expect(createdBytes.toString('utf8')).toContain('[Content_Types].xml')
     expect(createdBytes.toString('utf8')).toContain('word/document.xml')
+    expect(createdBytes.toString('utf8')).toContain(
+      '<w:rFonts w:ascii="SimSun" w:hAnsi="SimSun" w:eastAsia="SimSun" w:cs="SimSun"/>'
+    )
 
     const saveResult = await writeWorkspaceFile({
       path: createResult.path,

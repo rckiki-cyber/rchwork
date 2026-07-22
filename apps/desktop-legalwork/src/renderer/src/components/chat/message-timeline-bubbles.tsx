@@ -266,7 +266,7 @@ function UserAttachmentPreviews({
 }): ReactElement | null {
   const activeThreadId = useChatStore((s) => s.activeThreadId)
   const workspaceRoot = useChatStore((s) => s.workspaceRoot)
-  const attachments = useMemo(() => {
+  const sourceAttachments = useMemo(() => {
     const attachmentIds = metaStringArray(meta, 'attachmentIds')
     const byId = new Map<string, AttachmentReference>()
     for (const attachment of metaAttachmentReferences(meta)) {
@@ -277,8 +277,25 @@ function UserAttachmentPreviews({
     }
     return [...byId.values()]
   }, [meta])
+  const [resolvedAttachmentMetadata, setResolvedAttachmentMetadata] = useState<Record<string, AttachmentReference>>({})
+  const [failedMetadataIds, setFailedMetadataIds] = useState<Record<string, true>>({})
+  const attachments = useMemo(
+    () => sourceAttachments.map((attachment) => ({
+      ...(resolvedAttachmentMetadata[attachment.id] ?? {}),
+      ...attachment
+    })),
+    [resolvedAttachmentMetadata, sourceAttachments]
+  )
   const [resolvedPreviewUrls, setResolvedPreviewUrls] = useState<Record<string, string>>({})
   const [failedPreviewIds, setFailedPreviewIds] = useState<Record<string, true>>({})
+  const missingMetadataKey = sourceAttachments
+    .filter((attachment) =>
+      (!attachment.name || !attachment.mimeType) &&
+      !resolvedAttachmentMetadata[attachment.id] &&
+      !failedMetadataIds[attachment.id]
+    )
+    .map((attachment) => attachment.id)
+    .join('\n')
   const missingPreviewKey = attachments
     .filter((attachment) =>
       isImageAttachment(attachment) &&
@@ -288,6 +305,55 @@ function UserAttachmentPreviews({
     )
     .map((attachment) => attachment.id)
     .join('\n')
+
+  useEffect(() => {
+    if (!missingMetadataKey) return
+    const provider = getProvider()
+    const getAttachmentMetadata = provider.getAttachmentMetadata?.bind(provider)
+    if (!getAttachmentMetadata) return
+    const missingIds = missingMetadataKey.split('\n').filter(Boolean)
+    let cancelled = false
+    void Promise.all(
+      missingIds.map(async (id) => {
+        try {
+          const metadata = await getAttachmentMetadata(id)
+          return metadata
+            ? {
+                id,
+                attachment: {
+                  id: metadata.id,
+                  name: metadata.name,
+                  mimeType: metadata.mimeType,
+                  width: metadata.width,
+                  height: metadata.height
+                } satisfies AttachmentReference
+              }
+            : { id, failed: true as const }
+        } catch {
+          return { id, failed: true as const }
+        }
+      })
+    ).then((results) => {
+      if (cancelled) return
+      setResolvedAttachmentMetadata((current) => {
+        const next = { ...current }
+        for (const result of results) {
+          if ('attachment' in result && result.attachment) next[result.id] = result.attachment
+        }
+        return next
+      })
+      setFailedMetadataIds((current) => {
+        const next = { ...current }
+        for (const result of results) {
+          if ('failed' in result) next[result.id] = true
+        }
+        return next
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [missingMetadataKey])
 
   useEffect(() => {
     if (!missingPreviewKey) return
@@ -349,7 +415,7 @@ function UserAttachmentPreviews({
           return (
             <span
               key={attachment.id}
-              className={`${showImage ? 'block h-28 w-36 overflow-hidden' : 'inline-flex h-8 max-w-52 items-center gap-1.5 px-2.5'} rounded-[14px] border border-ds-border-muted bg-ds-card text-[12px] font-medium text-ds-muted shadow-sm`}
+              className={`${showImage ? 'block h-28 w-36 overflow-hidden' : 'inline-flex h-8 max-w-72 items-center gap-1.5 px-2.5'} rounded-[14px] border border-ds-border-muted bg-ds-card text-[12px] font-medium text-ds-muted shadow-sm`}
               title={title}
             >
               {showImage ? (
@@ -363,6 +429,9 @@ function UserAttachmentPreviews({
                 <>
                   <FileText className="h-3.5 w-3.5 shrink-0 text-ds-faint" strokeWidth={1.7} />
                   <span className="truncate">{title}</span>
+                  <span className="shrink-0 rounded bg-ds-subtle px-1.5 py-0.5 text-[10px] font-semibold leading-none text-ds-faint">
+                    {attachmentTypeLabel(attachment)}
+                  </span>
                 </>
               ) : (
                 <span className="flex h-full w-full items-center justify-center text-ds-faint">
@@ -378,7 +447,19 @@ function UserAttachmentPreviews({
 }
 
 function isImageAttachment(attachment: AttachmentReference): boolean {
-  return attachment.mimeType?.toLowerCase().startsWith('image/') !== false
+  return attachment.mimeType?.toLowerCase().startsWith('image/') === true
+}
+
+function attachmentTypeLabel(attachment: AttachmentReference): string {
+  const mimeType = attachment.mimeType?.trim().toLowerCase() ?? ''
+  if (mimeType === 'application/pdf') return 'PDF'
+  const extension = attachment.name?.split('.').pop()?.trim().toUpperCase()
+  if (extension && extension !== attachment.name?.toUpperCase()) return extension
+  if (mimeType.includes('/')) {
+    const subtype = mimeType.split('/').pop()?.split(/[.+-]/)[0]?.toUpperCase()
+    if (subtype) return subtype
+  }
+  return 'FILE'
 }
 
 function metaSources(meta: Record<string, unknown> | undefined): Array<{ title?: string; url?: string }> {
@@ -550,12 +631,23 @@ function UserInputBubble({
   const [answers, setAnswers] = useState<Record<string, UserInputAnswer>>(() =>
     answersByQuestionId(block.answers)
   )
+  const bubbleRef = useRef<HTMLDivElement>(null)
+  const hasRevealedRef = useRef(false)
   const pending = block.status === 'pending'
   const done = block.status !== 'pending'
 
   useEffect(() => {
     setAnswers(answersByQuestionId(block.answers))
   }, [block.id, block.answers])
+
+  useEffect(() => {
+    if (!pending || hasRevealedRef.current) return
+    hasRevealedRef.current = true
+    const frame = window.requestAnimationFrame(() => {
+      bubbleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [pending])
 
   const chooseOption = (question: UserInputQuestion, label: string, value = label): void => {
     setAnswers((prev) => ({
@@ -593,7 +685,9 @@ function UserInputBubble({
 
   return (
     <div
-      className={`rounded-[22px] border px-4 py-4 text-[13px] leading-6 shadow-[0_12px_30px_rgba(86,103,136,0.04)] ${
+      ref={bubbleRef}
+      aria-live={pending ? 'assertive' : 'polite'}
+      className={`scroll-mt-4 rounded-[22px] border px-4 py-4 text-[13px] leading-6 shadow-[0_12px_30px_rgba(86,103,136,0.04)] ${
         block.status === 'error'
           ? 'border-red-300/80 bg-red-500/10 dark:border-red-800/60 dark:bg-red-950/35'
           : 'border-accent/35 bg-[linear-gradient(180deg,rgba(79,124,255,0.07),rgba(79,124,255,0.11))] text-ds-ink'

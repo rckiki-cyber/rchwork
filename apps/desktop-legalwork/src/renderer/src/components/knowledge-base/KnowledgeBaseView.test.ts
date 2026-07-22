@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatBlock } from '../../agent/types'
-import { knowledgeChatHistoryFromBlocks } from './knowledge-chat-history'
+import {
+  findKnowledgeFileForChatContext,
+  knowledgeChatHistoryFromBlocks
+} from './knowledge-chat-history'
 
 describe('knowledgeChatHistoryFromBlocks', () => {
   it('restores the visible user question from a stored global RAG prompt', () => {
@@ -71,5 +74,53 @@ describe('knowledgeChatHistoryFromBlocks', () => {
       role: 'user',
       content: '总结一下划线内容。'
     })
+  })
+
+  it('extracts a durable file path from newer file chat prompts', () => {
+    const blocks: ChatBlock[] = [{
+      kind: 'user',
+      id: 'user-1',
+      text: `## 当前文件
+合同审查.md（MD）
+
+## 当前文件路径
+案件/甲公司/合同审查.md
+
+## 用户问题
+有哪些主要风险？`
+    }]
+
+    expect(knowledgeChatHistoryFromBlocks(blocks).context).toEqual({
+      kind: 'file',
+      fileName: '合同审查.md',
+      filePath: '案件/甲公司/合同审查.md'
+    })
+  })
+
+  it('finds the linked file by path and falls back to a unique file name for old chats', () => {
+    const nodes = [{
+      name: '案件',
+      path: '案件',
+      kind: 'folder' as const,
+      children: [
+        { name: '合同审查.md', path: '案件/甲公司/合同审查.md', kind: 'file' as const },
+        { name: '合同审查.md', path: '案件/乙公司/合同审查.md', kind: 'file' as const },
+        { name: '庭审笔记.md', path: '案件/庭审笔记.md', kind: 'file' as const }
+      ]
+    }]
+
+    expect(findKnowledgeFileForChatContext(nodes, {
+      kind: 'file',
+      fileName: '合同审查.md',
+      filePath: '案件/乙公司/合同审查.md'
+    })?.path).toBe('案件/乙公司/合同审查.md')
+    expect(findKnowledgeFileForChatContext(nodes, {
+      kind: 'file',
+      fileName: '庭审笔记.md'
+    })?.path).toBe('案件/庭审笔记.md')
+    expect(findKnowledgeFileForChatContext(nodes, {
+      kind: 'file',
+      fileName: '合同审查.md'
+    })).toBeNull()
   })
 })

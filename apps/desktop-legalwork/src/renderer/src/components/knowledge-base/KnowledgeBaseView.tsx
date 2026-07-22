@@ -47,7 +47,10 @@ import {
 import type { KnowledgeTreeNode } from './types'
 import { KnowledgeBaseFileView } from './KnowledgeBaseFileView'
 import type { ChatMessage, KnowledgeChatContext } from './knowledge-chat-history'
-import { knowledgeChatHistoryFromBlocks } from './knowledge-chat-history'
+import {
+  findKnowledgeFileForChatContext,
+  knowledgeChatHistoryFromBlocks
+} from './knowledge-chat-history'
 import { PdfJsPreview } from './PdfJsPreview'
 type TreeNode = KnowledgeTreeNode
 
@@ -508,21 +511,28 @@ export function KnowledgeBaseView({
   const [chatError, setChatError] = useState<string | null>(null)
   const [activeChatThreadId, setActiveChatThreadId] = useState<string | null>(null)
   const [chatContext, setChatContext] = useState<KnowledgeChatContext>({ kind: 'global' })
+  const [chatContextThreadId, setChatContextThreadId] = useState<string | null>(null)
   const chatMessagesEndRef = useRef<HTMLDivElement>(null)
 
   // Load a selected knowledge-chat thread into the AI chat panel.
   useEffect(() => {
-    if (!selectedThreadId) return
+    if (!selectedThreadId) {
+      setChatContextThreadId(null)
+      return
+    }
     const threadId = selectedThreadId
     let cancelled = false
     async function load(): Promise<void> {
       try {
+        setChatError(null)
+        setChatContextThreadId(null)
         const provider = getProvider()
         const { blocks } = await provider.getThreadDetail(threadId)
         if (cancelled) return
         const history = knowledgeChatHistoryFromBlocks(blocks)
         setChatMessages(history.messages)
         setChatContext(history.context)
+        setChatContextThreadId(threadId)
         setActiveChatThreadId(threadId)
         setChatOpen(true)
       } catch (err) {
@@ -535,6 +545,23 @@ export function KnowledgeBaseView({
       cancelled = true
     }
   }, [selectedThreadId])
+
+  useEffect(() => {
+    if (!selectedThreadId || chatContextThreadId !== selectedThreadId) return
+    if (chatContext.kind === 'global') {
+      setViewingFile(null)
+      return
+    }
+    if (loading) return
+    const linkedFile = findKnowledgeFileForChatContext(tree, chatContext)
+    if (linkedFile) {
+      setViewingFile(linkedFile)
+      setChatError(null)
+      return
+    }
+    setViewingFile(null)
+    setChatError(`未找到这条对话对应的文件“${chatContext.fileName}”，文件可能已被移动、重命名或删除。`)
+  }, [chatContext, chatContextThreadId, loading, selectedThreadId, tree])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -666,7 +693,8 @@ export function KnowledgeBaseView({
 
   const handleBack = useCallback(() => {
     setViewingFile(null)
-  }, [])
+    onSelectThread?.(null)
+  }, [onSelectThread])
 
   const openInSystemApp = useCallback(async (node: TreeNode) => {
     setError(null)
@@ -737,7 +765,8 @@ export function KnowledgeBaseView({
     }
     setPreview(null)
     setViewingFile(node)
-  }, [preview, openInSystemApp])
+    onSelectThread?.(null)
+  }, [preview, openInSystemApp, onSelectThread])
 
   useEffect(() => {
     const objectUrl = preview?.objectUrl
@@ -1064,6 +1093,8 @@ ${question.trim()}
         <KnowledgeBaseFileView
           node={viewingFile}
           onBack={handleBack}
+          selectedThreadId={selectedThreadId}
+          onSelectThread={onSelectThread}
           onChatThreadsChange={onChatThreadsChange}
         />
       </KnowledgeFileViewErrorBoundary>

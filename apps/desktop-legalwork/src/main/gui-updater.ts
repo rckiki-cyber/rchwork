@@ -1,9 +1,10 @@
 import { app, autoUpdater as nativeAutoUpdater, BrowserWindow } from 'electron'
-import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { constants, createReadStream, existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { access, chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { homedir, tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import electronUpdater from 'electron-updater'
 import type { ProgressInfo, UpdateDownloadedEvent, UpdateInfo } from 'electron-updater'
 import type {
@@ -44,6 +45,7 @@ let backgroundCheckTimer: NodeJS.Timeout | null = null
 let backgroundCheckPromise: Promise<void> | null = null
 let installExitWatchTimer: NodeJS.Timeout | null = null
 let downloadedUpdatePaths: string[] = []
+let downloadedUpdateSha512 = ''
 let fallbackInstallStarted = false
 
 const GUI_UPDATE_SCHEDULE_FILE = 'gui-update-schedule.json'
@@ -562,7 +564,7 @@ function shellQuote(value: string): string {
 }
 
 function currentAppBundlePath(): string | null {
-  const execPath = process.execPath
+  const execPath = app.getPath('exe') || process.execPath
   const match = execPath.match(/^(.*\.app)\/Contents\/MacOS\/[^/]+$/)
   return match?.[1] ?? null
 }
@@ -576,15 +578,21 @@ function updaterCacheDirCandidates(): string[] {
         ? join(homedir(), 'Library', 'Caches')
         : (process.env.XDG_CACHE_HOME || join(homedir(), '.cache'))
   const appName = typeof app.getName === 'function' ? app.getName() : 'legalwork'
-  candidates.add(join(cacheRoot, 'legalwork-updater'))
   candidates.add(join(cacheRoot, `${appName}-updater`))
   candidates.add(join(app.getPath('userData'), '__update__'))
   return [...candidates]
 }
 
-function pendingUpdateZipFromCache(): string | null {
+type PendingMacUpdate = {
+  path: string
+  sha512: string
+}
+
+function pendingUpdateZipFromCache(): PendingMacUpdate | null {
   for (const rawPath of downloadedUpdatePaths) {
-    if (rawPath.endsWith('.zip') && existsSync(rawPath)) return rawPath
+    if (rawPath.endsWith('.zip') && existsSync(rawPath) && downloadedUpdateSha512) {
+      return { path: rawPath, sha512: downloadedUpdateSha512 }
+    }
   }
 
   for (const cacheDir of updaterCacheDirCandidates()) {
@@ -592,32 +600,46 @@ function pendingUpdateZipFromCache(): string | null {
     const infoPath = join(pendingDir, 'update-info.json')
     try {
       if (existsSync(infoPath)) {
-        const info = JSON.parse(readFileSync(infoPath, 'utf8')) as { fileName?: unknown }
+        const info = JSON.parse(readFileSync(infoPath, 'utf8')) as {
+          fileName?: unknown
+          sha512?: unknown
+        }
         const fileName = typeof info.fileName === 'string' ? info.fileName : ''
+        const sha512 = typeof info.sha512 === 'string' ? info.sha512.trim() : ''
         const updatePath = fileName ? join(pendingDir, fileName) : ''
-        if (updatePath.endsWith('.zip') && existsSync(updatePath)) return updatePath
+        if (
+          updatePath.endsWith('.zip') &&
+          existsSync(updatePath) &&
+          sha512 &&
+          (!lastInfo?.latestVersion || fileName.includes(lastInfo.latestVersion))
+        ) {
+          return { path: updatePath, sha512 }
+        }
       }
     } catch {
-      // Try scanning the pending directory below.
-    }
-
-    try {
-      if (!existsSync(pendingDir)) continue
-      const entries = readdirSync(pendingDir)
-        .filter((entry) => entry.endsWith('.zip'))
-        .map((entry) => join(pendingDir, entry))
-        .filter((path) => existsSync(path))
-        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
-      if (entries[0]) return entries[0]
-    } catch {
-      // Try next candidate.
+      // An update without trusted cache metadata must not be installed.
     }
   }
 
   return null
 }
 
-async function writeMacFallbackInstallScript(zipPath: string, targetApp: string): Promise<string> {
+async function sha512File(path: string): Promise<string> {
+  const hash = createHash('sha512')
+  await new Promise<void>((resolve, reject) => {
+    createReadStream(path)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('error', reject)
+      .on('end', resolve)
+  })
+  return hash.digest('base64')
+}
+
+async function writeMacFallbackInstallScript(
+  zipPath: string,
+  targetApp: string,
+  expectedVersion: string
+): Promise<string> {
   const scriptDir = await mkdtemp(join(tmpdir(), 'legalwork-gui-update-'))
   const scriptPath = join(scriptDir, 'install-mac-update.sh')
   const logDir = join(app.getPath('userData'), 'logs')
@@ -629,15 +651,24 @@ set -u
 
 ZIP=${shellQuote(zipPath)}
 TARGET=${shellQuote(targetApp)}
+EXPECTED_VERSION=${shellQuote(expectedVersion)}
+EXPECTED_ARCH=${shellQuote(process.arch === 'arm64' ? 'arm64' : 'x86_64')}
 APP_PID=${process.pid}
 LOG=${shellQuote(logPath)}
 STAGE="\${TMPDIR:-/tmp}/legalwork-update-stage-$$"
 BACKUP="\${TMPDIR:-/tmp}/legalwork-update-backup-$$-$(basename "$TARGET")"
+PLIST_BUDDY=/usr/libexec/PlistBuddy
 
 exec >> "$LOG" 2>&1
-echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] fallback installer started"
+echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] unsigned macOS updater started"
 echo "zip=$ZIP"
 echo "target=$TARGET"
+echo "expectedVersion=$EXPECTED_VERSION"
+
+cleanup_stage() {
+  rm -rf "$STAGE"
+}
+trap cleanup_stage EXIT
 
 for _ in $(seq 1 50); do
   if ! kill -0 "$APP_PID" >/dev/null 2>&1; then
@@ -659,30 +690,80 @@ fi
 
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
-ditto -x -k "$ZIP" "$STAGE"
+if ! ditto -x -k "$ZIP" "$STAGE"; then
+  echo "failed to extract update zip"
+  exit 21
+fi
 NEW_APP=$(find "$STAGE" -maxdepth 1 -name "*.app" -type d | head -n 1)
 if [ -z "$NEW_APP" ]; then
   echo "no .app bundle found in update zip"
-  exit 21
+  exit 22
 fi
 
-xattr -dr com.apple.quarantine "$NEW_APP" >/dev/null 2>&1 || true
+CURRENT_ID=$("$PLIST_BUDDY" -c "Print :CFBundleIdentifier" "$TARGET/Contents/Info.plist" 2>/dev/null || true)
+NEW_ID=$("$PLIST_BUDDY" -c "Print :CFBundleIdentifier" "$NEW_APP/Contents/Info.plist" 2>/dev/null || true)
+NEW_VERSION=$("$PLIST_BUDDY" -c "Print :CFBundleShortVersionString" "$NEW_APP/Contents/Info.plist" 2>/dev/null || true)
+NEW_EXECUTABLE=$("$PLIST_BUDDY" -c "Print :CFBundleExecutable" "$NEW_APP/Contents/Info.plist" 2>/dev/null || true)
+
+if [ -z "$CURRENT_ID" ] || [ "$NEW_ID" != "$CURRENT_ID" ]; then
+  echo "bundle identifier mismatch: current=$CURRENT_ID update=$NEW_ID"
+  exit 23
+fi
+if [ -z "$EXPECTED_VERSION" ] || [ "$NEW_VERSION" != "$EXPECTED_VERSION" ]; then
+  echo "version mismatch: expected=$EXPECTED_VERSION update=$NEW_VERSION"
+  exit 24
+fi
+if [ -z "$NEW_EXECUTABLE" ] || [ ! -f "$NEW_APP/Contents/MacOS/$NEW_EXECUTABLE" ]; then
+  echo "updated app executable is missing"
+  exit 25
+fi
+ARCHS=$(lipo -archs "$NEW_APP/Contents/MacOS/$NEW_EXECUTABLE" 2>/dev/null || true)
+case " $ARCHS " in
+  *" $EXPECTED_ARCH "*) ;;
+  *) echo "architecture mismatch: expected=$EXPECTED_ARCH update=$ARCHS"; exit 26 ;;
+esac
+
+# Unsigned releases are still ad-hoc signed by electron-builder. This verifies
+# that no sealed file was corrupted after packaging without requiring a paid
+# Developer ID certificate.
+if ! codesign --verify --deep --strict "$NEW_APP"; then
+  echo "updated app failed code integrity verification"
+  exit 27
+fi
+
+# Never strip quarantine here. If a future download path adds it, macOS should
+# retain control and the failure must be visible instead of bypassing Gatekeeper.
+if xattr -p com.apple.quarantine "$NEW_APP" >/dev/null 2>&1; then
+  echo "updated app is quarantined; refusing to bypass macOS security"
+  exit 28
+fi
+
 rm -rf "$BACKUP"
 if [ -d "$TARGET" ]; then
-  mv "$TARGET" "$BACKUP"
+  if ! mv "$TARGET" "$BACKUP"; then
+    echo "failed to move current app to backup"
+    exit 29
+  fi
 fi
 if ! mv "$NEW_APP" "$TARGET"; then
   echo "failed to move updated app into place; restoring previous app"
   if [ -d "$BACKUP" ]; then
     mv "$BACKUP" "$TARGET"
   fi
-  exit 22
+  exit 30
 fi
-xattr -dr com.apple.quarantine "$TARGET" >/dev/null 2>&1 || true
 
-open "$TARGET"
-rm -rf "$STAGE" "$BACKUP"
-echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] fallback installer completed"
+if ! open "$TARGET"; then
+  echo "updated app failed to launch; restoring previous app"
+  rm -rf "$TARGET"
+  if [ -d "$BACKUP" ]; then
+    mv "$BACKUP" "$TARGET"
+    open "$TARGET" >/dev/null 2>&1 || true
+  fi
+  exit 31
+fi
+rm -rf "$BACKUP"
+echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] unsigned macOS updater completed"
 `
 
   await writeFile(scriptPath, script, 'utf8')
@@ -693,25 +774,40 @@ echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] fallback installer completed"
 async function startMacZipFallbackInstall(reason: string): Promise<boolean> {
   if (fallbackInstallStarted || process.platform !== 'darwin') return false
   const targetApp = currentAppBundlePath()
-  const zipPath = pendingUpdateZipFromCache()
-  if (!targetApp || !zipPath) return false
+  const pendingUpdate = pendingUpdateZipFromCache()
+  const expectedVersion = lastInfo?.latestVersion?.trim() ?? ''
+  if (!targetApp || !pendingUpdate || !expectedVersion) return false
 
   fallbackInstallStarted = true
-  const scriptPath = await writeMacFallbackInstallScript(zipPath, targetApp)
-  logWarn('gui-update', 'Starting macOS zip fallback installer.', {
-    reason,
-    version: lastInfo?.latestVersion,
-    channel: lastInfo?.channel,
-    zipPath,
-    targetApp
-  })
-  const child = spawn('/bin/bash', [scriptPath], {
-    detached: true,
-    stdio: 'ignore'
-  })
-  child.unref()
-  app.quit()
-  return true
+  try {
+    await access(dirname(targetApp), constants.W_OK)
+    const actualSha512 = await sha512File(pendingUpdate.path)
+    if (actualSha512 !== pendingUpdate.sha512) {
+      throw new Error('The downloaded macOS update failed SHA-512 verification.')
+    }
+    const scriptPath = await writeMacFallbackInstallScript(
+      pendingUpdate.path,
+      targetApp,
+      expectedVersion
+    )
+    logWarn('gui-update', 'Starting macOS zip fallback installer.', {
+      reason,
+      version: lastInfo?.latestVersion,
+      channel: lastInfo?.channel,
+      zipPath: pendingUpdate.path,
+      targetApp
+    })
+    const child = spawn('/bin/bash', [scriptPath], {
+      detached: true,
+      stdio: 'ignore'
+    })
+    child.unref()
+    app.quit()
+    return true
+  } catch (error) {
+    fallbackInstallStarted = false
+    throw error
+  }
 }
 
 function clearBackgroundCheckTimer(): void {
@@ -1020,6 +1116,7 @@ export function initializeGuiUpdater(
   autoUpdater.on('update-available', (updateInfo: UpdateInfo) => {
     downloaded = false
     downloadedUpdatePaths = []
+    downloadedUpdateSha512 = ''
     fallbackInstallStarted = false
     const info = toGuiInfo(updateInfo, true)
     lastInfo = info
@@ -1035,6 +1132,7 @@ export function initializeGuiUpdater(
   autoUpdater.on('update-not-available', (updateInfo: UpdateInfo) => {
     downloaded = false
     downloadedUpdatePaths = []
+    downloadedUpdateSha512 = ''
     fallbackInstallStarted = false
     const info = toGuiInfo(updateInfo, false)
     lastInfo = info
@@ -1055,6 +1153,12 @@ export function initializeGuiUpdater(
     downloaded = true
     const downloadedFile = typeof event.downloadedFile === 'string' ? event.downloadedFile : ''
     downloadedUpdatePaths = downloadedFile ? [downloadedFile] : downloadedUpdatePaths
+    const downloadedFileName = downloadedFile ? basename(downloadedFile) : ''
+    const downloadedFileInfo = event.files?.find((file) => {
+      const fileName = basename(file.url)
+      return fileName === downloadedFileName || (!downloadedFileName && fileName.endsWith('.zip'))
+    })
+    downloadedUpdateSha512 = downloadedFileInfo?.sha512?.trim() || event.sha512?.trim() || ''
     fallbackInstallStarted = false
     const info = toGuiInfo(event, true)
     lastInfo = info
@@ -1196,6 +1300,21 @@ export async function installGuiUpdate(): Promise<GuiUpdateInstallResult> {
     emitGuiUpdateState({ status: 'installing', info: lastInfo ?? undefined })
     await runBeforeInstallUpdate()
     beforeQuitAndInstallUpdate?.()
+
+    // electron-updater's macOS path downloads the ZIP first, then asks the
+    // native Squirrel updater to fetch the same update through a temporary
+    // localhost proxy. In production that second `update-downloaded` event can
+    // fail to arrive, so quitAndInstall() returns without quitting or
+    // installing anything. Use the already downloaded and checksum-verified
+    // ZIP directly instead of depending on that second, unreliable hand-off.
+    if (process.platform === 'darwin') {
+      const started = await startMacZipFallbackInstall('direct install of downloaded macOS update')
+      if (started) return { ok: true }
+      throw new Error(
+        'The downloaded macOS update is missing trusted ZIP metadata. Download the update again or use the download page.'
+      )
+    }
+
     startInstallExitWatch()
     logInfo('gui-update', 'Calling quitAndInstall for GUI update.')
     autoUpdater.quitAndInstall(false, true)

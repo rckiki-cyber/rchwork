@@ -499,6 +499,9 @@ export function Workbench(): ReactElement {
   const timelineBlocks = blocks
   const timelineLiveReasoning = liveReasoning
   const timelineLiveAssistant = liveAssistant
+  const waitingForUserInput = timelineBlocks.some(
+    (block) => block.kind === 'user_input' && block.status === 'pending'
+  )
   const hasMessages = timelineBlocks.length > 0 || !!timelineLiveAssistant.trim() || !!timelineLiveReasoning.trim()
   const devPreviewBlocks = useMemo<ChatBlock[]>(() => {
     const liveText = timelineLiveAssistant.trim()
@@ -1902,8 +1905,14 @@ export function Workbench(): ReactElement {
                 </div>
                 <div className="chat-topbar-actions flex min-w-0 flex-wrap items-center justify-end gap-2 self-start">
                   {busy ? (
-                    <span className="inline-flex shrink-0 rounded-full bg-amber-500/16 px-2.5 py-1 text-[11.5px] font-semibold text-amber-950 dark:text-amber-100">
-                      {t('running')}
+                    <span
+                      className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-semibold ${
+                        waitingForUserInput
+                          ? 'bg-accent/12 text-accent'
+                          : 'bg-amber-500/16 text-amber-950 dark:text-amber-100'
+                      }`}
+                    >
+                      {t(waitingForUserInput ? 'waitingForUserInput' : 'running')}
                     </span>
                   ) : null}
                   <WorkbenchTopBar

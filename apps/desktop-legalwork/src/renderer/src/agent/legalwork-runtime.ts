@@ -29,6 +29,7 @@ import {
   legalworkThreadPath,
   legalworkThreadSteerPath,
   legalworkThreadTurnsPath,
+  legalworkAttachmentPath,
   legalworkAttachmentContentPath,
   legalworkUserInputPath,
   legalworkMemoryRecordPath,
@@ -607,6 +608,20 @@ export class LegalworkRuntimeProvider implements AgentProvider {
       response.body,
       'runtime returned an invalid attachment diagnostics response'
     )
+  }
+
+  async getAttachmentMetadata(attachmentId: string): Promise<CoreAttachmentMetadataJson> {
+    const response = await rendererRuntimeClient.runtimeRequest(
+      legalworkAttachmentPath(attachmentId),
+      'GET'
+    )
+    if (!response.ok) {
+      throw runtimeErrorToError(readRuntimeError(response.body, 'failed to load attachment metadata'))
+    }
+    return readRuntimeJson<CoreAttachmentUploadResponseJson>(
+      response.body,
+      'runtime returned an invalid attachment metadata response'
+    ).attachment
   }
 
   async getAttachmentContent(

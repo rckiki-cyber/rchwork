@@ -164,6 +164,43 @@ describe('MessageTimeline Legalwork runtime metadata smoke', () => {
     expect(html).not.toContain('Attachments 1')
   })
 
+  it('renders a sent PDF attachment with its filename and file type', () => {
+    const block: ChatBlock = {
+      kind: 'user',
+      id: 'user_pdf',
+      text: '写答辩意见',
+      meta: {
+        attachmentIds: ['att_pdf'],
+        attachments: [{
+          id: 'att_pdf',
+          name: '民事起诉状_杨俊生_.pdf',
+          mimeType: 'application/pdf'
+        }]
+      }
+    }
+
+    const html = renderToStaticMarkup(createElement(MessageBubble, { block }))
+
+    expect(html).toContain('民事起诉状_杨俊生_.pdf')
+    expect(html).toContain('PDF')
+    expect(html).not.toContain('h-7 w-7')
+  })
+
+  it('does not treat an attachment with missing metadata as an image', () => {
+    const block: ChatBlock = {
+      kind: 'user',
+      id: 'user_restored_attachment',
+      text: '查看附件',
+      meta: { attachmentIds: ['att_restored'] }
+    }
+
+    const html = renderToStaticMarkup(createElement(MessageBubble, { block }))
+
+    expect(html).toContain('att_restored')
+    expect(html).toContain('FILE')
+    expect(html).not.toContain('h-7 w-7')
+  })
+
   it('renders managed Claw prompts as the user-visible message', () => {
     const block: ChatBlock = {
       kind: 'user',
@@ -260,7 +297,7 @@ describe('MessageTimeline Legalwork runtime metadata smoke', () => {
     const html = renderToStaticMarkup(
       createElement(ProcessSectionRow, {
         section: { id: 'execution-tool_1', kind: 'execution', blocks: [block] },
-        processing: false,
+        processing: true,
         singleReasoningSection: false,
         viewportRef: { current: null }
       })
@@ -273,7 +310,7 @@ describe('MessageTimeline Legalwork runtime metadata smoke', () => {
     expect(html).toContain('https://example.com/legalwork')
   })
 
-  it('keeps running tool calls collapsed by default while showing active status', () => {
+  it('expands a running tool and keeps showing its active status', () => {
     const block: ChatBlock = toolBlock({
       summary: 'read: file',
       status: 'running',
@@ -294,7 +331,7 @@ describe('MessageTimeline Legalwork runtime metadata smoke', () => {
     expect(html).toContain('/tmp/readme.md')
     expect(html).not.toContain('ds-work-logo')
     expect(html).toContain('ds-shiny-text')
-    expect(html).not.toContain('partial tool output while running')
+    expect(html).toContain('partial tool output while running')
     expect(html).toContain('ds-process-file-reference')
   })
 
@@ -317,6 +354,26 @@ describe('MessageTimeline Legalwork runtime metadata smoke', () => {
     expect(html).toContain('ds-shiny-text')
     expect(html).not.toContain('ds-work-logo')
     expect(html).toContain('current reasoning summary')
+  })
+
+  it('collapses completed reasoning until the user reopens it', () => {
+    const block: ChatBlock = {
+      kind: 'reasoning',
+      id: 'reasoning-complete',
+      text: 'completed reasoning should stay tucked away'
+    }
+
+    const html = renderToStaticMarkup(
+      createElement(ProcessSectionRow, {
+        section: { id: 'reasoning', kind: 'reasoning', blocks: [block] },
+        processing: false,
+        singleReasoningSection: true,
+        viewportRef: { current: null }
+      })
+    )
+
+    expect(html).toContain('aria-expanded="false"')
+    expect(html).not.toContain('completed reasoning should stay tucked away')
   })
 
   it('keeps same-batch tool calls collapsed by default', () => {
@@ -352,7 +409,46 @@ describe('MessageTimeline Legalwork runtime metadata smoke', () => {
     expect(html).not.toContain('grep detail should stay tucked away')
   })
 
-  it('keeps the live work process visible while single tool details stay collapsed', () => {
+  it('shows a pending user-input card immediately inside a mixed execution batch', () => {
+    const inputBlock: ChatBlock = {
+      kind: 'user_input',
+      id: 'input_1',
+      requestId: 'request_1',
+      status: 'pending',
+      questions: [
+        {
+          id: 'defense_strength',
+          header: 'Defense strength',
+          question: 'How strongly should the defense respond?',
+          options: [
+            {
+              label: 'Standard defense',
+              description: 'Address each allegation with facts and law.'
+            }
+          ]
+        }
+      ]
+    }
+
+    const html = renderToStaticMarkup(
+      createElement(ProcessSectionRow, {
+        section: {
+          id: 'execution-mixed',
+          kind: 'execution',
+          blocks: [toolBlock({ id: 'tool_done' }), inputBlock]
+        },
+        processing: false,
+        singleReasoningSection: false,
+        viewportRef: { current: null }
+      })
+    )
+
+    expect(html).toContain('How strongly should the defense respond?')
+    expect(html).toContain('Standard defense')
+    expect(html).toContain('aria-live="assertive"')
+  })
+
+  it('keeps the live work process and the running tool details visible', () => {
     const blocks: ChatBlock[] = [
       {
         kind: 'user',
@@ -387,6 +483,6 @@ describe('MessageTimeline Legalwork runtime metadata smoke', () => {
 
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('1')
-    expect(html).not.toContain('running timeline detail should stay collapsed')
+    expect(html).toContain('running timeline detail should stay collapsed')
   })
 })

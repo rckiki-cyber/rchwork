@@ -1,7 +1,7 @@
 {
   "name": "legalwork",
   "productName": "legalwork",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Electron workbench for the Legalwork runtime (HTTP/SSE)",
   "main": "./out/main/index.cjs",
   "type": "module",

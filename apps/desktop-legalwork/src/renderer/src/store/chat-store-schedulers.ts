@@ -5,6 +5,7 @@ let startupRuntimeProbeTimer: ReturnType<typeof setTimeout> | null = null
 let busyWatchdogTimer: ReturnType<typeof setTimeout> | null = null
 let busyRecoveryAttempts = 0
 let turnCompletionPollTimer: ReturnType<typeof setInterval> | null = null
+let turnCompletionPollInFlight: Promise<void> | null = null
 const STARTUP_RUNTIME_PROBE_DELAY_MS = 150
 
 type BusyWatchdogOptions = {
@@ -100,7 +101,13 @@ export function syncTurnCompletionPoll(
   if (turnCompletionPollTimer != null) return
 
   const tick = (): void => {
-    void pollTurnCompletionWatch(set, get, options)
+    if (turnCompletionPollInFlight) return
+    const task = pollTurnCompletionWatch(set, get, options)
+    turnCompletionPollInFlight = task
+    const clearTask = (): void => {
+      if (turnCompletionPollInFlight === task) turnCompletionPollInFlight = null
+    }
+    void task.then(clearTask, clearTask)
   }
 
   turnCompletionPollTimer = setInterval(tick, 2500)

@@ -1,4 +1,18 @@
 import { EventEmitter } from 'node:events'
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type MockUpdater = EventEmitter & {
@@ -16,6 +30,9 @@ type MockUpdater = EventEmitter & {
 let updater: MockUpdater
 let nativeUpdater: EventEmitter
 let mockApp: EventEmitter
+let mockExePath: string
+let mockUserDataPath: string
+let spawnMock: ReturnType<typeof vi.fn>
 const ORIGINAL_ENV = { ...process.env }
 
 function createUpdater(): MockUpdater {
@@ -43,10 +60,15 @@ beforeEach(() => {
   delete process.env.LEGALWORK_UPDATE_CHANNEL
   updater = createUpdater()
   nativeUpdater = new EventEmitter()
+  mockExePath = '/tmp/legalwork-updater-test-bin'
+  mockUserDataPath = '/tmp/legalwork-updater-test-user-data'
+  spawnMock = vi.fn(() => ({ unref: vi.fn() }))
   mockApp = Object.assign(new EventEmitter(), {
     isPackaged: true,
+    quit: vi.fn(),
+    getName: () => 'legalwork-updater-test',
     getAppPath: () => '/tmp/legalwork-updater-test-app',
-    getPath: () => '/tmp/legalwork-updater-test-user-data',
+    getPath: (name: string) => name === 'exe' ? mockExePath : mockUserDataPath,
     getVersion: () => '0.1.0'
   })
   vi.doMock('electron', () => ({
@@ -58,15 +80,18 @@ beforeEach(() => {
     default: { autoUpdater: updater },
     autoUpdater: updater
   }))
+  vi.doMock('node:child_process', () => ({ spawn: spawnMock }))
 })
 
 afterEach(() => {
   vi.clearAllTimers()
+  vi.restoreAllMocks()
   vi.useRealTimers()
   vi.unstubAllGlobals()
   process.env = { ...ORIGINAL_ENV }
   vi.doUnmock('electron')
   vi.doUnmock('electron-updater')
+  vi.doUnmock('node:child_process')
   vi.resetModules()
 })
 
@@ -245,7 +270,156 @@ describe('downloadGuiUpdate', () => {
 })
 
 describe('installGuiUpdate', () => {
+  it('installs a downloaded macOS ZIP directly instead of waiting for Squirrel to download it again', async () => {
+    const canRunMacInstaller = process.platform === 'darwin'
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    const fixtureDir = mkdtempSync(join(tmpdir(), 'legalwork-updater-test-'))
+    const zipPath = join(fixtureDir, 'legalwork-0.2.0-mac-arm64.zip')
+    const targetApp = join(fixtureDir, 'installed', 'legalwork.app')
+    const updateApp = join(fixtureDir, 'update', 'legalwork.app')
+    const executableRelativePath = join('Contents', 'MacOS', 'legalwork')
+    const createTestApp = (appPath: string, version: string): void => {
+      mkdirSync(join(appPath, 'Contents', 'MacOS'), { recursive: true })
+      writeFileSync(
+        join(appPath, 'Contents', 'Info.plist'),
+        `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>legalwork</string>
+<key>CFBundleIdentifier</key><string>com.xingyuzhong.legalwork</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>${version}</string>
+<key>CFBundleVersion</key><string>${version}</string>
+</dict></plist>`,
+        'utf8'
+      )
+      copyFileSync(process.execPath, join(appPath, executableRelativePath))
+      chmodSync(join(appPath, executableRelativePath), 0o755)
+    }
+
+    if (canRunMacInstaller) {
+      createTestApp(targetApp, '0.1.0')
+      createTestApp(updateApp, '0.2.0')
+      execFileSync('codesign', ['--force', '--deep', '--sign', '-', updateApp])
+      execFileSync(
+        'ditto',
+        ['-c', '-k', '--sequesterRsrc', '--keepParent', basename(updateApp), zipPath],
+        { cwd: dirname(updateApp) }
+      )
+    } else {
+      writeFileSync(zipPath, 'test update zip')
+    }
+    const zipSha512 = createHash('sha512').update(readFileSync(zipPath)).digest('base64')
+    mockExePath = join(targetApp, executableRelativePath)
+    mockUserDataPath = fixtureDir
+
+    try {
+      const module = await import('./gui-updater')
+      const beforeQuitAndInstall = vi.fn()
+      module.initializeGuiUpdater(
+        () => null,
+        () => 'stable',
+        undefined,
+        beforeQuitAndInstall
+      )
+      updater.emit('update-downloaded', {
+        version: '0.2.0',
+        releaseDate: '2026-06-06T00:00:00.000Z',
+        downloadedFile: zipPath,
+        files: [{ url: basename(zipPath), sha512: zipSha512 }]
+      })
+
+      await expect(module.installGuiUpdate()).resolves.toEqual({ ok: true })
+
+      expect(beforeQuitAndInstall).toHaveBeenCalledTimes(1)
+      expect(spawnMock).toHaveBeenCalledWith(
+        '/bin/bash',
+        [expect.stringMatching(/install-mac-update\.sh$/)],
+        { detached: true, stdio: 'ignore' }
+      )
+      expect(updater.quitAndInstall).not.toHaveBeenCalled()
+      expect((mockApp as typeof mockApp & { quit: ReturnType<typeof vi.fn> }).quit).toHaveBeenCalledTimes(1)
+
+      const scriptPath = spawnMock.mock.calls[0]?.[1]?.[0] as string
+      const script = readFileSync(scriptPath, 'utf8')
+      expect(script).toContain('bundle identifier mismatch')
+      expect(script).toContain('version mismatch')
+      expect(script).toContain('architecture mismatch')
+      expect(script).toContain('codesign --verify --deep --strict')
+      expect(script).not.toContain('xattr -dr com.apple.quarantine')
+
+      if (canRunMacInstaller) {
+        const fakeBinDir = join(fixtureDir, 'bin')
+        const fakeOpenPath = join(fakeBinDir, 'open')
+        mkdirSync(fakeBinDir, { recursive: true })
+        writeFileSync(fakeOpenPath, '#!/bin/sh\nexit 0\n', 'utf8')
+        chmodSync(fakeOpenPath, 0o755)
+        writeFileSync(
+          scriptPath,
+          script.replace(/^APP_PID=\d+$/m, 'APP_PID=999999999'),
+          'utf8'
+        )
+        execFileSync('/bin/bash', [scriptPath], {
+          env: {
+            ...process.env,
+            PATH: `${fakeBinDir}:${process.env.PATH ?? '/usr/bin:/bin:/usr/sbin:/sbin'}`
+          }
+        })
+        const installedVersion = execFileSync(
+          '/usr/libexec/PlistBuddy',
+          ['-c', 'Print :CFBundleShortVersionString', join(targetApp, 'Contents', 'Info.plist')],
+          { encoding: 'utf8' }
+        ).trim()
+        expect(installedVersion).toBe('0.2.0')
+        expect(existsSync(join(targetApp, executableRelativePath))).toBe(true)
+      }
+      rmSync(dirname(scriptPath), { recursive: true, force: true })
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not quit or invoke Squirrel when a macOS ZIP fails checksum verification', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    const fixtureDir = mkdtempSync(join(tmpdir(), 'legalwork-updater-checksum-test-'))
+    const zipPath = join(fixtureDir, 'legalwork-0.2.0-mac-arm64.zip')
+    writeFileSync(zipPath, 'tampered update zip')
+    mockExePath = join(fixtureDir, 'legalwork.app', 'Contents', 'MacOS', 'legalwork')
+    mockUserDataPath = fixtureDir
+    const afterQuitAndInstallAbort = vi.fn()
+
+    try {
+      const module = await import('./gui-updater')
+      module.initializeGuiUpdater(
+        () => null,
+        () => 'stable',
+        undefined,
+        undefined,
+        afterQuitAndInstallAbort
+      )
+      updater.emit('update-downloaded', {
+        version: '0.2.0',
+        releaseDate: '2026-06-06T00:00:00.000Z',
+        downloadedFile: zipPath,
+        files: [{ url: basename(zipPath), sha512: 'invalid-sha512' }]
+      })
+
+      await expect(module.installGuiUpdate()).resolves.toMatchObject({
+        ok: false,
+        code: 'install_failed',
+        message: 'The downloaded macOS update failed SHA-512 verification.'
+      })
+      expect(spawnMock).not.toHaveBeenCalled()
+      expect(updater.quitAndInstall).not.toHaveBeenCalled()
+      expect((mockApp as typeof mockApp & { quit: ReturnType<typeof vi.fn> }).quit).not.toHaveBeenCalled()
+      expect(afterQuitAndInstallAbort).toHaveBeenCalledTimes(1)
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true })
+    }
+  })
+
   it('waits for managed runtime cleanup before asking the updater to quit and install', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     const module = await import('./gui-updater')
     let finishCleanup = (): void => {
       throw new Error('cleanup resolver was not set')
@@ -274,6 +448,7 @@ describe('installGuiUpdate', () => {
   })
 
   it('reuses the same cleanup when the native updater emits before-quit-for-update', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     const module = await import('./gui-updater')
     let finishCleanup = (): void => {
       throw new Error('cleanup resolver was not set')
@@ -298,6 +473,7 @@ describe('installGuiUpdate', () => {
   })
 
   it('reports an install failure when quitAndInstall does not make the app quit', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     const module = await import('./gui-updater')
     const sentStates: unknown[] = []
     const afterQuitAndInstallAbort = vi.fn()
@@ -337,6 +513,7 @@ describe('installGuiUpdate', () => {
   })
 
   it('does not report a timeout failure after the app starts quitting for update', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     const module = await import('./gui-updater')
 
     module.initializeGuiUpdater(() => null, () => 'stable')

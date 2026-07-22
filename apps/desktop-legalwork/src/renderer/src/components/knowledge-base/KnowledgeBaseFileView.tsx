@@ -31,6 +31,10 @@ import { LegalworkRuntimeProvider } from '../../agent/legalwork-runtime'
 import type { ThreadEventSink } from '../../agent/types'
 import { brandForModel } from '../../lib/model-brand'
 import type { KnowledgeTreeNode } from './types'
+import {
+  findKnowledgeFileForChatContext,
+  knowledgeChatHistoryFromBlocks
+} from './knowledge-chat-history'
 import { extractPdfTextFromBase64, PdfJsPreview } from './PdfJsPreview'
 
 // ── Helpers (copied from KnowledgeBaseView to keep this file self-contained) ──
@@ -206,10 +210,18 @@ const knowledgeRuntimeProvider = new LegalworkRuntimeProvider()
 type Props = {
   node: KnowledgeTreeNode
   onBack: () => void
+  selectedThreadId?: string | null
+  onSelectThread?: (id: string | null) => void
   onChatThreadsChange?: () => void
 }
 
-export function KnowledgeBaseFileView({ node, onBack, onChatThreadsChange }: Props): ReactElement {
+export function KnowledgeBaseFileView({
+  node,
+  onBack,
+  selectedThreadId,
+  onSelectThread,
+  onChatThreadsChange
+}: Props): ReactElement {
   const [fileContent, setFileContent] = useState<FileContent | null>(null)
   const [fileLoading, setFileLoading] = useState(true)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -368,6 +380,43 @@ export function KnowledgeBaseFileView({ node, onBack, onChatThreadsChange }: Pro
     return () => chatAbortRef.current?.abort()
   }, [])
 
+  useEffect(() => {
+    if (!selectedThreadId) {
+      setMessages([])
+      setActiveChatThreadId(null)
+      setChatError(null)
+      return
+    }
+    const threadId = selectedThreadId
+    let cancelled = false
+    async function loadChatHistory(): Promise<void> {
+      setChatError(null)
+      setMessages([])
+      setActiveChatThreadId(null)
+      try {
+        const { blocks } = await knowledgeRuntimeProvider.getThreadDetail(threadId)
+        if (cancelled) return
+        const history = knowledgeChatHistoryFromBlocks(blocks)
+        const linkedFile = findKnowledgeFileForChatContext([node], history.context)
+        if (!linkedFile) {
+          setChatError('这条对话与当前文件不匹配，请从左侧记录重新打开。')
+          return
+        }
+        setMessages(history.messages)
+        setActiveChatThreadId(threadId)
+        setChatOpen(true)
+      } catch (err) {
+        if (!cancelled) {
+          setChatError(err instanceof Error ? err.message : '加载对话记录失败')
+        }
+      }
+    }
+    void loadChatHistory()
+    return () => {
+      cancelled = true
+    }
+  }, [node, selectedThreadId])
+
   const openInSystemApp = useCallback(async (): Promise<void> => {
     try {
       const result = await window.dsGui.openKnowledgeFile(node.path)
@@ -512,6 +561,9 @@ export function KnowledgeBaseFileView({ node, onBack, onChatThreadsChange }: Pro
 
 ## 当前文件
 ${node.name}（${fileTypeLabel(node)}）
+
+## 当前文件路径
+${node.path}
 
 ${currentFileContext}
 
@@ -666,7 +718,8 @@ ${question.trim()}
     setLiveAssistant('')
     setSending(false)
     setActiveChatThreadId(null)
-  }, [])
+    onSelectThread?.(null)
+  }, [onSelectThread])
 
   // ── Render ──
 

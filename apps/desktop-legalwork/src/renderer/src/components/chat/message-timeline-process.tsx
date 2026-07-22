@@ -1,5 +1,5 @@
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, RefObject } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   AlertTriangle,
@@ -98,6 +98,14 @@ function isProcessSectionActive(section: ProcessSection, processing: boolean): b
   )
 }
 
+function sectionNeedsImmediateAction(section: ProcessSection): boolean {
+  return section.blocks.some(
+    (block) =>
+      (block.kind === 'approval' && block.status === 'pending') ||
+      (block.kind === 'user_input' && block.status === 'pending')
+  )
+}
+
 export function ProcessSectionRow({
   section,
   processing,
@@ -112,7 +120,7 @@ export function ProcessSectionRow({
   viewportRef: RefObject<HTMLDivElement | null>
 }): ReactElement {
   const { t } = useTranslation('common')
-  const [userExpanded, setUserExpanded] = useState<boolean | null>(null)
+  const [userExpanded, setUserExpanded] = useState(false)
   const assistantBlocks =
     section.kind === 'output'
       ? section.blocks.filter(
@@ -128,21 +136,28 @@ export function ProcessSectionRow({
       (block.kind === 'user_input' && block.status === 'error') ||
       (block.kind === 'system' && block.severity === 'error')
   )
-  const defaultExpanded = hasError || section.kind === 'reasoning'
-  const expanded = hasDetails && (userExpanded ?? defaultExpanded)
+  // Approval and user-input gates are not ordinary process details. Keeping
+  // either behind the execution-section disclosure makes a paused turn look
+  // like it is still working, so action-required sections always open.
+  const autoExpanded = active || sectionNeedsImmediateAction(section)
+  const expanded = hasDetails && (autoExpanded || userExpanded)
   const title = describeProcessSection(section, t, {
     processing,
     reasoningDurationMs,
     singleReasoningSection
   })
   const reasoningText = section.kind === 'reasoning' ? getReasoningSectionText(section) : ''
-  const canToggleSection = hasDetails
+  const canToggleSection = hasDetails && !autoExpanded
   const showActiveError = active && hasError
   const { ref: deferredDetailRef, shouldRender: shouldRenderDetail } = useDeferredRender<HTMLDivElement>({
     enabled: expanded,
     immediate: active || section.kind === 'execution',
     root: viewportRef
   })
+
+  useEffect(() => {
+    if (autoExpanded) setUserExpanded(false)
+  }, [autoExpanded])
 
   if (section.kind === 'execution' && section.blocks.length === 1) {
     const [block] = section.blocks
@@ -175,7 +190,8 @@ export function ProcessSectionRow({
       {canToggleSection ? (
         <button
           type="button"
-          onClick={() => setUserExpanded(!(userExpanded ?? defaultExpanded))}
+          onClick={() => setUserExpanded((value) => !value)}
+          aria-expanded={expanded}
           className={`group flex w-fit max-w-full items-center gap-1.5 rounded-md py-0.5 text-left text-[14px] font-medium transition hover:opacity-85 ${
             hasError ? 'text-red-600 dark:text-red-300' : 'text-ds-muted'
           }`}
@@ -234,10 +250,9 @@ function processBlockIsRunningTool(block: ChatBlock, processing: boolean): boole
 
 function processBlockIsAutoOpenPending(block: ChatBlock, processing: boolean): boolean {
   return (
-    processing &&
-    ((block.kind === 'compaction' && block.status === 'running') ||
-      (block.kind === 'approval' && block.status === 'pending') ||
-      (block.kind === 'user_input' && block.status === 'pending'))
+    (processing && block.kind === 'compaction' && block.status === 'running') ||
+    (block.kind === 'approval' && block.status === 'pending') ||
+    (block.kind === 'user_input' && block.status === 'pending')
   )
 }
 
@@ -300,17 +315,20 @@ function ProcessStackRows({
   const { t } = useTranslation('common')
   const [openBlockId, setOpenBlockId] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (processing) setOpenBlockId(null)
+  }, [processing])
+
   return (
     <div className="ds-work-stack">
       {blocks.map((block) => {
         const summary = describeProcessBlock(block, t)
         const detail = getProcessDetail(block, summary)
-        const isRunningTool = processBlockIsRunningTool(block, processing)
         const canExpand = detail.kind !== 'none'
-        const open = canExpand && (processBlockHasError(block) || openBlockId === block.id)
         const rowActive = processBlockIsActive(block, processing)
+        const open = canExpand && (rowActive || openBlockId === block.id)
         const isError = processBlockHasError(block)
-        const canToggle = canExpand
+        const canToggle = canExpand && !rowActive
         const handleToggle = (): void => {
           if (!canToggle) return
           setOpenBlockId((id) => (id === block.id ? null : block.id))
@@ -383,14 +401,19 @@ function ProcessEntryRow({
   const isAutoOpenPending = processBlockIsAutoOpenPending(block, processing)
   const isStreamingAssistant = processing && block.kind === 'assistant' && block.id === 'live-assistant'
   const isError = processBlockHasError(block)
+  const autoOpen = isRunningTool || isAutoOpenPending || isStreamingAssistant
   const open =
     canExpand &&
-    (isError || isAssistantProcessText || isAutoOpenPending || isStreamingAssistant || userOpen)
+    (autoOpen || isAssistantProcessText || userOpen)
 
   const { verb, rest } = splitVerb(summary)
   const rowActive = isRunningTool || isAutoOpenPending || isStreamingAssistant
   const wrapSummary = (block.kind === 'system' && !canExpand) || isAssistantProcessText
-  const canToggle = canExpand && !isAutoOpenPending && !isAssistantProcessText
+  const canToggle = canExpand && !autoOpen && !isAssistantProcessText
+
+  useEffect(() => {
+    if (autoOpen) setUserOpen(false)
+  }, [autoOpen])
   const handleToggle = (): void => {
     if (!canToggle) return
     setUserOpen((v) => !v)

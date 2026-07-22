@@ -446,6 +446,7 @@ export interface AgentProvider {
     threadId?: string
     workspace?: string
   }): Promise<CoreAttachmentMetadataJson>
+  getAttachmentMetadata?(attachmentId: string): Promise<CoreAttachmentMetadataJson>
   getAttachmentContent?(
     attachmentId: string,
     options?: { threadId?: string; workspace?: string }

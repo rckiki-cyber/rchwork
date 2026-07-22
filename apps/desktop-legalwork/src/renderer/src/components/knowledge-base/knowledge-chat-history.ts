@@ -1,4 +1,5 @@
 import type { ChatBlock } from '../../agent/types'
+import type { KnowledgeTreeNode } from './types'
 
 export type ChatMessage = {
   id: string
@@ -9,7 +10,7 @@ export type ChatMessage = {
 
 export type KnowledgeChatContext =
   | { kind: 'global' }
-  | { kind: 'file'; fileName: string }
+  | { kind: 'file'; fileName: string; filePath?: string }
 
 export type KnowledgeChatHistory = {
   messages: ChatMessage[]
@@ -46,7 +47,41 @@ function extractKnowledgeChatContext(text: string): KnowledgeChatContext | null 
   const firstLine = currentFile?.split('\n').map((line) => line.trim()).find(Boolean)
   if (!firstLine) return null
   const fileName = normalizeKnowledgeFileName(firstLine)
-  return fileName ? { kind: 'file', fileName } : null
+  if (!fileName) return null
+  const filePath = extractMarkdownSection(text, '当前文件路径')?.split('\n')[0]?.trim()
+  return filePath ? { kind: 'file', fileName, filePath } : { kind: 'file', fileName }
+}
+
+function normalizedPath(value: string): string {
+  return value.replaceAll('\\', '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '')
+}
+
+function collectFiles(nodes: KnowledgeTreeNode[]): KnowledgeTreeNode[] {
+  const files: KnowledgeTreeNode[] = []
+  for (const node of nodes) {
+    if (node.kind === 'file') {
+      files.push(node)
+    } else {
+      files.push(...collectFiles(node.children ?? []))
+    }
+  }
+  return files
+}
+
+export function findKnowledgeFileForChatContext(
+  nodes: KnowledgeTreeNode[],
+  context: KnowledgeChatContext
+): KnowledgeTreeNode | null {
+  if (context.kind !== 'file') return null
+  const files = collectFiles(nodes)
+  if (context.filePath) {
+    const targetPath = normalizedPath(context.filePath)
+    const pathMatch = files.find((node) => normalizedPath(node.path) === targetPath)
+    if (pathMatch) return pathMatch
+  }
+
+  const nameMatches = files.filter((node) => node.name === context.fileName)
+  return nameMatches.length === 1 ? nameMatches[0] : null
 }
 
 export function knowledgeChatHistoryFromBlocks(blocks: ChatBlock[]): KnowledgeChatHistory {

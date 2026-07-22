@@ -1207,7 +1207,8 @@ describe('AgentLoop', () => {
 
     const [request] = observedRequests
     if (!request) throw new Error('expected model request')
-    expect(request.contextInstructions?.join('\n')).toContain('Continue working toward the active thread goal.')
+    expect(request.contextInstructions?.join('\n')).toContain('继续推进当前任务目标。')
+    expect(request.contextInstructions?.join('\n')).toContain('内部思考、工具决策和进度说明均默认使用简体中文。')
     expect(request.contextInstructions?.join('\n')).toContain('check current memory usage')
     expect(request.tools.map((tool) => tool.name)).toContain(GET_GOAL_TOOL_NAME)
     expect(request.tools.map((tool) => tool.name)).toContain(UPDATE_GOAL_TOOL_NAME)

@@ -26,6 +26,13 @@ const DATA_COMPLIANCE_OPTIONAL_PATHS = [
   'vendor/data-compliance-review-codex/projects/data-compliance-ai-project-kit/knowledge-base/local-regulations.sqlite3'
 ]
 
+const DOCUMENT_OCR_REQUIRED_PATHS = [
+  'ocr_agent.py',
+  'document/__init__.py',
+  'document/intake/router.py',
+  'document/ocr/router.py'
+]
+
 // legalwork 不使用相机 / 麦克风 / 蓝牙 / 相册。Electron 框架默认在 Info.plist 里塞了这些
 // 权限用途串，会导致 macOS 在相关 API 被触达时弹出无谓的权限请求（如相册访问）。
 // 打包后、签名前删掉这些键，即可从根本上避免这些与功能无关的权限弹窗。
@@ -150,6 +157,14 @@ function validateBundledDataComplianceRuntime(context) {
   }
 }
 
+function validateBundledDocumentOcrRuntime(context) {
+  const root = packedResourcesDir(context)
+  for (const relativePath of DOCUMENT_OCR_REQUIRED_PATHS) {
+    assertExists(join(root, relativePath), relativePath)
+  }
+  assertExists(join(root, 'ocr-runtime'), 'ocr-runtime')
+}
+
 function maybeAdhocSignMacApp(context) {
   if (normalizePlatform(context.electronPlatformName) !== 'darwin') {
     return
@@ -240,6 +255,7 @@ async function afterPack(context) {
   restoreBundledOfficeCli(context)
   validateBundledLegalworkRuntime(context)
   validateBundledDataComplianceRuntime(context)
+  validateBundledDocumentOcrRuntime(context)
   stripUnnecessaryMacPermissions(context)
   maybeAdhocSignMacApp(context)
 }
@@ -247,6 +263,7 @@ async function afterPack(context) {
 exports.LEGALWORK_RUNTIME_REQUIRED_PATHS = LEGALWORK_RUNTIME_REQUIRED_PATHS
 exports.DATA_COMPLIANCE_REQUIRED_PATHS = DATA_COMPLIANCE_REQUIRED_PATHS
 exports.DATA_COMPLIANCE_OPTIONAL_PATHS = DATA_COMPLIANCE_OPTIONAL_PATHS
+exports.DOCUMENT_OCR_REQUIRED_PATHS = DOCUMENT_OCR_REQUIRED_PATHS
 exports._internals = {
   appBundlePath,
   packedResourcesDir,
@@ -258,6 +275,7 @@ exports._internals = {
   restoreBundledOfficeCli,
   validateBundledLegalworkRuntime,
   validateBundledDataComplianceRuntime,
+  validateBundledDocumentOcrRuntime,
   stripUnnecessaryMacPermissions
 }
 exports.default = afterPack

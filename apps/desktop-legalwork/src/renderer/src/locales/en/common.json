@@ -1353,6 +1353,7 @@
   "workedFor": "Worked for {{duration}}",
   "workingFor": "Working for {{duration}}",
   "working": "Working…",
+  "waitingForUserInput": "Waiting for your input",
   "processSteps": "Work process ({{count}} steps)",
   "processTextLabel": "Output",
   "thinkingLabel": "Thinking",
