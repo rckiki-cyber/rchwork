@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { realpath, stat } from 'node:fs/promises'
-import { basename, isAbsolute, relative, resolve } from 'node:path'
+import { isAbsolute, relative, resolve } from 'node:path'
 import { URL } from 'node:url'
 import {
   createLarkChannel,
@@ -1202,40 +1202,9 @@ export class ClawRuntime {
           turnId: result.turnId
         })
       : []
-    let replyText = result.ok
+    const replyText = result.ok
       ? replyTextForGeneratedFiles(result.text?.trim() || result.message?.trim() || 'Completed.', filesToSend)
       : (result.message.trim() || 'Sorry, something went wrong while handling your message.')
-
-    // SEND_FILE:/path/to/file — allow Agent to explicitly request file delivery
-    const sendFilePaths = extractSendFileMarkers(replyText)
-    if (sendFilePaths.length > 0) {
-      replyText = stripSendFileMarkers(replyText)
-    }
-    const explicitFiles: ClawGeneratedFileV1[] = []
-    for (const filePath of sendFilePaths) {
-    for (const filePath of sendFilePaths) {
-      try {
-        const resolved = resolve(filePath)
-        await stat(resolved)
-        explicitFiles.push({
-          path: resolved,
-          fileName: basename(resolved),
-          relativePath: workspaceRoot ? relative(resolve(workspaceRoot), resolved) : undefined
-        })
-      } catch {
-        // file not found — skip silently
-      }
-    }
-    if (explicitFiles.length > 0) {
-      const validated = await this.resolveFeishuGeneratedFiles(explicitFiles, workspaceRoot, {
-        purpose: 'agent-send-file',
-        channelId,
-        chatId: message.chatId,
-        inboundMessageId: message.messageId
-      })
-      filesToSend.push(...validated)
-    }
-
     const resultThreadId = result.ok ? result.threadId : undefined
     const resultTurnId = result.ok ? result.turnId : undefined
     try {
@@ -1557,22 +1526,6 @@ export class ClawRuntime {
       writeJson(res, 500, { ok: false, message })
     }
   }
-}
-
-const SEND_FILE_RE = /SEND_FILE:\s*([^\n\r]+)/gi
-
-function extractSendFileMarkers(text: string): string[] {
-  const paths: string[] = []
-  let match: RegExpExecArray | null
-  while ((match = SEND_FILE_RE.exec(text)) !== null) {
-    const path = match[1]!.trim()
-    if (path) paths.push(path)
-  }
-  return paths
-}
-
-function stripSendFileMarkers(text: string): string {
-  return text.replace(SEND_FILE_RE, '').trim()
 }
 
 export function createClawRuntime(deps: ClawRuntimeDeps): ClawRuntime {

@@ -205,7 +205,7 @@ export function buildMemoryToolProviders(
               limit
             })
             const filtered = typeof args.search === 'string' && args.search.trim()
-              ? threads.filter((t) => t.title?.toLocaleLowerCase().includes(args.search!.toLocaleLowerCase()))
+              ? threads.filter((t) => t.title?.toLowerCase().includes((args.search as string).toLowerCase()))
               : threads
             return {
               output: {

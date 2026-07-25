@@ -580,7 +580,8 @@ const formatNpcRecord = (result: NpcLawResult): KnowledgeContextRecord => {
     content: excerpt,
     citation: `国家法律法规数据库：${result.title}`,
     tags: ['official', 'npc-law-db', result.flxz, result.status].filter(Boolean),
-    sourceKind: 'web'
+    sourceKind: 'web',
+    authors: []
   }
 }
 

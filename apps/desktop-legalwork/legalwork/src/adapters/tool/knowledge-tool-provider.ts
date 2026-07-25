@@ -339,7 +339,7 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
           }
 
           // Extract citations, then search KB for each one
-          const { extractCitations, parseCitationIndices, matchCitationToDocument, verifyPaperCitations } = await import('../../knowledge/citation-verifier.js')
+          const { extractCitations, verifyPaperCitations } = await import('../../knowledge/citation-verifier.js')
           const citations = extractCitations(draft)
           const uniqueCitations = [...new Set(citations.map((c) => c.rawText))]
 
