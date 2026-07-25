@@ -1246,7 +1246,7 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         z.literal('flint-chart'),
         packageId
       )
-      const executable = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+      const executable = resolveNpxPath()
       const result = await runCommand(
         executable,
         ['--yes', 'flint-chart-mcp@0.3.0', '--version'],
@@ -1710,6 +1710,32 @@ async function isSupportedPythonExecutable(command: string, env?: NodeJS.Process
   const result = await runCommand(command, ['--version'], { env })
   return result.exitCode === 0 &&
     isSupportedDataCompliancePythonVersion(`${result.stdout}\n${result.stderr}`)
+}
+
+/** Common paths to search for executables (npx, python, etc.) in packaged Electron apps */
+const COMMON_BIN_PATHS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']
+
+/**
+ * Resolve the full path to the `npx` executable.
+ * In packaged Electron apps, `process.env.PATH` may not include
+ * Homebrew or other package manager bin directories, so we search
+ * the common paths explicitly.
+ */
+function resolveNpxPath(): string {
+  if (process.platform === 'win32') {
+    // Windows: just try npx.cmd — the env usually has System32 etc.
+    return 'npx.cmd'
+  }
+  const candidates = COMMON_BIN_PATHS.map((dir) => join(dir, 'npx'))
+  for (const candidate of candidates) {
+    try {
+      if (existsSync(candidate)) return candidate
+    } catch {
+      continue
+    }
+  }
+  // Last resort: rely on PATH
+  return 'npx'
 }
 
 /** Resolve a Python 3.10-3.12 executable available on the system for data compliance */

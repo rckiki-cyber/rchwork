@@ -1625,7 +1625,7 @@ export function Workbench(): ReactElement {
                 workspaceRoots={!hasMessages ? codeWorkspaceRoots : undefined}
                 onSelectWorkspace={!hasMessages ? selectNewConversationWorkspace : undefined}
                 onPickWorkspace={!hasMessages ? pickNewConversationWorkspace : undefined}
-                onClearWorkspace={!hasMessages ? clearNewConversationWorkspace : undefined}
+                onClearWorkspace={clearNewConversationWorkspace}
               />
             </div>
           </section>
