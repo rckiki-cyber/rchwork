@@ -1,5 +1,5 @@
 ---
-name: 识别问题section409a估值报告
+name: identify-issues-in-section-409a-valuation-report
 task_id: tax/identify-issues-in-section-409a-valuation-report
 description: Reviewing a section 409A valuation report requires assessing each methodological choice for its effect on the concluded common stock value, organizing issues by severity, and evaluating whether the analysis supports the relevant valuation safe-harbor framework.
 activates_for: [planner, solver, checker]

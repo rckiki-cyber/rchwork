@@ -1,5 +1,5 @@
 ---
-name: flsaovertime规则gap分析
+name: flsa-overtime-rule-gap-analysis
 task_id: corporate-governance/analyze-flsa-overtime-rule-gap-against-current-employee-classifications
 description: Gap analysis comparing current employee exempt classifications against applicable salary thresholds and duties tests, identifying potentially misclassified positions and producing procedural remediation planning with prospective and retrospective exposure analysis.
 activates_for: [planner, solver, checker]

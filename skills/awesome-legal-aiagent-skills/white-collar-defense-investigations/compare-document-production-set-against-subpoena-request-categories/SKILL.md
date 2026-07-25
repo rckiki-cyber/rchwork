@@ -1,5 +1,5 @@
 ---
-name: 比较文件productionagainstgrandjury传票
+name: compare-document-production-against-grand-jury-subpoena
 task_id: white-collar-defense-investigations/compare-document-production-set-against-subpoena-request-categories
 description: Gap analysis memorandum comparing a rolling document production set against subpoena request categories, identifying collection gaps, coding guide deficiencies, privilege log completeness issues, and potential bad-faith or obstruction risk from non-responsive classification of plainly responsive documents.
 activates_for: [planner, solver, checker]

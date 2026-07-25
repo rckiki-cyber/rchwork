@@ -1,5 +1,5 @@
 ---
-name: 场景
+name: scenario-01
 task_id: data-privacy-cybersecurity/audit-privacy-policy-compliance/scenario-01
 description: Privacy policy compliance audits for fintech apps fail when the agent reviews the policy as a standalone document rather than reconciling it against the data inventory, sharing agreement, breach log, and investor due-diligence memo for cross-document consistency gaps.
 activates_for: [planner, solver, checker]

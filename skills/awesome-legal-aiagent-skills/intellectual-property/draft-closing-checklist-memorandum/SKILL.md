@@ -1,5 +1,5 @@
 ---
-name: 起草交割清单ip资产购买
+name: draft-closing-checklist-ip-asset-purchase
 task_id: intellectual-property/draft-closing-checklist-memorandum
 description: Closing checklist memorandum for an intellectual property and technology asset purchase transaction, organizing pre-closing conditions, closing deliverables, and post-closing obligations derived from the governing transaction documents.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草基金交割certificate
+name: draft-fund-closing-certificate
 task_id: funds-asset-management/draft-fund-closing-certificate
 description: Draft a GP closing certificate for a private equity fund's final closing certifying each closing condition precedent and prepare a companion issues memo that flags discrepancies and unresolved items identified across the source documents.
 activates_for: [planner, solver, checker]

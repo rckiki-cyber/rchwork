@@ -1,5 +1,5 @@
 ---
-name: 起草sowcloudmigration
+name: draft-sow-cloud-migration
 task_id: intellectual-property/draft-statement-of-work-for-enterprise-cloud-migration-services
 description: Drafting a technology services statement of work for a regulated enterprise cloud migration engagement that requires reconciling conflicting specifications across multiple source documents while incorporating applicable healthcare data-compliance obligations.
 activates_for: [planner, solver, checker]

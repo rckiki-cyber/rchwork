@@ -1,5 +1,5 @@
 ---
-name: 起草adoption申请
+name: draft-adoption-petition
 task_id: trusts-estates-private-client/draft-adoption-petition
 description: Drafting a stepparent adoption petition requires assembling the required party information and court-filing allegations, addressing any consent revocation period, any pre-adoption support arrears, applicable interstate-placement considerations, and any home study preparer credentials in a companion attorney cover memo.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 比较补偿条款先例
+name: compare-indemnification-provisions-precedent
 task_id: corporate-ma/compare-acquisition-agreement-indemnification-provisions-against-precedent-database
 description: Guides provision-by-provision comparison of draft indemnification terms against a firm playbook and precedent, assessing structural gaps in basket type, materiality scrape, knowledge qualifier, defense control, survival periods, and special representation treatment.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 产权负担调查提取
+name: extract-encumbrances-from-title-survey
 task_id: real-estate/extract-encumbrances-from-title-survey
 description: Guides preparation of an encumbrance summary report by systematically cataloguing title exceptions and survey-disclosed encumbrances, assessing project compatibility, and outlining resolution steps for each material item.
 activates_for: [planner, solver, checker]

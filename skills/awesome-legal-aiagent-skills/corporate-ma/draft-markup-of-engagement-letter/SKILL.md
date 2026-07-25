@@ -1,5 +1,5 @@
 ---
-name: 起草markupengagement函件
+name: draft-markup-of-engagement-letter
 task_id: corporate-ma/draft-markup-of-engagement-letter
 description: Guides preparation of a redlined engagement letter with bracketed comments and a companion priority-ranked memo, focusing on identifying overbroad tail provisions, evaluating fee-credit economics, assessing arbitration venue and other procedural burdens, reviewing limitation-of-liability carve-out language, and checking scope, rate, and payment provisions for ambiguity or mismatch.
 activates_for: [planner, solver, checker]

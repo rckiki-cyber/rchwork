@@ -1,5 +1,5 @@
 ---
-name: ecvcextracteconomic条款convertible票据
+name: ecvc-extract-economic-terms-convertible-note
 task_id: emerging-companies-venture-capital/extract-economic-terms-from-convertible-note
 description: Extract and compare economic terms across multiple convertible notes by grouping instruments by issuer, separating note-level extraction from cross-note comparison, identifying definitional inconsistencies, and preparing dilution modeling inputs.
 activates_for: [planner, solver, checker]

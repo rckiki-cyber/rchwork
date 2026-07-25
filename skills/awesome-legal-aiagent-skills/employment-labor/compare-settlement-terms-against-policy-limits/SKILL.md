@@ -1,5 +1,5 @@
 ---
-name: 比较和解条款against政策limits
+name: compare-settlement-terms-against-policy-limits
 task_id: employment-labor/compare-settlement-terms-against-policy-limits
 description: Guides the analyst through a coverage gap analysis memorandum comparing settlement terms against available insurance coverage, including policy-priority issues, reservation-of-rights handling, punitive-damages insurability, and defense-cost erosion.
 activates_for: [planner, solver, checker]

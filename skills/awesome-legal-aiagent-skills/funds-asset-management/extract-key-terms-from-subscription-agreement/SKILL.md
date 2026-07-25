@@ -1,5 +1,5 @@
 ---
-name: extractkey条款subscription协议
+name: extract-key-terms-from-subscription-agreement
 task_id: funds-asset-management/extract-key-terms-from-subscription-agreement
 description: Extract and cross-reference key terms from subscription documents and a related summary into a standardized term extraction report, flagging inconsistencies across documents and capturing the operative language and regulatory characterization required for each investor representation.
 activates_for: [planner, solver, checker]

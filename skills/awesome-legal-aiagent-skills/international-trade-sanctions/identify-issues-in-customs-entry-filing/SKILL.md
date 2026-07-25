@@ -1,5 +1,5 @@
 ---
-name: itsidentify问题customsentry提交
+name: its-identify-issues-customs-entry-filing
 task_id: international-trade-sanctions/identify-issues-in-customs-entry-filing
 description: Produces a compliance review memorandum for a customs entry package that identifies layered duty omissions, admissibility and filing deficiencies, classification issues, and potential refund opportunities on a line-by-line basis, calculates net duty exposure using the documents provided, and outlines disclosure and protest pathways at a high level.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草markupepc合同ownersolar
+name: draft-markup-epc-contract-owner-solar
 task_id: energy-natural-resources/draft-markup-of-engineering-procurement-construction-contract
 description: Guides drafting of an owner-side markup of a contractor-favorable EPC agreement for a solar project by checking commercial provisions against financing minimum requirements, tax credit conditions, and power purchase agreement alignment constraints.
 activates_for: [planner, solver, checker]

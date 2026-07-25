@@ -1,5 +1,5 @@
 ---
-name: 识别问题borrower财务报表
+name: identify-issues-in-borrower-financial-statements
 task_id: banking-finance/identify-issues-in-borrower-financial-statements
 description: Reviews a borrower’s periodic reporting package against the applicable credit documentation and produces an issues memo with corrected covenant calculations and next-step analysis.
 activates_for: [planner, solver, checker]

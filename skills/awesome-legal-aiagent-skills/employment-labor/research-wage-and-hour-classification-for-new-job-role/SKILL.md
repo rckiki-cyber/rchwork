@@ -1,5 +1,5 @@
 ---
-name: 研究wagehourclassification新型jobrole
+name: research-wage-and-hour-classification-for-new-job-role
 task_id: employment-labor/research-wage-and-hour-classification-for-new-job-role
 description: Guides the analyst in producing a comprehensive wage-and-hour classification memorandum for a new job role, applying the applicable federal and state exemption tests and analyzing potential exposure in a procedural, jurisdiction-aware way.
 activates_for: [planner, solver, checker]

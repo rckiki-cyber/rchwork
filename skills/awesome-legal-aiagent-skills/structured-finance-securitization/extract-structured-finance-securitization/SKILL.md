@@ -1,5 +1,5 @@
 ---
-name: extractkey条款auto贷款abs期限sheet
+name: extract-key-terms-auto-loan-abs-term-sheet
 task_id: structured-finance-securitization/extract-structured-finance-securitization
 description: Extract and cross-check material terms from an asset-backed securities term sheet and supporting documents, verify internal arithmetic where relevant, and identify structural or disclosure inconsistencies by comparing the term sheet against other transaction materials.
 activates_for: [planner, solver, checker]

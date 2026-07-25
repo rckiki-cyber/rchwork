@@ -1,5 +1,5 @@
 ---
-name: 审查counterpartys拟议jury指示
+name: review-counterpartys-proposed-jury-instructions
 task_id: litigation-dispute-resolution/review-counterpartys-proposed-jury-instructions
 description: Reviewing a counterparty's proposed jury instructions in a trade secrets trial requires identifying instructions that misstate the applicable legal standard, conflict with prior court orders, or unfairly shift the burden of proof, and recommending specific objections and counter-instructions.
 activates_for: [planner, solver, checker]

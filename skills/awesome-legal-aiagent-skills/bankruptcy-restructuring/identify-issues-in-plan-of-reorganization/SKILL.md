@@ -1,5 +1,5 @@
 ---
-name: 识别问题计划reorganization
+name: identify-issues-in-plan-of-reorganization
 task_id: bankruptcy-restructuring/identify-issues-in-plan-of-reorganization
 description: Ensures a plan issues memo checks the plan’s internal consistency, tests economic assumptions and classifications against the supporting materials, identifies confirmation-related defects and disclosure gaps, and ends with a cumulative feasibility-oriented risk assessment rather than only isolated issues.
 activates_for: [planner, solver, checker]

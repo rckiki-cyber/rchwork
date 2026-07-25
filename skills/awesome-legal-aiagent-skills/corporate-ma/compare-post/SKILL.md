@@ -1,5 +1,5 @@
 ---
-name: 比较post交割working资本
+name: compare-post-closing-working-capital
 task_id: corporate-ma/compare-post
 description: Guides independent verification of a disputed post-closing working capital closing statement by applying the operative definition line by line, identifying categorization and arithmetic errors, and recomputing the corrected adjustment with directional impact for each error.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草case评估备忘录
+name: draft-case-assessment-memorandum
 task_id: litigation-dispute-resolution/draft-case-assessment-memorandum
 description: A litigation case assessment memo must evaluate each claim and defense with its evidentiary support, assess damages exposure in a reasoned range, consider insurance and venue implications, and provide a clear disposition recommendation.
 activates_for: [planner, solver, checker]

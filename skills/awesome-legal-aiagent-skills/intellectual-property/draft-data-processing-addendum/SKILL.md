@@ -1,5 +1,5 @@
 ---
-name: 起草数据processingaddendum
+name: draft-data-processing-addendum
 task_id: intellectual-property/draft-data-processing-addendum
 description: Controller-protective data processing addendum as an exhibit to an MSA, with complete annexes and a negotiation issues memo, for a healthcare analytics vendor onboarding.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草承销协议
+name: draft-underwriting-agreement
 task_id: capital-markets/draft-underwriting-agreement
 description: Firm-commitment underwriting agreement drafting for an IPO where the baseline populates economic terms but omits deal-specific provisions required by the transaction structure and source documents, and does not produce the companion issues memo.
 activates_for: [planner, solver, checker]

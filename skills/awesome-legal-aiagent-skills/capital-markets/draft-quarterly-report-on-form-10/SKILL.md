@@ -1,5 +1,5 @@
 ---
-name: 起草季度报告表格q
+name: draft-quarterly-report-on-form-10-q
 task_id: capital-markets/draft-quarterly-report-on-form-10
 description: Form 10-Q drafting from multiple source documents where the baseline populates standard sections but may miss disclosure obligations triggered by events during the quarter, such as acquisitions, regulatory matters, workforce changes, system migrations, or subsequent events.
 activates_for: [planner, solver, checker]

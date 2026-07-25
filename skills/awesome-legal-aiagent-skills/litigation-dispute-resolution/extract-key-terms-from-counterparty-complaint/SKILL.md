@@ -1,5 +1,5 @@
 ---
-name: extractkey条款counterparty起诉状
+name: extract-key-terms-from-counterparty-complaint
 task_id: litigation-dispute-resolution/extract-key-terms-from-counterparty-complaint
 description: Preparing a litigation summary memorandum from a newly served complaint requires extracting the complaint’s claims, parties, operative facts, requested relief, and key procedural facts from the complaint and service materials, while integrating the client’s initial description of the dispute to identify discrepancies and defense-relevant issues.
 activates_for: [planner, solver, checker]

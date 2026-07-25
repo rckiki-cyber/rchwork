@@ -1,5 +1,5 @@
 ---
-name: 起草同意adoption
+name: draft-consent-to-adoption
 task_id: trusts-estates-private-client/draft-consent-to-adoption
 description: Drafting a consent to adoption in a Maryland independent adoption requires careful attention to revocation timing, paternity status, notice obligations, naming consistency, execution formalities, and related family-support issues.
 activates_for: [planner, solver, checker]

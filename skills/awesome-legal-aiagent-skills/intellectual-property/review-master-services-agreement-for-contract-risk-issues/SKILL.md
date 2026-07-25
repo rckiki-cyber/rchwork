@@ -1,5 +1,5 @@
 ---
-name: 审查msa合同风险问题
+name: review-msa-contract-risk-issues
 task_id: intellectual-property/review-master-services-agreement-for-contract-risk-issues
 description: Reviewing a vendor-form master services agreement and related exhibits from the customer's perspective to produce a risk-categorized issue memorandum using a document-hierarchy, cross-exhibit, and issue-spotting workflow.
 activates_for: [planner, solver, checker]

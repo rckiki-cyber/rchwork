@@ -1,5 +1,5 @@
 ---
-name: 起草商业不动产不动产贷款协议
+name: draft-commercial-real-estate-loan-agreement
 task_id: real-estate/draft-commercial-real-estate-loan-agreement
 description: Guides drafting of a lender-protective construction-to-permanent loan agreement by systematically reconciling economic terms across core transaction documents and flagging inconsistencies with bracketed drafting notes.
 activates_for: [planner, solver, checker]

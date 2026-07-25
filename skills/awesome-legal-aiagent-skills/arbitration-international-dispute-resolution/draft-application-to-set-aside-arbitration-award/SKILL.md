@@ -1,5 +1,5 @@
 ---
-name: 起草applicationsetaside仲裁award
+name: draft-application-to-set-aside-arbitration-award
 task_id: arbitration-international-dispute-resolution/draft-application-to-set-aside-arbitration-award
 description: Ensures a petition to vacate an arbitration award under the Federal Arbitration Act develops the available vacatur grounds, addresses timeliness and venue, and includes a cumulative prejudice argument where appropriate.
 activates_for: [planner, solver, checker]

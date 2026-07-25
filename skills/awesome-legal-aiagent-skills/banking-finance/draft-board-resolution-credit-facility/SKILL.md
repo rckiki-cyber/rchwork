@@ -1,5 +1,5 @@
 ---
-name: 起草董事会解决creditfacility
+name: draft-board-resolution-credit-facility
 task_id: banking-finance/draft-board-resolution-credit-facility
 description: Drafts a board resolution authorizing a senior secured revolving credit facility and a cover memo, ensuring corporate authorization is procedurally valid and aligned with the governing documents and commitment terms.
 activates_for: [planner, solver, checker]

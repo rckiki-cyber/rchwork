@@ -1,5 +1,5 @@
 ---
-name: 比较assessed税务positionsagainstfiledreturns
+name: compare-assessed-tax-positions-against-filed-returns
 task_id: tax/compare-assessed-tax-positions-against-filed-returns
 description: A pre-acquisition tax variance analysis should reconcile assessed positions against filed returns issue by issue, assess federal and state-specific errors, and translate each variance into an actionable indemnification analysis rather than merely listing differences.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: hlsidentify医疗facilitylta问题
+name: hls-identify-healthcare-facility-lta-issues
 task_id: healthcare-life-sciences/identify-issues-in-healthcare-facility-license-transfer-agreement
 description: Reviews a healthcare facility license transfer agreement to identify issues involving governing law conflicts, government certification gaps, indemnification structure, certificate-of-need reporting obligations, adverse-action disclosure requirements, and force majeure risks.
 activates_for: [planner, solver, checker]

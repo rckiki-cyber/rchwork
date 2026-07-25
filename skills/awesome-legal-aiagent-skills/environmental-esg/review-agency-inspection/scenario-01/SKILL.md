@@ -1,5 +1,5 @@
 ---
-name: 审查机构检查scenario
+name: review-agency-inspection-scenario-01
 task_id: environmental-esg/review-agency-inspection/scenario-01
 description: Guides preparation of a defense-oriented issues memorandum for a contested agency multi-media inspection by organizing findings by media and assessing each allegation against facility records, monitoring data, and procedural documentation.
 activates_for: [planner, solver, checker]

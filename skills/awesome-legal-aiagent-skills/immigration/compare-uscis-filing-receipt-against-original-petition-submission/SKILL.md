@@ -1,5 +1,5 @@
 ---
-name: 比较uscis提交receiptagainstoriginal申请submission
+name: compare-uscis-filing-receipt-against-original-petition-submission
 task_id: immigration/compare-uscis-filing-receipt-against-original-petition-submission
 description: Discrepancy review comparing a USCIS filing receipt against the original petition submission, focusing on field-by-field mismatches, their potential effect on case linkage and identity verification, and the appropriate correction path based on the source and materiality of each error.
 activates_for: [planner, solver, checker]

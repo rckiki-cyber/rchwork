@@ -1,5 +1,5 @@
 ---
-name: 比较计划feasibilityprojectionsvshistorical
+name: compare-plan-feasibility-projections-vs-historical
 task_id: bankruptcy-restructuring/compare-plan-feasibility-projections-against-historical-financials
 description: Ensures a feasibility analysis memo tests each projection metric against historical actuals, verifies internal arithmetic, accounts for mandatory cash sweep obligations omitted from projections, and frames the analysis under the applicable plan-confirmation feasibility standard.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: triage服务provider合同cpra合规gaps
+name: triage-service-provider-contracts-for-cpra-compliance-gaps
 task_id: data-privacy-cybersecurity/triage-service-provider-contracts-for-cpra-compliance-gaps
 description: CPRA service-provider contract triage requires first classifying each counterparty by its correct legal relationship before assessing contractual adequacy, and using any existing internal gap analysis and enforcement materials as framing inputs that set triage priorities.
 activates_for: [planner, solver, checker]

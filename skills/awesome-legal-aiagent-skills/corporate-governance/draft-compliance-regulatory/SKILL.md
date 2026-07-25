@@ -1,5 +1,5 @@
 ---
-name: code业务conductethicsnewly公共biopharma
+name: code-of-business-conduct-ethics-newly-public-biopharma
 task_id: corporate-governance/draft-compliance-regulatory
 description: Board-ready code of business conduct and ethics for a newly public biopharmaceutical company, consolidating source policies and addressing applicable public-company governance, healthcare-interaction, whistleblower, disclosure, compensation-recovery, conflicts, privacy, and compliance-program requirements, with a drafting memorandum documenting gap resolution and open action items.
 activates_for: [planner, solver, checker]

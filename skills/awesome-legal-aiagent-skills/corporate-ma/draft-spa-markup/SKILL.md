@@ -1,5 +1,5 @@
 ---
-name: 起草spamarkup卖方perspective
+name: draft-spa-markup-seller-perspective
 task_id: corporate-ma/draft-spa-markup
 description: Guides seller-side review of a buyer-drafted asset purchase agreement by checking whether customary seller-favorable risk allocations, operational flexibility, and dispute-resolution mechanics are adequately addressed, and by cross-referencing the draft against the letter of intent and other agreed deal points.
 activates_for: [planner, solver, checker]

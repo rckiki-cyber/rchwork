@@ -1,5 +1,5 @@
 ---
-name: sec网络安全披露incident回应gap
+name: sec-cybersecurity-disclosure-incident-response-gap
 task_id: corporate-governance/assess-impact-of-sec-cybersecurity-disclosure-rule-on-incident-response-procedures
 description: Gap analysis of incident response procedures and governance disclosures against cybersecurity disclosure requirements, with attention to materiality analysis, filing timing, and incident-response structure.
 activates_for: [planner, solver, checker]

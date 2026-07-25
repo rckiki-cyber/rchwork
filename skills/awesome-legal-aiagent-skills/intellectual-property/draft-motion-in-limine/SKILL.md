@@ -1,5 +1,5 @@
 ---
-name: 起草动议limine
+name: draft-motion-in-limine
 task_id: intellectual-property/draft-motion-in-limine
 description: Motion in limine to exclude specified categories of prejudicial evidence in a contract case, based on the pretrial record and case management order.
 activates_for: [planner, solver, checker]

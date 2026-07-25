@@ -1,5 +1,5 @@
 ---
-name: 起草重组support协议
+name: draft-restructuring-support-agreement
 task_id: bankruptcy-restructuring/draft-restructuring-support-agreement
 description: Ensures an RSA draft reconciles source-document inconsistencies in restructuring economics and milestone timing, includes a board fiduciary-out and allocation mechanics for any backstop or similar support commitment, and documents each resolution with a bracketed drafting note.
 activates_for: [planner, solver, checker]

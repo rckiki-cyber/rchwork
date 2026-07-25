@@ -1,5 +1,5 @@
 ---
-name: 识别问题interconnection协议solarstorage
+name: identify-issues-interconnection-agreement-solar-storage
 task_id: energy-natural-resources/identify-issues-in-interconnection-agreement
 description: Guides issue identification in a large generator interconnection agreement by cross-referencing costs against the relevant study, comparing technical requirements against the generator's specifications, and flagging non-standard additions and subjective standards that create open-ended obligations.
 activates_for: [planner, solver, checker]

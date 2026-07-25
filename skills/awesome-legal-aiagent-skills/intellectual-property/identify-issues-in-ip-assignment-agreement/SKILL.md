@@ -1,5 +1,5 @@
 ---
-name: 识别问题ip转让协议
+name: identify-issues-ip-assignment-agreement
 task_id: intellectual-property/identify-issues-in-ip-assignment-agreement
 description: Reviewing a draft IP assignment agreement against diligence materials and deal documents to identify ownership chain defects, government rights obligations, and transaction-specific risk factors.
 activates_for: [planner, solver, checker]

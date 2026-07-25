@@ -1,5 +1,5 @@
 ---
-name: 审查董事会解决scenario
+name: review-board-resolutions-scenario-01
 task_id: corporate-governance/review-board-resolutions/scenario-01
 description: Agents review board resolutions resolution-by-resolution and cross-check each action against the governing charter, bylaws, and any applicable investor or voting agreements; confirm committee membership requirements, interested-director procedure, option-pricing tax consequences, stockholder consent rights for indebtedness, board composition requirements, notice requirements, and any other procedural condition that may affect validity.
 activates_for: [planner, solver, checker]

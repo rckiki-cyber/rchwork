@@ -1,5 +1,5 @@
 ---
-name: 起草税务due尽职调查报告
+name: draft-tax-due-diligence-report
 task_id: tax/draft-tax-due-diligence-report
 description: A buy-side tax due diligence report should identify and quantify tax exposures across a low-to-high range, analyze relevant loss-attribute limitations and related tax attributes, and recommend transaction protections for each material exposure.
 activates_for: [planner, solver, checker]

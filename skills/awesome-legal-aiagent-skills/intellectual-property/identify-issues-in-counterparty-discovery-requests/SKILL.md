@@ -1,5 +1,5 @@
 ---
-name: 识别问题counterparty证据开示请求
+name: identify-issues-counterparty-discovery-requests
 task_id: intellectual-property/identify-issues-in-counterparty-discovery-requests
 description: Reviewing opposing party discovery requests in an IP litigation matter to identify objectionable requests and develop response strategies, using the pleadings, scheduling materials, and any discovery-related orders to frame scope and objections.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草bia上诉摘要
+name: draft-bia-appeal-brief
 task_id: immigration/draft-appeal-brief
 description: BIA appellate brief challenging an asylum denial by translating record-based procedural errors and legal-standard misapplications into structured appellate arguments using the governing immigration framework and relevant appellate authority.
 activates_for: [planner, solver, checker]

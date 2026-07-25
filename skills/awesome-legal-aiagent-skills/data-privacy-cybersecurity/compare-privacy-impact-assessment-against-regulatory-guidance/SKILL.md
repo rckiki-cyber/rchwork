@@ -1,5 +1,5 @@
 ---
-name: 比较隐私impact评估against监管guidance
+name: compare-privacy-impact-assessment-against-regulatory-guidance
 task_id: data-privacy-cybersecurity/compare-privacy-impact-assessment-against-regulatory-guidance
 description: PIA/DPIA gap analyses fail when the agent uses only one benchmark, omits key elements of the applicable DPIA framework, or skips task-specific scope materials that may shape the memo's priorities.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 评估recallreporting义务产品safety问题
+name: assess-recall-and-reporting-obligations-for-product-safety-issue
 task_id: environmental-esg/assess-recall-and-reporting-obligations-for-product-safety-issue
 description: Guides incident response analysis for a product safety issue by mapping recall and reporting obligations across regulatory reporting, public-company disclosure, supply-chain contract, and litigation-hold dimensions rather than treating the matter as a single-agency compliance question.
 activates_for: [planner, solver, checker]

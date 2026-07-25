@@ -1,5 +1,5 @@
 ---
-name: 分析iss雇佣起诉状
+name: analyze-iss-employment-complaint
 task_id: employment-labor/analyze-iss-employment-complaint
 description: Guides defense counsel to analyze a multi-count employment complaint count-by-count, applying the relevant statutory limitations periods, damages ceilings, burden-shifting frameworks, and procedural defenses for each legal theory.
 activates_for: [planner, solver, checker]

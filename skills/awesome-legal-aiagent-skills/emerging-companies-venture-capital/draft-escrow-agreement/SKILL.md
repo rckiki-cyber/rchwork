@@ -1,5 +1,5 @@
 ---
-name: ecvc草案托管协议
+name: ecvc-draft-escrow-agreement
 task_id: emerging-companies-venture-capital/draft-escrow-agreement
 description: Drafting a merger escrow agreement requires aligning governing law with the merger agreement, specifying allocation methodology for different stockholder classes in each release scenario, separating working capital and indemnification mechanics, and addressing tax treatment of escrow earnings
 activates_for: [planner, solver, checker]

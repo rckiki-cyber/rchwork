@@ -1,5 +1,5 @@
 ---
-name: 起草数据roompopulation计划s01
+name: draft-data-room-population-plan-s01
 task_id: corporate-ma/draft-data-room-population-plan/scenario-01
 description: Guides preparation of a data room population plan from deal materials, requiring critical review of the request list for errors, separate tracking of contracts with assignment or change-of-control restrictions, distinction between copyleft and permissive open-source licenses, board minute redaction protocol, and resolution of instruction conflicts.
 activates_for: [planner, solver, checker]

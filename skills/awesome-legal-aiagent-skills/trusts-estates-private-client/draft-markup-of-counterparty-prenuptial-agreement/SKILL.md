@@ -1,5 +1,5 @@
 ---
-name: 起草markupcounterpartyprenuptial协议
+name: draft-markup-of-counterparty-prenuptial-agreement
 task_id: trusts-estates-private-client/draft-markup-of-counterparty-prenuptial-agreement
 description: Producing a prioritized redline markup of a draft prenuptial agreement requires identifying asymmetric and over-broad provisions unfavorable to the client, supplying replacement contract language, and embedding commentary explaining the legal basis and strategic rationale for each change.
 activates_for: [planner, solver, checker]

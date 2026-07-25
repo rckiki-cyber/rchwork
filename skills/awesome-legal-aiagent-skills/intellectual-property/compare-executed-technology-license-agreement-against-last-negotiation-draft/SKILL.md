@@ -1,5 +1,5 @@
 ---
-name: 比较executedtlavs谈判草案
+name: compare-executed-tla-vs-negotiation-draft
 task_id: intellectual-property/compare-executed-technology-license-agreement-against-last-negotiation-draft
 description: Comparative deviation report for an executed technology license agreement versus the last negotiation draft, using negotiation-summary context to identify, prioritize, and analyze differences and to frame possible remediation paths.
 activates_for: [planner, solver, checker]

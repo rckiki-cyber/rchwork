@@ -1,5 +1,5 @@
 ---
-name: 比较leniency方案跨境三方管辖
+name: compare-leniency-programs-across-three-jurisdictions
 task_id: antitrust-competition/compare-leniency-programs-across-three-jurisdictions
 description: Closes gaps in cross-jurisdictional leniency comparison including limitations analysis, sequential-cooperation mechanics, individual applicant strategy, and sequencing recommendations for a board-ready memo.
 activates_for: [planner, solver, checker]

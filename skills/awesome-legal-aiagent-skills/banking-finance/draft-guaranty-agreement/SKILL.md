@@ -1,5 +1,5 @@
 ---
-name: 起草guaranty协议
+name: draft-guaranty-agreement
 task_id: banking-finance/draft-guaranty-agreement
 description: Drafts a guaranty agreement using the provided template and source documents, and prepares a cover memo flagging open issues, material template changes, and authorization deficiencies.
 activates_for: [planner, solver, checker]

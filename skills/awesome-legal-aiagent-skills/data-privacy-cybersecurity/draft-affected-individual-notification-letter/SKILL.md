@@ -1,5 +1,5 @@
 ---
-name: 起草affected个人notification函件
+name: draft-affected-individual-notification-letter
 task_id: data-privacy-cybersecurity/draft-affected-individual-notification-letter
 description: Healthcare breach notification letters fail when the agent does not anchor factual representations to the forensic investigation findings and does not flag inconsistencies between the notification template, incident memo, and compliance matrix in an accompanying cover memo.
 activates_for: [planner, solver, checker]

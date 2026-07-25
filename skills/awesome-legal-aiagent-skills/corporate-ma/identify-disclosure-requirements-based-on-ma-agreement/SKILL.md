@@ -1,5 +1,5 @@
 ---
-name: 识别披露要求basedma
+name: identify-disclosure-requirements-based-on-ma
 task_id: corporate-ma/identify-disclosure-requirements-based-on-ma-agreement
 description: Guides preparation of a disclosure schedule checklist that maps each disclosure obligation in a merger agreement to the required content, responsible party, and information source.
 activates_for: [planner, solver, checker]

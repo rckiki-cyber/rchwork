@@ -1,5 +1,5 @@
 ---
-name: extract交割条件
+name: extract-closing-conditions
 task_id: corporate-ma/extract-closing-conditions
 description: Guides extraction and mapping of all closing conditions from an acquisition agreement into a comprehensive matrix cross-referenced against the current status of each condition.
 activates_for: [planner, solver, checker]

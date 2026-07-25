@@ -1,5 +1,5 @@
 ---
-name: 起草资本call分销
+name: draft-capital-call-distribution
 task_id: funds-asset-management/draft-capital-call-distribution
 description: Prepare capital call notices, distribution notices, allocation schedules, waterfall calculations, capital account statements, and a GP advisory memo from fund administration materials, applying the relevant fund governing documents, including mechanics for excused LPs, preferred-return accrual, credit-facility interest, tax considerations for exempt investors, and distribution sequencing.
 activates_for: [planner, solver, checker]

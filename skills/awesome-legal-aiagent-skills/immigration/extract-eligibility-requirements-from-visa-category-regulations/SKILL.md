@@ -1,5 +1,5 @@
 ---
-name: extracteligibility要求visacategory法规
+name: extract-eligibility-requirements-from-visa-category-regulations
 task_id: immigration/extract-eligibility-requirements-from-visa-category-regulations
 description: Structured eligibility matrix for multiple visa categories extracted from regulatory summaries and policy guidance, where the matrix must preserve the disjunctive or layered structure of each standard and the discrepancy report must flag inconsistencies between source documents.
 activates_for: [planner, solver, checker]

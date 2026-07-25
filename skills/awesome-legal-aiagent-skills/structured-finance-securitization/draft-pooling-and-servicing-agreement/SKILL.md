@@ -1,5 +1,5 @@
 ---
-name: 起草psasubprimeauto
+name: draft-psa-subprime-auto
 task_id: structured-finance-securitization/draft-pooling-and-servicing-agreement
 description: Drafting a pooling and servicing agreement for an auto loan asset-backed securitization by adapting a prior deal precedent to a new structure that introduces changes to the principal waterfall, pre-funding mechanics, interest-rate fallback language, and note class configuration, while identifying and flagging structural conflicts and open items.
 activates_for: [planner, solver, checker]

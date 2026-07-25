@@ -1,5 +1,5 @@
 ---
-name: wagetheftpreventionact合规timeline
+name: wage-theft-prevention-act-compliance-timeline
 task_id: corporate-governance/assess-compliance-timeline-for-new-state-wage-theft-prevention-act
 description: Board-ready compliance timeline memorandum for a newly enacted state wage theft prevention statute, analyzing worker classification risks, wage notice and pay stub obligations, multilingual posting requirements, and third-party staffing liability
 activates_for: [planner, solver, checker]

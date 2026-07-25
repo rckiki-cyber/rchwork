@@ -1,5 +1,5 @@
 ---
-name: 比较交割文件against条件先例
+name: compare-closing-documents-against-conditions-precedent
 task_id: banking-finance/compare-closing-documents-against-conditions-precedent
 description: Verify closing documents against the applicable conditions-precedent framework and produce a severity-organized gap memorandum with remediation steps for each deficiency.
 activates_for: [planner, solver, checker]

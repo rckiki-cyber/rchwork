@@ -1,5 +1,5 @@
 ---
-name: 起草mortgage担保协议
+name: draft-mortgage-and-security-agreement
 task_id: real-estate/draft-mortgage-and-security-agreement
 description: Guides drafting of a commercial mortgage and security agreement by reconciling the deal terms, title materials, appraisal, operating documents, and renovation materials into a complete security instrument with a companion issues memorandum.
 activates_for: [planner, solver, checker]

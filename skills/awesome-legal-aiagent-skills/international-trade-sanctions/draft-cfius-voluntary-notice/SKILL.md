@@ -1,5 +1,5 @@
 ---
-name: its草案cfiusvoluntary通知
+name: its-draft-cfius-voluntary-notice
 task_id: international-trade-sanctions/draft-cfius-voluntary-notice
 description: Drafts a CFIUS joint voluntary notice in the required regulatory format, using the transaction documents and supporting diligence materials to identify the parties, describe the transaction, and address the categories of disclosures commonly required for a foreign acquisition of a business involving sensitive technology, data, or government-related exposures.
 activates_for: [planner, solver, checker]

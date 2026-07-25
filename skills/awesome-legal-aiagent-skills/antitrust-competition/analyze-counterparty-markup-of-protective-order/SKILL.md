@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkupprotective命令
+name: analyze-counterparty-markup-of-protective-order
 task_id: antitrust-competition/analyze-counterparty-markup-of-protective-order
 description: Closes gaps in identifying compound interaction risks across protective order provisions, citing the relevant court’s prior rulings on contested issues, and making concrete recommendations with legal grounding.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别dd请求list问题scenario
+name: identify-dd-request-list-issues-scenario-02
 task_id: capital-markets/identify-dd-request-list-issues/scenario-02
 description: DD request list gap analysis — same framework as the base scenario, extended to address subsidiary dissolution records, jurisdiction-specific dissolution requirements, and clinical hold history as distinct diligence gaps.
 activates_for: [planner, solver, checker]

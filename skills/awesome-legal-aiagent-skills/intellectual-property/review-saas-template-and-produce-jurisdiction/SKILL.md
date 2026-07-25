@@ -1,5 +1,5 @@
 ---
-name: 审查saas模板管辖conformance
+name: review-saas-template-jurisdiction-conformance
 task_id: intellectual-property/review-saas-template-and-produce-jurisdiction
 description: Reviewing a SaaS subscription agreement template against jurisdiction-specific legal requirements and operational documents to produce a conformance memorandum identifying required changes and pre-launch actions across the relevant target markets.
 activates_for: [planner, solver, checker]

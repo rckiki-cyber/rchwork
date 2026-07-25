@@ -1,5 +1,5 @@
 ---
-name: 起草期限sheetscenario
+name: draft-term-sheet-scenario-01
 task_id: corporate-ma/draft-term-sheet/scenario-01
 description: Guides drafting of an acquisition term sheet from a multi-document deal set where purchase economics, financing assumptions, exclusivity, and open issues must be synthesized into a non-binding but deal-defining document.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 分析期限sheetmarkups02
+name: analyze-term-sheet-markup-s02
 task_id: corporate-ma/analyze-term-sheet-markup/scenario-02
 description: Guides buyer-side analysis of a seller's term sheet markup, requiring arithmetic verification, assessment of deleted representations against R&W insurance coverage, and evaluation of non-market operational covenants before the negotiation session.
 activates_for: [planner, solver, checker]

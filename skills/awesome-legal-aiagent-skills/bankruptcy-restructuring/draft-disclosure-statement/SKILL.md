@@ -1,5 +1,5 @@
 ---
-name: 起草披露报表
+name: draft-disclosure-statement
 task_id: bankruptcy-restructuring/draft-disclosure-statement
 description: Ensures a chapter 11 disclosure statement provides adequate information across the core disclosure categories relevant to a reorganization case, including liquidation comparison, treatment of impaired classes, tax consequences, insider transactions, and material risk factors, and reconciles any inconsistent financial figures in the source materials.
 activates_for: [planner, solver, checker]

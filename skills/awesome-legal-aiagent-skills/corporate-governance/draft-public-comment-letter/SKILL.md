@@ -1,5 +1,5 @@
 ---
-name: 起草公共comment函件
+name: draft-public-comment-letter
 task_id: corporate-governance/draft-public-comment-letter
 description: Agents draft formal regulatory comment letters that frame policy objections within the APA arbitrary-and-capricious framework, assess whether a proposed rule falls within the agency's statutory authority, and ground the letter in the commenter's specific business experience and relevant industry-aligned positions.
 activates_for: [planner, solver, checker]

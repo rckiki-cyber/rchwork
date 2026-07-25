@@ -1,5 +1,5 @@
 ---
-name: 识别问题counterpartycontribution索赔
+name: identify-issues-in-counterparty-contribution-claim
 task_id: environmental-esg/identify-issues-in-counterparty-contribution-claim
 description: Guides preparation of an environmental contribution-claim issues memorandum by systematically identifying legal, factual, procedural, and damages weaknesses in the opposing party's claim against the client.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 比较财产税务记录against卖方披露报表
+name: compare-property-tax-records-against-seller-disclosure-statement
 task_id: real-estate/compare-property-tax-records-against-seller-disclosure-statement
 description: Guides property-by-property comparison of seller-disclosed tax information against official tax records for a multi-property portfolio, quantifying discrepancies and evaluating their underwriting and legal significance.
 activates_for: [planner, solver, checker]

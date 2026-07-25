@@ -1,5 +1,5 @@
 ---
-name: 起草收购协议条款
+name: draft-acquisition-agreement-provisions
 task_id: corporate-ma/draft-acquisition-agreement-provisions-from-precedent-and-term-sheet
 description: Guides drafting of specified acquisition agreement articles from a precedent and term sheet, with a companion cover memo identifying structural mismatches, regulatory transfer nuances, basket-type discrepancies, and specific escrow designations.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 比较credit协议against期限sheet
+name: compare-credit-agreement-against-term-sheet
 task_id: banking-finance/compare-credit-agreement-against-term-sheet
 description: Compares a draft credit agreement against the executed term sheet from the borrower’s perspective and produces a prioritized deviation report with economic impact analysis and recommendations.
 activates_for: [planner, solver, checker]

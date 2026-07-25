@@ -1,5 +1,5 @@
 ---
-name: 起草回应epa合规命令
+name: draft-response-to-epa-compliance-order
 task_id: environmental-esg/draft-response-to-epa-compliance-order
 description: Guides drafting of a formal response to a regulatory compliance order by organizing the analysis count-by-count, evaluating available defenses and mitigation themes, and proposing a compliance schedule with achievable milestones.
 activates_for: [planner, solver, checker]

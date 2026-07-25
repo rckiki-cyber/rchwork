@@ -1,5 +1,5 @@
 ---
-name: 股东activism回应memo
+name: shareholder-activism-response-memo
 task_id: corporate-governance/draft-activism-response-memorandum
 description: Privileged board advisory memorandum analyzing an activist shareholder campaign, assessing the activist's legal vulnerabilities, available defensive options, institutional shareholder dynamics, and strategic considerations for the board's response.
 activates_for: [planner, solver, checker]

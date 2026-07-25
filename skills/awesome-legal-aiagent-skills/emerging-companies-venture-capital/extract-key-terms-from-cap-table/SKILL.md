@@ -1,5 +1,5 @@
 ---
-name: ecvcextractkey条款captable
+name: ecvc-extract-key-terms-cap-table
 task_id: emerging-companies-venture-capital/extract-key-terms-from-cap-table
 description: A cap table analysis memo for a proposed financing must verify option pool arithmetic with the correct fully diluted denominator, estimate conversion shares for outstanding convertibles at relevant prices, cross-check anti-dilution mechanisms against governing formation and charter documents, and identify consent requirements that would be triggered by the proposed financing.
 activates_for: [planner, solver, checker]

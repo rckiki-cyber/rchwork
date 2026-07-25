@@ -1,5 +1,5 @@
 ---
-name: ecvc草案markup合并协议
+name: ecvc-draft-markup-merger-agreement
 task_id: emerging-companies-venture-capital/draft-markup-of-merger-agreement
 description: Marking up a merger agreement from the target's perspective requires reviewing closing conditions, remedy allocation, outside-date timing, tax-related provisions, and any post-closing contingent consideration protections, then preparing a redline and supporting commentary.
 activates_for: [planner, solver, checker]

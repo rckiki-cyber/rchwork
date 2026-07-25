@@ -1,5 +1,5 @@
 ---
-name: 比较arbitratorcandidatesagainstselectioncriteria
+name: compare-arbitrator-candidates-against-selection-criteria
 task_id: arbitration-international-dispute-resolution/compare-arbitrator-candidates-against-selection-criteria
 description: Ensures candidate evaluation applies conflict-screening guidance rigorously, surfaces availability and prejudgment concerns, and produces a weighted ranking with explicit threshold screening.
 activates_for: [planner, solver, checker]

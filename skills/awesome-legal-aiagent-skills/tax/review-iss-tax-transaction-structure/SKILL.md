@@ -1,5 +1,5 @@
 ---
-name: 审查iss税务transaction结构
+name: review-iss-tax-transaction-structure
 task_id: tax/review-iss-tax-transaction-structure
 description: Reviewing a tax transaction structure memorandum for a § 338(h)(10) deal requires independently verifying the aggregate deemed sale price computation against the applicable regulatory formula, identifying structural issues that could affect the election, and flagging state conformity risks by jurisdiction.
 activates_for: [planner, solver, checker]

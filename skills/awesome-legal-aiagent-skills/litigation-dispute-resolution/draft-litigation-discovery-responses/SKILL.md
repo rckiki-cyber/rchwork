@@ -1,5 +1,5 @@
 ---
-name: 起草诉讼证据开示回应
+name: draft-litigation-discovery-responses
 task_id: litigation-dispute-resolution/draft-litigation-discovery-responses
 description: Draft responses to requests for admissions and requests for production in breach of supply agreement litigation by distinguishing what may be admitted from what should be denied or objected to, pairing objections with any substantive partial responses, and preparing the required formal responses together with a separate strategy memo.
 activates_for: [planner, solver, checker]

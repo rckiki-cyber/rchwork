@@ -1,5 +1,5 @@
 ---
-name: 起草lpside函件战略
+name: draft-lp-side-letter-strategic
 task_id: corporate-ma/draft-side-letter-for-strategic-limited-partner
 description: Guides drafting of a private equity fund side letter for a strategic limited partner, with each negotiated provision cross-checked against the fund’s governing agreement for conflicts, authority limits, and interactions with other investor rights.
 activates_for: [planner, solver, checker]

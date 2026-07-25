@@ -1,5 +1,5 @@
 ---
-name: extractkey条款保险公司财务surplus票据
+name: extract-key-terms-insurance-company-financials-surplus-note
 task_id: insurance/extract-key-terms-from-insurance-company-financials
 description: Agents producing a due diligence summary for an insurance company financial review prioritize headline financial metrics, complete all required sections with data-supported content, identify cross-instrument and underwriting reserve interactions, and present risk factors with severity labels and brief impact statements.
 activates_for: [planner, solver, checker]

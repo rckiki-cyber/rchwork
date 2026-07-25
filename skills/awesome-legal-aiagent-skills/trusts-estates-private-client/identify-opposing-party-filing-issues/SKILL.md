@@ -1,5 +1,5 @@
 ---
-name: 识别opposing方提交问题
+name: identify-opposing-party-filing-issues
 task_id: trusts-estates-private-client/identify-opposing-party-filing-issues
 description: Closes the gap where agents summarize opposing temporary-orders motions without applying the correct property-characterization doctrine to inherited assets, challenging one-sided asset-freeze requests against the mutual-restraint standard, evaluating third-party declarations for personal-knowledge limitations, and assessing whether a custody reversal request is supported by the applicable best-interest factors.
 activates_for: [planner, solver, checker]

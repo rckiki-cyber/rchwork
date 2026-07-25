@@ -1,5 +1,5 @@
 ---
-name: 比较交割文件against重组条件
+name: compare-closing-documents-against-restructuring-conditions
 task_id: banking-finance/compare-closing-documents-against-restructuring-conditions
 description: Reviews restructuring closing documents against closing conditions from the relevant restructuring support and related transaction documents from an ad hoc lender’s perspective, flagging discrepancies with severity calibration and recommended remedial actions.
 activates_for: [planner, solver, checker]

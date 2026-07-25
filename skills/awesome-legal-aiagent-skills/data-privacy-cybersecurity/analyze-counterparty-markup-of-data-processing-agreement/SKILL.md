@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkup数据processing协议
+name: analyze-counterparty-markup-of-data-processing-agreement
 task_id: data-privacy-cybersecurity/analyze-counterparty-markup-of-data-processing-agreement
 description: DPA redline reviews lose rigour when the agent treats playbook positions as optional and fails to cross-reference the broader commercial agreement when assessing risk of counterparty changes.
 activates_for: [planner, solver, checker]

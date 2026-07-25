@@ -1,5 +1,5 @@
 ---
-name: 比较交割文件against购买sale协议
+name: compare-closing-documents-against-purchase-and-sale-agreement
 task_id: real-estate/compare-closing-documents-against-purchase-and-sale-agreement
 description: Guides document-by-document comparison of closing deliverables against the executed purchase and sale agreement to surface deviations, assess their significance, and identify potential corrective steps before or after closing.
 activates_for: [planner, solver, checker]

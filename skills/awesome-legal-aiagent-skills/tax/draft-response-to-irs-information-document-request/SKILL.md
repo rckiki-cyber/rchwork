@@ -1,5 +1,5 @@
 ---
-name: 起草回应irsinformation文件请求
+name: draft-response-to-irs-information-document-request-3
 task_id: tax/draft-response-to-irs-information-document-request
 description: An IDR response letter should address each request item with an express response, whether production, privilege or confidentiality objection, or an extension request, and should flag any apparent errors identified during the response process that may warrant further review or possible voluntary disclosure.
 activates_for: [planner, solver, checker]

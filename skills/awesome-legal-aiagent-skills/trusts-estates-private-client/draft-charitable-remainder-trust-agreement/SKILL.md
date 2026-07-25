@@ -1,5 +1,5 @@
 ---
-name: 起草charitableremainder信托协议
+name: draft-charitable-remainder-trust-agreement
 task_id: trusts-estates-private-client/draft-charitable-remainder-trust-agreement
 description: Drafting a charitable remainder unitrust agreement with mixed-asset funding and joint-life income beneficiaries requires the lesser-of/makeup-account mechanics under the applicable charitable remainder trust rules, precise flip-trigger language under the governing regulations, private-foundation excise-tax analysis as extended to charitable remainder trusts, and a qualified appraisal assessment for non-cash contributions.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别问题counterpartydpa
+name: identify-issues-counterparty-dpa
 task_id: intellectual-property/identify-issues-in-counterparty-data-processing-addendum
 description: Reviewing a counterparty data processing addendum against internal playbook guidance and underlying commercial-agreement summary terms to produce a prioritized issue memo with redline recommendations.
 activates_for: [planner, solver, checker]

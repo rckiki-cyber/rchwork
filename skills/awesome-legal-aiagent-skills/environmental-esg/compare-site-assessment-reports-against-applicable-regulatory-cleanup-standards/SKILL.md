@@ -1,5 +1,5 @@
 ---
-name: 比较site评估报告againstapplicable监管cleanup标准
+name: compare-site-assessment-reports-against-applicable-regulatory-cleanup-standards
 task_id: environmental-esg/compare-site-assessment-reports-against-applicable-regulatory-cleanup-standards
 description: Guides acquisition due diligence by comparing site assessment findings against applicable regulatory cleanup standards and evaluating whether the proposed remedial approach and environmental contract provisions adequately address identified risks.
 activates_for: [planner, solver, checker]

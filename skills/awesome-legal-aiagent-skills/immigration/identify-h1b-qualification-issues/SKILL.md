@@ -1,5 +1,5 @@
 ---
-name: 识别h1bqualification问题
+name: identify-h1b-qualification-issues
 task_id: immigration/identify-h1b-qualification-issues
 description: Pre-filing H-1B qualification review where the memo must assess both the position's specialty occupation and the beneficiary's individual qualifications, including coursework specificity, credential evaluation adequacy, and immigration history continuity, using only generalized analytical categories and without relying on scenario-specific facts.
 activates_for: [planner, solver, checker]

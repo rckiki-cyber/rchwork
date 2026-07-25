@@ -1,5 +1,5 @@
 ---
-name: ecvc草案arcoi
+name: ecvc-draft-arcoi
 task_id: emerging-companies-venture-capital/draft-amended-and-restated-certificate-of-incorporation
 description: Drafting an amended and restated certificate of incorporation for a venture financing requires reconciling overlapping protective provisions across equity classes, keeping drag-along thresholds consistent with the voting framework, verifying authorized-share sufficiency, and applying current corporate exculpation standards.
 activates_for: [planner, solver, checker]

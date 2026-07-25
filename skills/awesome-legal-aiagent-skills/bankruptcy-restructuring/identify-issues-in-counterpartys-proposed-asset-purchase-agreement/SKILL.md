@@ -1,5 +1,5 @@
 ---
-name: 识别问题counterpartys拟议apa
+name: identify-issues-in-counterpartys-proposed-apa
 task_id: bankruptcy-restructuring/identify-issues-in-counterpartys-proposed-asset-purchase-agreement
 description: Ensures an APA issue memo identifies buyer-favorable deviations from § 363 sale market standards, including sale-order approval conditions, marketing restrictions, outside-date feasibility, environmental successor-liability allocation, knowledge-qualified representations, governing-forum provisions, and purchase-price allocation issues, and supports each with a proceeds waterfall showing creditor recovery.
 activates_for: [planner, solver, checker]

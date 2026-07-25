@@ -1,5 +1,5 @@
 ---
-name: 起草问题listrestrictive承诺
+name: draft-issues-list-restrictive-covenant
 task_id: corporate-ma/draft-issues-list-for-restrictive-covenant-agreement
 description: Guides preparation of a restrictive covenant agreement issues memorandum with an executive summary of the most critical issues, section references for each issue, enforceability analysis that connects transaction consideration to scope and duration reasonableness, and separate treatment of each draft agreement.
 activates_for: [planner, solver, checker]

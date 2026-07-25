@@ -1,5 +1,5 @@
 ---
-name: 比较计划treatment跨境creditorclasses
+name: compare-plan-treatment-across-creditor-classes
 task_id: bankruptcy-restructuring/compare-plan-treatment-across-creditor-classes
 description: Ensures a cross-class treatment memo covers all plan classes in a structured comparison with confirmation analysis, including impairment, relative treatment across classes, priority-rule issues, value-allocation math, subordination-agreement enforcement, voting effects, and committee-perspective strategic recommendations.
 activates_for: [planner, solver, checker]

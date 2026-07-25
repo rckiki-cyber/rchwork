@@ -1,5 +1,5 @@
 ---
-name: extractkeyfindingseuropean竞争机关决定
+name: extract-key-findings-from-european-competition-authority-decision
 task_id: antitrust-competition/extract-key-findings-from-european-competition-authority-decision
 description: Closes gaps in per-defendant procedural history analysis, rights of defense violations from supplementary objection omissions, fine calculation verification, and appeal ground identification with legal authority.
 activates_for: [planner, solver, checker]

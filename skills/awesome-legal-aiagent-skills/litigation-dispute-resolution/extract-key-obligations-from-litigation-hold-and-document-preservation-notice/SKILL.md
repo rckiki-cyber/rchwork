@@ -1,5 +1,5 @@
 ---
-name: extractkey义务诉讼hold文件preservation通知
+name: extract-key-obligations-from-litigation-hold-and-document-preservation-notice
 task_id: litigation-dispute-resolution/extract-key-obligations-from-litigation-hold-and-document-preservation-notice
 description: Extract obligations from a preservation notice by mapping each obligation to the relevant custodial groups, data sources, and operational controls, then summarize the required preservation steps in an actionable memorandum.
 activates_for: [planner, solver, checker]

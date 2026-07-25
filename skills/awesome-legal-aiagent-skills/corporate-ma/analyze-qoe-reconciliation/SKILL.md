@@ -1,5 +1,5 @@
 ---
-name: 分析qoereconciliation
+name: analyze-qoe-reconciliation
 task_id: corporate-ma/analyze-qoe-reconciliation
 description: Guides line-by-line reconciliation of competing quality-of-earnings reports and a preliminary purchase price allocation, producing structured workbooks and a deal-team memo that quantifies the enterprise value impact of EBITDA differences.
 activates_for: [planner, solver, checker]

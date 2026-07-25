@@ -1,5 +1,5 @@
 ---
-name: 起草私人foundationbylaws
+name: draft-private-foundation-bylaws
 task_id: trusts-estates-private-client/draft-private-foundation-bylaws
 description: Closes the gap where agents transcribe founder governance directives verbatim without identifying provisions that conflict with private foundation requirements and federal tax law — including mandatory distribution obligations, dissolution provisions, and conflict-of-interest standards.
 activates_for: [planner, solver, checker]

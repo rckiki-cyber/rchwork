@@ -1,5 +1,5 @@
 ---
-name: 比较msaplaybookdeviationreview
+name: compare-msa-playbook-deviation-review
 task_id: intellectual-property/compare-msa-playbook-deviation-review
 description: Deviation review of an MSA against a contracting playbook, organized by provision type and informed by vendor diligence context.
 activates_for: [planner, solver, checker]

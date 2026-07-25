@@ -1,5 +1,5 @@
 ---
-name: hls草案隐私impact评估
+name: hls-draft-privacy-impact-assessment
 task_id: healthcare-life-sciences/draft-privacy-impact-assessment
 description: Drafts a privacy impact assessment for an AI-powered healthcare platform, focusing on algorithmic bias, inference logging, HIPAA marketing classification of automated outreach, business associate agreement secondary use scope, state health data law timing, de-identification risk, and API token security.
 activates_for: [planner, solver, checker]

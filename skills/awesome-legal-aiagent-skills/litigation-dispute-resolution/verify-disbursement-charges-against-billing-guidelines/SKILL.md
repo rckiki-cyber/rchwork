@@ -1,5 +1,5 @@
 ---
-name: 核验disbursementchargesagainstbilling指南
+name: verify-disbursement-charges-against-billing-guidelines
 task_id: litigation-dispute-resolution/verify-disbursement-charges-against-billing-guidelines
 description: Verifying disbursement charges requires comparing each disbursement line against the applicable billing guidelines' permitted categories and cost limits, cross-referencing the pre-approval log to confirm which disbursements were approved in advance, and producing a compliance report that identifies any requested reductions for non-compliant items.
 activates_for: [planner, solver, checker]

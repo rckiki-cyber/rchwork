@@ -1,5 +1,5 @@
 ---
-name: itscompareownership结构制裁
+name: its-compare-ownership-structure-sanctions
 task_id: international-trade-sanctions/compare-ownership-structure-against-sanctioned-parties-list
 description: Produces a sanctions compliance assessment memo that traces multi-tier ownership chains to identify sanctions-linked parties at any tier, applies the applicable ownership-aggregation rule across layered and joint-venture structures, and separately assesses any co-ownership, control, or transactional-prohibition issues under the relevant sanctions regimes.
 activates_for: [planner, solver, checker]

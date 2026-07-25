@@ -1,5 +1,5 @@
 ---
-name: 比较数据protectionremediation计划against监管undertakingcommitments
+name: compare-data-protection-remediation-plan-against-regulatory-undertaking-commitments
 task_id: data-privacy-cybersecurity/compare-data-protection-remediation-plan-against-regulatory-undertaking-commitments
 description: Regulatory undertaking gap analyses are strongest when the agent maps each undertaking commitment individually to the remediation plan and tests whether implementation evidence, timelines, ownership, and verification measures satisfy the commitment's specific requirements.
 activates_for: [planner, solver, checker]

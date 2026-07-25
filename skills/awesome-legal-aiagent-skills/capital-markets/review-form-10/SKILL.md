@@ -1,5 +1,5 @@
 ---
-name: 审查表格q合规
+name: review-form-10-q-compliance
 task_id: capital-markets/review-form-10
 description: Form 10-Q compliance review where the baseline catches missing narrative sections but misses required financial statement components, disclosure deficiencies in transaction-specific notes, and the controls effectiveness conclusion requirement.
 activates_for: [planner, solver, checker]

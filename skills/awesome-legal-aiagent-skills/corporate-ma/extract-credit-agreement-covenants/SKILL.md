@@ -1,5 +1,5 @@
 ---
-name: extractcredit协议承诺
+name: extract-credit-agreement-covenants
 task_id: corporate-ma/extract-credit-agreement-covenants
 description: Guides extraction and analysis of the covenant package in a credit agreement for acquisition diligence, cross-referenced against current compliance data to identify constraints and risks.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草通知仲裁scenario
+name: draft-notice-of-arbitration-scenario-02
 task_id: arbitration-international-dispute-resolution/draft-notice-of-arbitration/scenario-02
 description: Ensures a notice of arbitration treats service availability and data-loss allegations as distinct claims, states an accurate incident timeline, includes the governing law, and references the filing fee.
 activates_for: [planner, solver, checker]

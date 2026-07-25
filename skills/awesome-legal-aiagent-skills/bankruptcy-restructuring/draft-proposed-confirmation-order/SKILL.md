@@ -1,5 +1,5 @@
 ---
-name: 起草拟议confirmation命令
+name: draft-proposed-confirmation-order
 task_id: bankruptcy-restructuring/draft-proposed-confirmation-order
 description: Ensures a proposed confirmation order contains explicit findings for the applicable confirmation elements, correct voting results by class, properly distinguished consensual and non-consensual releases, and a comprehensive retained jurisdiction provision.
 activates_for: [planner, solver, checker]

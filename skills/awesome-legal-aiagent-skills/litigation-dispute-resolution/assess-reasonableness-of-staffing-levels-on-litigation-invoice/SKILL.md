@@ -1,5 +1,5 @@
 ---
-name: 评估reasonablenessstaffinglevels诉讼发票
+name: assess-reasonableness-of-staffing-levels-on-litigation-invoice
 task_id: litigation-dispute-resolution/assess-reasonableness-of-staffing-levels-on-litigation-invoice
 description: Reviewing litigation staffing on an invoice requires comparing each timekeeper's role and hours against the approved staffing plan, billing guidelines, and case phase to identify over-staffing, rate issues, and task-level mismatches.
 activates_for: [planner, solver, checker]

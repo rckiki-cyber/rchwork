@@ -1,5 +1,5 @@
 ---
-name: 识别问题担保协议期限贷款
+name: identify-issues-in-security-agreement-term-loan
 task_id: energy-natural-resources/identify-issues-in-security-agreement
 description: Guides issue identification in a security agreement for a senior secured lender by systematically checking perfection requirements, cross-document consistency on collateral package terms, and remedies provisions.
 activates_for: [planner, solver, checker]

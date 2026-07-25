@@ -1,5 +1,5 @@
 ---
-name: 起草许可续期submission
+name: draft-license-renewal-submission
 task_id: corporate-governance/draft-license-renewal-submission
 description: Agents produce renewal packages that address required disclosures of prior non-compliances with a corrective-action narrative, include biographical affidavit requirements for newly appointed officers and directors, and frame adverse financial ratios in a way that supports regulator review of solvency and operational condition.
 activates_for: [planner, solver, checker]

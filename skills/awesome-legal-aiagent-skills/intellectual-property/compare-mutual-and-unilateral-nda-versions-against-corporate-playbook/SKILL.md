@@ -1,5 +1,5 @@
 ---
-name: 比较ndaversions公司playbook
+name: compare-nda-versions-corporate-playbook
 task_id: intellectual-property/compare-mutual-and-unilateral-nda-versions-against-corporate-playbook
 description: Deviation report comparing mutual and unilateral NDA drafts against an internal playbook, with version-by-version redline recommendations.
 activates_for: [planner, solver, checker]

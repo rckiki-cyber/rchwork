@@ -1,5 +1,5 @@
 ---
-name: OFAC调查要求分析
+name: its-analyze-ofac-investigative-demand
 task_id: international-trade-sanctions/analyze-ofac-investigative-demand-and-related-transaction-records
 description: Produces an issues memorandum in response to an OFAC investigative demand that analyzes potential civil and criminal exposure, evaluates compliance-program and mitigation considerations, and outlines immediate preservation and response steps.
 activates_for: [planner, solver, checker]

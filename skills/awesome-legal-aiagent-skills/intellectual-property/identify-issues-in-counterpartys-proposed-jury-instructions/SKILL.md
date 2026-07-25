@@ -1,5 +1,5 @@
 ---
-name: 识别问题counterpartyjury指示
+name: identify-issues-counterparty-jury-instructions
 task_id: intellectual-property/identify-issues-in-counterpartys-proposed-jury-instructions
 description: Reviewing opposing party's proposed jury instructions against applicable court orders, model instructions, and prosecution history to prepare formal objections.
 activates_for: [planner, solver, checker]

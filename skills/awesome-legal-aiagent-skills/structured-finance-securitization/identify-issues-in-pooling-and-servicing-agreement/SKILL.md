@@ -1,5 +1,5 @@
 ---
-name: 识别问题psarmbs投资
+name: identify-issues-in-psa-rmbs-investment
 task_id: structured-finance-securitization/identify-issues-in-pooling-and-servicing-agreement
 description: Reviewing a pooling and servicing agreement for a prospective note investor where structural gaps in servicer replacement triggers, representation-and-warranty enforcement mechanics, loan sale price floors, tax-savings provisions, and non-material amendment authority must be identified and connected to the specific economic consequences for the investor's class.
 activates_for: [planner, solver, checker]

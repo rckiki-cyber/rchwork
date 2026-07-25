@@ -1,5 +1,5 @@
 ---
-name: 准备反垄断风险评估
+name: prepare-antitrust-risk-assessment
 task_id: antitrust-competition/prepare-antitrust-risk-assessment
 description: Closes gaps in a multi-deliverable structure, market-level concentration analysis, hot-document and HSR production identification, coordinated effects analysis, and entry barrier assessment.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草markupcounterparty贷款协议
+name: draft-markup-of-counterparty-loan-agreement
 task_id: real-estate/draft-markup-of-counterparty-loan-agreement
 description: Guides borrower-side markup of a lender's draft loan agreement by anchoring each redline position to the governing deal documents and client instructions, and producing both a redlined agreement and a cover letter summarizing key changes.
 activates_for: [planner, solver, checker]

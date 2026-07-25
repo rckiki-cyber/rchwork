@@ -1,5 +1,5 @@
 ---
-name: 审查markupcounterpartymsa
+name: review-markup-counterparty-msa
 task_id: intellectual-property/review-and-mark-up-counterparty-master-services-agreement
 description: Reviewing and marking up a counterparty master services agreement and related data-processing exhibit against a contract playbook and deal context, producing a redline and a tiered issues summary memo.
 activates_for: [planner, solver, checker]

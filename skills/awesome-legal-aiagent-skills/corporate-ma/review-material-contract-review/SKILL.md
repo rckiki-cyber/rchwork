@@ -1,5 +1,5 @@
 ---
-name: 审查重大合同review
+name: review-material-contract-review
 task_id: corporate-ma/review-material-contract-review
 description: Guides preparation of a contract-by-contract risk assessment and discrepancy log for a proposed acquisition where multiple contract types must be reviewed against a summary spreadsheet and draft SPA definitions.
 activates_for: [planner, solver, checker]

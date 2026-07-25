@@ -1,5 +1,5 @@
 ---
-name: 支付transparency法律jobpostingimpact
+name: pay-transparency-law-job-posting-impact
 task_id: corporate-governance/assess-impact-of-state-pay-transparency-law-on-job-postings-and-offers
 description: Multi-jurisdiction compliance gap analysis of job postings, offer letters, and internal promotion practices against applicable state pay transparency laws, identifying posting deficiencies, disclosure gaps, and employer exposure for third-party recruiter postings.
 activates_for: [planner, solver, checker]

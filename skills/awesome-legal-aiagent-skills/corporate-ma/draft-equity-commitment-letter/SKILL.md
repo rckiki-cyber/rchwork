@@ -1,5 +1,5 @@
 ---
-name: 起草股权commitment函件
+name: draft-equity-commitment-letter
 task_id: corporate-ma/draft-equity-commitment-letter
 description: Guides drafting of a complete equity commitment letter from an equity investor to the acquisition entity, with the core structural elements, conditions to funding, limited-recourse and remedy provisions tied to the transaction documents, and a companion issues memo.
 activates_for: [planner, solver, checker]

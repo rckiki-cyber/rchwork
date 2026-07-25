@@ -1,5 +1,5 @@
 ---
-name: 跟踪第三方同意
+name: track-third-party-consents
 task_id: corporate-ma/track-third-party-consents
 description: Guides completion of a consent tracker, preparation of a consent analysis memo, and drafting of tailored consent request letters for an acquisition closing where multiple material contracts require consent, notice, or payoff coordination.
 activates_for: [planner, solver, checker]

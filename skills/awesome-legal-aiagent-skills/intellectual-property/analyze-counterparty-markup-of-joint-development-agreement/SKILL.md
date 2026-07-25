@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkupjda
+name: analyze-counterparty-markup-jda
 task_id: intellectual-property/analyze-counterparty-markup-of-joint-development-agreement
 description: Redline review memorandum analyzing a counterparty-marked joint development agreement against the original draft and the client’s business terms, focusing on ownership, license scope, temporal allocation, and financial schedule changes.
 activates_for: [planner, solver, checker]

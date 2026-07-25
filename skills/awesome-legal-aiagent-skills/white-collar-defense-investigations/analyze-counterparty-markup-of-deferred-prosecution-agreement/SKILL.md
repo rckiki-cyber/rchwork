@@ -1,5 +1,5 @@
 ---
-name: 分析dpa政府countermarkup
+name: analyze-dpa-government-counter-markup
 task_id: white-collar-defense-investigations/analyze-counterparty-markup-of-deferred-prosecution-agreement
 description: Negotiation analysis memo comparing a government counter-markup of a deferred prosecution agreement against a prior defense markup, identifying gaps in undefined terms, monitor scope, cooperation obligations, payment structure, statement-of-facts edits, and other material provisions where the government has rejected or modified defense positions.
 activates_for: [planner, solver, checker]

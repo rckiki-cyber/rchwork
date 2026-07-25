@@ -1,5 +1,5 @@
 ---
-name: 识别rfe问题scenario
+name: identify-rfe-issues-scenario-02
 task_id: immigration/identify-rfe-issues/scenario-02
 description: H-1B request-for-evidence issue-identification memorandum. The analysis should go beyond the stated agency concerns to review the petition record for independent factual inaccuracies, internal inconsistencies, and sequence problems in the petitioner’s own submissions, and should assess how any such issues may affect the response strategy and the underlying petition record.
 activates_for: [planner, solver, checker]

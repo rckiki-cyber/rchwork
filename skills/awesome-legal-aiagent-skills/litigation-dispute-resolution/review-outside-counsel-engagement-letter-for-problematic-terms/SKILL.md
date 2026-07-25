@@ -1,5 +1,5 @@
 ---
-name: 审查outsidecounselengagement函件problematic条款
+name: review-outside-counsel-engagement-letter-for-problematic-terms
 task_id: litigation-dispute-resolution/review-outside-counsel-engagement-letter-for-problematic-terms
 description: Reviewing a proposed outside counsel engagement letter requires systematically comparing each provision against the applicable outside counsel guidelines, flagging non-compliant terms on billing, staffing, conflicts, e-discovery, and scope, and recommending specific redline changes or conditions for acceptance.
 activates_for: [planner, solver, checker]

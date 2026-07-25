@@ -1,5 +1,5 @@
 ---
-name: 起草markup拟议中期命令
+name: draft-markup-of-proposed-interim-order
 task_id: arbitration-international-dispute-resolution/draft-markup-of-proposed-interim-order
 description: Ensures a respondent-side markup of a proposed interim order addresses the requested relief structure, tests any asserted risk with financial evidence, and cites the applicable interim measures framework.
 activates_for: [planner, solver, checker]

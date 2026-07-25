@@ -1,5 +1,5 @@
 ---
-name: 补偿协议incomingindependent董事
+name: indemnification-agreement-incoming-independent-director
 task_id: corporate-governance/draft-indemnification-agreement
 description: Indemnification agreement for an incoming independent director with cross-entity service and litigation conflict, addressing advancement conditioned solely on an undertaking to repay, officer exculpation updates under the applicable corporate statute, contribution and partial indemnification provisions that may be absent from standard forms, cross-jurisdictional service restrictions, and deferred-payment compliance considerations, with a cover memo identifying form deviations and open items.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: ecvc草案certificateincorporation
+name: ecvc-draft-certificate-of-incorporation
 task_id: emerging-companies-venture-capital/draft-certificate-of-incorporation
 description: Drafting an initial or amended certificate of incorporation requires analyzing authorized-share sufficiency across all reservation categories, checking the governing corporate statute for anti-dilution and redemption mechanics, and updating exculpation provisions to reflect current standards for both directors and officers.
 activates_for: [planner, solver, checker]

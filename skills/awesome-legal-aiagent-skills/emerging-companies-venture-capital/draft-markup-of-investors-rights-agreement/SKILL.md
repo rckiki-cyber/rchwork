@@ -1,5 +1,5 @@
 ---
-name: ecvc草案markupira
+name: ecvc-draft-markup-ira
 task_id: emerging-companies-venture-capital/draft-markup-of-investors-rights-agreement
 description: Marking up an investors’ rights agreement from the Company’s perspective requires comparing the counterparty draft against the negotiated term sheet, identifying added investor-favorable language, and reviewing provisions that can create spillover effects among registration, information, pro rata, drag-along, and most-favored-nation mechanics.
 activates_for: [planner, solver, checker]

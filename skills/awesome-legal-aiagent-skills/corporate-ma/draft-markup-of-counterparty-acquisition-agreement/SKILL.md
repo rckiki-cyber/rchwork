@@ -1,5 +1,5 @@
 ---
-name: 起草markupcounterparty收购协议
+name: draft-markup-of-counterparty-acquisition-agreement
 task_id: corporate-ma/draft-markup-of-counterparty-acquisition-agreement
 description: Guides preparation of a buyer-favorable redlined acquisition agreement with tracked changes and a companion commentary memo organized by article, focusing on buyer-side edits to purchase price mechanics, post-closing adjustment mechanics, environmental representations, indemnification, knowledge qualifiers, closing conditions, and pre-closing covenants.
 activates_for: [planner, solver, checker]

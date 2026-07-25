@@ -1,5 +1,5 @@
 ---
-name: 起草劳工条件application
+name: draft-labor-condition-application
 task_id: immigration/draft-labor-condition-application
 description: LCA preparation package for multiple beneficiaries where workforce composition determines dependent-employer status and the LCA attestation obligations, and where per-beneficiary data must be verified against source documents rather than assumed from prior filings.
 activates_for: [planner, solver, checker]

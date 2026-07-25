@@ -1,5 +1,5 @@
 ---
-name: CFIUS国家安全协议修订分析
+name: its-analyze-cfius-nsa-markup
 task_id: international-trade-sanctions/analyze-counterparty-markup-of-mitigation-agreement
 description: Produces a risk-prioritized analysis of a national security agreement markup that identifies compounding effects across grouped changes, distinguishes categorically non-negotiable provisions from negotiable deviations, and evaluates cover-letter characterizations against the actual redline.
 activates_for: [planner, solver, checker]

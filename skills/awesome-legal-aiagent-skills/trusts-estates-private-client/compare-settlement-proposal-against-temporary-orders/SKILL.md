@@ -1,5 +1,5 @@
 ---
-name: 比较和解建议书againsttemporary命令
+name: compare-settlement-proposal-against-temporary-orders
 task_id: trusts-estates-private-client/compare-settlement-proposal-against-temporary-orders
 description: Comparing a settlement proposal against temporary orders and financial records requires identifying the relevant estate, measuring each party’s proposed allocation against the applicable division benchmark, and flagging missing structural provisions that may create enforcement or implementation risk.
 activates_for: [planner, solver, checker]

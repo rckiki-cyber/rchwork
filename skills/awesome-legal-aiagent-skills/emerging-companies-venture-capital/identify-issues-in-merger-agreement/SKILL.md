@@ -1,5 +1,5 @@
 ---
-name: ecvcidentify问题合并协议
+name: ecvc-identify-issues-merger-agreement
 task_id: emerging-companies-venture-capital/identify-issues-in-merger-agreement
 description: A sell-side issues memo for a draft merger agreement should assess indemnification economics as percentages of transaction value against market conventions, identify whether a materiality scrape is present and explain the analytical consequence if it is not, compare any reverse termination fee to market norms, and evaluate interim operating covenants for carve-outs that preserve ordinary-course or committed business operations.
 activates_for: [planner, solver, checker]

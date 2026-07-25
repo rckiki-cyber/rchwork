@@ -1,5 +1,5 @@
 ---
-name: credit协议承诺extraction
+name: credit-agreement-covenant-extraction
 task_id: banking-finance/credit-agreement-covenant-extraction
 description: Extracts and compares financial covenants across multiple credit agreements in a multi-tranche capital structure, verifies compliance certificate arithmetic, and assesses cross-agreement change-of-control and cross-default interplay.
 activates_for: [planner, solver, checker]

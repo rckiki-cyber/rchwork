@@ -1,5 +1,5 @@
 ---
-name: ecvcextractkey条款ira
+name: ecvc-extract-key-terms-ira
 task_id: emerging-companies-venture-capital/extract-key-terms-from-investors-rights-agreement
 description: A term extraction report for an investors' rights agreement should cross-check share-count references against the cap table or other capitalization records, explain the economic effect of any anti-dilution mechanism using a hypothetical example, flag enforceability issues for restrictive covenants under the applicable employment or contract law, and assess the restrictiveness of any drag-along by reviewing the triggering mechanics and founder-protective carve-outs.
 activates_for: [planner, solver, checker]

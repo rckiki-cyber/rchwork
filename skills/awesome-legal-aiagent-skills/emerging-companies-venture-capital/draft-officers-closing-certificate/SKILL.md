@@ -1,5 +1,5 @@
 ---
-name: ecvc草案高管交割certificate
+name: ecvc-draft-officers-closing-certificate
 task_id: emerging-companies-venture-capital/draft-officers-closing-certificate
 description: An officer's closing certificate should separately address each applicable bring-down standard, use the company's actual officer titles, confirm that any good-standing evidence is current under the transaction agreement, and verify that board authorization timing is consistent with the certification date.
 activates_for: [planner, solver, checker]

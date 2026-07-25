@@ -1,5 +1,5 @@
 ---
-name: 要约函件雇佣协议
+name: offer-letter-to-employment-agreement
 task_id: employment-labor/offer-letter-to-employment-agreement
 description: Guides the drafter in converting an executed offer letter into a complete employment agreement using the standard template, implementing jurisdiction-specific modifications, and preparing a cover memorandum flagging material changes and open items.
 activates_for: [planner, solver, checker]

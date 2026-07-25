@@ -1,5 +1,5 @@
 ---
-name: 比较executedslavs最终草案
+name: compare-executed-sla-vs-final-draft
 task_id: intellectual-property/compare-executed-software-license-agreement-against-last-pre
 description: Deviation report comparing an executed software license agreement against the last pre-execution draft, focused on identifying textual differences, checking authorization under the applicable contracting policy, cross-referencing the negotiation record, and organizing remedial analysis.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 多州隐私法律gap分析
+name: multi-state-privacy-law-gap-analysis
 task_id: corporate-governance/compare-state-privacy-law-requirements
 description: Multi-state consumer privacy law gap analysis comparing a current privacy program, data inventory, and vendor agreements against enacted state comprehensive privacy laws, identifying data classification issues, state-specific stricter requirements, and universal opt-out signal obligations.
 activates_for: [planner, solver, checker]

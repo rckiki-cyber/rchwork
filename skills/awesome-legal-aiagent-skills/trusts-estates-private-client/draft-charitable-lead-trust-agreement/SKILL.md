@@ -1,5 +1,5 @@
 ---
-name: 起草charitablelead信托协议
+name: draft-charitable-lead-trust-agreement
 task_id: trusts-estates-private-client/draft-charitable-lead-trust-agreement
 description: Drafting a charitable lead annuity trust requires analyzing the annuity structure against the applicable valuation rate, addressing special-needs beneficiary planning, evaluating private foundation self-dealing constraints, considering transfer-tax consequences for skip-person remaindermen, and handling substitution power limitations.
 activates_for: [planner, solver, checker]

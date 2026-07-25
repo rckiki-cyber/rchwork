@@ -1,5 +1,5 @@
 ---
-name: hlsextract监管permits尽职调查
+name: hls-extract-regulatory-permits-diligence
 task_id: healthcare-life-sciences/extract-regulatory-permits-from-diligence-documents
 description: Extracts and catalogs regulatory permits from healthcare acquisition diligence documents, including change-of-ownership analysis by regulatory body, operating-without-permit risk identification, facility-level compounding risk assessment, and deal-phase-organized remediation recommendations.
 activates_for: [planner, solver, checker]

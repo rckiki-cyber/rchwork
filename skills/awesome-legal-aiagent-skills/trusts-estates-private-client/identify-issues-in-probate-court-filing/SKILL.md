@@ -1,5 +1,5 @@
 ---
-name: 识别问题probate法院提交
+name: identify-issues-in-probate-court-filing
 task_id: trusts-estates-private-client/identify-issues-in-probate-court-filing
 description: Closes the gap where agents review probate petitions without checking the surviving spouse's statutory elective share against the testamentary provision, identifying required notice for charitable bequests, flagging interested-witness issues involving a drafting lawyer or firm, and analyzing how a no-contest clause interacts with statutory spousal rights.
 activates_for: [planner, solver, checker]

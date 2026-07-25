@@ -1,5 +1,5 @@
 ---
-name: 识别dd请求list问题scenario
+name: identify-dd-request-list-issues-scenario-01
 task_id: capital-markets/identify-dd-request-list-issues/scenario-01
 description: DD request list gap analysis for a pre-IPO company where the baseline identifies generic omissions but does not connect each gap to the specific disclosure obligation or underwriter diligence standard it is meant to satisfy.
 activates_for: [planner, solver, checker]

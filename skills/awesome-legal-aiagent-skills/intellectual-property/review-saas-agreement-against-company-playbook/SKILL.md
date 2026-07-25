@@ -1,5 +1,5 @@
 ---
-name: 审查saas协议公司playbook
+name: review-saas-agreement-company-playbook
 task_id: intellectual-property/review-saas-agreement-against-company-playbook
 description: Reviewing a proposed SaaS agreement against a company playbook and related business context to produce a prioritized deviation report with redlines and fallback language.
 activates_for: [planner, solver, checker]

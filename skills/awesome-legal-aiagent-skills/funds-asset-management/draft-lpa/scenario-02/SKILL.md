@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-02
 task_id: funds-asset-management/draft-lpa/scenario-02
 description: Draft a limited partnership agreement for a buyout fund using a prior-fund precedent, incorporating term-sheet changes for the fund’s structure, economics, and governance, and produce a separate issues memo identifying source-document conflicts.
 activates_for: [planner, solver, checker]

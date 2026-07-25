@@ -1,5 +1,5 @@
 ---
-name: 起草多州员工handbook
+name: draft-multi-state-employee-handbook
 task_id: employment-labor/draft-multi
 description: Guides the drafter in producing a multi-state employee handbook and compliance issues memorandum for a cannabis employer, addressing jurisdiction-specific wage and hour exemption analysis, tip pooling, collective bargaining agreement interaction, and labor-law considerations.
 activates_for: [planner, solver, checker]

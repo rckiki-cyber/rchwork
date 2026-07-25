@@ -1,5 +1,5 @@
 ---
-name: 比较facility运营againstpermitlimits
+name: compare-facility-operations-against-permit-limits
 task_id: environmental-esg/compare-facility-operations-against-permit-limits
 description: Guides compliance gap analysis of facility operations against permit limits by organizing findings by regulated medium using actual monitoring data and records rather than characterizing compliance at a general level.
 activates_for: [planner, solver, checker]

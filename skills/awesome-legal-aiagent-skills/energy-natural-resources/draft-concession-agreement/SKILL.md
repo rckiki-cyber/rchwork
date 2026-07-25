@@ -1,5 +1,5 @@
 ---
-name: 起草concession协议solarbessbot
+name: draft-concession-agreement-solar-bess-bot
 task_id: energy-natural-resources/draft-concession-agreement
 description: Guides drafting of a build-operate-transfer concession agreement for a renewable energy project by resolving cross-document conflicts, addressing project-risk allocation mechanisms, and flagging every drafting judgment that requires client or counterparty confirmation in a companion issues memo.
 activates_for: [planner, solver, checker]

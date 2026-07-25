@@ -1,5 +1,5 @@
 ---
-name: 起草markupcounterpartydpa
+name: draft-markup-counterparty-dpa
 task_id: intellectual-property/draft-markup-of-counterparty-data-processing-addendum
 description: Redlined DPA with bracketed commentary organized against the applicable negotiation playbook, with a risk-prioritized commentary memo covering negotiation strategy.
 activates_for: [planner, solver, checker]

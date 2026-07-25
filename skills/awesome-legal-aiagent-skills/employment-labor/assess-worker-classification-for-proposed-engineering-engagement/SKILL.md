@@ -1,5 +1,5 @@
 ---
-name: 评估workerclassification拟议engineeringengagement
+name: assess-worker-classification-for-proposed-engineering-engagement
 task_id: employment-labor/assess-worker-classification-for-proposed-engineering-engagement
 description: Guides the analyst through a worker-classification risk assessment covering applicable tests across relevant legal regimes, factor-by-factor analysis of the working relationship, and structural remediation considerations.
 activates_for: [planner, solver, checker]

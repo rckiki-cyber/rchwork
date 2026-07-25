@@ -1,5 +1,5 @@
 ---
-name: 起草codeethicsregistered投资adviser
+name: draft-code-of-ethics-for-registered-investment-adviser
 task_id: funds-asset-management/draft-code-of-ethics-for-registered-investment-adviser
 description: Draft an adoption-ready code of ethics for a registered investment adviser under the applicable adviser ethics rule and prepare a cover memo summarizing key changes, flagging urgent compliance issues, and listing open items requiring firm decision.
 activates_for: [planner, solver, checker]

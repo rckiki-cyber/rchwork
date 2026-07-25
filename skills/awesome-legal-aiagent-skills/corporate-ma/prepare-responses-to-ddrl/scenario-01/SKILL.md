@@ -1,5 +1,5 @@
 ---
-name: 准备回应ddrlscenario
+name: prepare-responses-to-ddrl-scenario-01
 task_id: corporate-ma/prepare-responses-to-ddrl/scenario-01
 description: Guides preparation of a sell-side due diligence response matrix that maps each buyer request to available diligence materials, checks whether the materials actually address the request, and flags gaps or sensitive items for further review before disclosure.
 activates_for: [planner, solver, checker]

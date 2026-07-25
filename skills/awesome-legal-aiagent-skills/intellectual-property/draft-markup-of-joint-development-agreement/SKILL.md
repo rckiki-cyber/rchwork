@@ -1,5 +1,5 @@
 ---
-name: 起草markupjdabiopharmadevice
+name: draft-markup-jda-biopharma-device
 task_id: intellectual-property/draft-markup-of-joint-development-agreement
 description: Combined issue log, redline commentary, and strategic cover memo for a joint development agreement in a biopharma-device collaboration, evaluated against client instructions, IP schedule, licensing policy, and prior deal terms.
 activates_for: [planner, solver, checker]

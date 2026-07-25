@@ -1,5 +1,5 @@
 ---
-name: 起草动议dismiss专利alice
+name: draft-motion-dismiss-patent-101-alice
 task_id: intellectual-property/draft-motion-to-dismiss-patent-infringement-complaint
 description: Rule 12(b)(6) motion to dismiss a patent infringement complaint on subject matter eligibility grounds under patent-law eligibility doctrine using the Alice/Mayo two-step framework.
 activates_for: [planner, solver, checker]

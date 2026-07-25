@@ -1,5 +1,5 @@
 ---
-name: 起草markupip转让买方
+name: draft-markup-ip-assignment-buyer
 task_id: intellectual-property/draft-markup-of-ip-assignment-agreement
 description: Buyer-favorable annotated markup of a seller-drafted intellectual property assignment agreement with bracketed comments explaining each proposed change, informed by due diligence and deal terms.
 activates_for: [planner, solver, checker]

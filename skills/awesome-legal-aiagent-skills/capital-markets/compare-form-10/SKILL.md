@@ -1,5 +1,5 @@
 ---
-name: 比较表格
+name: compare-form-10
 task_id: capital-markets/compare-form-10
 description: Year-over-year annual report comparison memo where the baseline identifies numerical changes but misses disclosure triggers and related compliance analysis that the partner's instructions require.
 activates_for: [planner, solver, checker]

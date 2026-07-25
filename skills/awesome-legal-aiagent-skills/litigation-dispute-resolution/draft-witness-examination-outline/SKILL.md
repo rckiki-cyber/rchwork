@@ -1,5 +1,5 @@
 ---
-name: 起草证人examination大纲
+name: draft-witness-examination-outline
 task_id: litigation-dispute-resolution/draft-witness-examination-outline
 description: A trial witness examination outline should sequence direct and cross-examination to build the client’s narrative, lock in favorable admissions, use prior deposition testimony and documentary evidence for impeachment, and account for any pretrial evidentiary rulings limiting what can be elicited.
 activates_for: [planner, solver, checker]

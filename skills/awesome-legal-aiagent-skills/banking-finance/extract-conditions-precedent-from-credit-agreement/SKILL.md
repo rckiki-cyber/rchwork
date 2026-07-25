@@ -1,5 +1,5 @@
 ---
-name: extract条件先例credit协议
+name: extract-conditions-precedent-from-credit-agreement
 task_id: banking-finance/extract-conditions-precedent-from-credit-agreement
 description: Extract conditions precedent from a credit agreement, compare them against a closing checklist and supporting materials, and produce a prioritized gap analysis with remediation steps.
 activates_for: [planner, solver, checker]

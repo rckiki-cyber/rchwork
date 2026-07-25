@@ -1,5 +1,5 @@
 ---
-name: 总结researchcpraenforcementpriorities
+name: summarize-research-cpra-enforcement-priorities
 task_id: corporate-governance/summarize-research-cpra-enforcement-priorities
 description: Agents summarize current privacy-enforcement priorities generically and prepare an executive briefing memorandum that prioritizes exposure areas, analyzes opt-out signal handling, evaluates whether advertising-related data disclosures implicate cross-context behavioral advertising opt-out obligations, and assesses whether privacy disclosures, vendor contracts, and inquiry-response practices support a defensible compliance posture.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别问题合规certificate
+name: identify-issues-in-compliance-certificate
 task_id: banking-finance/identify-issues-in-compliance-certificate
 description: Reviews a compliance certificate against the governing credit documentation and financial data, independently recalculates covenant metrics, and identifies errors, omissions, and resulting defaults or notice issues with procedural next-step recommendations.
 activates_for: [planner, solver, checker]

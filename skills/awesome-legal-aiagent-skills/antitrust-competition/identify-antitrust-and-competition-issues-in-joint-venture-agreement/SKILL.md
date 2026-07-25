@@ -1,5 +1,5 @@
 ---
-name: 识别反垄断竞争问题合资合资协议
+name: identify-antitrust-and-competition-issues-in-joint-venture-agreement
 task_id: antitrust-competition/identify-antitrust-and-competition-issues-in-joint-venture-agreement
 description: Frame an antitrust and competition issue memorandum for a joint venture agreement by checking for restrictive covenants, pricing coordination, information exchange, pre-closing conduct, filing obligations, governance vetoes, and competition-law treatment of IP sharing.
 activates_for: [planner, solver, checker]

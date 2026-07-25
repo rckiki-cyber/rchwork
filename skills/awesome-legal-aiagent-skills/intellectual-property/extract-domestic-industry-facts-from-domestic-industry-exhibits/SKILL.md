@@ -1,5 +1,5 @@
 ---
-name: extract国内行业factsdi证据
+name: extract-domestic-industry-facts-di-exhibits
 task_id: intellectual-property/extract-domestic-industry-facts-from-domestic-industry-exhibits
 description: Extract and organize domestic industry facts from evidentiary exhibits for an opposition brief, with arithmetic checks, evidentiary-gap assessment, and patent-specific technical-prong risk analysis tied to the asserted domestic-industry theory.
 activates_for: [planner, solver, checker]

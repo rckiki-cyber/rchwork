@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-04
 task_id: funds-asset-management/draft-lpa/scenario-04
 description: Draft a healthcare fund limited partnership agreement by adapting a generic precedent to incorporate investor-requested provisions, healthcare-specific representations, LPAC governance terms, and no-fault GP removal mechanics, while verifying internal consistency and cross-references.
 activates_for: [planner, solver, checker]

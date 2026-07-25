@@ -1,5 +1,5 @@
 ---
-name: itsextract产品specs出口classification
+name: its-extract-product-specs-export-classification
 task_id: international-trade-sanctions/extract-product-specifications-from-technical-data-sheet
 description: Produces an export classification memorandum that extracts product specifications from technical data sheets, analyzes whether technical characteristics may implicate export-control jurisdiction, compares stated end-use descriptions across transaction documents for inconsistencies, and outlines when a jurisdictional determination or enhanced diligence may be appropriate.
 activates_for: [planner, solver, checker]

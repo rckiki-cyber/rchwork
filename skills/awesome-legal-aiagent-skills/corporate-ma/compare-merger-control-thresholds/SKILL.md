@@ -1,5 +1,5 @@
 ---
-name: 比较合并controlthresholds
+name: compare-merger-control-thresholds
 task_id: corporate-ma/compare-merger-control-thresholds
 description: Guides multi-jurisdictional merger control threshold analysis by comparing transaction facts against each jurisdiction’s applicable filing tests, identifying turnover-based and deal-value-based thresholds where relevant, checking closing-condition coverage, and flagging potentially stale reference data.
 activates_for: [planner, solver, checker]

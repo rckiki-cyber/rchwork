@@ -1,5 +1,5 @@
 ---
-name: extractballottalliesvoting报告
+name: extract-ballot-tallies-from-voting-report
 task_id: bankruptcy-restructuring/extract-ballot-tallies-from-voting-report
 description: Ensures a ballot tabulation spreadsheet applies the applicable voting-acceptance threshold to each class independently, logs ballot irregularities with their legal basis and recommended treatment, and models sensitivity scenarios showing whether class results change when irregular ballots are excluded or included.
 activates_for: [planner, solver, checker]

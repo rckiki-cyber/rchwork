@@ -1,5 +1,5 @@
 ---
-name: 起草回应政府information请求
+name: draft-response-to-government-information-request
 task_id: corporate-governance/draft-response-to-government-information-request
 description: Agents review a response draft to a government civil investigative demand by independently checking privilege claims, distinguishing full withholding from partial redaction for mixed-purpose documents, spotting internal inconsistencies in the privilege log or production counts, and identifying production gaps or other issues that should be corrected proactively.
 activates_for: [planner, solver, checker]

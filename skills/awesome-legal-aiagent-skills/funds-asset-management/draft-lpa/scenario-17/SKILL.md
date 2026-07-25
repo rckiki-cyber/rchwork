@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-17
 task_id: funds-asset-management/draft-lpa/scenario-17
 description: Draft a credit fund LPA by adapting an equity fund precedent to a lending strategy, replacing equity-oriented distribution, valuation, tax, venue, and related provisions with terms appropriate for a fund whose cash flows are driven by interest, fees, principal repayments, and similar credit-instrument economics.
 activates_for: [planner, solver, checker]

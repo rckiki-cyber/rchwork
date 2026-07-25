@@ -1,5 +1,5 @@
 ---
-name: 实体合规清单gap分析
+name: entity-compliance-checklist-gap-analysis
 task_id: corporate-governance/compare-entity-compliance-checklist-against-annual-requirements
 description: Cross-referencing a compliance checklist against supporting documents for a multi-entity fund structure, identifying deadline errors, missing entities, beneficial ownership reporting obligations, and state-specific filing requirements.
 activates_for: [planner, solver, checker]

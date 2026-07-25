@@ -1,5 +1,5 @@
 ---
-name: 识别期限sheet问题
+name: identify-term-sheet-issues
 task_id: banking-finance/identify-term-sheet-issues
 description: Reviews a term sheet and related engagement materials for a leveraged acquisition financing from the borrower or sponsor side, and produces a prioritized issues memo with severity classifications and suggested negotiation points.
 activates_for: [planner, solver, checker]

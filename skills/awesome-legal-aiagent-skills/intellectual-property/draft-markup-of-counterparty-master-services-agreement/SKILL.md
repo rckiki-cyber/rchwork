@@ -1,5 +1,5 @@
 ---
-name: 起草markupcounterpartymsa
+name: draft-markup-counterparty-msa
 task_id: intellectual-property/draft-markup-of-counterparty-master-services-agreement
 description: Redlined master services agreement with bracketed commentary and a cover memo summarizing key issues and negotiation strategy, evaluated against the applicable contracting playbook and available vendor security documentation.
 activates_for: [planner, solver, checker]

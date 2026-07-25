@@ -1,5 +1,5 @@
 ---
-name: hlsidentify政府传票问题
+name: hls-identify-government-subpoena-issues
 task_id: healthcare-life-sciences/identify-issues-in-government-subpoena
 description: Reviews a government healthcare subpoena and supporting materials to identify potential temporal scope objections, relator indicators, audit privilege risks, retaliation exposure, successor-liability issues, parallel-state-investigation coordination needs, and spoliation concerns.
 activates_for: [planner, solver, checker]

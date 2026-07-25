@@ -1,5 +1,5 @@
 ---
-name: extract治理要求监管提交
+name: extract-governance-requirements-from-regulatory-filings
 task_id: corporate-governance/extract-governance-requirements-from-regulatory-filings
 description: Agents extract governance obligations from regulatory filings at a high level, map each obligation to the relevant source section, responsible governance function, deadline or trigger, and any related reporting or certification step, while also checking for affiliate-transaction constraints, internal-control implications, and ongoing notice requirements that may arise from changes in board or senior management composition.
 activates_for: [planner, solver, checker]

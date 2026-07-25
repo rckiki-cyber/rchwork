@@ -1,5 +1,5 @@
 ---
-name: 清算farmtitlecommitment问题identification
+name: wind-farm-title-commitment-issue-identification
 task_id: energy-natural-resources/identify-wind-farm-title-commitment-review
 description: Guides title issue identification for a wind farm acquisition by systematically analyzing schedule-based title exceptions for priority conflicts, assessing wind-energy-specific encumbrance types, and checking lender title requirements against the commitment's coverage.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 比较grandjury传票againstretention政策
+name: compare-grand-jury-subpoena-against-retention-policy
 task_id: white-collar-defense-investigations/compare-federal-grand-jury-subpoena-scope-against-corporate-document-retention-policy
 description: Gap analysis memorandum comparing a grand jury subpoena's scope against a corporate document retention policy and destruction records, identifying when the preservation obligation arose, which destructions occurred before versus after that obligation, and the spoliation risk associated with each gap.
 activates_for: [planner, solver, checker]

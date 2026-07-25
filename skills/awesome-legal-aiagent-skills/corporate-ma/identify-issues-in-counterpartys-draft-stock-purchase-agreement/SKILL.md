@@ -1,5 +1,5 @@
 ---
-name: 识别问题counterpartys草案spa
+name: identify-issues-in-counterpartys-draft-spa
 task_id: corporate-ma/identify-issues-in-counterpartys-draft-stock-purchase-agreement
 description: Guides preparation of a buyer-side issues memorandum identifying material deficiencies and risks in a seller-drafted stock purchase agreement, cross-referenced against diligence materials and deal documents.
 activates_for: [planner, solver, checker]

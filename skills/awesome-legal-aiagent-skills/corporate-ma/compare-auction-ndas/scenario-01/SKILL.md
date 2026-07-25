@@ -1,5 +1,5 @@
 ---
-name: 比较auctionndass01
+name: compare-auction-ndas-s01
 task_id: corporate-ma/compare-auction-ndas/scenario-01
 description: Guides auction-process NDA review by comparing each bidder's markup against the seller's form and playbook, assessing standstill, representatives scope, enforcement mechanics, and data room admission recommendation for each bidder.
 activates_for: [planner, solver, checker]

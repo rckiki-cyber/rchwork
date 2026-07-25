@@ -1,5 +1,5 @@
 ---
-name: 起草irrevocable生命保险信托协议
+name: draft-irrevocable-life-insurance-trust-agreement
 task_id: trusts-estates-private-client/draft-irrevocable-life-insurance-trust-agreement
 description: Drafting an irrevocable life-insurance trust for a blended family requires structuring withdrawal rights for beneficiaries, addressing transfer and ownership issues for any policy insuring the grantor, coordinating transfer-skipping transfer tax planning for skip-person beneficiaries, and aligning the draft with the broader estate plan in a companion cover memo.
 activates_for: [planner, solver, checker]

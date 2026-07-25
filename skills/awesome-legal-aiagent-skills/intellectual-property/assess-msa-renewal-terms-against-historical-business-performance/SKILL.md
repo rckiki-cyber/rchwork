@@ -1,5 +1,5 @@
 ---
-name: 评估msa续期条款performance
+name: assess-msa-renewal-terms-performance
 task_id: intellectual-property/assess-msa-renewal-terms-against-historical-business-performance
 description: Negotiation preparation memorandum evaluating proposed renewal terms against the existing agreement and historical account performance data.
 activates_for: [planner, solver, checker]

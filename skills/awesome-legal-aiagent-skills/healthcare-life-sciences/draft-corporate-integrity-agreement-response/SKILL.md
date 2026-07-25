@@ -1,5 +1,5 @@
 ---
-name: hls草案cia回应
+name: hls-draft-cia-response
 task_id: healthcare-life-sciences/draft-corporate-integrity-agreement-response
 description: Drafts a CIA implementation plan and board resolution package that maps each CIA obligation to a timeline, addresses chief compliance officer qualification and independence requirements, and includes multi-period staffing and budget projections for review.
 activates_for: [planner, solver, checker]

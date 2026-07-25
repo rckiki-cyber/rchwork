@@ -1,5 +1,5 @@
 ---
-name: 比较违约notification附表against多
+name: compare-breach-notification-schedule-against-multi
 task_id: data-privacy-cybersecurity/compare-breach-notification-schedule-against-multi
 description: Breach notification schedule gap analyses require comparing each scheduled notification action against the applicable regulatory deadline, identifying whether notifications are past due or still pending, and checking whether the schedule is complete, timely, and aligned with the governing guidance.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 分析mfnwaterfall
+name: analyze-mfn-waterfall
 task_id: funds-asset-management/analyze-mfn-waterfall
 description: Review a fund's side-letter package, governing fund agreement, policy materials, tracking records, and commitment schedule to produce an MFN election analysis and recommendation memorandum covering LP eligibility, economic cascade modeling, and pre-notice amendment recommendations.
 activates_for: [planner, solver, checker]

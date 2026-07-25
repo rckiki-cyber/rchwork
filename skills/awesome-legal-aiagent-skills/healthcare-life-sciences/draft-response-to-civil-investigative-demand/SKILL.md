@@ -1,5 +1,5 @@
 ---
-name: hls草案回应cid
+name: hls-draft-response-to-cid
 task_id: healthcare-life-sciences/draft-response-to-civil-investigative-demand
 description: Drafts a comprehensive Civil Investigative Demand response with objections, interrogatory answers, and a privilege log, plus a privileged internal strategy memo analyzing preservation issues, potential whistleblower-related exposure, personal self-incrimination issues, and voluntary disclosure options.
 activates_for: [planner, solver, checker]

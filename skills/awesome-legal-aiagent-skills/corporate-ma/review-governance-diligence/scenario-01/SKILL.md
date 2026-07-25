@@ -1,5 +1,5 @@
 ---
-name: 审查治理尽职调查scenario
+name: review-governance-diligence-scenario-01
 task_id: corporate-ma/review-governance-diligence/scenario-01
 description: Guides preparation of an M&A governance due diligence memorandum for a reverse triangular merger where charter documents, stockholder agreements, board minutes, and investor rights must all be reviewed for transaction-readiness and governance risk.
 activates_for: [planner, solver, checker]

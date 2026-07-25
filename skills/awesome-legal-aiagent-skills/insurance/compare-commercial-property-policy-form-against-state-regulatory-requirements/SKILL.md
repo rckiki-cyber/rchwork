@@ -1,5 +1,5 @@
 ---
-name: 比较商业财产政策州监管
+name: compare-commercial-property-policy-state-regulatory
 task_id: insurance/compare-commercial-property-policy-form-against-state-regulatory-requirements
 description: Agents conducting a policy form compliance review against state regulatory requirements should cross-reference prior objections, verify relevant statutory or regulatory periods for the applicable jurisdiction, and summarize gaps by severity tier.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草childsupportworksheet
+name: draft-child-support-worksheet
 task_id: trusts-estates-private-client/draft-child-support-worksheet
 description: Completing a state child support guideline worksheet requires checking income figures against source financial records rather than relying solely on self-reported statements, applying income imputation where a parent is voluntarily underemployed, correcting improper deductions from rental income, and averaging variable compensation over an appropriate multi-year period.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草commitment函件
+name: draft-commitment-letter
 task_id: corporate-ma/draft-commitment-letter
 description: Guides drafting of a leveraged acquisition commitment letter and companion issues memo, requiring identification and resolution of cross-document economic inconsistencies and flagging of non-market conditions that may be inappropriate as unconditional funding conditions.
 activates_for: [planner, solver, checker]

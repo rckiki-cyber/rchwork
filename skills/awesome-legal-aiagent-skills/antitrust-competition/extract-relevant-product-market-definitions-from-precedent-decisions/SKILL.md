@@ -1,5 +1,5 @@
 ---
-name: extractrelevant产品市场definitions先例决定
+name: extract-relevant-product-market-definitions-from-precedent-decisions
 task_id: antitrust-competition/extract-relevant-product-market-definitions-from-precedent-decisions
 description: Closes gaps in applying extracted precedent market definitions to the current transaction's specific products, identifying inconsistencies across precedents, and assessing concentration implications under each plausible definition.
 activates_for: [planner, solver, checker]

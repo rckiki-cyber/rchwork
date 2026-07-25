@@ -1,5 +1,5 @@
 ---
-name: extractintercreditor协议key期限extraction
+name: extract-intercreditor-agreement-key-term-extraction
 task_id: bankruptcy-restructuring/extract-intercreditor-agreement-key-term-extraction
 description: Ensures an intercreditor key terms memo identifies conflicts between multiple intercreditor agreements and determines the controlling provision, analyzes standstill mechanics and purchase option economics, and provides strategic observations drawn from the source documents.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: ecvcanalyzecounterpartymarkupbridge贷款
+name: ecvc-analyze-counterparty-markup-bridge-loan
 task_id: emerging-companies-venture-capital/analyze-counterparty-markup-of-bridge-loan-agreement
 description: Counterparty bridge loan markups require analysis that connects conversion mechanics, investor control provisions, runway implications, and pay-to-play interactions — not just issue-by-issue enumeration.
 activates_for: [planner, solver, checker]

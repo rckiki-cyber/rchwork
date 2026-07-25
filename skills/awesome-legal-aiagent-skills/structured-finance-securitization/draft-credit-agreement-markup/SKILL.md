@@ -1,5 +1,5 @@
 ---
-name: 起草credit协议markuplbo
+name: draft-credit-agreement-markup-lbo
 task_id: structured-finance-securitization/draft-credit-agreement-markup
 description: Preparing a borrower-side markup of a financing agreement by comparing each provision against the operative deal documents to identify tightening of economic terms, flexibility baskets, and protective covenants.
 activates_for: [planner, solver, checker]

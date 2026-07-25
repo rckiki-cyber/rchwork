@@ -1,5 +1,5 @@
 ---
-name: 起草第三方同意tracking
+name: draft-third-party-consent-tracking
 task_id: corporate-ma/draft-third-party-consent-tracking
 description: Guides consent tracking, analysis, and request-letter drafting for an acquisition closing where material contracts, financing arrangements, leases, and regulatory permits must be reviewed for consent requirements.
 activates_for: [planner, solver, checker]

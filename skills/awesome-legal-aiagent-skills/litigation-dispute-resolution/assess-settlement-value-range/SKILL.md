@@ -1,5 +1,5 @@
 ---
-name: 评估和解valuerange
+name: assess-settlement-value-range
 task_id: litigation-dispute-resolution/assess-settlement-value-range
 description: Pre-mediation settlement valuation requires synthesizing liability exposure, damages quantification, expert opinions on both sides, comparable outcomes, insurance coverage limits, and litigation cost considerations into a defensible valuation range with an opening offer strategy.
 activates_for: [planner, solver, checker]

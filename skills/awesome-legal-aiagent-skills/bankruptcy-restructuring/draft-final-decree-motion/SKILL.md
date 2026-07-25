@@ -1,5 +1,5 @@
 ---
-name: 起草最终decree动议
+name: draft-final-decree-motion
 task_id: bankruptcy-restructuring/draft-final-decree-motion
 description: Ensures a final decree motion and proposed order together address all open case administration items, accurately represent the status of disputed claims and distributions, and include retention of jurisdiction and discharge injunction survival provisions commonly required in a closing order.
 activates_for: [planner, solver, checker]

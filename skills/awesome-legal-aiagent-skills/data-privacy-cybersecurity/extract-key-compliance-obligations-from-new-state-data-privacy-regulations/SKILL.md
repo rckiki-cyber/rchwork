@@ -1,5 +1,5 @@
 ---
-name: extractkey合规义务新型州数据隐私法规
+name: extract-key-compliance-obligations-from-new-state-data-privacy-regulations
 task_id: data-privacy-cybersecurity/extract-key-compliance-obligations-from-new-state-data-privacy-regulations
 description: State privacy regulation obligation extraction fails when the agent does not apply each statute's applicability thresholds to the company's actual data profile and does not map extracted obligations against existing compliance gaps evidenced by the company's own documents.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-13
 task_id: funds-asset-management/draft-lpa/scenario-13
 description: Draft a successor fund limited partnership agreement by reconciling prior-precedent terms against updated term-sheet instructions, resolving any internal inconsistency in the post-investment-period fee basis, and adding parallel-vehicle provisions using general fund-structuring principles where no precedent language exists.
 activates_for: [planner, solver, checker]

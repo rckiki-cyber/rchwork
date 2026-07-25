@@ -1,5 +1,5 @@
 ---
-name: 起草due尽职调查请求lists02
+name: draft-due-diligence-request-list-s02
 task_id: corporate-ma/draft-due-diligence-request-list/scenario-02
 description: Guides drafting of a tailored due diligence request list for a regulated data or healthcare IT target, with an executive summary of target-specific diligence themes covering regulatory risk, open-source copyleft, change-of-control revenue at risk, data licensing compliance, and time-sensitive contract expirations.
 activates_for: [planner, solver, checker]

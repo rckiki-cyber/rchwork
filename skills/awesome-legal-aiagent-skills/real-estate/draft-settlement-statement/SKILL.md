@@ -1,5 +1,5 @@
 ---
-name: 起草和解报表
+name: draft-settlement-statement
 task_id: real-estate/draft-settlement-statement
 description: Guides drafting of a commercial property settlement statement with proration schedules and a reconciliation notes memo by integrating the purchase agreement, rent roll, payoff information, and other closing documents.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: lmr雇佣监管批准
+name: lmr-employment-regulatory-approval
 task_id: intellectual-property/lmr-employment
 description: Preparing a regulatory approval requirements memo for a business expansion by mapping proposed digital-asset custody activities against the current license and registration inventory and the applicable regulatory frameworks.
 activates_for: [planner, solver, checker]

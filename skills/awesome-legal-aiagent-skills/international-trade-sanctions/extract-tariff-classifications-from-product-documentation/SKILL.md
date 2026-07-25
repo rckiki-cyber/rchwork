@@ -1,5 +1,5 @@
 ---
-name: itsextracttariffclassifications产品documentation
+name: its-extract-tariff-classifications-product-documentation
 task_id: international-trade-sanctions/extract-tariff-classifications-from-product-documentation
 description: Produces a tariff-classification report and customs-audit response that applies the General Rules of Interpretation product by product, identifies both underpayment and overpayment exposure, evaluates whether any misclassification also affected export-control classification, and outlines separate disclosure or remedial pathways for customs and export-control issues as applicable.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别仲裁协议markup
+name: identify-arbitration-agreement-markup
 task_id: arbitration-international-dispute-resolution/identify-arbitration-agreement-markup
 description: Ensures an arbitration agreement markup addresses the curial law implications of the proposed seat, advocates for a multi-arbitrator panel with an explicit selection mechanism, and preserves the ability to recover consequential damages where appropriate.
 activates_for: [planner, solver, checker]

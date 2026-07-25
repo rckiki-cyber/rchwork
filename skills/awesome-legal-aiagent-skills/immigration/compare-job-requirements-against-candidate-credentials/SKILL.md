@@ -1,5 +1,5 @@
 ---
-name: 比较job要求againstcandidatecredentials
+name: compare-job-requirements-against-candidate-credentials
 task_id: immigration/compare-job-requirements-against-candidate-credentials
 description: Multi-candidate credential gap analysis for immigration compliance where agents assess the job requirements against each candidate’s credentials, separate filing-blocking deficiencies from gaps that may be documented or cured, and produce prioritized corrective actions by candidate.
 activates_for: [planner, solver, checker]

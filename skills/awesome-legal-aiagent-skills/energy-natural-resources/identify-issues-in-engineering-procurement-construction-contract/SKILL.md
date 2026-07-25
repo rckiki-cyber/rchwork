@@ -1,5 +1,5 @@
 ---
-name: 识别问题epc合同solarutility
+name: identify-issues-epc-contract-solar-utility
 task_id: energy-natural-resources/identify-issues-in-engineering-procurement-construction-contract
 description: Guides issue identification in an EPC contract for a utility-scale solar project by cross-referencing the contract against related project documents, quantifying any exposure created by timing or cap mismatches when the relevant inputs are available, and checking construction-period documentation obligations tied to applicable incentives or certifications.
 activates_for: [planner, solver, checker]

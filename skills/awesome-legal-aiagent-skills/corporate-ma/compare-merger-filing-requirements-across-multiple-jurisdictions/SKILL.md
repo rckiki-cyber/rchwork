@@ -1,5 +1,5 @@
 ---
-name: 比较合并提交要求管辖
+name: compare-merger-filing-requirements-jurisdictions
 task_id: corporate-ma/compare-merger-filing-requirements-across-multiple-jurisdictions
 description: Guides a multi-jurisdictional merger control filing analysis by identifying the applicable filing thresholds, governing authority or regulatory framework, timing considerations, and substantive competition issues on a jurisdiction-by-jurisdiction basis.
 activates_for: [planner, solver, checker]

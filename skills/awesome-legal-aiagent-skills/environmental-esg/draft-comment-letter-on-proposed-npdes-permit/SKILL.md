@@ -1,5 +1,5 @@
 ---
-name: 起草comment函件拟议npdespermit
+name: draft-comment-letter-on-proposed-npdes-permit
 task_id: environmental-esg/draft-comment-letter-on-proposed-npdes-permit
 description: Guides drafting of a formal public comment letter on a proposed NPDES permit by structuring legal, technical, and scientific objections around the applicable Clean Water Act requirements the permit must satisfy.
 activates_for: [planner, solver, checker]

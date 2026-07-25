@@ -1,5 +1,5 @@
 ---
-name: its草案bisinitialvsd
+name: its-draft-bis-initial-vsd
 task_id: international-trade-sanctions/draft-initial-voluntary-self
 description: Drafts an initial voluntary self-disclosure letter to the relevant export-enforcement authority and an internal cover memo that follow the required identification elements, classify each product and transaction at the appropriate specificity, separate distinct regulatory theories where applicable, and flag any parallel sanctions analysis or follow-on filing considerations where warranted.
 activates_for: [planner, solver, checker]

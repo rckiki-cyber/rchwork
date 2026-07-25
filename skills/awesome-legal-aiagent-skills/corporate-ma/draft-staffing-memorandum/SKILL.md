@@ -1,5 +1,5 @@
 ---
-name: 起草staffing备忘录
+name: draft-staffing-memorandum
 task_id: corporate-ma/draft-staffing-memorandum
 description: Guides preparation of an internal engagement staffing memorandum for a cross-border M&A matter where team composition, conflicts status, regulatory specialty coverage, diversity metrics, and budget must all be addressed in a procedural, non-answer-key format.
 activates_for: [planner, solver, checker]

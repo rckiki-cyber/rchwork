@@ -1,5 +1,5 @@
 ---
-name: 审查环境site评估compressor收购
+name: review-environmental-site-assessment-compressor-acquisition
 task_id: energy-natural-resources/review-environmental-site-assessment
 description: Guides review of environmental site assessments for an infrastructure acquisition by identifying classification errors, sampling gaps, storage-tank compliance deficiencies, air permit exposure, and cleanup-liability risks, and by cross-checking consultant conclusions against the raw data and seller representations.
 activates_for: [planner, solver, checker]

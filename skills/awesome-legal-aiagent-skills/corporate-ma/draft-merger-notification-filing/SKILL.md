@@ -1,5 +1,5 @@
 ---
-name: 起草hsr合并notification
+name: draft-hsr-merger-notification
 task_id: corporate-ma/draft-merger-notification-filing
 description: Guides drafting of an HSR premerger notification package where multi-jurisdictional analysis, document-log obligations, and internal filing-issues identification must all be completed from deal documents.
 activates_for: [planner, solver, checker]

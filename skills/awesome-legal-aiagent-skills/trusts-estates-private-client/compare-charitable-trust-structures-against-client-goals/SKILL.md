@@ -1,5 +1,5 @@
 ---
-name: 比较charitable信托结构againstclientgoals
+name: compare-charitable-trust-structures-against-client-goals
 task_id: trusts-estates-private-client/compare-charitable-trust-structures-against-client-goals
 description: Comparing charitable remainder trust structures against client goals requires applying the relevant tax qualification rules, deduction limitation arithmetic, and identifying potentially disqualifying provisions in draft instruments before a recommendation can be made.
 activates_for: [planner, solver, checker]

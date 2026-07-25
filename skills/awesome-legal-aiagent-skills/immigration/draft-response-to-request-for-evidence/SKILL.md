@@ -1,5 +1,5 @@
 ---
-name: 起草uscisrfe回应
+name: draft-uscis-rfe-response
 task_id: immigration/draft-response-to-request-for-evidence
 description: Draft a response package to a USCIS request for evidence for an H-1B specialty occupation petition. Separate the public-facing response from any privileged internal memorandum, organize the response by each issue raised in the request, and keep the analysis focused on evidence, procedure, and case-specific gaps without blending audiences.
 activates_for: [planner, solver, checker]

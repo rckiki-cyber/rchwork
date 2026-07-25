@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-16
 task_id: funds-asset-management/draft-lpa/scenario-16
 description: Draft a limited partnership agreement for a successor fund that incorporates a multi-tier carried interest structure, ESG reporting requirements, and accommodations for government or sovereign investors, while independently checking formula logic, fee-structure consistency, and conflicts among draft materials.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草supervisory机关违约notification
+name: draft-supervisory-authority-breach-notification
 task_id: data-privacy-cybersecurity/draft-supervisory-authority-breach-notification
 description: Draft a supervisory-authority breach notification and a privileged internal memo by identifying the correct controller role, the applicable notification deadline, the required factual content, and the strategic disclosure risks created by the incident record.
 activates_for: [planner, solver, checker]

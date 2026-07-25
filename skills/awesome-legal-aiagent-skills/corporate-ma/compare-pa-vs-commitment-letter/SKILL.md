@@ -1,5 +1,5 @@
 ---
-name: 比较pavscommitment函件
+name: compare-pa-vs-commitment-letter
 task_id: corporate-ma/compare-pa-vs-commitment-letter
 description: Guides cross-document comparison of a purchase agreement against a debt commitment letter, identifying mismatches in specified representations, financing conditions, timeline alignment, financial statement requirements, and fund-level change-of-control implications.
 activates_for: [planner, solver, checker]

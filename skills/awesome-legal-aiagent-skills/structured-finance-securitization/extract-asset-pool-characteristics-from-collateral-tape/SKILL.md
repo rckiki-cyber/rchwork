@@ -1,5 +1,5 @@
 ---
-name: extract资产poolcharacteristicsrmbs
+name: extract-asset-pool-characteristics-rmbs
 task_id: structured-finance-securitization/extract-asset-pool-characteristics-from-collateral-tape
 description: Extract characteristics from a collateral tape and prepare a stratification and compliance report by testing each loan against applicable eligibility criteria, verifying categorical pool representations against the data, and identifying loans that fail multiple criteria simultaneously as a distinct category.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别问题诉讼holdpreservation通知
+name: identify-issues-in-litigation-hold-preservation-notice
 task_id: corporate-governance/identify-issues-in-litigation-hold-preservation-notice
 description: Agents identify surface-level preservation notice gaps by checking whether the stated preservation window captures the earliest preservation trigger, whether the notice covers complaint-implicated topic categories, whether routine deletion or retention cycles create urgency, whether delay between trigger and issuance creates spoliation risk, and whether interim preservation steps are documented.
 activates_for: [planner, solver, checker]

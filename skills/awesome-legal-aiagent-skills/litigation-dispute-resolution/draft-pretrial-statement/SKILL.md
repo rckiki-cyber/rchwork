@@ -1,5 +1,5 @@
 ---
-name: 起草pretrial报表
+name: draft-pretrial-statement
 task_id: litigation-dispute-resolution/draft-pretrial-statement
 description: Drafting the plaintiff's portion of a joint pretrial statement requires compiling a trial-ready witness list with anticipated testimony, an exhibit list with objection responses, deposition designations, and proposed motions in limine, all constrained by governing pretrial orders and prior court rulings.
 activates_for: [planner, solver, checker]

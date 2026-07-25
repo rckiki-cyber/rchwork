@@ -1,5 +1,5 @@
 ---
-name: 起草saassubscription协议
+name: draft-saas-subscription-agreement
 task_id: intellectual-property/draft-saas-subscription-agreement
 description: Draft an enterprise SaaS subscription agreement for a healthcare platform procurement, together with a drafting issues memo, using the available commercial, legal, negotiation, and security materials.
 activates_for: [planner, solver, checker]

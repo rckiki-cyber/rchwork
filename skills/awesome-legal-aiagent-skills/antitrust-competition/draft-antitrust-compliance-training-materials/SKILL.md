@@ -1,5 +1,5 @@
 ---
-name: 起草反垄断合规培训重大
+name: draft-antitrust-compliance-training-materials
 task_id: antitrust-competition/draft-antitrust-compliance-training-materials
 description: Drafts two separate antitrust compliance deliverables, covering the principal competition-law frameworks, providing issue-specific guidance for compliance risks identified in the source materials, and maintaining a clear distinction between per se and rule-of-reason analysis throughout.
 activates_for: [planner, solver, checker]

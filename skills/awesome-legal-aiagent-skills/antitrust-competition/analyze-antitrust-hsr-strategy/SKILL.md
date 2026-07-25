@@ -1,5 +1,5 @@
 ---
-name: 分析反垄断hsr策略
+name: analyze-antitrust-hsr-strategy
 task_id: antitrust-competition/analyze-antitrust-hsr-strategy
 description: Closes gaps in product-market separation, geographic-market framing, hot-document identification, and HSR filing strategy memo production for acquisition antitrust review.
 activates_for: [planner, solver, checker]

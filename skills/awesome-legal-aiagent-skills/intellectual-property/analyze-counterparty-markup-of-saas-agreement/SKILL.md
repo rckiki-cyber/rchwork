@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkupsaas协议
+name: analyze-counterparty-markup-saas-agreement
 task_id: intellectual-property/analyze-counterparty-markup-of-saas-agreement
 description: Priority-ranked redline analysis memorandum for a vendor-marked SaaS subscription agreement evaluated against the company's template, playbook, order form, and negotiation correspondence. Focus on comparing the operative draft against reference materials, identifying deviations, and organizing issues by business impact and negotiation significance.
 activates_for: [planner, solver, checker]

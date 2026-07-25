@@ -1,5 +1,5 @@
 ---
-name: 起草markupcounterpartyconstruction合同
+name: draft-markup-of-counterparty-construction-contract
 task_id: real-estate/draft-markup-of-counterparty-construction-contract
 description: Guides owner-side markup of a contractor's guaranteed maximum price contract draft by calibrating each redline position against the owner's playbook, lender requirements, insurer requirements, and other deal-specific guidance, and producing both a full redline and a prioritized issues memo.
 activates_for: [planner, solver, checker]

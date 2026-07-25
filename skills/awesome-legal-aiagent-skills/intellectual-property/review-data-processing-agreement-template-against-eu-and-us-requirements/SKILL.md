@@ -1,5 +1,5 @@
 ---
-name: 审查dpa模板euus要求
+name: review-dpa-template-eu-us-requirements
 task_id: intellectual-property/review-data-processing-agreement-template-against-eu-and-us-requirements
 description: Reviewing a data processing agreement template against EU and US data protection requirements to produce a conformance memorandum identifying required changes and pre-launch actions.
 activates_for: [planner, solver, checker]

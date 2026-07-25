@@ -1,5 +1,5 @@
 ---
-name: 起草商业lease协议
+name: draft-commercial-lease-agreement
 task_id: real-estate/draft-commercial-lease-agreement
 description: Guides drafting of a landlord-favorable triple-net commercial lease by integrating multi-document source materials, addressing building- and lender-related constraints, and flagging cross-document issues in a companion memorandum.
 activates_for: [planner, solver, checker]

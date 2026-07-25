@@ -1,5 +1,5 @@
 ---
-name: 回应commentmemo
+name: respond-to-comment-memo
 task_id: funds-asset-management/respond-to-comment-memo
 description: Draft counsel responses to an LP comment memo on a fund agreement, completing the response column with a clear accept/partial-accept/reject decision, a concise rationale, and proposed revised language for each accepted or partially accepted comment.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 比较separation协议against薪酬survey
+name: compare-separation-agreement-against-compensation-survey
 task_id: employment-labor/compare-separation-agreement-against-compensation-survey
 description: Guides the analyst through a gap analysis comparing each component of a draft separation agreement against market benchmark data, the employment agreement's contractual entitlements, and any applicable equity plan provisions.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草position函件州保险监管机构
+name: draft-position-letter-to-state-insurance-regulator
 task_id: corporate-governance/draft-position-letter-to-state-insurance-regulator
 description: Agents draft a response to a market conduct examination report by reviewing each finding, testing the examiner’s factual and methodological premises, assessing duplication risk across findings, considering due process concerns tied to excluded supplemental evidence, and addressing available penalty mitigation factors under the applicable insurance framework.
 activates_for: [planner, solver, checker]

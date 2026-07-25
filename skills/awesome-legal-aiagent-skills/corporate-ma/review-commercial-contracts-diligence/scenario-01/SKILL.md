@@ -1,5 +1,5 @@
 ---
-name: 审查商业合同尽职调查scenario
+name: review-commercial-contracts-diligence-scenario-01
 task_id: corporate-ma/review-commercial-contracts-diligence/scenario-01
 description: Guides preparation of a commercial contracts diligence memo for a SaaS target acquisition where customer contracts, vendor agreements, and partnership arrangements must be systematically assessed for material risks.
 activates_for: [planner, solver, checker]

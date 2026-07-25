@@ -1,5 +1,5 @@
 ---
-name: 起草贷款协议
+name: draft-loan-agreement
 task_id: real-estate/draft-loan-agreement
 description: Guides drafting of a construction-to-mini-perm loan agreement by reconciling economic terms across source materials and producing both the loan agreement and a cover memo flagging material inconsistencies with proposed resolutions.
 activates_for: [planner, solver, checker]

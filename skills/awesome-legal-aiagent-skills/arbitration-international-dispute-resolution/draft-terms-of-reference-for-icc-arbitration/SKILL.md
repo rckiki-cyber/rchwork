@@ -1,5 +1,5 @@
 ---
-name: 起草条款referenceicc仲裁
+name: draft-terms-of-reference-for-icc-arbitration
 task_id: arbitration-international-dispute-resolution/draft-terms-of-reference-for-icc-arbitration
 description: Ensures ICC Terms of Reference are drafted in an ICC-compliant, procedural way by identifying the parties, summarizing each side’s claims and counterclaims, bracketing disputed text for tribunal resolution, flagging contract-structure and governing-law issues for tribunal resolution, and recording agreed procedural matters.
 activates_for: [planner, solver, checker]

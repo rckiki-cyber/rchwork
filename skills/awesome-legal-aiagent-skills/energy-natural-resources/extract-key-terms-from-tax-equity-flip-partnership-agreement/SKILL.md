@@ -1,5 +1,5 @@
 ---
-name: extractkey条款税务股权flip合伙
+name: extract-key-terms-tax-equity-flip-partnership
 task_id: energy-natural-resources/extract-key-terms-from-tax-equity-flip-partnership-agreement
 description: Guides extraction of key terms from a tax equity flip partnership agreement by identifying the flip structure and trigger, summarizing allocation mechanics, checking tax assumptions against applicable law, and systematically flagging cross-document inconsistencies between the agreement and related transaction materials.
 activates_for: [planner, solver, checker]

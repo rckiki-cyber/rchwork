@@ -1,5 +1,5 @@
 ---
-name: 起草seccomment函件回应
+name: draft-sec-comment-letter-response
 task_id: capital-markets/draft-sec-comment-letter-response
 description: SEC comment letter response drafting where the baseline addresses each comment narratively but omits the standard representation, draft-ready proposed disclosure language, and the privileged internal strategy memo.
 activates_for: [planner, solver, checker]

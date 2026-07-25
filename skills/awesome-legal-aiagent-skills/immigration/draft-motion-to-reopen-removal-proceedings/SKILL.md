@@ -1,5 +1,5 @@
 ---
-name: 起草动议reopenremoval程序
+name: draft-motion-to-reopen-removal-proceedings
 task_id: immigration/draft-motion-to-reopen-removal-proceedings
 description: Motion to reopen removal proceedings where the procedural basis selected (for example, exceptional circumstances, lack of notice, or changed country conditions) determines the timing rules and the evidentiary showing required.
 activates_for: [planner, solver, checker]

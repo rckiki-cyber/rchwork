@@ -1,5 +1,5 @@
 ---
-name: extractkey义务msa
+name: extract-key-obligations-msa
 task_id: intellectual-property/extract-key-obligations-from-executed-master-services-agreement
 description: Building a categorized obligation tracker from an executed master services agreement and related exhibits, requiring cross-document reconciliation, ambiguity identification, and flagging of compliance gaps.
 activates_for: [planner, solver, checker]

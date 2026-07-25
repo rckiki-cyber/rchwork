@@ -1,5 +1,5 @@
 ---
-name: extractclient资产财务报表
+name: extract-client-assets-from-financial-statements
 task_id: trusts-estates-private-client/extract-client-assets-from-financial-statements
 description: Closes the gap where agents compile flat asset lists without categorized subtotals, correct treatment of inherited retirement-account spousal rollover rights and distribution compliance, partnership-interest valuation discount notation, and installment-note tax and estate consequences.
 activates_for: [planner, solver, checker]

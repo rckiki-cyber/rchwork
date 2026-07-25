@@ -1,5 +1,5 @@
 ---
-name: extract保险政策条款收购due尽职调查
+name: extract-insurance-policy-terms-acquisition-due-diligence
 task_id: insurance/extract-insurance-policy-terms
 description: Agents conducting an insurance coverage analysis memo for acquisition due diligence extract primary policy terms and then test for structural coverage gaps, endorsements, open-claim tensions, transition risk, and post-closing continuity issues.
 activates_for: [planner, solver, checker]

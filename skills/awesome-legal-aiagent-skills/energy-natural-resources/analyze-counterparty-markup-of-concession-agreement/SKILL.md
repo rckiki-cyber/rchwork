@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkupconcession协议
+name: analyze-counterparty-markup-concession-agreement
 task_id: energy-natural-resources/analyze-counterparty-markup-of-concession-agreement
 description: Guides rigorous issue-by-issue analysis of a counterparty-marked concession agreement by cross-referencing project economics and model assumptions for each commercial provision, comparing each change against negotiation-playbook thresholds, and distinguishing bankability-critical deletions from negotiable adjustments.
 activates_for: [planner, solver, checker]

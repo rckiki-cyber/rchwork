@@ -1,5 +1,5 @@
 ---
-name: extractkey条款审判证据list
+name: extract-key-terms-trial-exhibit-list
 task_id: intellectual-property/extract-key-terms-from-trial-exhibit-list
 description: Cross-referencing a joint trial exhibit list against pretrial filings to identify discrepancies, authentication risks, and corrective actions before trial, using the governing pretrial materials and related procedural orders.
 activates_for: [planner, solver, checker]

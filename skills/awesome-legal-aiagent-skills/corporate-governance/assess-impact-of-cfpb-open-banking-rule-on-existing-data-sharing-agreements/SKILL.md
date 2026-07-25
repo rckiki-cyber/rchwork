@@ -1,5 +1,5 @@
 ---
-name: cfpbopen银行规则impact
+name: cfpb-open-banking-rule-impact
 task_id: corporate-governance/assess-impact-of-cfpb-open-banking-rule-on-existing-data-sharing-agreements
 description: Regulatory impact memorandum assessing each existing data sharing agreement against the applicable consumer financial data access and sharing rule, identifying disclosure, authorization, data-use, revocation, deletion, interface, and implementation-gaps across the agreement portfolio.
 activates_for: [planner, solver, checker]

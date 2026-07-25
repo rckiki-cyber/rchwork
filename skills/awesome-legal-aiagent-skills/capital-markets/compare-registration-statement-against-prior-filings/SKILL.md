@@ -1,5 +1,5 @@
 ---
-name: 比较登记报表againstprior提交
+name: compare-registration-statement-against-prior-filings
 task_id: capital-markets/compare-registration-statement-against-prior-filings
 description: Registration statement staleness review that compares a draft against prior filings, checks intervening disclosures for material updates, and evaluates whether the filing remains internally consistent and procedurally complete.
 activates_for: [planner, solver, checker]

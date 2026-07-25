@@ -1,5 +1,5 @@
 ---
-name: 审查equipmentleaseabsindenturescenario
+name: review-equipment-lease-abs-indenture-scenario-01
 task_id: structured-finance-securitization/review-securitization-indenture/scenario-01
 description: Review a draft indenture for an equipment lease receivables securitization from the sponsor's perspective. Assess waterfall mechanics, trigger mechanics, optional redemption economics, servicing transition mechanics, bankruptcy-remoteness package completeness, and consistency between representations and pool data.
 activates_for: [planner, solver, checker]

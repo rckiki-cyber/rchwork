@@ -1,5 +1,5 @@
 ---
-name: extractkey条款外国credential评估
+name: extract-key-terms-from-foreign-credential-evaluations
 task_id: immigration/extract-key-terms-from-foreign-credential-evaluations
 description: Cross-referenced extraction from multiple foreign credential evaluations and supporting academic records, where the output should surface discrepancies between evaluators and between evaluations and the underlying records, rather than only summarizing each evaluation's conclusion.
 activates_for: [planner, solver, checker]

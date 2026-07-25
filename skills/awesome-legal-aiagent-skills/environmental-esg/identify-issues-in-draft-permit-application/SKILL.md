@@ -1,5 +1,5 @@
 ---
-name: 识别问题草案permitapplication
+name: identify-issues-in-draft-permit-application
 task_id: environmental-esg/identify-issues-in-draft-permit-application
 description: Guides preparation of a Title V permit application issues memorandum by identifying legal, technical, and data deficiencies in a draft application that could result in agency rejection, permit conditions adverse to the facility, or compliance risk.
 activates_for: [planner, solver, checker]

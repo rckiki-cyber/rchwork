@@ -1,5 +1,5 @@
 ---
-name: extractcontesteddivorce资产extraction
+name: extract-contested-divorce-asset-extraction
 task_id: trusts-estates-private-client/extract-contested-divorce-asset-extraction
 description: Focuses the analysis on reconciling a sworn financial disclosure against supporting financial records to identify omitted assets, suspicious transfers suggesting dissipation, and unsupported valuation positions — and on computing a corrected total that reflects the identified adjustments.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract劳工雇佣多plaintiff起诉状
+name: extract-labor-employment-multi-plaintiff-complaint
 task_id: employment-labor/extract-labor-employment
 description: Guides extraction and categorization of allegations in a multi-plaintiff employment complaint, with attention to plaintiff-specific claims, pleaded facts, and potential legal deficiencies across the asserted theories.
 activates_for: [planner, solver, checker]

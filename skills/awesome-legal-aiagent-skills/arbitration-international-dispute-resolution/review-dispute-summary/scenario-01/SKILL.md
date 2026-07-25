@@ -1,5 +1,5 @@
 ---
-name: 审查争议摘要scenario
+name: review-dispute-summary-scenario-01
 task_id: arbitration-international-dispute-resolution/review-dispute-summary/scenario-01
 description: Ensures a dispute summary issues memo identifies potential mischaracterizations, selective contractual quotation, enforceability questions for restrictive covenants, and cure period analysis.
 activates_for: [planner, solver, checker]

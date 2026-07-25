@@ -1,5 +1,5 @@
 ---
-name: 起草问题list收购协议
+name: draft-issues-list-acquisition-agreement
 task_id: corporate-ma/draft-issues-list-for-acquisition-agreement
 description: Guides preparation of a prioritized issues list memorandum for a membership interest purchase agreement, requiring each issue to be tied to a specific agreement section, regulatory notification obligations to be analyzed as potential closing conditions, unsupported earnings adjustments to be identified and quantified, and earnout operating protections to be evaluated where the draft lacks them.
 activates_for: [planner, solver, checker]

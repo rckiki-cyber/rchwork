@@ -1,5 +1,5 @@
 ---
-name: 综合披露附表against收购协议
+name: synthesize-disclosure-schedules-against-acquisition-agreement
 task_id: corporate-ma/synthesize-disclosure-schedules-against-acquisition-agreement
 description: Guides preparation of a buyer-side gap analysis memorandum cross-referencing updated disclosure schedules against an acquisition agreement’s representations and warranties using supporting diligence materials to identify completeness gaps and disclosure concerns.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 分析credit协议markup
+name: analyze-credit-agreement-markup
 task_id: corporate-ma/analyze-credit-agreement-markup
 description: Guides systematic comparison of a borrower’s credit agreement markup against the original draft and related preliminary financing terms, assessing both individual provision changes and their compounded effect on lender protection.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别问题counterpartyconstruction合同
+name: identify-issues-in-counterparty-construction-contract
 task_id: real-estate/identify-issues-in-counterparty-construction-contract
 description: Guides buyer-side issue identification in a construction contract being assumed at acquisition closing by reviewing the contract terms, current project status materials, and the assignment request letter to flag risks inherent in assuming the construction obligation mid-project.
 activates_for: [planner, solver, checker]

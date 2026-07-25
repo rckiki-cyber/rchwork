@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-22
 task_id: funds-asset-management/draft-lpa/scenario-22
 description: Draft a fund LPA for a sustainable agriculture impact fund using a precedent template and investor-facing materials, with attention to measurable impact provisions, defined exclusions, service-provider designations, and bracketed notes for unresolved drafting points.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 比较borrower承诺合规分析
+name: compare-borrower-covenant-compliance-analysis
 task_id: banking-finance/compare-borrower-covenant-compliance-analysis
 description: Independently recalculates covenant compliance from source documents, flags deviations from the borrower’s compliance certificate, and produces a default-oriented analysis with next-step triage.
 activates_for: [planner, solver, checker]

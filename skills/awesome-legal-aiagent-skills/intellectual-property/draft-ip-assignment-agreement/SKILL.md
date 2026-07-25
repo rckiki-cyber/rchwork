@@ -1,5 +1,5 @@
 ---
-name: 起草ip转让tech收购
+name: draft-ip-assignment-tech-acquisition
 task_id: intellectual-property/draft-ip-assignment-agreement
 description: Buyer-protective IP assignment agreement for a technology portfolio acquisition, drafted from diligence materials, asset schedules, and deal terms.
 activates_for: [planner, solver, checker]

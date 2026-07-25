@@ -1,5 +1,5 @@
 ---
-name: 起草期限sheetmarkupscenario
+name: draft-term-sheet-markup-scenario-02
 task_id: corporate-ma/draft-term-sheet-markup/scenario-02
 description: Guides buyer-side term sheet markup and explanatory memorandum where valuation, purchase price mechanics, working capital, and risk-allocation provisions must be revised using the transaction documents and available diligence materials.
 activates_for: [planner, solver, checker]

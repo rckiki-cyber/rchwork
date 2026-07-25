@@ -1,5 +1,5 @@
 ---
-name: 起草sourcecode托管协议
+name: draft-source-code-escrow-agreement
 task_id: intellectual-property/draft-source-code-escrow-agreement
 description: Draft a beneficiary-oriented source code escrow agreement and a negotiation issues memo for a software-as-a-service license transaction, using the escrow agent's template and the deal documents as inputs.
 activates_for: [planner, solver, checker]

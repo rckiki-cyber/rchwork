@@ -1,5 +1,5 @@
 ---
-name: 起草回应动议modifycustodychildsupport
+name: draft-response-to-motion-to-modify-custody-and-child-support
 task_id: trusts-estates-private-client/draft-response-to-motion-to-modify-custody-and-child-support
 description: Draft an opposition brief to a motion seeking modification of custody and child support by applying the governing modification standard, testing the evidentiary basis for the requested changes, and organizing rebuttal arguments around the motion’s issues and the record.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 比较损失reserves行业benchmarksadequacy
+name: compare-loss-reserves-industry-benchmarks-adequacy
 task_id: insurance/compare-loss-reserves-against-industry-benchmarks
 description: Agents assessing reserve adequacy against industry benchmarks should describe reserve deficiencies by comparing loss development, identifying whether access limitations affected the actuarial analysis, and tracing the external consequences that reserve strengthening can have for capital, ratings, reinsurance capacity, and compliance timing.
 activates_for: [planner, solver, checker]

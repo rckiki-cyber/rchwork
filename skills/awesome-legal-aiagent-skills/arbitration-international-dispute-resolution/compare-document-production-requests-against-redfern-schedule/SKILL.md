@@ -1,5 +1,5 @@
 ---
-name: 比较文件production请求againstredfern附表
+name: compare-document-production-requests-against-redfern-schedule
 task_id: arbitration-international-dispute-resolution/compare-document-production-requests-against-redfern-schedule
 description: Supports a gap analysis memorandum that compares document production requests against response schedules, checking both structure and substance while avoiding instance-specific conclusions.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 离婚案客户信息提取
+name: extract-client-intake-facts-divorce-scenario-01
 task_id: trusts-estates-private-client/extract-client-intake-facts/scenario-01
 description: Closes the gap where agents extract stated facts without flagging common family-law intake issues such as possible prenuptial enforceability concerns tied to timing and counsel access, inheritance commingling and tracing questions, suspicious business expenses as potential dissipation, cryptocurrency transfers that may require tracing or interim relief, retirement-account division mechanics, and the need to assess whether maintenance may flow in either direction.
 activates_for: [planner, solver, checker]

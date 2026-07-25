@@ -1,5 +1,5 @@
 ---
-name: 起草enterprisesaas协议dealpoints
+name: draft-enterprise-saas-agreement-deal-points
 task_id: intellectual-property/draft-enterprise-saas-agreement-from-deal-points-memo
 description: Draft a master subscription agreement for an enterprise software-as-a-service customer from a deal points memo and internal playbook, with a required privacy/security exhibit and a cover memo identifying judgment calls and open issues.
 activates_for: [planner, solver, checker]

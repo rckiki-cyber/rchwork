@@ -1,5 +1,5 @@
 ---
-name: 起草证据开示计划备忘录
+name: draft-discovery-plan-memorandum
 task_id: litigation-dispute-resolution/draft-discovery-plan-memorandum
 description: A Rule 26(f) discovery plan memorandum should map claims and defenses to discoverable evidence categories, identify custodians and data sources, assess litigation-hold adequacy and any spoliation risks, and propose ESI and discovery protocols for the conference.
 activates_for: [planner, solver, checker]

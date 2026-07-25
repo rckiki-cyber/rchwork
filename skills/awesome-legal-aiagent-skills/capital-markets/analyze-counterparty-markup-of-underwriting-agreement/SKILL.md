@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkup承销协议
+name: analyze-counterparty-markup-of-underwriting-agreement
 task_id: capital-markets/analyze-counterparty-markup-of-underwriting-agreement
 description: Redline analysis where the baseline omits a systematic risk-shift narrative, issue severity ratings, and the playbook-grounded rationale needed for a negotiation-ready memo.
 activates_for: [planner, solver, checker]

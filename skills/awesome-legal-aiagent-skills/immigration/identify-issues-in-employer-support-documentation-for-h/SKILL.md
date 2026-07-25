@@ -1,5 +1,5 @@
 ---
-name: 识别问题employersupportdocumentationh1b
+name: identify-issues-in-employer-support-documentation-for-h1b
 task_id: immigration/identify-issues-in-employer-support-documentation-for-h
 description: Pre-filing issues memo for an H-1B petition package where deficiencies in the labor condition application, support letter, organizational documentation, and financial records must each be identified with an explanation of why the deficiency creates a filing risk.
 activates_for: [planner, solver, checker]

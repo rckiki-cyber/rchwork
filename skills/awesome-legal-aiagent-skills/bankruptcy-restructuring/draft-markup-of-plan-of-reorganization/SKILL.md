@@ -1,5 +1,5 @@
 ---
-name: 起草markup计划reorganization
+name: draft-markup-of-plan-of-reorganization
 task_id: bankruptcy-restructuring/draft-markup-of-plan-of-reorganization
 description: Ensures a committee plan markup redlines materially objectionable plan provisions with bracketed comments grounded in applicable bankruptcy and restructuring principles, and prepares a tiered cover memorandum that prioritizes the committee’s positions without stating outcomes as conclusions.
 activates_for: [planner, solver, checker]

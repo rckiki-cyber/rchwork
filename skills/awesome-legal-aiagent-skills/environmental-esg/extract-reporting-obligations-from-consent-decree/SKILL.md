@@ -1,5 +1,5 @@
 ---
-name: extractreporting义务同意decree
+name: extract-reporting-obligations-from-consent-decree
 task_id: environmental-esg/extract-reporting-obligations-from-consent-decree
 description: Guides construction of a comprehensive consent decree obligation register and companion risk memo by extracting reporting and compliance deadlines, identifying sequencing dependencies, and flagging tracker errors and ambiguities.
 activates_for: [planner, solver, checker]

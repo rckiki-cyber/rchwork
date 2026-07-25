@@ -1,5 +1,5 @@
 ---
-name: itscomparescpagainstofac框架
+name: its-compare-scp-against-ofac-framework
 task_id: international-trade-sanctions/compare-sanctions-compliance-program-against-ofac-framework-guidelines
 description: Produces a gap analysis memorandum organized by the principal pillars of the applicable sanctions compliance framework, identifying program deficiencies, assessing their severity, and providing remediation recommendations tailored to the organization’s risk profile.
 activates_for: [planner, solver, checker]

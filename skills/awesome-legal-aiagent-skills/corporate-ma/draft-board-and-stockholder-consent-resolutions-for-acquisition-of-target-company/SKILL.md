@@ -1,5 +1,5 @@
 ---
-name: 起草董事会stockholder同意解决
+name: draft-board-stockholder-consent-resolutions
 task_id: corporate-ma/draft-board-and-stockholder-consent-resolutions-for-acquisition-of-target-company
 description: Guides drafting of a complete corporate consent package for an acquisition transaction, requiring separate board and stockholder approvals, any class-based preferred stock approval needed by the charter, and an issues memo that flags discrepancies and open items for counsel.
 activates_for: [planner, solver, checker]

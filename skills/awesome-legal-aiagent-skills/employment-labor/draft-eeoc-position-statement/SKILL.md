@@ -1,5 +1,5 @@
 ---
-name: 起草eeocposition报表
+name: draft-eeoc-position-statement
 task_id: employment-labor/draft-eeoc-position-statement
 description: Guides the drafter in preparing a submission-ready EEOC position statement that accurately presents the employer's defense across the charged theories, supported by documentation and comparator evidence.
 activates_for: [planner, solver, checker]

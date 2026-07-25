@@ -1,5 +1,5 @@
 ---
-name: 起草structural概览备忘录autoabs
+name: draft-structural-overview-memorandum-auto-abs
 task_id: structured-finance-securitization/draft-structural-overview-memorandum
 description: Drafting a structural overview memorandum for an auto loan ABS transaction, with attention to independently verifying key calculations, cross-checking performance triggers across source documents for consistency, and including an issues table as a required output section.
 activates_for: [planner, solver, checker]

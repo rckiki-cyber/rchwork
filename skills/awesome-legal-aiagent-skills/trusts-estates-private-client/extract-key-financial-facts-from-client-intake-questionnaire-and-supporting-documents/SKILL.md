@@ -1,5 +1,5 @@
 ---
-name: extractkey财务factsclientintake问卷supporting文件
+name: extract-key-financial-facts-from-client-intake-questionnaire-and-supporting-documents
 task_id: trusts-estates-private-client/extract-key-financial-facts-from-client-intake-questionnaire-and-supporting-documents
 description: Closes the gap where agents compile intake financial facts without independently verifying arithmetic in client-prepared expense documents, reconciling stated aggregate income against separately listed components, flagging active-versus-passive appreciation issues on inherited accounts, and identifying tracing requirements for retirement accounts.
 activates_for: [planner, solver, checker]

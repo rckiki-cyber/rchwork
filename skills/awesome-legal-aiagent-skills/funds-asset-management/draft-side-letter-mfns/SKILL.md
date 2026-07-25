@@ -1,5 +1,5 @@
 ---
-name: 起草side函件mfns
+name: draft-side-letter-mfns
 task_id: funds-asset-management/draft-side-letter-mfns
 description: Draft side letters for multiple investors at a fund closing, produce a campaign summary memo with MFN cascade analysis, and prepare an MFN disclosure schedule. The task requires distinguishing MFN-eligible provisions from carved-out provisions and resolving investor-specific issues using the governing side-letter policy and the fund’s operating documents.
 activates_for: [planner, solver, checker]

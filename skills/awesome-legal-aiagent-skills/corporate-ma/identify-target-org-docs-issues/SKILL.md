@@ -1,5 +1,5 @@
 ---
-name: 识别目标orgdocs问题
+name: identify-target-org-docs-issues
 task_id: corporate-ma/identify-target-org-docs-issues
 description: Guides preparation of a pre-closing charter document review memo for an acquisition target where capitalization, governance, stockholder rights, and subsidiary organizational documents must all be assessed for transaction-readiness.
 activates_for: [planner, solver, checker]

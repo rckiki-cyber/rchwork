@@ -1,5 +1,5 @@
 ---
-name: 比较最终decreedivorceagainstmediated和解协议
+name: compare-final-decree-of-divorce-against-mediated-settlement-agreement
 task_id: trusts-estates-private-client/compare-final-decree-of-divorce-against-mediated-settlement-agreement
 description: Comparing a proposed final divorce decree against a mediated settlement agreement requires clause-by-clause comparison to identify deviations, assign severity, and assess whether the discrepancies suggest a directional pattern favoring one side.
 activates_for: [planner, solver, checker]

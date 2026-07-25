@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkup再保险treaty
+name: analyze-counterparty-markup-reinsurance-treaty
 task_id: insurance/analyze-counterparty-markup-of-reinsurance-treaty
 description: Agents analyzing a reinsurance treaty counterparty redline should avoid playbook-compliance framing that collapses distinct economic issues, and should test each proposed change against internal positions and the counterparty's stated characterizations.
 activates_for: [planner, solver, checker]

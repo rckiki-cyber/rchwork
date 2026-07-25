@@ -1,5 +1,5 @@
 ---
-name: 起草税务合规备忘录
+name: draft-tax-compliance-memorandum
 task_id: tax/draft-tax-compliance-memorandum
 description: A post-restructuring tax compliance memorandum must identify the filing obligations and substantive tax risks created by the transaction, explain the compliance consequence of non-performance for each, and provide a specific recommended action — not merely catalog what documentation should exist.
 activates_for: [planner, solver, checker]

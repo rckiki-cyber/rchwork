@@ -1,5 +1,5 @@
 ---
-name: itsextract国家担保factorscfius
+name: its-extract-national-security-factors-cfius
 task_id: international-trade-sanctions/extract-national-security-factors-from-transaction-summary
 description: Produces a CFIUS risk assessment memorandum for a foreign acquisition that identifies filing obligations, assesses the adequacy of proposed mitigation instruments, evaluates restricted-party and government-subsidy connections, and incorporates comparable foreign-regulatory precedent as a signal of likely review outcomes.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 比较收购结构先例
+name: compare-acquisition-structure-precedent
 task_id: corporate-ma/compare-proposed-acquisition-structure-against-precedent-transaction-summaries
 description: Guides tax structure analysis for a proposed acquisition by comparing the proposed structure against precedent transaction summaries, working through the basis step-up economics, and identifying entity-specific tax considerations such as accumulated earnings and profits.
 activates_for: [planner, solver, checker]

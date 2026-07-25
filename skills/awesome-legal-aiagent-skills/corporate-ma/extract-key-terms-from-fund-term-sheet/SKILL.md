@@ -1,5 +1,5 @@
 ---
-name: extractkey条款基金期限sheet
+name: extract-key-terms-from-fund-term-sheet
 task_id: corporate-ma/extract-key-terms-from-fund-term-sheet
 description: Guides preparation of an investment-committee-ready fund term extraction memo where key economic and governance terms are assessed against a pension investor's private equity investment policy and prior-fund benchmarks.
 activates_for: [planner, solver, checker]

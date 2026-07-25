@@ -1,5 +1,5 @@
 ---
-name: extract文件请求税务机关summons
+name: extract-document-requests-from-tax-authority-summons
 task_id: tax/extract-document-requests-from-tax-authority-summons
 description: Consolidating document requests from multiple tax-authority summonses requires assigning a response recommendation to every request, such as produce, withhold with privilege log entry, or narrow, and identifying any summons that warrants a challenge based on the governing summons-enforcement framework.
 activates_for: [planner, solver, checker]

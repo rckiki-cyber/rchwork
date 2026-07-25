@@ -1,5 +1,5 @@
 ---
-name: 起草cure通知异议回应
+name: draft-cure-notice-objection-response
 task_id: bankruptcy-restructuring/draft-cure-notice-objection-response
 description: Ensures a cure notice objection addresses the full assumption analysis for an executory contract, including monetary cure, compensation for actual pecuniary loss, and adequate assurance, on a line-item basis, and anticipates likely waiver or forbearance defenses.
 activates_for: [planner, solver, checker]

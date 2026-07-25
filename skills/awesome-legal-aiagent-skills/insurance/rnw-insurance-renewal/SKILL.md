@@ -1,5 +1,5 @@
 ---
-name: rnw保险续期specialtychemicals
+name: rnw-insurance-renewal-specialty-chemicals
 task_id: insurance/rnw-insurance-renewal
 description: Agents analyzing insurance renewals should compute nominal rate changes while also assessing coverage restrictions, exposure changes, and claim-trend effects; they should link new exclusions to pending or historical exposures, and produce a negotiation-ready structure with issue-by-issue recommendations.
 activates_for: [planner, solver, checker]

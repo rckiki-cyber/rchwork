@@ -1,5 +1,5 @@
 ---
-name: 起草markup环境补偿协议
+name: draft-markup-of-environmental-indemnity-agreement
 task_id: environmental-esg/draft-markup-of-environmental-indemnity-agreement
 description: Guides preparation of a buyer-side redline markup of an environmental indemnity agreement by applying site-specific investigation findings, active agency orders, and buyer markup playbook standards to identify and correct inadequate protections.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草exit交割清单
+name: draft-exit-closing-checklist
 task_id: corporate-ma/draft-exit-closing-checklist
 description: Guides preparation of a seller-perspective exit closing checklist that identifies pre-closing actions, closing deliverables, and regulatory items commonly relevant to a portfolio company stock purchase transaction, including debt payoffs, third-party consent requirements, tax election mechanics, and advance regulatory filing requirements.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草markupindenture
+name: draft-markup-of-indenture
 task_id: capital-markets/draft-markup-of-indenture
 description: Purchaser-perspective indenture markup where the baseline redlines obvious economic deviations from the playbook but may miss additional purchaser-protective structural provisions that experienced counsel commonly add.
 activates_for: [planner, solver, checker]

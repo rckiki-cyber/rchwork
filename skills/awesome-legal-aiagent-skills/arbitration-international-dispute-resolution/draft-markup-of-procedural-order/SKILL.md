@@ -1,5 +1,5 @@
 ---
-name: 起草markupprocedural命令
+name: draft-markup-of-procedural-order
 task_id: arbitration-international-dispute-resolution/draft-markup-of-procedural-order
 description: Ensures a respondent-side procedural order markup analyzes hearing-time adequacy, privilege-log and insurance-disclosure risks, and due process concerns under the applicable curial law.
 activates_for: [planner, solver, checker]

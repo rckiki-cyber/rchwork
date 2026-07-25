@@ -1,5 +1,5 @@
 ---
-name: 委托报表sec合规gap分析
+name: proxy-statement-sec-compliance-gap-analysis
 task_id: corporate-governance/compare-proxy-statement-disclosures-against-sec-regulatory-requirements
 description: Proxy statement compliance gap analysis identifying deficiencies in compensation disclosures, related-person disclosures, beneficial ownership disclosures, governance disclosures, equity-compensation reporting, insider-trading policy disclosures, and fee disclosures against applicable SEC regulatory requirements.
 activates_for: [planner, solver, checker]

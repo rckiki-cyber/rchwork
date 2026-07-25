@@ -1,5 +1,5 @@
 ---
-name: 起草成本submissions国际商业仲裁
+name: draft-cost-submissions-for-international-commercial-arbitration
 task_id: arbitration-international-dispute-resolution/draft-cost-submissions-for-international-commercial-arbitration
 description: Draft a cost submission for an international commercial arbitration by identifying recoverable cost categories, checking billing entries for likely challenge points, handling any currency-conversion issues consistently, and addressing whether interest or other ancillary costs should be sought.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 分析变更control条款
+name: analyze-change-of-control-provisions
 task_id: corporate-ma/analyze-change-of-control-provisions-across-targets-material-contracts
 description: Guides systematic review of change-of-control and anti-assignment clauses across a portfolio of material contracts, capturing trigger type, required action, notice timing, and cascading risk across the full document set.
 activates_for: [planner, solver, checker]

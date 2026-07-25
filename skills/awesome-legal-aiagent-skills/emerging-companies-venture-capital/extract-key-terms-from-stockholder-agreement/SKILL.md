@@ -1,5 +1,5 @@
 ---
-name: ecvcextractkey条款stockholder协议
+name: ecvc-extract-key-terms-stockholder-agreement
 task_id: emerging-companies-venture-capital/extract-key-terms-from-stockholder-agreement
 description: Extracting key terms from a stockholder agreement requires fully capturing director qualification requirements embedded in board composition subsections, assessing debt covenant scope against the operative definition of the relevant indebtedness term, identifying any single investor's concentration of protective provision blocking positions, and confirming transfer-right exercise period precision together with any deemed-waiver mechanics.
 activates_for: [planner, solver, checker]

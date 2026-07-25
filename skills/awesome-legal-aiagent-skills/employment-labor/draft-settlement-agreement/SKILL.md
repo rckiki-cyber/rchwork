@@ -1,5 +1,5 @@
 ---
-name: 起草和解协议
+name: draft-settlement-agreement
 task_id: employment-labor/draft-settlement-agreement
 description: Guides the drafter in producing an execution-ready employment discrimination settlement agreement with compliant tax allocation, statutory waiver provisions where applicable, and a cover memo addressing key drafting decisions.
 activates_for: [planner, solver, checker]

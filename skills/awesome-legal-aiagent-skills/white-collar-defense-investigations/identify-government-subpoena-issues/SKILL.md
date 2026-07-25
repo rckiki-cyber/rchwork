@@ -1,5 +1,5 @@
 ---
-name: 识别政府传票问题insidertrading
+name: identify-government-subpoena-issues-insider-trading
 task_id: white-collar-defense-investigations/identify-government-subpoena-issues
 description: Issue memorandum analyzing a grand jury subpoena for a government investigation, identifying overbroad requests, relevance categories, privilege considerations, act-of-production doctrine applicability, and negotiation strategy with the government.
 activates_for: [planner, solver, checker]

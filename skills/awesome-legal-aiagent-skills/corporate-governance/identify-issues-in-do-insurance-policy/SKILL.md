@@ -1,5 +1,5 @@
 ---
-name: 识别问题do保险政策
+name: identify-issues-in-do-insurance-policy
 task_id: corporate-governance/identify-issues-in-do-insurance-policy
 description: Agents identify headline D&O coverage terms without flagging potential gaps in informal inquiry coverage before a formal investigation is opened, the insured-vs.-insured exclusion gap in a potential restructuring or insolvency scenario, change-of-control extended reporting period limitations, and whether witness-expense sublimits are adequate given current regulatory document-production obligations.
 activates_for: [planner, solver, checker]

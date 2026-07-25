@@ -1,5 +1,5 @@
 ---
-name: 识别问题州环境合规命令
+name: identify-issues-in-state-environmental-compliance-order
 task_id: environmental-esg/identify-issues-in-state-environmental-compliance-order
 description: Guides preparation of a defense memorandum for a state environmental compliance order by assessing each alleged violation against facility permit records, audit findings, inspection documentation, and monitoring data.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草tenantnotification函件
+name: draft-tenant-notification-letter
 task_id: real-estate/draft-tenant-notification-letter
 description: Guides drafting of a tenant notification letter for an ownership and management transition by integrating closing documents, lease provisions, and renovation plans, while separately identifying legal risks and cross-document discrepancies in a companion advisory memo.
 activates_for: [planner, solver, checker]

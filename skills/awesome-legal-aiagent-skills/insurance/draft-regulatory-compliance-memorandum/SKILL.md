@@ -1,5 +1,5 @@
 ---
-name: 起草监管合规memoholding公司
+name: draft-regulatory-compliance-memo-holding-company
 task_id: insurance/draft-regulatory-compliance-memorandum
 description: Agents drafting a regulatory compliance memorandum for an insurance holding company system analyze affiliated transactions in isolation as well as in combination, identify filing and approval issues across all potentially affected jurisdictions, verify any internal compliance conclusions against the underlying calculations, and assess premium-to-surplus and related capital adequacy concerns.
 activates_for: [planner, solver, checker]

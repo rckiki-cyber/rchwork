@@ -1,5 +1,5 @@
 ---
-name: 比较隐私通知againststatutory披露要求
+name: compare-privacy-notice-against-statutory-disclosure-requirements
 task_id: data-privacy-cybersecurity/compare-privacy-notice-against-statutory-disclosure-requirements
 description: Multi-regime privacy notice gap analyses improve when the agent uses the data processing inventory as the factual baseline, cross-checks current and planned processing against applicable disclosure requirements, and distinguishes present gaps from prospective ones.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草证人报表
+name: draft-witness-statement
 task_id: arbitration-international-dispute-resolution/draft-witness-statement
 description: Ensures a witness statement stays within the witness's personal knowledge, addresses overlapping operational events factually, and acknowledges limitations on equipment damage knowledge.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: its草案贸易合规政策intlsales
+name: its-draft-trade-compliance-policy-intl-sales
 task_id: international-trade-sanctions/draft-trade-compliance-policy-for-international-sales-operations
 description: Drafts a trade compliance policy for international sales operations that addresses deficiencies identified in the company’s warning-letter correspondence and gap assessment, covering deemed export controls, anti-boycott reporting, jurisdictional boundary procedures between export-control regimes, foreign-produced item content analysis, and technology control plan requirements.
 activates_for: [planner, solver, checker]

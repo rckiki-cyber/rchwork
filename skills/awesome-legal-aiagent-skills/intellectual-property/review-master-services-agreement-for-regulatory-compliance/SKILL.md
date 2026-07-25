@@ -1,5 +1,5 @@
 ---
-name: 审查msa监管合规
+name: review-msa-regulatory-compliance
 task_id: intellectual-property/review-master-services-agreement-for-regulatory-compliance
 description: Reviewing a draft master services agreement against a contracting playbook, vendor management policy, and due diligence materials to produce a structured deviation report covering regulatory compliance and commercial risk.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 仲裁裁决认定提取
+name: extract-findings-from-arbitral-award
 task_id: arbitration-international-dispute-resolution/extract-findings-from-arbitral-award
 description: Ensures a comprehensive arbitral award summary memo extracts each claim, each financial component, any expert-methodology findings, any interest analysis, and any open enforcement or compliance steps from a complex multi-claim final award.
 activates_for: [planner, solver, checker]

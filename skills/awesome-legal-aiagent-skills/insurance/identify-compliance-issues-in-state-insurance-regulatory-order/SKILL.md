@@ -1,5 +1,5 @@
 ---
-name: 识别合规问题监管同意命令
+name: identify-compliance-issues-regulatory-consent-order
 task_id: insurance/identify-compliance-issues-in-state-insurance-regulatory-order
 description: Agents reviewing a state insurance regulatory consent order summarize the findings by checking penalty calculations, testing whether any cited findings fall outside the relevant examination period or within an applicable exemption, analyzing the scope of any waiver language, and assessing whether the order creates broader regulatory exposure through information-sharing mechanisms.
 activates_for: [planner, solver, checker]

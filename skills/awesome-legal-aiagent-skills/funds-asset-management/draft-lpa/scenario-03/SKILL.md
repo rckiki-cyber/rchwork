@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-03
 task_id: funds-asset-management/draft-lpa/scenario-03
 description: Draft a limited partnership agreement for a real-estate-focused fund with operational ERISA compliance provisions, including REOC exemption mechanics, real estate valuation requirements, and subscription facility terms, while flagging source-document conflicts in a companion issues memo.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草postnuptial协议
+name: draft-postnuptial-agreement
 task_id: trusts-estates-private-client/draft-postnuptial-agreement
 description: Drafting a postnuptial agreement under Illinois law requires reviewing any prior marital agreement, reconciling financial disclosure materials with valuation information, addressing compensation units and business ownership characterization, and documenting independent counsel representation and voluntariness for enforceability.
 activates_for: [planner, solver, checker]

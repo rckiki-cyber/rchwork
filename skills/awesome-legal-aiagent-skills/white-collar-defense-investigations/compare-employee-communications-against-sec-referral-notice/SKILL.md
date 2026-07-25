@@ -1,5 +1,5 @@
 ---
-name: 比较员工communicationsagainstsecreferral
+name: compare-employee-communications-against-sec-referral
 task_id: white-collar-defense-investigations/compare-employee-communications-against-sec-referral-notice
 description: Gap analysis memorandum comparing collected employee communications against an SEC referral notice, identifying communication log gaps, potential spoliation, instructions to employees not to discuss the matter, and obstruction or whistleblower suppression exposure.
 activates_for: [planner, solver, checker]

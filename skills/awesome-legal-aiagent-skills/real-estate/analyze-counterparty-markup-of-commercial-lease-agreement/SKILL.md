@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkup商业lease协议
+name: analyze-counterparty-markup-of-commercial-lease-agreement
 task_id: real-estate/analyze-counterparty-markup-of-commercial-lease-agreement
 description: Guides prioritized redline analysis of a counterparty lease markup by structuring cross-document reconciliation, economic impact quantification, and playbook-calibrated response recommendations.
 activates_for: [planner, solver, checker]

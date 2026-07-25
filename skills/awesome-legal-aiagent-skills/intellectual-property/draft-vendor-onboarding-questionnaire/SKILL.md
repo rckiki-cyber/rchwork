@@ -1,5 +1,5 @@
 ---
-name: 起草卖方onboarding问卷
+name: draft-vendor-onboarding-questionnaire
 task_id: intellectual-property/draft-vendor-onboarding-questionnaire
 description: Drafting a risk-tiered vendor onboarding questionnaire from vendor management policies and internal directives, requiring identification of cross-document inconsistencies and healthcare compliance questions.
 activates_for: [planner, solver, checker]

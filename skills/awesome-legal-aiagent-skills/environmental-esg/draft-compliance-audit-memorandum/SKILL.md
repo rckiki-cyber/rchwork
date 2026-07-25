@@ -1,5 +1,5 @@
 ---
-name: 起草合规审计备忘录
+name: draft-compliance-audit-memorandum
 task_id: environmental-esg/draft-compliance-audit-memorandum
 description: Guides drafting of a pre-acquisition environmental compliance audit memorandum by organizing findings facility-by-facility and medium-by-medium, with assessment of open regulatory matters and their implications for the transaction, using only generic categories and procedural analysis.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别管理层rollover协议问题
+name: identify-management-rollover-agreement-issues
 task_id: corporate-ma/identify-management-rollover-agreement-issues
 description: Guides preparation of a management-side issues memo for a private equity acquisition rollover agreement where equity valuation mechanics, vesting structure, liquidity rights, and operating agreement interactions must be assessed.
 activates_for: [planner, solver, checker]

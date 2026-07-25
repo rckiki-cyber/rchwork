@@ -1,5 +1,5 @@
 ---
-name: 起草环境permitapplicationnarrative
+name: draft-environmental-permit-application-narrative
 task_id: environmental-esg/draft-environmental-permit-application-narrative
 description: Guides drafting of a permit renewal application narrative for a food processing facility by addressing each pre-application conference topic systematically with accurate technical data and proactively resolving compliance history issues.
 activates_for: [planner, solver, checker]

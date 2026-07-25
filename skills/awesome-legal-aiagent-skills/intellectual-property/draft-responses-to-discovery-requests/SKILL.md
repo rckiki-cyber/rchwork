@@ -1,5 +1,5 @@
 ---
-name: 起草回应证据开示专利
+name: draft-responses-discovery-patent
 task_id: intellectual-property/draft-responses-to-discovery-requests
 description: Responses to interrogatories and requests for production in patent infringement litigation, applying a standard objection framework and aligning substantive answers with the pleadings and litigation record.
 activates_for: [planner, solver, checker]

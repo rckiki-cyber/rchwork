@@ -1,5 +1,5 @@
 ---
-name: 识别问题环境impact报表
+name: identify-issues-in-environmental-impact-statement
 task_id: environmental-esg/identify-issues-in-environmental-impact-statement
 description: Guides preparation of a memorandum for review of an environmental impact statement for a utility-scale energy project by identifying analytical deficiencies, consultation adequacy issues, cultural resources obligations, and socioeconomic analysis gaps that may create legal vulnerability to challenge.
 activates_for: [planner, solver, checker]

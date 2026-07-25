@@ -1,5 +1,5 @@
 ---
-name: extract贷款协议条款scenario
+name: extract-loan-agreement-terms-scenario-01
 task_id: bankruptcy-restructuring/extract-loan-agreement-terms/scenario-01
 description: Ensures a loan term extraction memo covers financial covenant terms, cross-default mechanics across related facilities, mandatory prepayment provisions, change-of-control definition differences, and near-term strategic deadlines relevant to restructuring planning.
 activates_for: [planner, solver, checker]

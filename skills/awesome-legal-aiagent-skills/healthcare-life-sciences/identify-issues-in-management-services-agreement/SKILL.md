@@ -1,5 +1,5 @@
 ---
-name: hlsidentifymsa问题
+name: hls-identify-msa-issues
 task_id: healthcare-life-sciences/identify-issues-in-management-services-agreement
 description: Reviews a draft management services agreement and supporting materials to identify common healthcare regulatory and drafting risks, including corporate practice of medicine concerns, fee arrangement issues under fraud-and-abuse principles, physician self-referral issues where applicable, independence flaws in valuation support, restrictive covenant enforceability issues, fee-splitting concerns, assignment asymmetry, and liability cap adequacy.
 activates_for: [planner, solver, checker]

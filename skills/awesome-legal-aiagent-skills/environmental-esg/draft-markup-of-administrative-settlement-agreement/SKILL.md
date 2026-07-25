@@ -1,5 +1,5 @@
 ---
-name: 起草markupadministrative和解协议
+name: draft-markup-of-administrative-settlement-agreement
 task_id: environmental-esg/draft-markup-of-administrative-settlement-agreement
 description: Guides preparation of a buyer-side redline markup of an administrative settlement agreement for a prospective purchaser of a contaminated industrial site by focusing edits on liability protections, covenant scope, reopener limitations, and financial assurance adequacy.
 activates_for: [planner, solver, checker]

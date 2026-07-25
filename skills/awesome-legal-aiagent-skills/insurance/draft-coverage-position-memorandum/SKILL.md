@@ -1,5 +1,5 @@
 ---
-name: 起草coverageposition备忘录silicamasstort
+name: draft-coverage-position-memorandum-silica-mass-tort
 task_id: insurance/draft-coverage-position-memorandum
 description: Agents drafting a coverage position memorandum for a latent-disease mass tort claim should assess trigger, allocation, occurrence characterization, exclusions, notice, excess tender, and reservation-of-rights issues, and present the analysis in a memorandum organized by issue.
 activates_for: [planner, solver, checker]

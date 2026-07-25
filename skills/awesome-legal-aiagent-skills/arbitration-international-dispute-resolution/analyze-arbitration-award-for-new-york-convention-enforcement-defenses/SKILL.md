@@ -1,5 +1,5 @@
 ---
-name: 分析仲裁award新型yorkconventionenforcement抗辩
+name: analyze-arbitration-award-for-new-york-convention-enforcement-defenses
 task_id: arbitration-international-dispute-resolution/analyze-arbitration-award-for-new-york-convention-enforcement-defenses
 description: Ensures analysis of an arbitral award for enforcement resistance covers the relevant Convention defenses, verifies the award's arithmetic independently, and addresses the applicable enforcement procedure in the forum.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草markup期限sheet
+name: draft-markup-of-term-sheet
 task_id: banking-finance/draft-markup-of-term-sheet
 description: Prepares a borrower-side annotated term sheet markup memo with a narrative cover memo and provision-by-provision annotations, prioritized issues, and negotiating strategy.
 activates_for: [planner, solver, checker]

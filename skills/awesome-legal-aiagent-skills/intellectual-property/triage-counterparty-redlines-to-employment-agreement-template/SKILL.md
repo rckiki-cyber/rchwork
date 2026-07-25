@@ -1,5 +1,5 @@
 ---
-name: triagecounterpartyredlines雇佣模板
+name: triage-counterparty-redlines-employment-template
 task_id: intellectual-property/triage-counterparty-redlines-to-employment-agreement-template
 description: Triaging a counterparty's redline against the company template and playbook, with attention to silent changes and inconsistencies with the cover email's representations.
 activates_for: [planner, solver, checker]

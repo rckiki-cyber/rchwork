@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkup商业不动产不动产贷款协议
+name: analyze-counterparty-markup-of-commercial-real-estate-loan-agreement
 task_id: real-estate/analyze-counterparty-markup-of-commercial-real-estate-loan-agreement
 description: Guides prioritized redline analysis of a lender markup by structuring term-sheet verification, borrower-risk assessment, and playbook-calibrated response recommendations.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别监管合规gapsupdated财务institution政策
+name: identify-regulatory-compliance-gaps-in-updated-financial-institution-policies
 task_id: corporate-governance/identify-regulatory-compliance-gaps-in-updated-financial-institution-policies
 description: Agents identify general policy gaps by comparing an updated financial institution policy set against the governing compliance baseline, including any institution-specific supervisory requirement that is more stringent than the general baseline, checking internal arithmetic and implementation assumptions in staffing and budget plans, identifying consumer credit threshold issues, flagging undefined training scope as a scope-creep risk, and recognizing that mandatory supervisor-first reporting may deter protected reporting activity.
 activates_for: [planner, solver, checker]

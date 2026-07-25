@@ -1,5 +1,5 @@
 ---
-name: extractcustodyfactors评估报告
+name: extract-custody-factors-from-evaluation-report
 task_id: trusts-estates-private-client/extract-custody-factors-from-evaluation-report
 description: Closes the gap where agents summarize a custody evaluation report without applying the governing best-interest factors, cross-referencing supporting documents against the evaluator's methodology, and providing litigation strategy recommendations for each identified gap or inconsistency.
 activates_for: [planner, solver, checker]

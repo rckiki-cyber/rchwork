@@ -1,5 +1,5 @@
 ---
-name: 起草markupcounterparty供应协议
+name: draft-markup-counterparty-supply-agreement
 task_id: intellectual-property/draft-markup-of-counterparty-supply-agreement
 description: Redlined supply agreement markup and negotiation commentary memo for a counterparty supply agreement evaluated against the applicable internal playbook, relevant internal communications, and a supplier risk assessment.
 activates_for: [planner, solver, checker]

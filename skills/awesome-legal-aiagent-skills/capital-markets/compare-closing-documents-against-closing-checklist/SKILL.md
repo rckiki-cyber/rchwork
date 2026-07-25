@@ -1,5 +1,5 @@
 ---
-name: 比较交割文件against交割清单
+name: compare-closing-documents-against-closing-checklist
 task_id: capital-markets/compare-closing-documents-against-closing-checklist
 description: Checklist-driven closing review where the baseline misses document-level defects such as mismatched parties, stale certificates, identifier mismatches, and similar defects, and fails to produce a severity-tiered remediation plan.
 activates_for: [planner, solver, checker]

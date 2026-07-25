@@ -1,5 +1,5 @@
 ---
-name: 比较期限sheetagainstengagement函件
+name: compare-term-sheet-against-engagement-letter
 task_id: structured-finance-securitization/compare-term-sheet-against-engagement-letter
 description: Comparing a transaction term sheet against an engagement letter to identify conflicts in collateral eligibility criteria, representations and warranties cure mechanics, repurchase price methodology, and ancillary provisions whose operational or legal consequences are not immediately apparent from the face of the documents.
 activates_for: [planner, solver, checker]

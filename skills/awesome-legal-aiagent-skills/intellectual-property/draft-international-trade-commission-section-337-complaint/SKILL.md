@@ -1,5 +1,5 @@
 ---
-name: 起草itcsection起诉状
+name: draft-itc-section-337-complaint
 task_id: intellectual-property/draft-international-trade-commission-section-337-complaint
 description: Draft an International Trade Commission Section 337 complaint for patent infringement with domestic industry allegations, plus a pre-filing issues memo organized by severity.
 activates_for: [planner, solver, checker]

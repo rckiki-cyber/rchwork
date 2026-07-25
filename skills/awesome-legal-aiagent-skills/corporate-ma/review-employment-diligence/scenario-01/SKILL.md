@@ -1,5 +1,5 @@
 ---
-name: 审查雇佣尽职调查scenario
+name: review-employment-diligence-scenario-01
 task_id: corporate-ma/review-employment-diligence/scenario-01
 description: Guides preparation of a buy-side employment diligence memorandum for an acquisition where executive employment agreements, severance arrangements, equity plans, and standard form agreements must all be systematically assessed.
 activates_for: [planner, solver, checker]

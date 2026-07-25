@@ -1,5 +1,5 @@
 ---
-name: 审查markupcounterpartysaas协议
+name: review-markup-counterparty-saas-agreement
 task_id: intellectual-property/review-counterparty-saas-agreement-and-mark-up-toward-company-positions
 description: Reviewing a vendor SaaS agreement and related attachments against an internal contracting playbook to produce a prioritized issues list and redline markup.
 activates_for: [planner, solver, checker]

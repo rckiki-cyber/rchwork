@@ -1,5 +1,5 @@
 ---
-name: hlsextractreimbursement条款payor
+name: hls-extract-reimbursement-terms-payor
 task_id: healthcare-life-sciences/extract-reimbursement-terms-from-payor-contract
 description: Extracts and catalogs reimbursement terms from a managed care payor contract and any related exhibits, focusing on methodologies, rate structures, escalation mechanics, discount provisions, audit and recoupment mechanics, value-based care terms, and termination-related payment obligations, benchmarked against general industry playbook conventions.
 activates_for: [planner, solver, checker]

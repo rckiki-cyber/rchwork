@@ -1,5 +1,5 @@
 ---
-name: 起草同意decree
+name: draft-consent-decree
 task_id: antitrust-competition/draft-consent-decree
 description: Closes gaps in consent-decree compliance provisions, trigger-event specificity for remedy deadlines, crown jewel provision structure, retained jurisdiction, and firewall duration relative to any transitional services arrangement.
 activates_for: [planner, solver, checker]

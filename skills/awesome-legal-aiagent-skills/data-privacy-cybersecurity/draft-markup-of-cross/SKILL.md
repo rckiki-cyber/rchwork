@@ -1,5 +1,5 @@
 ---
-name: 起草markup跨境
+name: draft-markup-of-cross
 task_id: data-privacy-cybersecurity/draft-markup-of-cross
 description: Cross-border data transfer agreement markups for clinical trial data fail when the agent applies generic negotiation positions rather than integrating the organisation's playbook, the applicable commercial agreement context, the due-diligence summary, and the internal email escalation positions into a coherent redline.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 分析iss反垄断transaction结构
+name: analyze-iss-antitrust-transaction-structure
 task_id: antitrust-competition/analyze-iss-antitrust-transaction-structure
 description: Closes gaps in deal-structure antitrust risk analysis including hell-or-high-water provision adequacy, reverse termination fee sufficiency, outside date feasibility, and hot-document identification.
 activates_for: [planner, solver, checker]

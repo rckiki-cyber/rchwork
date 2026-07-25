@@ -1,5 +1,5 @@
 ---
-name: triagecounterpartyredlines公司dpa模板
+name: triage-counterparty-redlines-company-dpa-template
 task_id: intellectual-property/triage-counterparty-redlines-to-company-dpa-template
 description: Triaging a counterparty redline against a company standard data processing agreement template and playbook to produce a deviation report with risk classification and recommendations.
 activates_for: [planner, solver, checker]

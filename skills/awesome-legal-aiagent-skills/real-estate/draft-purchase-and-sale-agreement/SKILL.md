@@ -1,5 +1,5 @@
 ---
-name: 起草购买sale协议
+name: draft-purchase-and-sale-agreement
 task_id: real-estate/draft-purchase-and-sale-agreement
 description: Guides drafting of a commercial office building purchase and sale agreement by integrating source materials such as a letter of intent, due diligence findings, operating data, and negotiation notes into a complete instrument with a companion issues memo.
 activates_for: [planner, solver, checker]

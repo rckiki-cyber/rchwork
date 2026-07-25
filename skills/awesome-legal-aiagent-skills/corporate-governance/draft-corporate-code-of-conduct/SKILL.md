@@ -1,5 +1,5 @@
 ---
-name: comprehensivecodeconductrecently公共biopharma
+name: comprehensive-code-of-conduct-recently-public-biopharma
 task_id: corporate-governance/draft-corporate-code-of-conduct
 description: Comprehensive corporate code of conduct for a recently public biopharmaceutical company, incorporating industry-specific compliance requirements, healthcare-interaction controls, public-company disclosure and reporting practices, employee reporting protections, privacy and data-handling considerations, and an issues reconciliation memorandum documenting source conflicts and resolutions.
 activates_for: [planner, solver, checker]

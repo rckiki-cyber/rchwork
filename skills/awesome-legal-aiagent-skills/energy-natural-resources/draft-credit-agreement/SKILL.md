@@ -1,5 +1,5 @@
 ---
-name: 起草credit协议pipeline收购
+name: draft-credit-agreement-pipeline-acquisition
 task_id: energy-natural-resources/draft-credit-agreement
 description: Guides drafting of a senior secured credit agreement for an infrastructure acquisition by resolving cross-document conflicts, addressing asset-class-specific legal constraints on collateral, and documenting drafting judgments in a companion issues memo.
 activates_for: [planner, solver, checker]

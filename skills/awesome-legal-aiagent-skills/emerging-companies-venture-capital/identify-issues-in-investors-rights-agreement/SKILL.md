@@ -1,5 +1,5 @@
 ---
-name: ecvcidentify问题ira
+name: ecvc-identify-issues-ira
 task_id: emerging-companies-venture-capital/identify-issues-in-investors-rights-agreement
 description: Identifying issues in an investors’ rights agreement for a preferred stock financing requires checking for provisions carried over from an earlier form without updating them for the post-closing investor base, assessing the practical effect of any board observer on attorney-client privilege, reviewing restrictive covenants under the applicable law for each bound party, and comparing any repeated defined thresholds for consistency across the agreement.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 审查拟议收购ndascenario
+name: review-proposed-acquisition-nda-scenario-02
 task_id: corporate-ma/review-proposed-acquisition-nda/scenario-02
 description: Guides preparation of a prioritized NDA issues memo where a draft acquisition NDA must be reviewed against a client playbook and client-specific instructions to identify deviations requiring negotiation.
 activates_for: [planner, solver, checker]

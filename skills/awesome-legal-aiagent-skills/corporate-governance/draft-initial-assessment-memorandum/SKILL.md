@@ -1,5 +1,5 @@
 ---
-name: initial评估备忘录fdawarning函件pharmaceutical
+name: initial-assessment-memorandum-fda-warning-letter-pharmaceutical
 task_id: corporate-governance/draft-initial-assessment-memorandum
 description: Privileged board-level initial assessment memorandum in response to a regulatory warning letter for a sterile injectable manufacturer, covering GMP violation analysis, data integrity criminal referral risk, prior management awareness as an aggravating factor, consent decree probability assessment, triggered representations in concurrent commercial and M&A agreements, public-company disclosure obligations, and a total worst-case financial exposure estimate.
 activates_for: [planner, solver, checker]

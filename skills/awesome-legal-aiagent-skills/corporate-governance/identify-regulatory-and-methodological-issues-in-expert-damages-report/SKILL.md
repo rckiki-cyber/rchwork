@@ -1,5 +1,5 @@
 ---
-name: 识别监管methodological问题专家损害赔偿报告
+name: identify-regulatory-and-methodological-issues-in-expert-damages-report
 task_id: corporate-governance/identify-regulatory-and-methodological-issues-in-expert-damages-report
 description: Agents identify general methodology weaknesses without addressing a potentially dispositive contractual damages waiver as a threshold issue, verifying arithmetic in discount-rate or margin calculations, applying the reasonable-certainty standard to separate damages periods, or identifying a duty-to-mitigate provision as an independent basis for damages reduction.
 activates_for: [planner, solver, checker]

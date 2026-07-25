@@ -1,5 +1,5 @@
 ---
-name: 识别环境问题preliminary评估报告
+name: identify-environmental-issues-in-preliminary-assessment-report
 task_id: environmental-esg/identify-environmental-issues-in-preliminary-assessment-report
 description: Guides preparation of an environmental issues memorandum for a commercial acquisition by integrating preliminary assessment, Phase I, and Phase II findings with seller disclosure, purchase agreement provisions, and lender requirements to identify material issues and gaps.
 activates_for: [planner, solver, checker]

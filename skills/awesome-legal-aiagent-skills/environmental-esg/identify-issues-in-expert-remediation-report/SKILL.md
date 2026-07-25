@@ -1,5 +1,5 @@
 ---
-name: 识别问题专家remediation报告
+name: identify-issues-in-expert-remediation-report
 task_id: environmental-esg/identify-issues-in-expert-remediation-report
 description: Guides preparation of a prioritized vulnerability memorandum by identifying methodological, data, and credibility weaknesses in an expert remediation report for a cost-recovery defense.
 activates_for: [planner, solver, checker]

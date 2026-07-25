@@ -1,5 +1,5 @@
 ---
-name: ecvccompare期限sheetagainstspa
+name: ecvc-compare-term-sheet-against-spa
 task_id: emerging-companies-venture-capital/compare-term-sheet-against-stock-purchase-agreement
 description: Term-sheet-to-agreement comparison requires classifying each deviation by type and affected party, reading defined-term exceptions that may embed substantive changes, and assessing cumulative dilution impact rather than merely listing differences.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草问题list托管协议
+name: draft-issues-list-escrow-agreement
 task_id: corporate-ma/draft-issues-list-for-escrow-agreement
 description: Guides preparation of a buyer-side issues list for a draft escrow agreement, requiring cross-reference of each provision against the related acquisition agreement, flagging timing misalignments, claims deadline inconsistencies, governing law conflicts, and absent successor escrow agent provisions.
 activates_for: [planner, solver, checker]

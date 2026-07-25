@@ -1,5 +1,5 @@
 ---
-name: extractissuer财务报表scenario
+name: extract-issuer-financial-statements-scenario-02
 task_id: capital-markets/extract-issuer-financial-statements/scenario-02
 description: Financial statement extraction for a debt offering — use the same analytical framework as the base scenario, and extend it to extract and verify the proposed offering terms stated in the offering memorandum.
 activates_for: [planner, solver, checker]

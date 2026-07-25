@@ -1,5 +1,5 @@
 ---
-name: 起草法律意见规则144aregs
+name: draft-legal-opinion-rule-144a-reg-s
 task_id: capital-markets/draft-legal-opinion-for-rule-144a-regulation-s-high
 description: Closing opinion letter for a Rule 144A / Regulation S offering where the baseline adapts a model template but does not resolve cross-document discrepancies embedded in the opinion's assumptions or address missing closing deliverables.
 activates_for: [planner, solver, checker]

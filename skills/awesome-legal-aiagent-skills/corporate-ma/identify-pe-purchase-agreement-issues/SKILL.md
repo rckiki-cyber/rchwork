@@ -1,5 +1,5 @@
 ---
-name: 识别pe购买协议问题
+name: identify-pe-purchase-agreement-issues
 task_id: corporate-ma/identify-pe-purchase-agreement-issues
 description: Guides preparation of a severity-ranked issues list for a private-equity acquisition purchase agreement where diligence findings, financial adjustments, and disclosure schedule disclosures must be cross-referenced against the draft agreement.
 activates_for: [planner, solver, checker]

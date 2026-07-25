@@ -1,5 +1,5 @@
 ---
-name: 识别问题salecontribution协议
+name: identify-issues-in-sale-and-contribution-agreement
 task_id: structured-finance-securitization/identify-issues-in-sale-and-contribution-agreement
 description: Identifying issues in a draft sale and contribution agreement for an auto loan securitization where true sale characterization, SPE separateness, early amortization linkage to servicer default, and alignment between governing law and the applicable perfection framework each require cross-document analysis.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extractcomprehensive资产inventorydecedent财务记录
+name: extract-comprehensive-asset-inventory-from-decedent-financial-records
 task_id: trusts-estates-private-client/extract-comprehensive-asset-inventory-from-decedent-financial-records
 description: Produces a comprehensive estate asset schedule that classifies each asset by disposition pathway, reconciles values across source materials, identifies unresolved value or title questions, and flags planning or reporting issues for retirement accounts and closely held business interests.
 activates_for: [planner, solver, checker]

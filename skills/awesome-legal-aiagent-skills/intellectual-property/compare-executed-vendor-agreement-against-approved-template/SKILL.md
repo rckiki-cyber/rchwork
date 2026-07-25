@@ -1,5 +1,5 @@
 ---
-name: 比较executed卖方协议模板
+name: compare-executed-vendor-agreement-template
 task_id: intellectual-property/compare-executed-vendor-agreement-against-approved-template
 description: GC-ready deviation report comparing an executed vendor agreement against the approved template and related approval materials.
 activates_for: [planner, solver, checker]

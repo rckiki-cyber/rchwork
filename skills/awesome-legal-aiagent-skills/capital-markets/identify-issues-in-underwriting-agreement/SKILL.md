@@ -1,5 +1,5 @@
 ---
-name: 识别问题承销协议
+name: identify-issues-in-underwriting-agreement
 task_id: capital-markets/identify-issues-in-underwriting-agreement
 description: Underwriting agreement issue identification where the baseline lists concerns but does not cite the specific agreement section for each issue or provide sufficiently precise redline instructions for the negotiating team to act on.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草ppa卖方solarplusstorage
+name: draft-ppa-seller-solar-plus-storage
 task_id: energy-natural-resources/draft-power-purchase-agreement
 description: Guides drafting of a seller-side power purchase agreement for a solar-plus-storage project by surfacing and resolving cross-document commercial conflicts, coordinating force majeure and deadline provisions as a system, and flagging open issues with drafting notes for client resolution.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 分析irsidrcompleteness风险问题
+name: analyze-irs-idr-for-completeness-and-risk-issues
 task_id: tax/analyze-irs-information-document-request-for-completeness-and-risk-issues
 description: An IDR analysis memorandum should address each request item, identify the legal and factual issues raised, estimate the associated tax and penalty exposure where possible, and recommend an audit strategy — not merely catalog what the IRS asked for.
 activates_for: [planner, solver, checker]

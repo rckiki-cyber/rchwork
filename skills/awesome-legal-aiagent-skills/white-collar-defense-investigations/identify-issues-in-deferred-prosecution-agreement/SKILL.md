@@ -1,5 +1,5 @@
 ---
-name: 识别问题dpaantikickback
+name: identify-issues-in-dpa-anti-kickback
 task_id: white-collar-defense-investigations/identify-issues-in-deferred-prosecution-agreement
 description: Issue memorandum analyzing a draft deferred prosecution agreement, identifying discrepancies between agreement terms and the investigation record, monitoring cost and selection deficiencies, self-reporting window operational infeasibility, conflicts with existing financial obligations, and related breach/cure concerns.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 公司bylaws治理gap分析
+name: corporate-bylaws-governance-gap-analysis
 task_id: corporate-governance/compare-corporate-bylaws-against-best-practice-governance-guidelines
 description: Gap analysis memorandum comparing corporate bylaws against best-practice governance guidelines, identifying provisions that may require amendment to governing documents versus implementation by board or committee action, and cross-referencing any existing commitments already in place.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草internal审计work计划
+name: draft-internal-audit-work-plan
 task_id: corporate-governance/draft-internal-audit-work-plan
 description: Agents produce a work plan that lists audit topics without a structured audit universe with risk ratings and cycle frequencies, fail to reconcile available hours against the co-sourcing cap, omit engagement-specific rationales for each planned area, and miss supervisory guidance thresholds that justify concentration-area audit priorities.
 activates_for: [planner, solver, checker]

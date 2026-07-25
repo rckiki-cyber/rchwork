@@ -1,5 +1,5 @@
 ---
-name: 识别问题counterparty和解建议书
+name: identify-issues-in-counterparty-settlement-proposal
 task_id: employment-labor/identify-issues-in-counterparty-settlement-proposal
 description: Guides counsel in producing a prioritized issues memorandum identifying legally unsupported, commercially unfavorable, and tactically problematic provisions in a settlement proposal.
 activates_for: [planner, solver, checker]

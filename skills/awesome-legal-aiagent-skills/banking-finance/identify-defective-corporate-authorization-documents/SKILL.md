@@ -1,5 +1,5 @@
 ---
-name: 识别defective公司授权文件
+name: identify-defective-corporate-authorization-documents
 task_id: banking-finance/identify-defective-corporate-authorization-documents
 description: Reviews corporate authorization documents for a credit facility closing across multiple entity types and jurisdictions, and prepares a structured issues memo organized by severity.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草跨境border收购税务memo
+name: draft-cross-border-acquisition-tax-memo
 task_id: tax/draft-cross-border-acquisition-tax-memo
 description: A cross-border acquisition tax memorandum should analyze the tax consequences across all relevant jurisdictions in the deal structure, compare structural alternatives, and produce a risk matrix and action tracker alongside the narrative memo.
 activates_for: [planner, solver, checker]

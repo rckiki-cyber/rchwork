@@ -1,5 +1,5 @@
 ---
-name: extractkeyadmissions证言录取transcript
+name: extract-key-admissions-from-deposition-transcript
 task_id: litigation-dispute-resolution/extract-key-admissions-from-deposition-transcript
 description: Extracting key admissions from a deposition transcript requires cross-referencing each admission against the governing record, prior sworn statements, and related contemporaneous documents to identify inconsistencies and assess the admission’s utility for motion practice, trial impeachment, and settlement analysis.
 activates_for: [planner, solver, checker]

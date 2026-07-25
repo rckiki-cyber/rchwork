@@ -1,5 +1,5 @@
 ---
-name: 识别隐私数据protection问题counterpartytransfer协议
+name: identify-privacy-and-data-protection-issues-in-counterparty-transfer-agreement
 task_id: data-privacy-cybersecurity/identify-privacy-and-data-protection-issues-in-counterparty-transfer-agreement
 description: Data transfer agreement issue memoranda should be framed by the relevant supervisory communications and guidance, and should reconcile transfer-mechanism status, anonymisation analysis, and the actual data inventory against the agreement’s provisions.
 activates_for: [planner, solver, checker]

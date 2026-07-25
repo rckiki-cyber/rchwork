@@ -1,5 +1,5 @@
 ---
-name: 审查pe收购目标合同
+name: review-pe-acquisition-target-contracts
 task_id: corporate-ma/review-pe-acquisition-target-contracts
 description: Guides preparation of a key terms extraction report for a private equity acquisition where target company contracts in a SaaS clinical trial management business must be reviewed for material terms and deal-impact assessment.
 activates_for: [planner, solver, checker]

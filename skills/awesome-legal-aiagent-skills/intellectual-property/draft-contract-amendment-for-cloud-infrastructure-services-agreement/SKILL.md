@@ -1,5 +1,5 @@
 ---
-name: 起草合同修订cloudmsa
+name: draft-contract-amendment-cloud-msa
 task_id: intellectual-property/draft-contract-amendment-for-cloud-infrastructure-services-agreement
 description: Amendment to an existing cloud infrastructure services master services agreement resolving conflicts between a proposed revision and internal requirements, with a cover memo detailing discrepancies, resolutions, and residual risks.
 activates_for: [planner, solver, checker]

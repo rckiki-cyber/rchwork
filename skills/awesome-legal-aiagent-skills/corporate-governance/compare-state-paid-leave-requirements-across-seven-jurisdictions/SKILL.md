@@ -1,5 +1,5 @@
 ---
-name: 多州paidleave合规矩阵
+name: multi-state-paid-leave-compliance-matrix
 task_id: corporate-governance/compare-state-paid-leave-requirements-across-seven-jurisdictions
 description: Multi-state paid leave compliance analysis comparing a universal leave policy against current jurisdictional requirements across all applicable jurisdictions, identifying potential over-withholding issues, carryover issues, and incident-specific retroactive correction obligations.
 activates_for: [planner, solver, checker]

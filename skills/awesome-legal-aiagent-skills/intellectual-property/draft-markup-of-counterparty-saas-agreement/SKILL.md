@@ -1,5 +1,5 @@
 ---
-name: 起草markupcounterpartysaas协议
+name: draft-markup-counterparty-saas-agreement
 task_id: intellectual-property/draft-markup-of-counterparty-saas-agreement
 description: Redlined SaaS agreement and order form with commentary markup and a risk-prioritized commentary memo for a specialized life sciences data platform, evaluated against the company playbook and a security assessment.
 activates_for: [planner, solver, checker]

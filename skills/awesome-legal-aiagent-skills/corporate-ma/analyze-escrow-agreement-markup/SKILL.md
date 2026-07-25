@@ -1,5 +1,5 @@
 ---
-name: 分析托管协议markup
+name: analyze-escrow-agreement-markup
 task_id: corporate-ma/analyze-escrow-agreement-markup
 description: Guides buyer-side review of an escrow agreement markup by cross-referencing the acquisition agreement and internal playbook to identify procedural traps, release-timing mismatches, and conflicts with the agreed deal terms.
 activates_for: [planner, solver, checker]

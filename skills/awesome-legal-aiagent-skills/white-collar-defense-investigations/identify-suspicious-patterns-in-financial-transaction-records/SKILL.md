@@ -1,5 +1,5 @@
 ---
-name: 识别suspiciouspatterns财务transactions
+name: identify-suspicious-patterns-in-financial-transactions
 task_id: white-collar-defense-investigations/identify-suspicious-patterns-in-financial-transaction-records
 description: Issue memorandum identifying suspicious transaction patterns for a white-collar internal investigation, covering related-party payment structures, trading activity around nonpublic information, foreign-official payment issues, internal controls failures, and transaction structuring concerns.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 比较sitelease市场条款solar
+name: compare-site-lease-market-terms-solar
 task_id: energy-natural-resources/compare-site-lease-against-market-terms
 description: Guides a ground lease deviation review by benchmarking each provision against a market playbook and lender requirements, assessing the financial impact of escalation terms over the full lease term, and identifying provisions whose absence may create financing risk.
 activates_for: [planner, solver, checker]

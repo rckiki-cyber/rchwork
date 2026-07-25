@@ -1,5 +1,5 @@
 ---
-name: ecvc草案合并协议
+name: ecvc-draft-merger-agreement
 task_id: emerging-companies-venture-capital/draft-merger-agreement
 description: Drafting a merger agreement requires structuring the merger form, allocating assignment and consent risk, addressing any required governmental or third-party approvals, drafting earnout protections if applicable, handling warrant notice obligations if applicable, and using a market-standard material adverse effect definition and remedies structure.
 activates_for: [planner, solver, checker]

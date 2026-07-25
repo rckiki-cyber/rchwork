@@ -1,5 +1,5 @@
 ---
-name: 起草emergencyarbitratorapplication
+name: draft-emergency-arbitrator-application
 task_id: arbitration-international-dispute-resolution/draft-emergency-arbitrator-application
 description: Ensures an ICC Emergency Arbitrator application correctly frames financial information as evidence of the inadequacy of monetary relief, addresses non-party limitations, and offers a cross-undertaking.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkupside函件
+name: analyze-counterparty-markup-of-side-letter
 task_id: funds-asset-management/analyze-counterparty-markup-of-side-letter
 description: Review an LP's redline of a GP's form side letter against the GP's form, the LPA excerpts, internal side letter policy, placement agreement, and precedent executed letters to produce a negotiation-ready analysis memorandum focused on issue spotting, cross-referencing, and recommended counter-positions.
 activates_for: [planner, solver, checker]

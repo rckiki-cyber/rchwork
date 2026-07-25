@@ -1,5 +1,5 @@
 ---
-name: extract资产财务declaration
+name: extract-assets-from-financial-declaration
 task_id: trusts-estates-private-client/extract-assets-from-financial-declaration
 description: Focuses the agent on extracting asset, liability, and income data from a sworn financial declaration into a structured workbook, reconciling totals across schedules, computing equity where appropriate, and flagging stale, unsupported, or classification-sensitive entries for follow-up.
 activates_for: [planner, solver, checker]

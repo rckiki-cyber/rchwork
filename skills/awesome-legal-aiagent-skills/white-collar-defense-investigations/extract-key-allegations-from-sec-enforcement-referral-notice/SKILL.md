@@ -1,5 +1,5 @@
 ---
-name: 证监转介关键指控提取
+name: extract-key-allegations-from-sec-referral
 task_id: white-collar-defense-investigations/extract-key-allegations-from-sec-enforcement-referral-notice
 description: Structured allegation summary extracted from an SEC enforcement referral notice, with cross-document attribution of quantitative data, reconciliation of trade count discrepancies across source documents, and identification of compliance policy sections the referral characterizes as violated.
 activates_for: [planner, solver, checker]

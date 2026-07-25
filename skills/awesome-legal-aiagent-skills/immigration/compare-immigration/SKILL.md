@@ -1,5 +1,5 @@
 ---
-name: 比较permcredentialsagainstbeneficiary
+name: compare-perm-credentials-against-beneficiary
 task_id: immigration/compare-immigration
 description: Gap analysis comparing a position’s stated minimum requirements against an individual’s actual credentials, with attention to whether superficial matches on degree field and experience totals conceal qualification-defeating deficiencies in certification specificity, pre-degree experience countability, and concurrent academic-work periods.
 activates_for: [planner, solver, checker]

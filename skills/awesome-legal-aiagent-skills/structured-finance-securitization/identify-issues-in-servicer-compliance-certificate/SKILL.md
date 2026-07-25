@@ -1,5 +1,5 @@
 ---
-name: 识别问题servicer合规certificate
+name: identify-issues-in-servicer-compliance-certificate
 task_id: structured-finance-securitization/identify-issues-in-servicer-compliance-certificate
 description: Reviewing a servicer compliance certificate and supporting materials from the trustee's perspective to identify numerical discrepancies across reported figures, verify that required non-recoverability determination documentation exists, assess proximity to any applicable modification cap, and explain the waterfall consequence of each identified error.
 activates_for: [planner, solver, checker]

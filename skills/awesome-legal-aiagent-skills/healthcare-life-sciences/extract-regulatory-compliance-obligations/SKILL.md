@@ -1,5 +1,5 @@
 ---
-name: hlsextract监管合规义务telehealth
+name: hls-extract-regulatory-compliance-obligations-telehealth
 task_id: healthcare-life-sciences/extract-regulatory-compliance-obligations
 description: Produces a structured regulatory obligations register and narrative memo for a digital health telehealth platform launch, covering data-use agreements, clinical decision support analysis, telehealth prescribing rules, biometric privacy laws, remote monitoring billing requirements, and open vendor audit findings.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草durablepowerattorney
+name: draft-durable-power-of-attorney
 task_id: trusts-estates-private-client/draft-durable-power-of-attorney
 description: Drafting a durable power of attorney for an elderly principal with multi-state assets requires curing prior power-of-attorney deficiencies, updating outdated template provisions, including authority for benefits-preserving trust contributions where needed, addressing multi-jurisdiction recognition, and coordinating health-information authorization.
 activates_for: [planner, solver, checker]

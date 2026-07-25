@@ -1,5 +1,5 @@
 ---
-name: 起草advance健康care指令
+name: draft-advance-health-care-directive
 task_id: trusts-estates-private-client/draft-advance-health-care-directive
 description: Drafting an advance health care directive for a client with diminishing capacity requires reconciling potentially inconsistent agent designations across source materials, translating abstract treatment preferences into actionable clinical standards, and addressing companion document requirements and professional responsibility concerns.
 activates_for: [planner, solver, checker]

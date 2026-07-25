@@ -1,5 +1,5 @@
 ---
-name: 起草permitapplicationnarrativescenario
+name: draft-permit-application-narrative-scenario-01
 task_id: environmental-esg/draft-permit-application-narrative/scenario-01
 description: Guides drafting of an air permit application narrative by ensuring the required topics are addressed with internally consistent emissions and modeling data, and by documenting discrepancies and data gaps in a companion issues memorandum.
 activates_for: [planner, solver, checker]

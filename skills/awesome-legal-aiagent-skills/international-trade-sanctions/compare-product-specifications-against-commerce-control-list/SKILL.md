@@ -1,5 +1,5 @@
 ---
-name: itscompare产品specsccl
+name: its-compare-product-specs-ccl
 task_id: international-trade-sanctions/compare-product-specifications-against-commerce-control-list
 description: Produces an export classification memorandum that compares product technical specifications against applicable export-control jurisdiction frameworks, checks for end-use inconsistencies, reviews re-export chain coverage, and recommends enhanced due diligence for ambiguous intermediaries.
 activates_for: [planner, solver, checker]

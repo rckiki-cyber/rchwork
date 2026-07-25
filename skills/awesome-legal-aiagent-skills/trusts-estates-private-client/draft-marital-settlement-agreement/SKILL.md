@@ -1,5 +1,5 @@
 ---
-name: 起草marital和解协议
+name: draft-marital-settlement-agreement
 task_id: trusts-estates-private-client/draft-marital-settlement-agreement
 description: Drafting a marital settlement agreement from a mediated term sheet requires reconciling inconsistencies across supporting financial information, valuation materials, and account records, while addressing the substantive terms of property division, support, custody, taxes, enforcement mechanisms, and any companion issues memorandum in an integrated agreement.
 activates_for: [planner, solver, checker]

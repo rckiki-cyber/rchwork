@@ -1,5 +1,5 @@
 ---
-name: 起草命令表格saas续期
+name: draft-order-form-saas-renewal
 task_id: intellectual-property/draft-order-form-for-enterprise-saas-platform-renewal
 description: Draft a renewal order form and accompanying cover memo for an enterprise software subscription renewal by reviewing the governing agreement, any amendments, the prior order form, the renewal proposal, negotiation correspondence, and any pricing benchmark materials; identify the controlling hierarchy of sources and reconcile conflicts accordingly.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkupparenting计划
+name: analyze-counterparty-markup-of-parenting-plan
 task_id: trusts-estates-private-client/analyze-counterparty-markup-of-parenting-plan
 description: Redline analysis of an opposing party's parenting plan markup requires systematic change-tracking against a client's original proposal, mediation summaries, and court-ordered temporary orders to surface substantive and procedural risks.
 activates_for: [planner, solver, checker]

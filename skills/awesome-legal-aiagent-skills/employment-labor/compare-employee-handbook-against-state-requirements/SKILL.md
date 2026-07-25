@@ -1,5 +1,5 @@
 ---
-name: 比较员工handbookagainst州要求
+name: compare-employee-handbook-against-state-requirements
 task_id: employment-labor/compare-employee-handbook-against-state-requirements
 description: Guides the analyst through a jurisdiction-specific handbook compliance gap analysis that compares each handbook policy against the applicable state statutory requirements and assigns severity ratings.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别问题counterpartywarnpsj动议
+name: identify-issues-in-counterparty-warn-psj-motion
 task_id: employment-labor/identify-issues-in-counterparty-motion-brief
 description: Guides defense counsel in producing a comprehensive issue-identification memorandum identifying legal and factual defects in a counterparty's partial summary judgment motion and outlining opposition strategies for each.
 activates_for: [planner, solver, checker]

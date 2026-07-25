@@ -1,5 +1,5 @@
 ---
-name: 审查markupcounterpartydpa
+name: review-markup-counterparty-dpa
 task_id: intellectual-property/review-counterparty-data-processing-agreement-and-mark-up-toward-company-positions
 description: Reviewing a counterparty data processing agreement template against a company playbook and sub-processor register to produce a prioritized commentary memo with recommended markups.
 activates_for: [planner, solver, checker]

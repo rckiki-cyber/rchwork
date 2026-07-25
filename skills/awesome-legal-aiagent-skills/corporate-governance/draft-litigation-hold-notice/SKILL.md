@@ -1,5 +1,5 @@
 ---
-name: 起草诉讼hold通知
+name: draft-litigation-hold-notice
 task_id: corporate-governance/draft-litigation-hold-notice
 description: Agents draft a litigation hold notice but fail to produce the separate preservation action-items memo, omit cloud-platform litigation hold implementation directives, miss emergency forensic imaging obligations for devices at risk of loss, and overlook cross-border data protection obligations triggered by international custodians.
 activates_for: [planner, solver, checker]

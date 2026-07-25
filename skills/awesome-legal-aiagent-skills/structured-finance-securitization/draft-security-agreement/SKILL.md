@@ -1,5 +1,5 @@
 ---
-name: 起草担保协议whole业务
+name: draft-security-agreement-whole-business
 task_id: structured-finance-securitization/draft-security-agreement
 description: Drafting a security agreement for a whole business securitization where the collateral includes operating contracts, intellectual property, deposit accounts, and equipment, requiring layered cash management mechanics, perfection steps for each collateral type, and identification of pre-existing lien and consent issues before closing.
 activates_for: [planner, solver, checker]

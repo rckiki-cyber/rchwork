@@ -1,5 +1,5 @@
 ---
-name: 起草动议dismissdtsa12b6
+name: draft-motion-dismiss-dtsa-12b6
 task_id: intellectual-property/draft-motion-to-dismiss-federal-trade-secret-misappropriation-complaint
 description: Rule 12(b)(6) motion to dismiss a federal trade secret misappropriation complaint on federal and state trade secret law grounds, with an integrated memorandum of law.
 activates_for: [planner, solver, checker]

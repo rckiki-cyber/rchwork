@@ -1,5 +1,5 @@
 ---
-name: 比较不动产计划against联邦税务exemption附表
+name: compare-estate-plan-against-federal-tax-exemption-schedules
 task_id: trusts-estates-private-client/compare-estate-plan-against-federal-tax-exemption-schedules
 description: Comparing an estate plan against current federal tax exemption schedules requires evaluating ambiguous formula clauses under plausible interpretations, checking portability and related exclusion history, identifying estate inclusion issues, and assessing whether older documents still operate as intended under current law.
 activates_for: [planner, solver, checker]

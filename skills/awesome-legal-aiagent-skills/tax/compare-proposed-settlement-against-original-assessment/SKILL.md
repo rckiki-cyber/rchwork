@@ -1,5 +1,5 @@
 ---
-name: 比较拟议和解againstoriginal评估
+name: compare-proposed-settlement-against-original-assessment
 task_id: tax/compare-proposed-settlement-against-original-assessment
 description: Reconciling a proposed administrative tax settlement against the original assessment requires arithmetic verification of stated amounts, analysis of scope and waiver language, and identification of downstream consequences before the client decides whether to proceed.
 activates_for: [planner, solver, checker]

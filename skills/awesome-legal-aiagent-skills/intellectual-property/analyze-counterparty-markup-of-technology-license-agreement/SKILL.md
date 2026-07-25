@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkuptech许可
+name: analyze-counterparty-markup-tech-license
 task_id: intellectual-property/analyze-counterparty-markup-of-technology-license-agreement
 description: Comprehensive deviation report for a counterparty-marked technology license agreement evaluated against the original draft and internal negotiation guidance.
 activates_for: [planner, solver, checker]

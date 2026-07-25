@@ -1,5 +1,5 @@
 ---
-name: 比较homeowners提交washington州监管
+name: compare-homeowners-filing-washington-state-regulatory
 task_id: insurance/compare-insurance-application-filing-against-state-regulatory-requirements
 description: Agents reviewing an insurance product filing package against state regulatory requirements identify potential compliance gaps, verify internal calculations, and check for required disclosures, notices, timing provisions, and consistency across documents without relying on task-specific citations or scenario-specific numeric thresholds.
 activates_for: [planner, solver, checker]

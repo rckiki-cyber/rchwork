@@ -1,5 +1,5 @@
 ---
-name: 起草secwellssubmission投资adviser
+name: draft-sec-wells-submission-investment-adviser
 task_id: white-collar-defense-investigations/draft-response-to-sec-wells-notice
 description: Wells submission memorandum responding to an SEC Wells Notice for an investment adviser, organized to address the staff’s theories, the factual record, any scienter-related issues, any nexus or element-based defenses, any reliance on professionals, and any remediation or mitigation.
 activates_for: [planner, solver, checker]

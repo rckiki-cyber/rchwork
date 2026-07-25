@@ -1,5 +1,5 @@
 ---
-name: 识别问题stalkinghorseapa
+name: identify-issues-in-stalking-horse-apa
 task_id: bankruptcy-restructuring/identify-issues-in-stalking-horse-asset-purchase-agreement
 description: Ensures a stalking horse asset purchase agreement issues memo consistently applies four analytical elements to each issue — problem identification, legal or contractual basis, impact on the estate, and recommended resolution — with attention to environmental successor-liability risk, material adverse effect carve-out gaps, and alignment between closing deadlines and financing milestones.
 activates_for: [planner, solver, checker]

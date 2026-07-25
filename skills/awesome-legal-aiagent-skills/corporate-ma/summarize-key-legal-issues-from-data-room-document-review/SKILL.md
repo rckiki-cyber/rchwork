@@ -1,5 +1,5 @@
 ---
-name: 总结key法律问题数据room
+name: summarize-key-legal-issues-data-room
 task_id: corporate-ma/summarize-key-legal-issues-from-data-room-document-review
 description: Guides preparation of a multi-workstream due diligence memorandum from a data room document review where findings must be organized by subject matter, risk-rated, and translated into recommended deal protections.
 activates_for: [planner, solver, checker]

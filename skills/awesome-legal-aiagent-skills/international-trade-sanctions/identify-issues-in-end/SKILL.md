@@ -1,5 +1,5 @@
 ---
-name: itsidentify问题endusecertificate
+name: its-identify-issues-end-use-certificate
 task_id: international-trade-sanctions/identify-issues-in-end
 description: Produces a risk assessment memorandum for an end-user certificate and supporting transaction documents that identifies regulatory basis errors, document-to-document discrepancies, transit route disclosure gaps, entity-list proliferation basis implications, catch-all end-use control triggers, and government authentication requirements for the destination country.
 activates_for: [planner, solver, checker]

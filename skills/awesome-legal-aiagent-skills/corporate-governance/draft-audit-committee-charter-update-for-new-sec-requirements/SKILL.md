@@ -1,5 +1,5 @@
 ---
-name: 审计委员会chartersecupdate
+name: audit-committee-charter-sec-update
 task_id: corporate-governance/draft-audit-committee-charter-update-for-new-sec-requirements
 description: Audit committee charter redline and commentary memorandum incorporating updated securities-law and governance requirements, revising auditor independence and oversight provisions, and identifying any committee composition independence issue that requires prompt remediation.
 activates_for: [planner, solver, checker]

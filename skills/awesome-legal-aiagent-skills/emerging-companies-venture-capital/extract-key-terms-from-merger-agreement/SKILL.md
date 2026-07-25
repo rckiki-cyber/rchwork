@@ -1,5 +1,5 @@
 ---
-name: ecvcextractkey条款合并协议
+name: ecvc-extract-key-terms-merger-agreement
 task_id: emerging-companies-venture-capital/extract-key-terms-from-merger-agreement
 description: Extract key terms from a merger agreement by reading definitions and operative provisions together, checking internal consistency across articles, and noting missing protections or unusual conditions that may matter to preferred stockholders.
 activates_for: [planner, solver, checker]

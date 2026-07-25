@@ -1,5 +1,5 @@
 ---
-name: 识别contesteddivorce财务证据开示
+name: identify-contested-divorce-financial-discovery
 task_id: trusts-estates-private-client/identify-contested-divorce-financial-discovery
 description: Closes the gap where agents review business valuations without independently checking the underlying arithmetic, identifying normalization adjustment omissions, assessing whether valuation discounts are appropriate in the dissolution context, and linking pre-separation account withdrawals to potential dissipation issues.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别问题oregon监管同意命令
+name: identify-issues-oregon-regulatory-consent-order
 task_id: insurance/identify-issues-in-regulatory-order
 description: Agents preparing a board-level issue memorandum on a regulatory consent order summarize the order's findings by checking the order for mathematical consistency, waiver scope, operational feasibility, privilege and confidentiality issues, reporting burden, governance authority, timing constraints, and any prior objections that were not addressed.
 activates_for: [planner, solver, checker]

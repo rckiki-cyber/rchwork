@@ -1,5 +1,5 @@
 ---
-name: HSR预通知简报框架
+name: hsr-prenotification-briefing-framing-only
 task_id: antitrust-competition/draft-pre-notification-briefing-paper
 description: Framing-only ablation — procedural and domain guidance for an HSR pre-notification briefing paper, with no rubric-derived numbers, quotes, or entity names. Used to test whether deal-triage framing alone drives the lift.
 activates_for: [planner, solver, checker]

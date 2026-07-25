@@ -1,5 +1,5 @@
 ---
-name: 审查counterparty数据processing协议
+name: review-counterparty-data-processing-agreement
 task_id: data-privacy-cybersecurity/review-counterparty-data-processing-agreement
 description: Counterparty DPA issue identification memos fail when the agent does not use the internal data protection playbook as the primary benchmark and does not reconcile the executed MSA's scope and liability provisions against the DPA's terms before producing an issue-focused memorandum.
 activates_for: [planner, solver, checker]

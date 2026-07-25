@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-11
 task_id: funds-asset-management/draft-lpa/scenario-11
 description: Draft a complete impact fund LPA with sector-specific ESG KPI definitions, category-level negative screens, placeholder service-provider identification, and NTD annotations for items requiring partner or client decision.
 activates_for: [planner, solver, checker]

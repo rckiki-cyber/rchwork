@@ -1,5 +1,5 @@
 ---
-name: 比较最终working资本
+name: compare-final-working-capital
 task_id: corporate-ma/compare-final-working-capital-against-target-working-capital
 description: Guides independent verification of a post-closing working capital adjustment by applying the operative agreement’s definition line by line, computing the resulting adjustment with any applicable collar, and calculating interest from the contractually specified start date.
 activates_for: [planner, solver, checker]

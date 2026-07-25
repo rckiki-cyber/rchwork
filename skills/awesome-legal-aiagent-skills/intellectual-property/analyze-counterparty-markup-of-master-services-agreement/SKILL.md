@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkupmsa
+name: analyze-counterparty-markup-msa
 task_id: intellectual-property/analyze-counterparty-markup-of-master-services-agreement
 description: Systematic deviation analysis of a vendor-redlined master services agreement against the company template and contracting playbook, with risk classifications and counter-positions.
 activates_for: [planner, solver, checker]

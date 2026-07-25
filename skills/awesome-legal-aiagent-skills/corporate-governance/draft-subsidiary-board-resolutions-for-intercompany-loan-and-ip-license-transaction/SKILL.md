@@ -1,5 +1,5 @@
 ---
-name: 起草子公司董事会解决intercompany贷款ip许可transaction
+name: draft-subsidiary-board-resolutions-for-intercompany-loan-and-ip-license-transaction
 task_id: corporate-governance/draft-subsidiary-board-resolutions-for-intercompany-loan-and-ip-license-transaction
 description: Agents draft subsidiary board resolutions by checking director-interest issues, confirming quorum and cleansing mechanics, reviewing governing-document authorization limits, addressing cross-default risk, and applying the correct jurisdictional interested-director framework for each entity.
 activates_for: [planner, solver, checker]

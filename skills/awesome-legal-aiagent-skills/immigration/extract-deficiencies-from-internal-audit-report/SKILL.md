@@ -1,5 +1,5 @@
 ---
-name: extractdeficienciesinternal审计报告
+name: extract-deficiencies-from-internal-audit-report
 task_id: immigration/extract-deficiencies-from-internal-audit-report
 description: Structured deficiency matrix extracted from a structured immigration compliance audit report, where the analysis must classify each deficiency by regulatory type and severity and separately flag any potential anti-discrimination exposure for further review.
 activates_for: [planner, solver, checker]

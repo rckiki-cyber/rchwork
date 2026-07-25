@@ -1,5 +1,5 @@
 ---
-name: 起草esg披露narrative
+name: draft-esg-disclosure-narrative
 task_id: environmental-esg/draft-esg-disclosure-narrative
 description: Guides drafting of an ESG disclosure narrative and companion legal risk memo by ensuring environmental performance claims are substantiated by underlying data, legal contingencies are properly characterized, and climate risk disclosures satisfy applicable framework requirements.
 activates_for: [planner, solver, checker]

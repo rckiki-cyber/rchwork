@@ -1,5 +1,5 @@
 ---
-name: 识别税务问题irs交割协议
+name: identify-tax-issues-in-irs-closing-agreement
 task_id: tax/identify-tax-issues-in-irs-closing-agreement
 description: Reviewing a draft IRS closing agreement for issues requires independently verifying computed amounts for directional and arithmetic correctness, assessing structural deficiencies such as missing treaty-relief protection, signing authority, and non-precedential language, and identifying any state tax reporting obligations triggered by the settlement.
 activates_for: [planner, solver, checker]

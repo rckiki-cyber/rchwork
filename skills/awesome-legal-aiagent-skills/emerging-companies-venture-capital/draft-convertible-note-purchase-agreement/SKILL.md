@@ -1,5 +1,5 @@
 ---
-name: ecvc草案convertible票据购买协议
+name: ecvc-draft-convertible-note-purchase-agreement
 task_id: emerging-companies-venture-capital/draft-convertible-note-purchase-agreement
 description: Drafting an execution-ready convertible note purchase agreement requires precise capitalization definitions, cross-checking cap table arithmetic, sequencing conversion with other outstanding convertible instruments, obtaining or representing lender consent under existing debt covenants, and disclosing insider conflicts under the applicable corporate law interested-director framework.
 activates_for: [planner, solver, checker]

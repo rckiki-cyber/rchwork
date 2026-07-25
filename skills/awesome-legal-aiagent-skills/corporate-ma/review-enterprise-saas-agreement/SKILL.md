@@ -1,5 +1,5 @@
 ---
-name: 审查enterprisesaas协议
+name: review-enterprise-saas-agreement
 task_id: corporate-ma/review-enterprise-saas-agreement
 description: Guides preparation of a risk-tiered issues memo for an enterprise SaaS agreement review in a regulated-data context where privacy compliance, security controls, service levels, and contractual terms must be assessed against the vendor's representations.
 activates_for: [planner, solver, checker]

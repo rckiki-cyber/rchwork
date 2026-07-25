@@ -1,5 +1,5 @@
 ---
-name: 起草unanimouswritten同意高管appointment
+name: draft-unanimous-written-consent-for-officer-appointment
 task_id: corporate-governance/draft-unanimous-written-consent-for-officer-appointment
 description: Agents draft a board consent for officer appointments by checking for any required stockholder approvals, confirming the currentness of valuation support for equity grants, verifying plan capacity, and addressing any timing gap between consent execution and the officer’s start date.
 activates_for: [planner, solver, checker]

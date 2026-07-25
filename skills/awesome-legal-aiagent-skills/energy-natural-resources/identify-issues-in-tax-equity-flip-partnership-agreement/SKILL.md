@@ -1,5 +1,5 @@
 ---
-name: 识别问题税务股权flip合伙
+name: identify-issues-in-tax-equity-flip-partnership
 task_id: energy-natural-resources/identify-issues-in-tax-equity-flip-partnership-agreement
 description: Guides issue identification in a tax equity flip partnership agreement by cross-referencing the financial model's tax assumptions against current applicable law, assessing eligibility for available tax credit bonus treatments and related substantiation, and analyzing structural tax risks including basis adjustment rules, partnership anti-abuse principles, and back-leverage mechanics.
 activates_for: [planner, solver, checker]

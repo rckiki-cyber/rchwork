@@ -1,5 +1,5 @@
 ---
-name: 审查区域ndavariantsmaster模板
+name: review-regional-nda-variants-master-template
 task_id: intellectual-property/review-regional-nda-variants-against-master-template
 description: Reviewing multiple regional NDA templates against a master template to produce a conformance report identifying jurisdiction-specific deviations and harmonization actions.
 activates_for: [planner, solver, checker]

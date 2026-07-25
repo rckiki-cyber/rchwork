@@ -1,5 +1,5 @@
 ---
-name: hls草案markupcta
+name: hls-draft-markup-cta
 task_id: healthcare-life-sciences/draft-markup-of-clinical-trial-agreement
 description: Produces a fully marked-up institutional redline of a sponsor-drafted clinical trial agreement, aligning the draft to the applicable institutional research position on indemnification causation, publication rights, adverse-event reporting, protocol amendment review, and government-funding / invention-ownership considerations.
 activates_for: [planner, solver, checker]

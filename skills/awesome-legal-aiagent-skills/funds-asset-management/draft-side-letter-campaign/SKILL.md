@@ -1,5 +1,5 @@
 ---
-name: 起草side函件campaign
+name: draft-side-letter-campaign
 task_id: funds-asset-management/draft-side-letter-campaign
 description: Draft a complete set of side letters for multiple investors at a fund closing, along with a campaign summary memo and an MFN disclosure schedule, where investors have potentially conflicting requests, some provisions may exceed the side-letter policy, and the MFN cascade must be analyzed across the full investor group.
 activates_for: [planner, solver, checker]

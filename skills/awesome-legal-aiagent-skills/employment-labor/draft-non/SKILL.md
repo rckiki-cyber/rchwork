@@ -1,5 +1,5 @@
 ---
-name: 起草nonsolicitation协议
+name: draft-non-solicitation-agreement
 task_id: employment-labor/draft-non
 description: Guides the drafter in producing a tailored non-solicitation agreement and accompanying drafting memorandum for a new executive hire, accounting for the hire's prior employer obligations and the applicable legal framework.
 activates_for: [planner, solver, checker]

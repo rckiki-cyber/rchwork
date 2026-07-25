@@ -1,5 +1,5 @@
 ---
-name: CFUS缓解措施与国家安全条约比较
+name: its-compare-cfius-mitigation-vs-nst
 task_id: international-trade-sanctions/compare-mitigation-agreement-against-national-security-terms
 description: Produces a structured gap analysis memo that maps each national-security-term requirement to the draft mitigation agreement, identifies deviations with side-by-side timing comparisons where relevant, distinguishes commercially motivated deviations from inadvertent gaps, and flags missing mandatory provisions when they appear in the source materials.
 activates_for: [planner, solver, checker]

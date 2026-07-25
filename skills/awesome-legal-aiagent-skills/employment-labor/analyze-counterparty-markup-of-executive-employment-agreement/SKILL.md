@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkupexecutive雇佣协议
+name: analyze-counterparty-markup-of-executive-employment-agreement
 task_id: employment-labor/analyze-counterparty-markup-of-executive-employment-agreement
 description: Guides the analyst to compare a counterparty redline against the company draft and negotiation playbook, applying sponsor-side framing across compensation, equity, termination, restrictive covenants, and miscellaneous provisions.
 activates_for: [planner, solver, checker]

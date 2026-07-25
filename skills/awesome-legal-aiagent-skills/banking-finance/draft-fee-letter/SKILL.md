@@ -1,5 +1,5 @@
 ---
-name: 起草费用函件
+name: draft-fee-letter
 task_id: banking-finance/draft-fee-letter
 description: Drafts a fee letter for a leveraged acquisition financing, reconciling fee economics across deal documents and flagging cross-document inconsistencies in a separate issues memo.
 activates_for: [planner, solver, checker]

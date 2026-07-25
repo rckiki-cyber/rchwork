@@ -1,5 +1,5 @@
 ---
-name: 审查年度报告提交表格合规
+name: review-annual-report-filing-for-form-compliance
 task_id: capital-markets/review-annual-report-filing-for-form-compliance
 description: Form 10-K compliance review where the baseline catches missing narrative sections but misses required items and exhibits introduced by later rule changes, and does not apply the correct filing deadline calculation.
 activates_for: [planner, solver, checker]

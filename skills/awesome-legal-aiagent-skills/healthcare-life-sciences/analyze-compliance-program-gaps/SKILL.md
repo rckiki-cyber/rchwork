@@ -1,5 +1,5 @@
 ---
-name: hlsanalyze合规方案gaps
+name: hls-analyze-compliance-program-gaps
 task_id: healthcare-life-sciences/analyze-compliance-program-gaps
 description: Identifies structural and documentary gaps in a healthcare data privacy compliance program using incident records, vendor tracking, audit findings, and governance minutes to produce a remediation-focused memorandum.
 activates_for: [planner, solver, checker]

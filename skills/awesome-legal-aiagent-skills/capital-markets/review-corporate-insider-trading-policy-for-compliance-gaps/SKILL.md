@@ -1,5 +1,5 @@
 ---
-name: 审查公司insidertrading政策合规gaps
+name: review-corporate-insider-trading-policy-for-compliance-gaps
 task_id: capital-markets/review-corporate-insider-trading-policy-for-compliance-gaps
 description: Insider trading policy compliance review focused on identifying gaps in a corporate policy against the applicable insider trading rule set and related public-disclosure obligations, without assuming the baseline analysis is complete.
 activates_for: [planner, solver, checker]

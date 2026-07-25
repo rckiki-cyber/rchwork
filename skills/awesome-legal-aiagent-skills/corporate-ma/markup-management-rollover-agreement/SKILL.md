@@ -1,5 +1,5 @@
 ---
-name: markup管理层rollover协议
+name: markup-management-rollover-agreement
 task_id: corporate-ma/markup-management-rollover-agreement
 description: Guides management-side redline of a sponsor-drafted rollover agreement using a firm playbook and markup instructions, with a prioritized cover memo explaining each proposed change at a category level.
 activates_for: [planner, solver, checker]

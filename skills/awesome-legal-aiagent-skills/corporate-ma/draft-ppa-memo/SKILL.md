@@ -1,5 +1,5 @@
 ---
-name: 起草购买priceadjustmentmemo
+name: draft-purchase-price-adjustment-memo
 task_id: corporate-ma/draft-ppa-memo
 description: Guides preparation of a post-closing purchase price adjustment memorandum where closing balance sheet line items are disputed, the adjustment mechanism must be applied, and dispute resolution procedures must be analyzed.
 activates_for: [planner, solver, checker]

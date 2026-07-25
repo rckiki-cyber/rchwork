@@ -1,5 +1,5 @@
 ---
-name: generatedd清单tech收购
+name: generate-dd-checklist-tech-acquisition
 task_id: corporate-ma/generate-due-diligence-checklist-for-technology-company-acquisition
 description: Guides generation of a tailored due diligence request checklist for an acquisition of a technology-intensive business, with sector-specific diligence priorities integrated into standard M&A diligence categories.
 activates_for: [planner, solver, checker]

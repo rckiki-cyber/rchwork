@@ -1,5 +1,5 @@
 ---
-name: 起草计划reorganization
+name: draft-plan-of-reorganization
 task_id: bankruptcy-restructuring/draft-plan-of-reorganization
 description: Ensures a Chapter 11 plan of reorganization contains complete class definitions for the relevant creditor and equity categories, treatment provisions using terms drawn from the source documents, and a companion confirmability issues memo identifying structural risks and inconsistencies.
 activates_for: [planner, solver, checker]

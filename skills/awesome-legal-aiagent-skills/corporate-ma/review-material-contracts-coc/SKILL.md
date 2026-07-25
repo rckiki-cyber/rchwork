@@ -1,5 +1,5 @@
 ---
-name: 审查重大合同coc
+name: review-material-contracts-coc
 task_id: corporate-ma/review-material-contracts-coc
 description: Guides completion of a contract review checklist and risk assessment memo for a proposed acquisition, using the governing transaction documents and the actual contracts to identify scope, change-of-control and assignment issues, and discrepancies against any summary materials.
 activates_for: [planner, solver, checker]

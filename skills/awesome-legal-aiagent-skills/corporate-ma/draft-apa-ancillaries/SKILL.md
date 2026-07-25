@@ -1,5 +1,5 @@
 ---
-name: 起草apaancillaries
+name: draft-apa-ancillaries
 task_id: corporate-ma/draft-apa-ancillaries
 description: Guides drafting of a complete buyer-favorable carve-out acquisition document suite, requiring substantive completeness in each ancillary document and cross-document consistency on key transaction terms, assumed liabilities, regulatory conditions, and defined terms.
 activates_for: [planner, solver, checker]

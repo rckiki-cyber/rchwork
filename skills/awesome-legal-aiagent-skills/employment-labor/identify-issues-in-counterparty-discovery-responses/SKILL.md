@@ -1,5 +1,5 @@
 ---
-name: 识别问题counterparty证据开示回应
+name: identify-issues-in-counterparty-discovery-responses
 task_id: employment-labor/identify-issues-in-counterparty-discovery-responses
 description: Guides counsel in preparing a discovery deficiency memorandum that identifies boilerplate objections, improper privilege claims, production gaps, and procedural rule violations, while organizing recommended next steps for each.
 activates_for: [planner, solver, checker]

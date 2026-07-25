@@ -1,5 +1,5 @@
 ---
-name: 起草bilateralndadealparameters
+name: draft-bilateral-nda-deal-parameters
 task_id: intellectual-property/draft-bilateral-nda-from-deal-parameters
 description: Bilateral NDA for a potential strategic acquisition and an accompanying cover memorandum explaining key drafting decisions and open issues, based on deal parameters and dual-party playbook inputs.
 activates_for: [planner, solver, checker]

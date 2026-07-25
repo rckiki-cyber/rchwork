@@ -1,5 +1,5 @@
 ---
-name: 识别lpa问题
+name: identify-lpa-issues
 task_id: funds-asset-management/identify-lpa-issues
 description: Review a private equity fund LPA from an LP investor's perspective and produce an issues memo with severity ratings and negotiation recommendations for provisions that deviate from market standard or the LP's investment guidelines.
 activates_for: [planner, solver, checker]

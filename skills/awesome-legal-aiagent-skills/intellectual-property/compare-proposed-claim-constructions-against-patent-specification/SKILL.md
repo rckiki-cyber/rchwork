@@ -1,5 +1,5 @@
 ---
-name: 比较索赔constructions专利spec
+name: compare-claim-constructions-patent-spec
 task_id: intellectual-property/compare-proposed-claim-constructions-against-patent-specification
 description: Claim construction analysis memorandum evaluating proposed constructions for disputed patent terms against the patent specification, prosecution history, and opposing brief, prepared from the client's perspective.
 activates_for: [planner, solver, checker]

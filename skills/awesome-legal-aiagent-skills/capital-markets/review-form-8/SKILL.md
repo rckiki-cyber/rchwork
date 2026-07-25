@@ -1,5 +1,5 @@
 ---
-name: 审查表格k合规
+name: review-form-8-k-compliance
 task_id: capital-markets/review-form-8
 description: Form 8-K compliance review where the baseline identifies triggered Items but misses exhibit-level deficiencies, cover page accuracy issues, and ancillary filing obligations created by the reported transaction.
 activates_for: [planner, solver, checker]

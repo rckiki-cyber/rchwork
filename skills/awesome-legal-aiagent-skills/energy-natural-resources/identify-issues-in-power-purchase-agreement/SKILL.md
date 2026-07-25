@@ -1,5 +1,5 @@
 ---
-name: 识别问题ppasolarbess
+name: identify-issues-in-ppa-solar-bess
 task_id: energy-natural-resources/identify-issues-in-power-purchase-agreement
 description: Guides issue identification in a solar-plus-storage power purchase agreement from the seller's perspective by comparing commercial terms against the project model, checking environmental permitting status against applicable species-protection requirements, and assessing interconnection cost exposure from co-developer withdrawal risk.
 activates_for: [planner, solver, checker]

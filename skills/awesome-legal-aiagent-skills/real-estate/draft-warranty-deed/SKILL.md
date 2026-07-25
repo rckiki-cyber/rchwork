@@ -1,5 +1,5 @@
 ---
-name: 起草保证deed
+name: draft-warranty-deed
 task_id: real-estate/draft-warranty-deed
 description: Guides drafting of a general warranty deed for a commercial property conveyance by reconciling the legal description, permitted exceptions, grantor authority, and chain of title across source materials, and flagging open title issues in a companion cover memo.
 activates_for: [planner, solver, checker]

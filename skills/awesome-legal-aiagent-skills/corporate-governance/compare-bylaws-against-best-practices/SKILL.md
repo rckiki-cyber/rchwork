@@ -1,5 +1,5 @@
 ---
-name: bylawsbest实务deviation报告
+name: bylaws-best-practices-deviation-report
 task_id: corporate-governance/compare-bylaws-against-best-practices
 description: Board-ready deviation report comparing restated bylaws against current corporate governance best practice guidelines, identifying gaps in proxy access, director election standards, exclusive forum provisions, and related governance interactions.
 activates_for: [planner, solver, checker]

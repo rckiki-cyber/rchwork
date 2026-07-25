@@ -1,5 +1,5 @@
 ---
-name: 起草indenture优先担保票据发售
+name: draft-indenture-for-senior-secured-notes-offering
 task_id: capital-markets/draft-indenture-for-senior-secured-notes-offering
 description: High-yield indenture drafting from a precedent and multiple deal documents, requiring a companion issues memo that resolves cross-document discrepancies in economic terms and covenant definitions.
 activates_for: [planner, solver, checker]

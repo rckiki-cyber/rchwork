@@ -1,5 +1,5 @@
 ---
-name: hlsextract交割条件合并
+name: hls-extract-closing-conditions-merger
 task_id: healthcare-life-sciences/extract-closing-conditions-from-merger-agreement
 description: Extract closing conditions from a merger agreement into a structured matrix, categorizing each condition by burdened party and condition type, and assessing feasibility, unusual features, and procedural interactions that may affect closing.
 activates_for: [planner, solver, checker]

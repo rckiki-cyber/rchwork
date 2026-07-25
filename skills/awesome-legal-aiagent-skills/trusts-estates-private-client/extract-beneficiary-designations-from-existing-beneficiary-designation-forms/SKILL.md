@@ -1,5 +1,5 @@
 ---
-name: extractbeneficiarydesignations现有beneficiarydesignation表格
+name: extract-beneficiary-designations-from-existing-beneficiary-designation-forms
 task_id: trusts-estates-private-client/extract-beneficiary-designations-from-existing-beneficiary-designation-forms
 description: Closes the gap where agents list beneficiary designations without tracing contingent and derivative beneficiaries, flagging handwritten amendment validity risks, identifying accounts with no effective designation, and addressing retirement-account distribution implications for non-spouse beneficiaries.
 activates_for: [planner, solver, checker]

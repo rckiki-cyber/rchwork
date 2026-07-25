@@ -1,5 +1,5 @@
 ---
-name: 识别pe目标合同问题
+name: identify-pe-target-contract-issues
 task_id: corporate-ma/identify-pe-target-contract-issues
 description: Guides preparation of a comprehensive issues memo for a target contract review in a private-equity acquisition where a heterogeneous contract set spanning commercial agreements, leases, employment, and licenses must be assessed for material risks.
 activates_for: [planner, solver, checker]

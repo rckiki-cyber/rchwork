@@ -1,5 +1,5 @@
 ---
-name: extractlandoption协议条款windoregon
+name: extract-land-option-agreement-terms-wind-oregon
 task_id: energy-natural-resources/extract-land-option-agreement-terms
 description: Guides extraction and issue spotting for a wind farm land option agreement by comparing operative terms against the relevant project playbook and comparable transactions, identifying ambiguities in payment mechanics, assessing enforceability risks under the applicable property-law framework, and noting provisions whose practical effect diverges from their apparent purpose.
 activates_for: [planner, solver, checker]

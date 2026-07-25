@@ -1,5 +1,5 @@
 ---
-name: 起草联邦起诉状drafting
+name: draft-federal-complaint-drafting
 task_id: litigation-dispute-resolution/draft-federal-complaint-drafting
 description: Drafting a federal complaint for breach of contract and fiduciary duty requires pleading each claim element with factual specificity across the source record, and preparing the separate supporting deliverables required by the task instructions.
 activates_for: [planner, solver, checker]

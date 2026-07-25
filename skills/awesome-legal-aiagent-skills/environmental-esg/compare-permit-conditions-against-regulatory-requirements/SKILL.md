@@ -1,5 +1,5 @@
 ---
-name: 比较permit条件against监管要求
+name: compare-permit-conditions-against-regulatory-requirements
 task_id: environmental-esg/compare-permit-conditions-against-regulatory-requirements
 description: Guides comparison of issued permit conditions against the underlying regulatory requirements by identifying conditions that are more stringent, less stringent, or procedurally deficient relative to applicable statutory and regulatory standards without relying on scenario-specific facts.
 activates_for: [planner, solver, checker]

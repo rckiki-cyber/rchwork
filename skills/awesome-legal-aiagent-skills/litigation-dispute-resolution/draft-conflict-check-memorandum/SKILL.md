@@ -1,5 +1,5 @@
 ---
-name: 起草conflictcheck备忘录
+name: draft-conflict-check-memorandum
 task_id: litigation-dispute-resolution/draft-conflict-check-memorandum
 description: A conflict check memo for a new litigation engagement must analyze concurrent and former-client conflicts under the applicable professional-conduct rules, assess imputation across the firm, evaluate the adequacy of any advance waivers, and recommend appropriate clearance steps or screening protocols.
 activates_for: [planner, solver, checker]

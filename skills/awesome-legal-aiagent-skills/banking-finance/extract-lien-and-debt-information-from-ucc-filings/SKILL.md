@@ -1,5 +1,5 @@
 ---
-name: extractlien债务informationucc提交
+name: extract-lien-and-debt-information-from-ucc-filings
 task_id: banking-finance/extract-lien-and-debt-information-from-ucc-filings
 description: Reviews UCC filings, lien search certificates, and related documents and produces a comprehensive lien search summary report for a secured credit facility.
 activates_for: [planner, solver, checker]

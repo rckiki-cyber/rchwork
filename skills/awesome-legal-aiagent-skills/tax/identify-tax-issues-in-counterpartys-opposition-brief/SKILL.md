@@ -1,5 +1,5 @@
 ---
-name: 识别税务问题counterpartysopposition摘要
+name: identify-tax-issues-in-counterpartys-opposition-brief
 task_id: tax/identify-tax-issues-in-counterpartys-opposition-brief
 description: Identifying weaknesses in a government opposition brief requires locating the specific passage where each error or vulnerability appears, assigning a severity rating, and analyzing the government's silence on arguments the taxpayer raised — not just cataloging the brief's positions.
 activates_for: [planner, solver, checker]

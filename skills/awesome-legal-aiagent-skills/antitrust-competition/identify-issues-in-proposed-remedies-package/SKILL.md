@@ -1,5 +1,5 @@
 ---
-name: 识别问题拟议救济package
+name: identify-issues-in-proposed-remedies-package
 task_id: antitrust-competition/identify-issues-in-proposed-remedies-package
 description: Closes gaps in buyer viability assessment against applicable antitrust agency standards, crown jewel structural analysis, revenue-at-risk quantification from customer change-of-control provisions, and certification timing as a market access barrier.
 activates_for: [planner, solver, checker]

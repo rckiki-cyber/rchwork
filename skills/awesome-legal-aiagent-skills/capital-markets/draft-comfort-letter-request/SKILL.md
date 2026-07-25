@@ -1,5 +1,5 @@
 ---
-name: 起草comfort函件请求
+name: draft-comfort-letter-request
 task_id: capital-markets/draft-comfort-letter-request
 description: Comfort letter request drafting where the baseline fails to differentiate the procedures available for each type of financial period and does not address the privity and addressee rules that govern who may receive the letter.
 activates_for: [planner, solver, checker]

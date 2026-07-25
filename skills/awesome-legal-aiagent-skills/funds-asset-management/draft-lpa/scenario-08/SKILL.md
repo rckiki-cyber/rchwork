@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-08
 task_id: funds-asset-management/draft-lpa/scenario-08
 description: Draft a master fund limited partnership agreement with a parallel vehicle structure, anti-corruption provisions using generally applicable international frameworks, aggregate concentration limits across vehicles, and a companion drafting memorandum.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: ecvc草案stocktransfer协议
+name: ecvc-draft-stock-transfer-agreement
 task_id: emerging-companies-venture-capital/draft-stock-transfer-agreement
 description: Drafting a secondary stock transfer agreement requires confirming transfer restriction compliance, specifying an applicable securities law exemption with supporting representations, addressing governance-related closing deliverables where relevant, and resolving any interaction between the transfer and related employment or consulting arrangements.
 activates_for: [planner, solver, checker]

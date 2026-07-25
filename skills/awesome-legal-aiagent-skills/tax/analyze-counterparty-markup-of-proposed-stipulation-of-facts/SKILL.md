@@ -1,5 +1,5 @@
 ---
-name: 分析counterpartymarkup拟议stipulationfacts
+name: analyze-counterparty-markup-of-proposed-stipulation-of-facts
 task_id: tax/analyze-counterparty-markup-of-proposed-stipulation-of-facts
 description: Practitioners analyzing a counterparty-marked-up stipulation of facts should assess each modification's strategic impact on the client's trial theories, not merely catalog textual changes.
 activates_for: [planner, solver, checker]

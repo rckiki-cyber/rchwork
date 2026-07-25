@@ -1,5 +1,5 @@
 ---
-name: 识别问题creclo发售备忘录
+name: identify-issues-in-cre-clo-offering-memorandum
 task_id: structured-finance-securitization/identify-issues-in-offering-memorandum
 description: Reviewing a preliminary offering memorandum for a CRE CLO transaction from a placement agent perspective to identify genuine structural and disclosure issues, explain their significance for investor decision-making and placement agent liability, and distinguish them from provisions consistent with CRE CLO market practice.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract税务attributesaudited财务报表
+name: extract-tax-attributes-from-audited-financial-statements
 task_id: tax/extract-tax-attributes-from-audited-financial-statements
 description: Extracting tax attributes from audited financial statements requires cross-checking each attribute across the available disclosure sources because inconsistencies between sources can be material due diligence findings.
 activates_for: [planner, solver, checker]

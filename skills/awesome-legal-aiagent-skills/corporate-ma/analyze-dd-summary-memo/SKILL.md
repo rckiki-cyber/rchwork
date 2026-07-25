@@ -1,5 +1,5 @@
 ---
-name: 分析dd摘要memo
+name: analyze-dd-summary-memo
 task_id: corporate-ma/analyze-dd-summary-memo
 description: Guides synthesis of multi-workstream due diligence reports into an investment-committee-ready memo organized by risk severity rather than by workstream, with cross-workstream findings and deal protection recommendations.
 activates_for: [planner, solver, checker]

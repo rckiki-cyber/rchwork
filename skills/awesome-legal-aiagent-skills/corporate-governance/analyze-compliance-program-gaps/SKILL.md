@@ -1,5 +1,5 @@
 ---
-name: hipaa合规方案gap分析
+name: hipaa-compliance-program-gap-analysis
 task_id: corporate-governance/analyze-compliance-program-gaps
 description: Gap analysis of a healthcare organization’s privacy and security compliance program, identifying deficiencies in administrative safeguards, breach notification procedures, and vendor oversight against applicable healthcare privacy and security requirements.
 activates_for: [planner, solver, checker]

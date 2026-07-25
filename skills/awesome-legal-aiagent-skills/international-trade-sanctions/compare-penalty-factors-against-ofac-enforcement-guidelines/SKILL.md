@@ -1,5 +1,5 @@
 ---
-name: itscompare处罚factorsofacenforcement
+name: its-compare-penalty-factors-ofac-enforcement
 task_id: international-trade-sanctions/compare-penalty-factors-against-ofac-enforcement-guidelines
 description: Produces a penalty comparison memorandum that compares a pre-penalty notice to applicable enforcement-guideline factors, verifies the penalty methodology and statutory maximum assumptions, identifies factual and arithmetic issues, and frames a negotiation posture.
 activates_for: [planner, solver, checker]

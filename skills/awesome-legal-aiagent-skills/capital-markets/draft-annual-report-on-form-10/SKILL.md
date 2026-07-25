@@ -1,5 +1,5 @@
 ---
-name: 起草年度报告表格
+name: draft-annual-report-on-form-10
 task_id: capital-markets/draft-annual-report-on-form-10
 description: Form 10-K drafting task with a companion issues memo required, where the baseline drafts narrative from individual source documents without reconciling cross-document discrepancies or flagging open items for company input.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别问题portfolio公司合同
+name: identify-issues-in-portfolio-company-contracts
 task_id: corporate-ma/identify-issues-in-portfolio-company-contracts
 description: Guides preparation of a due diligence issue memo for a portfolio company contract review where a large, heterogeneous contract set must be systematically assessed for material risks across multiple categories.
 activates_for: [planner, solver, checker]

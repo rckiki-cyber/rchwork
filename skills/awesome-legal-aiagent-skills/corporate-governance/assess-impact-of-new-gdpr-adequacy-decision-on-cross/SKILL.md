@@ -1,5 +1,5 @@
 ---
-name: gdpradequacy决定跨境borderimpact
+name: gdpr-adequacy-decision-cross-border-impact
 task_id: corporate-governance/assess-impact-of-new-gdpr-adequacy-decision-on-cross
 description: Regulatory impact memorandum analyzing how a new data-transfer adequacy decision affects an organization's cross-border transfer framework, including eligibility review, contract-transition issues, onward transfer gaps, and assessment currency.
 activates_for: [planner, solver, checker]

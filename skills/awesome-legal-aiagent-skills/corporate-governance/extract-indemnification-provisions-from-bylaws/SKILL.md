@@ -1,5 +1,5 @@
 ---
-name: extract补偿条款bylaws
+name: extract-indemnification-provisions-from-bylaws
 task_id: corporate-governance/extract-indemnification-provisions-from-bylaws
 description: Agents extract indemnification provisions from governance documents, compare them across sources, and analyze inconsistencies in advancement procedures, burden allocation, forum provisions, coverage scope, and related insurance coordination for litigation readiness.
 activates_for: [planner, solver, checker]

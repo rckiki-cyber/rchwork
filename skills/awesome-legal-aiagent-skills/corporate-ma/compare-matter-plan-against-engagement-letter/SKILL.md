@@ -1,5 +1,5 @@
 ---
-name: 比较事项计划engagement函件
+name: compare-matter-plan-engagement-letter
 task_id: corporate-ma/compare-matter-plan-against-engagement-letter
 description: Guides field-by-field comparison of a matter plan against an engagement letter, identifying scope gaps, fee discrepancies, regulatory threshold implications of deal value differences, and professional responsibility concerns.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 比较msa卖方redlineapproved模板
+name: compare-msa-vendor-redline-approved-template
 task_id: intellectual-property/compare-master-services-agreement-against-approved-template
 description: Produce a deviation report comparing a vendor-redlined master services agreement against the approved template and playbook, using the template and playbook as the baseline and assessing changes with due diligence context where available.
 activates_for: [planner, solver, checker]

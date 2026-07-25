@@ -1,5 +1,5 @@
 ---
-name: extractkey条款tech许可期限sheet
+name: extract-key-terms-tech-licensing-term-sheet
 task_id: intellectual-property/extract-key-terms-from-technology-licensing-term-sheet
 description: Preparing a board-ready key-terms extraction memo from a technology licensing term sheet and related side materials, requiring identification of conflicts, risk flags, and negotiation recommendations.
 activates_for: [planner, solver, checker]

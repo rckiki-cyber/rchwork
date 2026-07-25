@@ -1,5 +1,5 @@
 ---
-name: 证据开示productiongap分析
+name: discovery-production-gap-analysis
 task_id: corporate-governance/compare-document-production-against-discovery-request-specifications
 description: Production gap analysis memorandum comparing document production against discovery request specifications, assessing the merits of each objection, identifying privilege log deficiencies, and recommending remediation to bring production into compliance.
 activates_for: [planner, solver, checker]

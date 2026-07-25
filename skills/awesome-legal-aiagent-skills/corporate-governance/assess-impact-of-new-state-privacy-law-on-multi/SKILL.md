@@ -1,5 +1,5 @@
 ---
-name: icdppa多州运营impact
+name: icdppa-multi-state-operations-impact
 task_id: corporate-governance/assess-impact-of-new-state-privacy-law-on-multi
 description: Regulatory impact memorandum analyzing a newly enacted state privacy law against an organization's existing privacy program, vendor agreements, and data architecture, with attention to biometric data, universal opt-out signal handling, and processor agreement gaps.
 activates_for: [planner, solver, checker]

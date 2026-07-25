@@ -1,5 +1,5 @@
 ---
-name: 起草forbearance协议
+name: draft-forbearance-agreement
 task_id: banking-finance/draft-forbearance-agreement
 description: Draft a forbearance agreement and issues memo based on the governing credit documents and source materials, independently verifying each stated default and addressing key protective provisions for the lender.
 activates_for: [planner, solver, checker]

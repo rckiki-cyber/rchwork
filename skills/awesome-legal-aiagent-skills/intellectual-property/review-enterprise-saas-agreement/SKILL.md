@@ -1,5 +1,5 @@
 ---
-name: 审查enterprisesaas协议
+name: review-enterprise-saas-agreement
 task_id: intellectual-property/review-enterprise-saas-agreement
 description: Reviewing an enterprise SaaS agreement from the customer’s perspective against diligence materials to produce a risk-tiered issues memorandum.
 activates_for: [planner, solver, checker]

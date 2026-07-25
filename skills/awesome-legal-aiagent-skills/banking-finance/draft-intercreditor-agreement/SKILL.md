@@ -1,5 +1,5 @@
 ---
-name: 起草intercreditor协议
+name: draft-intercreditor-agreement
 task_id: banking-finance/draft-intercreditor-agreement
 description: Drafts an intercreditor agreement from source documents, using bracketed drafting notes for unresolved points and producing a closing issues memo that flags open issues and possible resolutions.
 activates_for: [planner, solver, checker]

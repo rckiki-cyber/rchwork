@@ -1,5 +1,5 @@
 ---
-name: 分析msalimitation责任
+name: analyze-msa-limitation-of-liability
 task_id: intellectual-property/analyze-master-service-agreement-limitation-of-liability-clause
 description: Enforceability and market-standard analysis of a redlined master services agreement limitation-of-liability clause, incorporating insurance coverage and negotiation context.
 activates_for: [planner, solver, checker]

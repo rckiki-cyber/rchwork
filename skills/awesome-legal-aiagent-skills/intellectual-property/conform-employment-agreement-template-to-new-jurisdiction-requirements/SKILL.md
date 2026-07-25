@@ -1,5 +1,5 @@
 ---
-name: conform雇佣模板新型管辖
+name: conform-employment-template-new-jurisdiction
 task_id: intellectual-property/conform-employment-agreement-template-to-new-jurisdiction-requirements
 description: Conformance memorandum and revised employment agreement template adapting an existing template from one jurisdiction to the mandatory requirements of a new target jurisdiction.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-09
 task_id: funds-asset-management/draft-lpa/scenario-09
 description: Draft a small-business investment company fund limited partnership agreement adapted from a non-specialized venture capital fund precedent, incorporating the applicable small-business investment company regulatory requirements, including priority for repayment of government leverage, investment limitations, transfer-consent mechanics, examination and records access, and a companion memo documenting all material changes from the precedent.
 activates_for: [planner, solver, checker]

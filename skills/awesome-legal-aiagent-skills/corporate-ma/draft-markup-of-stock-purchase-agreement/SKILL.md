@@ -1,5 +1,5 @@
 ---
-name: 起草markupstock购买协议
+name: draft-markup-of-stock-purchase-agreement
 task_id: corporate-ma/draft-markup-of-stock-purchase-agreement
 description: Guides preparation of a prioritized seller-side markup memo for a stock purchase agreement, emphasizing issue spotting, cross-document consistency checks, and bracketed commentary on risk allocation, representations, indemnification, restrictive covenants, and closing mechanics.
 activates_for: [planner, solver, checker]

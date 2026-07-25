@@ -1,5 +1,5 @@
 ---
-name: 审查诉讼发票againstoutsidecounselbilling指南
+name: review-litigation-invoice-against-outside-counsel-billing-guidelines
 task_id: litigation-dispute-resolution/review-litigation-invoice-against-outside-counsel-billing-guidelines
 description: A full invoice compliance review requires comparing each billing entry against applicable outside-counsel billing guidelines and the engagement letter for rate compliance, billing-practice violations, and prior-approval requirements, while cross-referencing the prior approval log to distinguish approved items from unauthorized deviations.
 activates_for: [planner, solver, checker]

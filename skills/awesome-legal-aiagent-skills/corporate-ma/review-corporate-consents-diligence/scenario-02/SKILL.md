@@ -1,5 +1,5 @@
 ---
-name: 审查公司同意尽职调查scenario
+name: review-corporate-consents-diligence-scenario-02
 task_id: corporate-ma/review-corporate-consents-diligence/scenario-02
 description: Guides preparation of a consent analysis memorandum for an equity purchase where a heterogeneous consent set spanning commercial contracts, financing documents, leases, government contracts, and permits must be systematically assessed.
 activates_for: [planner, solver, checker]

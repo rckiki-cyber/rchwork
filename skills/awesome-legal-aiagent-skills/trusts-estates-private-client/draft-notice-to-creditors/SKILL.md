@@ -1,5 +1,5 @@
 ---
-name: 起草通知creditors
+name: draft-notice-to-creditors
 task_id: trusts-estates-private-client/draft-notice-to-creditors
 description: Draft the creditor-notification package for a probate proceeding by coordinating publication notice with personal notice to known creditors, distinguishing among different claim categories, and documenting the notification process for the estate file.
 activates_for: [planner, solver, checker]

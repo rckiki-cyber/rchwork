@@ -1,5 +1,5 @@
 ---
-name: 起草ppm
+name: draft-ppm
 task_id: funds-asset-management/draft-ppm
 description: Draft a private placement memorandum for a fund offering using a prior fund's PPM as a structural template, reconciling all source documents into a single consistent offering document with the required disclosure sections for a private fund offering.
 activates_for: [planner, solver, checker]

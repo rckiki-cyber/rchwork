@@ -1,5 +1,5 @@
 ---
-name: 识别税务问题目标公司pre
+name: identify-tax-issues-in-target-company-pre
 task_id: corporate-ma/identify-tax-issues-in-target-company-pre
 description: Guides preparation of a tax due diligence issue memo for an acquisition where multi-year tax returns, foreign subsidiary filings, net operating loss schedules, transfer pricing, and employee benefit plan compliance must be systematically reviewed.
 activates_for: [planner, solver, checker]

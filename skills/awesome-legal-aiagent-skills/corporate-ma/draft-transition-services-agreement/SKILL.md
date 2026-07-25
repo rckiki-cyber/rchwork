@@ -1,5 +1,5 @@
 ---
-name: 起草transition服务协议
+name: draft-transition-services-agreement
 task_id: corporate-ma/draft-transition-services-agreement
 description: Guides full drafting of a transition services agreement for a post-closing carve-out where the service scope, fee structure, term, and services schedule exhibit must be sourced from the deal record and scoping materials.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 总结ma协议stockholders
+name: summarize-ma-agreement-for-stockholders
 task_id: corporate-ma/summarize-ma-agreement-for-stockholder-materials
 description: Guides preparation of a plain-language merger agreement summary for stockholder disclosure materials where accessibility, accuracy, and cross-document consistency must all be achieved simultaneously.
 activates_for: [planner, solver, checker]

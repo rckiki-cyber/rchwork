@@ -1,5 +1,5 @@
 ---
-name: extract财务承诺现有贷款文件
+name: extract-financial-covenants-from-existing-loan-documents
 task_id: banking-finance/extract-financial-covenants-from-existing-loan-documents
 description: Extract financial covenants from multiple commercial real estate loan documents, compare key covenant definitions across facilities, and produce a portfolio compliance summary with breach analysis and issue-spotting.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract条件先例indenture
+name: extract-conditions-precedent-from-indenture
 task_id: structured-finance-securitization/extract-conditions-precedent-from-indenture
 description: Extract closing conditions precedent from an ABS indenture and related transaction documents to prepare a compliance checklist, while identifying cross-document inconsistencies, inapplicable conditions carried forward from a prior deal checklist, and structural issues such as reserve account funding sequencing.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草lpascenario
+name: draft-lpa-scenario-05
 task_id: funds-asset-management/draft-lpa/scenario-05
 description: Draft a limited partnership agreement for a fund using a precedent, incorporating term sheet changes, LP-specific side-letter requirements, investor counsel comments, and an ESG framework, with a companion issues memo documenting drafting decisions and open items.
 activates_for: [planner, solver, checker]

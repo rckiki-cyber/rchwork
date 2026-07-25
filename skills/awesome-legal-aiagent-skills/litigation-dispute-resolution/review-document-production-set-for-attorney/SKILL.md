@@ -1,5 +1,5 @@
 ---
-name: 审查文件productionsetattorney
+name: review-document-production-set-for-attorney
 task_id: litigation-dispute-resolution/review-document-production-set-for-attorney
 description: Reviewing a document production set for privilege designations requires applying attorney-client privilege and work product doctrine to each document, addressing any prior inadvertent production and clawback history, and producing both a privilege designation report and draft privilege log entries as separate required outputs.
 activates_for: [planner, solver, checker]

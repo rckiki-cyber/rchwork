@@ -1,5 +1,5 @@
 ---
-name: 起草账户control协议
+name: draft-account-control-agreement
 task_id: structured-finance-securitization/draft-account-control-agreement
 description: Drafting an account control agreement for an asset-backed finance transaction where a standard-form template must be adapted to fix identified deficiencies in control mechanics, notice procedures, pre- and post-default account authority, and governing law.
 activates_for: [planner, solver, checker]

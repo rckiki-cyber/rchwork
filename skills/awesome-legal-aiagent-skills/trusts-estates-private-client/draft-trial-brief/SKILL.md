@@ -1,5 +1,5 @@
 ---
-name: 起草审判摘要
+name: draft-trial-brief
 task_id: trusts-estates-private-client/draft-trial-brief
 description: Closes the gap where agents produce generic dissolution trial briefs without applying the governing marital-property framework, resolving competing business valuation methodologies, building a documented dissipation record with burden-shifting analysis, and completing mandatory filing requirements.
 activates_for: [planner, solver, checker]

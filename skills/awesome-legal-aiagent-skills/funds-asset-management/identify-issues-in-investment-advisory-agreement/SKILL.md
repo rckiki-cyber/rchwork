@@ -1,5 +1,5 @@
 ---
-name: 识别问题投资advisory协议
+name: identify-issues-in-investment-advisory-agreement
 task_id: funds-asset-management/identify-issues-in-investment-advisory-agreement
 description: Review a draft investment advisory agreement on behalf of an investor client and produce an issues memo identifying material deficiencies, with severity ratings, legal authority citations, and recommended resolutions for each issue.
 activates_for: [planner, solver, checker]

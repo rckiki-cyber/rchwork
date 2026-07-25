@@ -1,5 +1,5 @@
 ---
-name: 起草markup承销协议issuer
+name: draft-markup-of-underwriting-agreement-issuer
 task_id: capital-markets/draft-markup-of-underwriting-agreement
 description: Issuer-perspective underwriting agreement markup where the baseline redlines identify deviations from the playbook and document the basis for each change without converting the skill into an answer key.
 activates_for: [planner, solver, checker]

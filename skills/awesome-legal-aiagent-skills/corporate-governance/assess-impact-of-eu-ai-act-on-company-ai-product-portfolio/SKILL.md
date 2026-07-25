@@ -1,5 +1,5 @@
 ---
-name: 欧盟AI法案投资组合影响分析
+name: eu-ai-act-portfolio-impact
 task_id: corporate-governance/assess-impact-of-eu-ai-act-on-company-ai-product-portfolio
 description: Regulatory impact assessment of an AI product portfolio against applicable AI governance classification requirements, identifying prohibited practices, high-risk system obligations, general-purpose AI model obligations, and systemic governance gaps.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草fcpa调查计划备忘录
+name: draft-fcpa-investigation-plan-memorandum
 task_id: white-collar-defense-investigations/draft-investigation-plan-memorandum
 description: Investigation plan memorandum for an internal FCPA investigation, covering scope definition, privilege protection, witness interview sequencing, document preservation with targeted IT preservation steps where warranted, voluntary self-disclosure assessment, and immediate remedial steps triggered by red flags in the record.
 activates_for: [planner, solver, checker]

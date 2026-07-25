@@ -1,5 +1,5 @@
 ---
-name: 识别问题dissident委托报表
+name: identify-issues-in-dissident-proxy-statement
 task_id: corporate-governance/identify-issues-in-dissident-proxy-statement
 description: Agents identify surface-level proxy statement deficiencies in a dissident solicitation, focusing on potential disclosure gaps, misleading performance or comparison claims, voting-standard misstatements, group-formation issues, and other procedural defects that may be relevant to defensive communications, regulatory outreach, or procedural challenges.
 activates_for: [planner, solver, checker]

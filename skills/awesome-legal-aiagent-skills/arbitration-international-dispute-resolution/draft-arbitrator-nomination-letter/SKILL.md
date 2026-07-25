@@ -1,5 +1,5 @@
 ---
-name: 起草arbitratornomination函件
+name: draft-arbitrator-nomination-letter
 task_id: arbitration-international-dispute-resolution/draft-arbitrator-nomination-letter
 description: Draft a formal arbitrator nomination letter addressed to the administering institution that identifies the applicable nomination deadline, proactively discloses any potentially relevant relationships with brief explanations, confirms availability, confirms the tribunal structure and the nominee’s role, and includes a confidentiality acknowledgment.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: its草案出口许可application
+name: its-draft-export-license-application
 task_id: international-trade-sanctions/draft-export-license-application
 description: Produces a BIS export license application narrative and a pre-filing issues memorandum that identifies document deficiencies, transshipment disclosure obligations, missing export filing history, and unauthorized signatories that must be resolved before submission.
 activates_for: [planner, solver, checker]

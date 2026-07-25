@@ -1,5 +1,5 @@
 ---
-name: 审查委托报表sec表格合规
+name: review-proxy-statement-for-sec-form-compliance
 task_id: capital-markets/review-proxy-statement-for-sec-form-compliance
 description: Proxy statement form-compliance review where the baseline identifies visible disclosure gaps but may miss recently required disclosures, shareholder-proposal handling requirements, and procedural notice obligations.
 activates_for: [planner, solver, checker]

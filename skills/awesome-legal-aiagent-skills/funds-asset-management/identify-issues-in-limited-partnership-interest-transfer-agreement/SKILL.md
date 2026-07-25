@@ -1,5 +1,5 @@
 ---
-name: 识别问题有限合伙权益transfer协议
+name: identify-issues-in-limited-partnership-interest-transfer-agreement
 task_id: funds-asset-management/identify-issues-in-limited-partnership-interest-transfer-agreement
 description: Review a limited partnership interest transfer agreement as counsel to the fund or general partner and produce an issues memo identifying material concerns and consent conditions by comparing the transfer documents against the governing partnership agreement, related side arrangements, portfolio-company information, and capital account or comparable transfer-supporting records.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 起草defectiveindustrialequipment产品责任
+name: draft-defective-industrial-equipment-product-liability
 task_id: litigation-dispute-resolution/draft-defective-industrial-equipment-product-liability
 description: A case assessment memo for an industrial equipment product liability claim requires analyzing liability theories against the available forensic and workplace-safety findings, evaluating contractual terms-and-conditions defenses, assessing insurance coverage layers, and recommending a venue and early-case strategy.
 activates_for: [planner, solver, checker]

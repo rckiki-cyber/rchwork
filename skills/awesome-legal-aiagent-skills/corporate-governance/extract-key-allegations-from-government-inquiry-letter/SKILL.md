@@ -1,5 +1,5 @@
 ---
-name: extractkeyallegations政府询问函件
+name: extract-key-allegations-from-government-inquiry-letter
 task_id: corporate-governance/extract-key-allegations-from-government-inquiry-letter
 description: Agents summarize allegations in a government inquiry letter at a high level, identify additional liability theories embedded in document-request sections, analyze disclosure-triggering events and their sequencing, and flag potential individual representation conflicts for named witnesses.
 activates_for: [planner, solver, checker]

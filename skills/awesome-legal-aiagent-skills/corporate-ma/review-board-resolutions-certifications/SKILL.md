@@ -1,5 +1,5 @@
 ---
-name: 审查董事会解决certifications
+name: review-board-resolutions-certifications
 task_id: corporate-ma/review-board-resolutions-certifications
 description: Guides review of a merger closing document set to identify defects in board resolutions, closing certifications, and merger authorizations, with corrected document drafting and a correspondence letter to opposing counsel.
 activates_for: [planner, solver, checker]

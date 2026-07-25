@@ -1,5 +1,5 @@
 ---
-name: 比较公司反垄断合规方案againstdojftc指南
+name: compare-corporate-antitrust-compliance-program-against-doj-and-ftc-guidelines
 task_id: antitrust-competition/compare-corporate-antitrust-compliance-program-against-doj-and-ftc-guidelines
 description: Closes gaps in organizing issues within a recognized antitrust compliance evaluation framework, identifying high-risk personnel categories requiring specialized training, and connecting material compliance events to program update obligations.
 activates_for: [planner, solver, checker]

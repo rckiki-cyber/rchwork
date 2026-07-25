@@ -1,5 +1,5 @@
 ---
-name: extractkey证据文件production
+name: extract-key-exhibits-from-document-production
 task_id: trusts-estates-private-client/extract-key-exhibits-from-document-production
 description: Closes the gap where agents catalog exhibits in isolation without linking related financial documents to identify undisclosed accounts, quantifying income understatement across all sources, connecting account balance declines to specific transfers, and building a complete asset summary table.
 activates_for: [planner, solver, checker]

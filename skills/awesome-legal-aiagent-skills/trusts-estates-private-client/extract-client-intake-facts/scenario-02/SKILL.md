@@ -1,5 +1,5 @@
 ---
-name: 离婚案客户信息提取
+name: extract-client-intake-facts-divorce-scenario-02
 task_id: trusts-estates-private-client/extract-client-intake-facts/scenario-02
 description: Extract and organize key facts from a disorganized client intake for a contested divorce matter, with emphasis on asset characterization, potential dissipation, transfer timing, and the client’s stated priorities.
 activates_for: [planner, solver, checker]

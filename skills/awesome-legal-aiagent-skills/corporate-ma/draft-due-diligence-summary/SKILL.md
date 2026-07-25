@@ -1,5 +1,5 @@
 ---
-name: 起草due尽职调查摘要
+name: draft-due-diligence-summary
 task_id: corporate-ma/draft-due-diligence-summary
 description: Guides preparation of an investment-committee-ready due diligence summary memo that synthesizes findings by severity tier, translates financial adjustments into enterprise-value impact, identifies insurance coverage gaps for excluded exposures, and provides deal-protection recommendations for significant issues.
 activates_for: [planner, solver, checker]

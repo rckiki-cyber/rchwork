@@ -1,5 +1,5 @@
 ---
-name: 审查雇佣协议markup公司positions
+name: review-employment-agreement-markup-company-positions
 task_id: intellectual-property/review-employment-agreement-and-prepare-markup-toward-company-positions
 description: Reviewing a draft executive employment agreement against a company playbook and agreed deal points to prepare a redline markup memorandum with proposed replacement language.
 activates_for: [planner, solver, checker]

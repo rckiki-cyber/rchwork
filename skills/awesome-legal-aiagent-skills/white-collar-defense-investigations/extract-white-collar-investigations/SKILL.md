@@ -1,5 +1,5 @@
 ---
-name: extractdojpreservation通知义务
+name: extract-doj-preservation-notice-obligations
 task_id: white-collar-defense-investigations/extract-white-collar-investigations
 description: Prioritized compliance gap report extracting preservation obligations from a government preservation notice and any supplemental correspondence, identifying document categories, enumerated technology systems, auto-deletion suspension requirements, and any imaging or collection deadlines, with recommended remedial steps.
 activates_for: [planner, solver, checker]

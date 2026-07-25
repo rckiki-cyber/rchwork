@@ -1,5 +1,5 @@
 ---
-name: extract条件zoning批准
+name: extract-conditions-from-zoning-approval
 task_id: real-estate/extract-conditions-from-zoning-approval
 description: Guides construction of a compliance tracking matrix from a conditional use approval by systematically extracting each condition, cross-referencing against supporting materials for inconsistencies, and flagging critical-path and binary-approval risks.
 activates_for: [planner, solver, checker]

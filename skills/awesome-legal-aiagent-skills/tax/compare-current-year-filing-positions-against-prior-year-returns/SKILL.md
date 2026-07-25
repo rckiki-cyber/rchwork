@@ -1,5 +1,5 @@
 ---
-name: 比较现行年提交positionsagainstprior年returns
+name: compare-current-year-filing-positions-against-prior-year-returns
 task_id: tax/compare-current-year-filing-positions-against-prior-year-returns
 description: A year-over-year tax position deviation analysis must identify not only numerical differences but the legal consequences of each deviation, including downstream effects on losses, classification disputes, and documentation requirements, before filing.
 activates_for: [planner, solver, checker]

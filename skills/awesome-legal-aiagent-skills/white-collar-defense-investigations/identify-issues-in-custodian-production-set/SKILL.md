@@ -1,5 +1,5 @@
 ---
-name: 识别问题custodianproductionset
+name: identify-issues-in-custodian-production-set
 task_id: white-collar-defense-investigations/identify-issues-in-custodian-production-set
 description: Issues memorandum analyzing a custodian production set for a government investigation, identifying preservation-risk events, post-preservation deletions, privilege log deficiencies, and gaps between the collection plan and actual collection activity.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: 识别问题intercreditor协议mezzanine
+name: identify-issues-intercreditor-agreement-mezzanine
 task_id: energy-natural-resources/identify-issues-in-intercreditor-agreement
 description: Guides identification of issues in a project finance intercreditor agreement from the mezzanine lender's perspective by focusing on project finance market conventions, the effect of cash sweep mechanics on mezzanine debt service, and the need to explain both the legal issue and practical risk of each item.
 activates_for: [planner, solver, checker]

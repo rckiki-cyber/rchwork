@@ -1,5 +1,5 @@
 ---
-name: 识别deficienciescounterpartys报表抗辩
+name: identify-deficiencies-in-counterpartys-statement-of-defense
 task_id: arbitration-international-dispute-resolution/identify-deficiencies-and-vulnerabilities-in-counterpartys-statement-of-defense
 description: Ensures a claimant-side defense analysis flags potential late filing, verifies force majeure notice timeliness, identifies the wrong contractual mechanism, and checks the defense's causation arithmetic for inconsistencies.
 activates_for: [planner, solver, checker]

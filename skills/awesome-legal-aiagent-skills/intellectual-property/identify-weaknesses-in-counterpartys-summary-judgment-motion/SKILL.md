@@ -1,5 +1,5 @@
 ---
-name: 识别weaknessescounterpartysjm动议
+name: identify-weaknesses-counterparty-sjm-motion
 task_id: intellectual-property/identify-weaknesses-in-counterpartys-summary-judgment-motion
 description: Reviewing an opposing party's summary judgment motion and supporting materials in a patent case to identify weaknesses and prepare a comprehensive opposition strategy.
 activates_for: [planner, solver, checker]

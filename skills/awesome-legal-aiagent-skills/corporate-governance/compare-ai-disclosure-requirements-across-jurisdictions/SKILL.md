@@ -1,5 +1,5 @@
 ---
-name: ai披露要求多管辖
+name: ai-disclosure-requirements-multi-jurisdiction
 task_id: corporate-governance/compare-ai-disclosure-requirements-across-jurisdictions
 description: Multi-jurisdiction comparison of AI disclosure requirements across deployment jurisdictions, identifying misclassifications in prior analyses, consent-versus-disclosure distinctions, and a prioritized remediation roadmap mapped to law effective dates.
 activates_for: [planner, solver, checker]

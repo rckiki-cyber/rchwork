@@ -1,5 +1,5 @@
 ---
-name: 评估诉讼监管风险
+name: assess-litigation-regulatory-risk
 task_id: corporate-ma/assess-litigation-and-regulatory-risk-from-targets-pending-matters
 description: Guides matter-by-matter analysis of a target's pending litigation and regulatory matters, assessing reserve adequacy, insurance coverage gaps, aggregate exposure relative to indemnification structure, and recommended deal protections.
 activates_for: [planner, solver, checker]

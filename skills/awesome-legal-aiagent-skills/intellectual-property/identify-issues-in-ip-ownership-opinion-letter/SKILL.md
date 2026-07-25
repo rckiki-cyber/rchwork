@@ -1,5 +1,5 @@
 ---
-name: 识别问题ipownership意见函件
+name: identify-issues-ip-ownership-opinion-letter
 task_id: intellectual-property/identify-issues-in-ip-ownership-opinion-letter
 description: Reviewing a draft IP ownership opinion letter against supporting portfolio, transaction, and government grant materials to identify deficiencies in the opinion's factual basis and legal conclusions.
 activates_for: [planner, solver, checker]

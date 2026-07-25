@@ -1,5 +1,5 @@
 ---
-name: 起草first日动议
+name: draft-first-day-motions
 task_id: bankruptcy-restructuring/draft-first-day-motions
 description: Ensures a first-day motions package applies relevant bankruptcy-practice requirements and cross-document consistency checks, including priority-claim, utility, executory-contract, and financing analyses, while flagging discrepancies across filings.
 activates_for: [planner, solver, checker]

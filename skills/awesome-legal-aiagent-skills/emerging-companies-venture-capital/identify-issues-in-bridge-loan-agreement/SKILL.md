@@ -1,5 +1,5 @@
 ---
-name: ecvcidentify问题bridge贷款
+name: ecvc-identify-issues-bridge-loan
 task_id: emerging-companies-venture-capital/identify-issues-in-bridge-loan-agreement
 description: Identifying issues in a bridge loan agreement requires assessing economic terms against market benchmarks, flagging a personal guaranty as non-standard for an institutional bridge, identifying one-sided amendment provisions, and evaluating revenue milestones for achievability given the company's stage.
 activates_for: [planner, solver, checker]
