@@ -253,12 +253,13 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
       // ── Auto Retrieval ──────────────────────────────────────────
       LocalToolHost.defineTool({
         name: 'knowledge_auto_retrieve',
-        description: 'One-step auto-retrieval: given a user question or task description, automatically searches the knowledge base for relevant documents, checks for expired/deprecated content, and returns a formatted context block with source citations ready for model injection. Use this at the start of any legal writing or QA task to gather all relevant team knowledge.',
+        description: 'One-step auto-retrieval: given a user question or task description, automatically searches the knowledge base for relevant documents, checks for expired/deprecated content, and returns a formatted context block with source citations ready for model injection. Supports pyramid layer routing — optionally specify a knowledge layer (principle, architecture, standard, implementation, experience) to narrow results to a specific abstraction level. Use this at the start of any legal writing or QA task to gather all relevant team knowledge.',
         inputSchema: {
           type: 'object',
           properties: {
             query: { type: 'string', description: 'The user question or task that needs knowledge context' },
-            excludeExpired: { type: 'boolean', description: 'Whether to filter out expired/deprecated content (default true)' }
+            excludeExpired: { type: 'boolean', description: 'Whether to filter out expired/deprecated content (default true)' },
+            layer: { type: 'string', enum: ['principle', 'architecture', 'standard', 'implementation', 'experience'], description: 'Optional: restrict search to a specific pyramid knowledge layer (L1-L5). Auto-detected from query when omitted.' }
           },
           required: ['query'],
           additionalProperties: false
@@ -268,11 +269,12 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
           const query = typeof args.query === 'string' ? args.query.trim() : ''
           if (!query) return { output: { error: 'query is required' }, isError: true }
           const excludeExpired = args.excludeExpired !== false
+          const layer = typeof args.layer === 'string' ? args.layer as any : undefined
 
           // Dynamic import to avoid circular dependency
           const { KnowledgeRetrievalPipeline } = await import('../../knowledge/knowledge-retrieval-pipeline.js')
           const pipeline = new KnowledgeRetrievalPipeline(store)
-          const result = await pipeline.retrieve(query, { excludeExpired })
+          const result = await pipeline.retrieve(query, { excludeExpired, layer })
           return { output: result }
         }
       }),

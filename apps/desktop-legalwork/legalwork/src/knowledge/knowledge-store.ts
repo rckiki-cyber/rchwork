@@ -6,23 +6,26 @@ import { extractDocumentText, EXTRACTABLE_EXTENSIONS } from './text-extractor.js
 import { makeUserItem } from '../domain/item.js'
 import type { ModelClient, ModelRequest, ModelStreamChunk } from '../ports/model-client.js'
 import type {
+  KnowledgeChunk,
   KnowledgeClassifyRequest,
   KnowledgeClassifyResult,
-  KnowledgeChunk,
   KnowledgeCreateFolderRequest,
   KnowledgeDiagnostics,
   KnowledgeDocument,
+  KnowledgeEdge,
   KnowledgeFileContent,
+  KnowledgeLayer,
   KnowledgeMoveRequest,
   KnowledgeSearchHit,
   KnowledgeSyncRequest,
   KnowledgeSyncResult,
   KnowledgeTreeNode
 } from '../contracts/knowledge.js'
+import { inferLayerFromMeta } from './knowledge-pyramid-router.js'
 
 export interface KnowledgeStore {
   sync(input?: KnowledgeSyncRequest): Promise<KnowledgeSyncResult>
-  search(input: { query: string; limit: number; includeContent?: boolean }): Promise<KnowledgeSearchHit[]>
+  search(input: { query: string; limit: number; includeContent?: boolean; layer?: KnowledgeLayer; layers?: KnowledgeLayer[] }): Promise<KnowledgeSearchHit[]>
   diagnostics(): Promise<KnowledgeDiagnostics>
   setLastSelected(ids: string[]): void
   /** List managed file/folder tree. */
@@ -50,6 +53,7 @@ type KnowledgeIndex = {
   roots: string[]
   documents: KnowledgeDocument[]
   chunks: KnowledgeChunk[]
+  edges: KnowledgeEdge[]
   skippedCount: number
 }
 
@@ -364,6 +368,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
         const category = inferCategory(filePath, relPath, content)
         const keywords = extractKeywords(`${relPath}\n${content}`, 16)
         const tags = inferTags(filePath, relPath, content, category, keywords)
+        const layer = inferLayerFromMeta(relPath, category, tags, extname(filePath).toLowerCase(), content.slice(0, 2000))
         const document: KnowledgeDocument = {
           id: documentId,
           title: titleFromPath(filePath),
@@ -375,7 +380,8 @@ export class FileKnowledgeStore implements KnowledgeStore {
           keywords,
           extension: extname(filePath).toLowerCase(),
           sizeBytes: info.size,
-          updatedAt: info.mtime.toISOString()
+          updatedAt: info.mtime.toISOString(),
+          layer
         }
         documents.push(document)
         chunks.push(...chunkDocument(document, content))
@@ -384,8 +390,12 @@ export class FileKnowledgeStore implements KnowledgeStore {
       }
     }
 
+    // Build edge index for pyramid graph
+    const { buildEdgeIndex } = await import('./knowledge-graph.js')
+    const edges = buildEdgeIndex(documents)
+
     const syncedAt = this.now()
-    await this.writeIndex({ syncedAt, roots, documents, chunks, skippedCount })
+    await this.writeIndex({ syncedAt, roots, documents, chunks, edges, skippedCount })
     return {
       syncedAt,
       roots,
@@ -395,7 +405,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
     }
   }
 
-  async search(input: { query: string; limit: number; includeContent?: boolean }): Promise<KnowledgeSearchHit[]> {
+  async search(input: { query: string; limit: number; includeContent?: boolean; layer?: KnowledgeLayer; layers?: KnowledgeLayer[] }): Promise<KnowledgeSearchHit[]> {
     const query = input.query.trim()
     if (!query) return []
     let index = await this.readIndex()
@@ -403,10 +413,22 @@ export class FileKnowledgeStore implements KnowledgeStore {
       await this.sync()
       index = await this.readIndex()
     }
+
+    // Layer filtering
+    const targetLayers = new Set<KnowledgeLayer>()
+    if (input.layer) targetLayers.add(input.layer)
+    if (input.layers) input.layers.forEach((l) => targetLayers.add(l))
+    const filterByLayer = targetLayers.size > 0
+
+    let candidates = index.chunks
+    if (filterByLayer) {
+      candidates = candidates.filter((chunk) => chunk.layer && targetLayers.has(chunk.layer))
+    }
+
     const terms = queryTerms(query)
     const lowerQuery = query.toLowerCase()
     const queryTermSet = new Set(terms)
-    const hits = rerankChunks(index.chunks
+    const hits = rerankChunks(candidates
       .map((chunk) => scoreChunk(chunk, lowerQuery, terms, queryTermSet))
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score || a.chunk.relativePath.localeCompare(b.chunk.relativePath))
@@ -420,6 +442,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
         ...(chunk.category ? { category: chunk.category } : {}),
         ...(chunk.tags?.length ? { tags: chunk.tags } : {}),
         ...(chunk.keywords?.length ? { keywords: chunk.keywords } : {}),
+        ...(chunk.layer ? { layer: chunk.layer } : {}),
         score,
         rankReason,
         snippet: makeSnippet(chunk.content, lowerQuery, terms),
@@ -455,10 +478,11 @@ export class FileKnowledgeStore implements KnowledgeStore {
         roots: Array.isArray(parsed.roots) ? parsed.roots.filter((root): root is string => typeof root === 'string') : [],
         documents: Array.isArray(parsed.documents) ? parsed.documents as KnowledgeDocument[] : [],
         chunks: Array.isArray(parsed.chunks) ? parsed.chunks as KnowledgeChunk[] : [],
+        edges: Array.isArray(parsed.edges) ? parsed.edges as import('../contracts/knowledge.js').KnowledgeEdge[] : [],
         skippedCount: typeof parsed.skippedCount === 'number' ? parsed.skippedCount : 0
       }
     } catch {
-      return { roots: [], documents: [], chunks: [], skippedCount: 0 }
+      return { roots: [], documents: [], chunks: [], edges: [], skippedCount: 0 }
     }
   }
 
@@ -749,7 +773,8 @@ function chunkDocument(document: KnowledgeDocument, content: string): KnowledgeC
         category: document.category,
         tags: document.tags,
         keywords,
-        content: slice
+        content: slice,
+        layer: document.layer
       })
     }
     if (start + CHUNK_SIZE >= content.length) break

@@ -1,9 +1,10 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import type { KnowledgeStore } from '../knowledge/knowledge-store.js'
-import type { KnowledgeContextRecord, KnowledgeRetrievalResult } from '../contracts/knowledge-retrieval.js'
+import type { KnowledgeContextRecord, KnowledgeRetrievalResult, KnowledgeLayer } from '../contracts/knowledge-retrieval.js'
 import { KnowledgeMeta, DEFAULT_KNOWLEDGE_META } from '../contracts/knowledge-retrieval.js'
 import { fieldsFromKnowledgeMeta, formatGbt7714, buildBibliography } from './citation-engine.js'
+import { route, LAYER_LABEL, LAYER_DESC } from './knowledge-pyramid-router.js'
 
 const MAX_CONTEXT_CHARS = 8_000
 const MAX_SOURCES = 12
@@ -20,19 +21,31 @@ export class KnowledgeRetrievalPipeline {
 
   /**
    * Run the full retrieval pipeline for a user query.
+   * Supports pyramid layer routing when `layer` is specified or auto-detected.
    * Returns formatted context text + source citations.
    */
   async retrieve(query: string, options?: {
     maxChars?: number
     excludeExpired?: boolean
     includeExternal?: boolean
+    layer?: KnowledgeLayer
+    layers?: KnowledgeLayer[]
   }): Promise<KnowledgeRetrievalResult> {
     const startedAt = Date.now()
     const maxChars = options?.maxChars ?? MAX_CONTEXT_CHARS
     const excludeExpired = options?.excludeExpired ?? true
 
-    // 1. Search local knowledge base
-    const hits = await this.store.search({ query, limit: MAX_SOURCES, includeContent: true })
+    // Pyramid layer routing: determine target layers
+    const routeResult = route(query)
+    const targetLayers = options?.layers ?? (options?.layer ? [options.layer] : undefined) ?? routeResult.targetLayers
+
+    // 1. Search local knowledge base (with layer filter if applicable)
+    const hits = await this.store.search({
+      query,
+      limit: MAX_SOURCES,
+      includeContent: true,
+      ...(targetLayers.length > 0 ? { layers: targetLayers } : {})
+    })
 
     // 2. Filter by expiry and deprecation if requested
     const filtered = excludeExpired
@@ -80,7 +93,8 @@ export class KnowledgeRetrievalPipeline {
         authors: citationFields.authors ?? [],
         publicationYear: citationFields.year,
         publicationName: citationFields.journalName,
-        doi: citationFields.doi
+        doi: citationFields.doi,
+        layer: hit.layer
       }
       records.push(record)
       bibliographyEntries.push({ title: hit.title, citation: gbt7714Citation })
@@ -94,7 +108,7 @@ export class KnowledgeRetrievalPipeline {
     }
 
     // 4. Format the final context text
-    const contextText = this.formatContextText(contextEntries, query)
+    const contextText = this.formatContextText(contextEntries, query, routeResult)
     const bibliography = buildBibliography(
       bibliographyEntries.map((e, i) => {
         // Parse citation back from stored format
@@ -152,6 +166,7 @@ export class KnowledgeRetrievalPipeline {
    */
   private formatEntry(record: KnowledgeContextRecord): string {
     const badges: string[] = []
+    if (record.layer) badges.push(LAYER_LABEL[record.layer])
     if (record.tags.includes('has_expiry')) badges.push('⚠️ 有时效性')
     if (record.tags.includes('deprecated')) badges.push('⚠️ 已废弃')
     if (record.tags.includes('high_confidence')) badges.push('可信度高')
@@ -163,10 +178,14 @@ export class KnowledgeRetrievalPipeline {
   /**
    * Format context records into a compact block for model injection.
    */
-  private formatContextText(entries: string[], query: string): string {
+  private formatContextText(entries: string[], query: string, routeResult?: { primaryLayer?: string; primaryLabel?: string }): string {
     if (!entries.length) return ''
 
-    const header = `【知识库检索结果】\n查询：${query}\n匹配 ${entries.length} 个来源\n\n`
+    let header = `【知识库检索结果】\n查询：${query}\n匹配 ${entries.length} 个来源`
+    if (routeResult?.primaryLabel) {
+      header += `\n主要检索层级：${routeResult.primaryLabel}`
+    }
+    header += '\n\n'
     return header + entries.join('\n\n')
   }
 

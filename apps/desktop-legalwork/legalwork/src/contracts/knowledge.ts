@@ -1,5 +1,42 @@
 import { z } from 'zod'
 
+/**
+ * Pyramid knowledge layers L1-L5.
+ * Each layer represents an abstraction level with different stability and cognitive purpose.
+ */
+export const KnowledgeLayer = z.enum([
+  'principle',       // L1 — 不变的原则 (SOLID, KISS, YAGNI)
+  'architecture',    // L2 — 架构决策与系统设计 (ADR)
+  'standard',        // L3 — 编码规范与标准 (ESLint rules, style guides)
+  'implementation',  // L4 — 实现参考与模板 (code samples, SDK docs)
+  'experience'       // L5 — 经验复盘与运维日志 (postmortems, runbooks)
+])
+export type KnowledgeLayer = z.infer<typeof KnowledgeLayer>
+
+/**
+ * Edge types for cross-document graph relationships.
+ */
+export const KnowledgeEdgeRelation = z.enum([
+  'governs',       // L1→L2   原则约束架构
+  'defines',       // L1→L2/L3 概念定义边界
+  'constrains',    // L2→L3   架构约束规范
+  'implements',    // L2/L3→L4 规范/架构的具体实现
+  'validates',     // L4→L5   实现产生验证经验
+  'feedback',      // L5→L3/L4 经验反哺改进
+  'cross_ref',     // 任意     同层或跨层的横向引用
+])
+export type KnowledgeEdgeRelation = z.infer<typeof KnowledgeEdgeRelation>
+
+export const KnowledgeEdge = z.object({
+  id: z.string().min(1),
+  sourceId: z.string().min(1),
+  targetId: z.string().min(1),
+  relation: KnowledgeEdgeRelation,
+  label: z.string().optional(),
+  weight: z.number().min(0).max(1).default(0.5)
+}).strict()
+export type KnowledgeEdge = z.infer<typeof KnowledgeEdge>
+
 export const KnowledgeDocument = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
@@ -11,7 +48,9 @@ export const KnowledgeDocument = z.object({
   keywords: z.array(z.string()).optional(),
   extension: z.string().min(1),
   sizeBytes: z.number().int().nonnegative(),
-  updatedAt: z.string()
+  updatedAt: z.string(),
+  /** Pyramid knowledge layer (L1-L5). Undefined for legacy documents. */
+  layer: KnowledgeLayer.optional()
 }).strict()
 export type KnowledgeDocument = z.infer<typeof KnowledgeDocument>
 
@@ -24,7 +63,9 @@ export const KnowledgeChunk = z.object({
   category: z.string().optional(),
   tags: z.array(z.string()).optional(),
   keywords: z.array(z.string()).optional(),
-  content: z.string().min(1)
+  content: z.string().min(1),
+  /** Pyramid knowledge layer inherited from parent document. */
+  layer: KnowledgeLayer.optional()
 }).strict()
 export type KnowledgeChunk = z.infer<typeof KnowledgeChunk>
 
@@ -40,7 +81,9 @@ export const KnowledgeSearchHit = z.object({
   score: z.number().nonnegative(),
   rankReason: z.string().optional(),
   snippet: z.string(),
-  content: z.string().optional()
+  content: z.string().optional(),
+  /** Pyramid knowledge layer from the parent document. */
+  layer: KnowledgeLayer.optional()
 }).strict()
 export type KnowledgeSearchHit = z.infer<typeof KnowledgeSearchHit>
 

@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { KnowledgeLayer } from './knowledge.js'
+export type { KnowledgeLayer }
 
 /**
  * Knowledge metadata: attached to each document in the managed knowledge base.
@@ -22,7 +24,9 @@ export const KnowledgeMeta = z.object({
   /** Review/approval status */
   reviewStatus: z.enum(['draft', 'reviewed', 'approved', 'superseded']).default('draft'),
   /** Version string for tracking updates */
-  version: z.string().default('1.0.0')
+  version: z.string().default('1.0.0'),
+  /** Pyramid knowledge layer (L1-L5). Undefined for legacy documents. */
+  layer: z.enum(['principle', 'architecture', 'standard', 'implementation', 'experience']).optional()
 }).strict()
 export type KnowledgeMeta = z.infer<typeof KnowledgeMeta>
 
@@ -68,7 +72,9 @@ export const KnowledgeContextRecord = z.object({
   /** Publication name (journal, conference, etc.) */
   publicationName: z.string().optional(),
   /** DOI if present in document */
-  doi: z.string().optional()
+  doi: z.string().optional(),
+  /** Pyramid knowledge layer of the source document */
+  layer: KnowledgeLayer.optional()
 }).strict()
 export type KnowledgeContextRecord = z.infer<typeof KnowledgeContextRecord>
 
