@@ -1,5 +1,5 @@
 ---
-name: assess-cpra-regulatory-impact-on-data-broker-relationships
+name: 评估cpra监管impact数据brokerrelationships
 task_id: data-privacy-cybersecurity/assess-cpra-regulatory-impact-on-data-broker-relationships
 description: Assess privacy-regulatory impact on counterparty relationships by classifying each relationship under the applicable privacy framework, checking whether the actual data flows and contract terms match that classification, and identifying any missing contractual, disclosure, registration, or consumer-rights steps.
 activates_for: [planner, solver, checker]

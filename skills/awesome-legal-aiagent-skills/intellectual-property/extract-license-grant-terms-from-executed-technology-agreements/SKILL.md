@@ -1,5 +1,5 @@
 ---
-name: extract-license-grant-terms-executed-tech-agreements
+name: extract许可grant条款executedtech协议
 task_id: intellectual-property/extract-license-grant-terms-from-executed-technology-agreements
 description: Building a license grant matrix from multiple executed technology agreements and amendments, identifying scope limitations, amendment modifications, and remediation recommendations at a category level.
 activates_for: [planner, solver, checker]

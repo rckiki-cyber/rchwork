@@ -1,5 +1,5 @@
 ---
-name: compare-insurance-proposal-coverage-specifications
+name: 比较保险建议书coveragespecifications
 task_id: insurance/compare-policy
 description: Agents comparing an insurance proposal against coverage specifications should analyze compounded coverage gaps across policies, check for maritime-worker coverage obligations, and calibrate severity to the practical exposure presented by each issue.
 activates_for: [planner, solver, checker]

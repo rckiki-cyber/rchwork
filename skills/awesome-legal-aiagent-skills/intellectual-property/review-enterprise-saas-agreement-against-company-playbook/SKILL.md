@@ -1,5 +1,5 @@
 ---
-name: review-enterprise-saas-agreement-company-playbook
+name: 审查enterprisesaas协议公司playbook
 task_id: intellectual-property/review-enterprise-saas-agreement-against-company-playbook
 description: Reviewing a SaaS agreement against a contracting playbook and related deal context to produce a prioritized deviation and risk memorandum with recommended redline positions.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-proxy-statement-disclosure-full
+name: 起草委托报表披露full
 task_id: capital-markets/draft-proxy-statement-disclosure
 description: Comprehensive proxy statement drafting from multiple source documents where the baseline produces the core disclosure sections but may miss additional disclosure obligations arising from the company’s governance and compensation profile.
 activates_for: [planner, solver, checker]

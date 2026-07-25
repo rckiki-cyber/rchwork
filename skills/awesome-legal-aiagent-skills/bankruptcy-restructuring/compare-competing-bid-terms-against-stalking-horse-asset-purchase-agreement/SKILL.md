@@ -1,5 +1,5 @@
 ---
-name: compare-competing-bid-terms-stalking-horse-apa
+name: 比较competing投标条款stalkinghorseapa
 task_id: bankruptcy-restructuring/compare-competing-bid-terms-against-stalking-horse-asset-purchase-agreement
 description: Ensures a bid comparison memo evaluates financing quality, liability exclusion risks, timeline feasibility, and conflict-of-interest indicators alongside headline economics — not only the face-value bid price.
 activates_for: [planner, solver, checker]

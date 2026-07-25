@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-investment-advisory-agreement
+name: 分析counterpartymarkup投资advisory协议
 task_id: funds-asset-management/analyze-counterparty-markup-of-investment-advisory-agreement
 description: Review a counterparty's redline of an investment advisory agreement against the adviser's standard form, negotiation playbook, and Form ADV to produce a classified redline review memorandum with issue-by-issue counter-positions for each proposed change.
 activates_for: [planner, solver, checker]

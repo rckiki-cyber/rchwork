@@ -1,5 +1,5 @@
 ---
-name: compare-sla-negotiation-playbook
+name: 比较sla谈判playbook
 task_id: intellectual-property/compare-software-license-agreement-against-negotiation-playbook
 description: Deviation report comparing a vendor-drafted software license agreement against the company negotiation playbook and internal priorities, with a summary deviation table.
 activates_for: [planner, solver, checker]

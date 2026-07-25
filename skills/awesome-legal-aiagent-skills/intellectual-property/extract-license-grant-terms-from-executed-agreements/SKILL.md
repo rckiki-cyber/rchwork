@@ -1,5 +1,5 @@
 ---
-name: extract-license-grant-terms-executed-agreements
+name: extract许可grant条款executed协议
 task_id: intellectual-property/extract-license-grant-terms-from-executed-agreements
 description: Create a matrix summarizing license grant terms across multiple executed technology license agreements and assess how those terms interact with a planned integration, using cross-agreement comparison and conflict identification.
 activates_for: [planner, solver, checker]

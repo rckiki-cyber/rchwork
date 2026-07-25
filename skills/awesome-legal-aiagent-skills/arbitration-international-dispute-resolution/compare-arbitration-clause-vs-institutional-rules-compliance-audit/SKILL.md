@@ -1,5 +1,5 @@
 ---
-name: compare-arbitration-clause-vs-institutional-rules-compliance-audit
+name: 比较仲裁条款vsinstitutional规则合规审计
 task_id: arbitration-international-dispute-resolution/compare-arbitration-clause-vs-institutional-rules-compliance-audit
 description: Ensures a clause-versus-rules compliance audit explains the practical consequences of a frozen rules reference, tests any waiver language against non-waivable challenges under the applicable curial law, and keeps the governing law analysis distinct from the seat analysis.
 activates_for: [planner, solver, checker]

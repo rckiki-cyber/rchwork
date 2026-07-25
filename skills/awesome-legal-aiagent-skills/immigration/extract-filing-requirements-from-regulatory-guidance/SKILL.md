@@ -1,5 +1,5 @@
 ---
-name: extract-filing-requirements-from-regulatory-guidance
+name: extract提交要求监管guidance
 task_id: immigration/extract-filing-requirements-from-regulatory-guidance
 description: Filing requirements checklist for pending immigration petitions extracted from regulatory guidance documents, where the checklist should capture both core procedural requirements and petition-specific risks arising from beneficiary facts and filing logistics.
 activates_for: [planner, solver, checker]

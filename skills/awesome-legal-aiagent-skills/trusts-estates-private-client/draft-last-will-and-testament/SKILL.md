@@ -1,5 +1,5 @@
 ---
-name: draft-last-will-and-testament
+name: 起草lastwilltestament
 task_id: trusts-estates-private-client/draft-last-will-and-testament
 description: Drafting a last will and testament for a client with complex family dynamics requires integrating retirement-benefit designation issues, inherited-account distribution rules, special-needs planning, executor conflict analysis, closely held business transfer restrictions, and digital-asset access instructions into a companion drafting memorandum.
 activates_for: [planner, solver, checker]

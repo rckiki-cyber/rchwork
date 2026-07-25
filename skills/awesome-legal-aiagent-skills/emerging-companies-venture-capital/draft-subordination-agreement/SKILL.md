@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-subordination-agreement
+name: ecvc草案subordination协议
 task_id: emerging-companies-venture-capital/draft-subordination-agreement
 description: Drafting a subordination agreement requires distinguishing lien subordination from debt subordination, addressing purchase money security interest carve-outs, considering bankruptcy-related consent provisions, specifying subrogation rights, and aligning governing law with the senior loan agreement.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-post-closing-obligations
+name: extractpost交割义务
 task_id: corporate-ma/extract-post-closing-obligations
 description: Guides systematic extraction of post-closing obligations from a stock purchase agreement and related transaction documents into a compliance tracker, with cross-document consistency review.
 activates_for: [planner, solver, checker]

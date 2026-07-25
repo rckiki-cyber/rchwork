@@ -1,5 +1,5 @@
 ---
-name: draft-antitrust-competition-pre-notification
+name: 起草反垄断竞争prenotification
 task_id: antitrust-competition/draft-antitrust-competition
 description: Supports pre-notification briefing papers for cross-border merger control by structuring multi-jurisdiction filing analysis, vertical foreclosure review, gun-jumping risk screening, and privilege-aware document handling.
 activates_for: [planner, solver, checker]

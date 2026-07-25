@@ -1,5 +1,5 @@
 ---
-name: compare-employer-corrective-action-plans-against-ice-regulatory-standards
+name: 比较employercorrective诉讼计划againstice监管标准
 task_id: immigration/compare-employer-corrective-action-plans-against-ice-regulatory-standards
 description: Compliance gap analysis comparing employer corrective action plans against applicable immigration-related employment verification standards, where plans may contain remedial provisions that are themselves non-compliant despite their corrective purpose.
 activates_for: [planner, solver, checker]

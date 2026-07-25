@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-restructuring-support-agreement
+name: 识别问题重组support协议
 task_id: bankruptcy-restructuring/identify-issues-in-restructuring-support-agreement
 description: Ensures an RSA issues memo for a subordinated secured creditor identifies and compares class-by-class recoveries, analyzes priority and allocation issues, evaluates plan support mechanics and dilution effects, assesses any termination-fee or similar incentive structure, and considers the implications of intercreditor and standstill terms.
 activates_for: [planner, solver, checker]

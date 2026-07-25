@@ -1,5 +1,5 @@
 ---
-name: hls-compare-closing-certificate-covenants
+name: hlscompare交割certificate承诺
 task_id: healthcare-life-sciences/compare-closing-certificate-against-agreement-covenants
 description: Compares a closing certificate against merger agreement pre-closing covenants and supporting documents to identify false certifications, unauthorized actions, and timing failures through a structured closing-analysis workflow.
 activates_for: [planner, solver, checker]

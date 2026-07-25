@@ -1,5 +1,5 @@
 ---
-name: data-retention-destruction-policy-cross-border-digital-health
+name: 数据retentiondestruction政策跨境borderdigital健康
 task_id: corporate-governance/draft-data-retention-and-destruction-policy
 description: Comprehensive data retention and destruction policy for a company with cross-border operations, covering storage limitation and erasure obligations, pseudonymized data treatment, multi-jurisdictional destruction verification, and the interaction between erasure rights and statutory retention obligations, with a cover memo flagging compliance gaps and transaction deadline implications.
 activates_for: [planner, solver, checker]

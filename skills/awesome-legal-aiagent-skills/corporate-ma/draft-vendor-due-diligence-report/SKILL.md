@@ -1,5 +1,5 @@
 ---
-name: draft-vendor-due-diligence-report
+name: 起草卖方due尽职调查报告
 task_id: corporate-ma/draft-vendor-due-diligence-report
 description: Guides preparation of a sell-side vendor due diligence report for distribution to prospective bidders where multi-workstream diligence findings must be organized, qualified, and presented in a form suitable for external disclosure.
 activates_for: [planner, solver, checker]

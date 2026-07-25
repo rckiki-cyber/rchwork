@@ -1,5 +1,5 @@
 ---
-name: build-litigation-case-timeline
+name: build诉讼casetimeline
 task_id: litigation-dispute-resolution/build-litigation-case-timeline
 description: A litigation case timeline must capture every dated event across the source materials in strict chronological order, annotate each entry for strategic significance, and flag gaps that may indicate missing documentation or non-production.
 activates_for: [planner, solver, checker]

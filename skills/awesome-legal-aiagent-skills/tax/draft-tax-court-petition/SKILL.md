@@ -1,5 +1,5 @@
 ---
-name: draft-tax-court-petition
+name: 起草税务法院申请
 task_id: tax/draft-tax-court-petition
 description: A Tax Court petition must satisfy the formal requirements of the applicable Tax Court rules and should challenge each adjustment in the notice of deficiency with a separately labeled assignment of error, without omitting any adjustment that needs to be preserved for litigation.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-regulatory-and-operational-deficiencies-in-fund-manager-compliance-manual
+name: 识别监管运营deficiencies基金manager合规手册
 task_id: funds-asset-management/identify-regulatory-and-operational-deficiencies-in-fund-manager-compliance-manual
 description: Review a registered investment adviser's compliance manual against applicable regulatory requirements and supporting materials, then produce an issues memo identifying regulatory and operational deficiencies, with severity ratings and remediation recommendations for each issue identified.
 activates_for: [planner, solver, checker]

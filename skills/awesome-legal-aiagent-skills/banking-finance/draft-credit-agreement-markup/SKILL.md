@@ -1,5 +1,5 @@
 ---
-name: draft-credit-agreement-markup
+name: 起草credit协议markup
 task_id: banking-finance/draft-credit-agreement-markup
 description: Produces a borrower-side markup memo identifying deviations between a draft credit agreement and the operative financing summary materials, with proposed redlines and priority classification.
 activates_for: [planner, solver, checker]

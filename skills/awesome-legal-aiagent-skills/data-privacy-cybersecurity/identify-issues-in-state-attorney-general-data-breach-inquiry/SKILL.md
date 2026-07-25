@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-state-attorney-general-data-breach-inquiry
+name: 识别问题州attorney一般数据违约询问
 task_id: data-privacy-cybersecurity/identify-issues-in-state-attorney-general-data-breach-inquiry
 description: AG data breach CID issue memos fail when the agent identifies compliance gaps in the abstract rather than connecting each gap to the specific requests in the CID and the evidence (or absence of evidence) in the company’s own documents.
 activates_for: [planner, solver, checker]

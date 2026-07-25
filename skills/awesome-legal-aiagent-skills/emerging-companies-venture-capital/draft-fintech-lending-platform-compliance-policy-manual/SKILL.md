@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-fintech-lending-compliance-manual
+name: ecvc草案fintechlending合规手册
 task_id: emerging-companies-venture-capital/draft-fintech-lending-platform-compliance-policy-manual
 description: A fintech lending platform compliance manual should address core consumer-lending compliance topics such as anti-money-laundering controls, military-borrower verification timing, privacy rights procedures, fair-lending monitoring, service-provider oversight, and baseline disclosure and unfair-practices obligations.
 activates_for: [planner, solver, checker]

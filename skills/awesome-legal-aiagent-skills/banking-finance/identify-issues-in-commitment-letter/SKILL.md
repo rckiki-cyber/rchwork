@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-commitment-letter
+name: 识别问题commitment函件
 task_id: banking-finance/identify-issues-in-commitment-letter
 description: Reviews a commitment letter package from the sponsor's perspective against the acquisition documentation and related engagement materials, and produces a prioritized issues memo identifying funding condition and flex risks.
 activates_for: [planner, solver, checker]

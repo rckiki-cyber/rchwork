@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-altansps-land-title-survey
+name: 识别问题altanspslandtitlesurvey
 task_id: real-estate/identify-issues-in-altansps-land-title-survey
 description: Guides identification of survey and title issues in a mixed-use development site acquisition by systematically comparing the survey against the title commitment and related diligence documents and flagging issues affecting the proposed use and lender requirements.
 activates_for: [planner, solver, checker]

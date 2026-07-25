@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-settlement-agreement
+name: 起草markup和解协议
 task_id: employment-labor/draft-markup-of-settlement-agreement
 description: Guides the drafter in preparing a redlined markup of an employment settlement agreement, focusing on release scope, statutory waiver requirements, tax characterization, protected-activity savings language, internal-policy review, and related issue spotting.
 activates_for: [planner, solver, checker]

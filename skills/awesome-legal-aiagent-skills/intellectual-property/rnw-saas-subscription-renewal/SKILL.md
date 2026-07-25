@@ -1,5 +1,5 @@
 ---
-name: rnw-saas-subscription-renewal
+name: rnwsaassubscription续期
 task_id: intellectual-property/rnw-saas-subscription-renewal
 description: Analyzing a SaaS subscription renewal proposal against the original agreement, service performance data, market benchmarks, and downstream customer service commitments to produce a renewal analysis memorandum.
 activates_for: [planner, solver, checker]

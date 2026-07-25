@@ -1,5 +1,5 @@
 ---
-name: review-patent-complaint-defense-issues
+name: 审查专利起诉状抗辩问题
 task_id: intellectual-property/review-patent-complaint
 description: Reviewing a patent and related IP infringement complaint from the defense perspective to identify issues, assess severity, and develop responsive strategies.
 activates_for: [planner, solver, checker]

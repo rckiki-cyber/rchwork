@@ -1,5 +1,5 @@
 ---
-name: hls-draft-clinical-trial-agreement
+name: hls草案clinical审判协议
 task_id: healthcare-life-sciences/draft-clinical-trial-agreement
 description: Drafts a clinical trial agreement harmonizing sponsor and site positions on biospecimen use, publication mechanics, CRO involvement, debarment representations, and data-lock timing, with a companion memo identifying cross-document conflicts and recommended compromises.
 activates_for: [planner, solver, checker]

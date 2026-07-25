@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-settlement-agreement
+name: 分析counterpartymarkup和解协议
 task_id: environmental-esg/analyze-counterparty-markup-of-settlement-agreement
 description: Guides section-by-section redline review of a settlement agreement by anchoring each markup to response-cost allocation, contribution protection scope, and applicable agency policy constraints on liability structure.
 activates_for: [planner, solver, checker]

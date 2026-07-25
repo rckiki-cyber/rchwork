@@ -1,5 +1,5 @@
 ---
-name: summarize-research-dol-independent-contractor-rule
+name: 总结researchdolindependentcontractor规则
 task_id: corporate-governance/summarize-research-dol-independent-contractor-rule
 description: Agents produce a general summary of the federal independent-contractor classification rule for an executive audience, contrasting the current totality-of-the-circumstances framework with any prior simplified approach, identifying worker categories and agreement provisions that may affect classification analysis, and organizing the output so the reader can prioritize further review and remediation by worker type.
 activates_for: [planner, solver, checker]

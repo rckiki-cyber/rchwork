@@ -1,5 +1,5 @@
 ---
-name: draft-prenuptial-agreement
+name: 起草prenuptial协议
 task_id: trusts-estates-private-client/draft-prenuptial-agreement
 description: Closes the framing gap where agents produce generic prenuptial agreements without reconciling conflicting source documents, defining a jurisdiction-appropriate business appreciation methodology, and resolving structural interaction risks between spousal support provisions and career-interruption credits.
 activates_for: [planner, solver, checker]

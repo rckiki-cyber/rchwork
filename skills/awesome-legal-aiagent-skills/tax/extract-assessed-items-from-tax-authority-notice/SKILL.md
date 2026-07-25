@@ -1,5 +1,5 @@
 ---
-name: extract-assessed-items-from-tax-authority-notice
+name: extractassesseditems税务机关通知
 task_id: tax/extract-assessed-items-from-tax-authority-notice
 description: Extracting assessed items from a state tax authority notice requires separately cataloging each tax type and each component deficiency, identifying the challenge issues applicable to each line item, and flagging procedural vulnerabilities — not just reading the total deficiency from the cover page.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: flag-scope-creep-charges
+name: 标记范围蔓延收费
 task_id: corporate-ma/flag-scope-creep-charges-in-transactional-matter-invoice
 description: Guides preparation of a detailed invoice dispute memo identifying charges that appear outside the agreed scope of a transactional engagement, with a negotiation strategy for addressing disputed amounts.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-settlement-memorandum
+name: 起草和解备忘录
 task_id: tax/draft-settlement-memorandum
 description: A client-facing settlement memorandum must analyze each proposed concession for legal correctness, explain the mechanics of interest recomputation, identify the settlement instrument and its legal consequences, and flag post-settlement reporting and compliance obligations triggered by a federal settlement.
 activates_for: [planner, solver, checker]

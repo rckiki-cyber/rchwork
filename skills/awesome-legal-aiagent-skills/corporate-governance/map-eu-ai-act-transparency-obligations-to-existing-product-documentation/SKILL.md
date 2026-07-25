@@ -1,5 +1,5 @@
 ---
-name: map-eu-ai-act-transparency-obligations-to-existing-product-documentation
+name: mapeuaiacttransparency义务现有产品documentation
 task_id: corporate-governance/map-eu-ai-act-transparency-obligations-to-existing-product-documentation
 description: Agents produce a general EU AI Act overview by classifying the product under the relevant high-risk categories, identifying the applicable conformity assessment pathway, checking whether any existing risk assessment is adequate for AI-specific risk management, noting the EU database registration requirement, and addressing the practical tension between trade secret protection and mandatory transparency obligations.
 activates_for: [planner, solver, checker]

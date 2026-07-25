@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-lpa
+name: 起草markuplpa
 task_id: funds-asset-management/draft-markup-of-limited-partnership-agreement
 description: Redline a draft limited partnership agreement on behalf of a limited partner investor by reference to the investor's guidelines, any prior side letter, and market standards, producing a section-by-section markup with commentary that cites the source authority for each proposed change.
 activates_for: [planner, solver, checker]

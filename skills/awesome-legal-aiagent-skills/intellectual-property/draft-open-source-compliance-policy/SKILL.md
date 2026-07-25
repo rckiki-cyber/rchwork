@@ -1,5 +1,5 @@
 ---
-name: draft-open-source-compliance-policy
+name: 起草opensource合规政策
 task_id: intellectual-property/draft-open-source-compliance-policy
 description: Board-ready open source software compliance policy for a technology company, incorporating audit findings, customer contract obligations, engineering practices, and a pending relicensing development.
 activates_for: [planner, solver, checker]

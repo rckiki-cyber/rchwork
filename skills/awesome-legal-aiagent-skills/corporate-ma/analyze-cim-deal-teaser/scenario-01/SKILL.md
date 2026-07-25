@@ -1,5 +1,5 @@
 ---
-name: analyze-cim-deal-teaser-s01
+name: 分析cimdealteasers01
 task_id: corporate-ma/analyze-cim-deal-teaser/scenario-01
 description: Guides buy-side critical analysis of a confidential information memorandum, stress-testing earnings normalization, revenue quality metrics, and key-person risk against independently verifiable source data.
 activates_for: [planner, solver, checker]

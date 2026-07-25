@@ -1,5 +1,5 @@
 ---
-name: draft-development-agreement
+name: 起草development协议
 task_id: real-estate/draft-development-agreement
 description: Guides developer-side drafting of a public-private development agreement by integrating municipal approvals, negotiated term sheets, environmental findings, and financing constraints into a coherent document with bracketed notes for unresolved conflicts.
 activates_for: [planner, solver, checker]

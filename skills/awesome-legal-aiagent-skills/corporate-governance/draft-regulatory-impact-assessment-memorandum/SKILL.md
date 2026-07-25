@@ -1,5 +1,5 @@
 ---
-name: draft-regulatory-impact-assessment-memorandum
+name: 起草监管impact评估备忘录
 task_id: corporate-governance/draft-regulatory-impact-assessment-memorandum
 description: Agents summarize a proposed rule's provisions for a holding company and assess facility-level performance, data infrastructure implications, multi-regulator coordination, emerging community development qualification issues, and differential impacts across market types.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-compliance-requirements-from-municipal-cannabis-dispensary-permit-application
+name: extract合规要求municipalcannabisdispensarypermitapplication
 task_id: corporate-governance/extract-compliance-requirements-from-municipal-cannabis-dispensary-permit-application
 description: Agents extract permit requirements by reconciling the application form against the governing municipal ordinance, identifying sequencing risks from any separate state licensing process, distinguishing scoring criteria from ongoing permit conditions, and checking document-completeness requirements such as bonding documentation and professional certifications.
 activates_for: [planner, solver, checker]

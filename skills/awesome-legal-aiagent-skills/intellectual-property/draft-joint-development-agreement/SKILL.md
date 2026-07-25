@@ -1,5 +1,5 @@
 ---
-name: draft-joint-development-agreement
+name: 起草合资development协议
 task_id: intellectual-property/draft-joint-development-agreement
 description: Joint development agreement for a collaboration involving co-developed technology, with drafting guidance that protects each party's pre-existing IP and commercialization interests and includes a memo identifying open issues for client decision.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-complaint-patent-infringement
+name: 起草起诉状专利infringement
 task_id: intellectual-property/draft-complaint-for-patent-infringement
 description: Patent infringement complaint and accompanying strategic cover memorandum for a federal patent dispute in a specified district, addressing standing, venue, willfulness, and related relief.
 activates_for: [planner, solver, checker]

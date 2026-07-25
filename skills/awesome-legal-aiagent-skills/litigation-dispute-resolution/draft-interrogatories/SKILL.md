@@ -1,5 +1,5 @@
 ---
-name: draft-interrogatories
+name: 起草interrogatories
 task_id: litigation-dispute-resolution/draft-interrogatories
 description: Drafting interrogatories in a trade secret misappropriation case requires structuring questions to establish the factual basis for alleged misappropriation, the scope of any competitive use, and the identities and roles of relevant individuals, while respecting the applicable limit on interrogatory count including subparts.
 activates_for: [planner, solver, checker]

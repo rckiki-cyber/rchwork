@@ -1,5 +1,5 @@
 ---
-name: review-ma-transaction-invoice
+name: 审查matransaction发票
 task_id: corporate-ma/review-ma-transaction-invoice-against-fee-arrangement
 description: Guides preparation of a billing deviation report identifying deviations between an M&A outside counsel invoice and the applicable fee arrangement, including invoice review, issue categorization, and dollar-impact quantification.
 activates_for: [planner, solver, checker]

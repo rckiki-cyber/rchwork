@@ -1,5 +1,5 @@
 ---
-name: its-compare-entity-details-ofac-sanctions
+name: itscompare实体detailsofac制裁
 task_id: international-trade-sanctions/compare-entity-details-against-ofac-sanctions-list
 description: Produces a sanctions screening report that compares entity details against a sanctions reference list, traces beneficial ownership through intermediate entities where relevant, applies the applicable ownership-aggregation analysis, distinguishes between full blocking and narrower transactional restrictions, and assigns match confidence levels with analysis-based next steps.
 activates_for: [planner, solver, checker]

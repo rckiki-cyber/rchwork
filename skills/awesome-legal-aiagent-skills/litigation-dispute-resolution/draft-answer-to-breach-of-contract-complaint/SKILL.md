@@ -1,5 +1,5 @@
 ---
-name: draft-answer-to-breach-of-contract-complaint
+name: 起草答辩状违约合同起诉状
 task_id: litigation-dispute-resolution/draft-answer-to-breach-of-contract-complaint
 description: Drafting an answer to a breach-of-contract complaint requires responding paragraph-by-paragraph using the available responses (admit, deny, or lack knowledge), pleading affirmative defenses with sufficient factual support, and preserving any viable counterclaims.
 activates_for: [planner, solver, checker]

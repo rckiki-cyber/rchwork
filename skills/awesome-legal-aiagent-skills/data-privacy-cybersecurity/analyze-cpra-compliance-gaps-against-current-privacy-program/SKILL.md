@@ -1,5 +1,5 @@
 ---
-name: analyze-cpra-compliance-gaps-against-current-privacy-program
+name: 分析cpra合规gapsagainst现行隐私方案
 task_id: data-privacy-cybersecurity/analyze-cpra-compliance-gaps-against-current-privacy-program
 description: Gap analyses can fail when the agent treats privacy disclosures in isolation, misclassifies third-party data disclosures, omits sensitive-data limitation rights, or fails to reconcile policy statements against the actual processing inventory and vendor arrangements.
 activates_for: [planner, solver, checker]

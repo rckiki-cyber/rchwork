@@ -1,5 +1,5 @@
 ---
-name: hls-identify-stark-compliance-program-issues
+name: hlsidentifystark合规方案问题
 task_id: healthcare-life-sciences/identify-issues-in-stark-law-compliance-program
 description: Reviews a Stark Law compliance program, physician arrangement documents, and internal audit materials to identify exception-citation deficiencies, in-office ancillary services same-building issues, holdover-arrangement issues, and compliance-officer reporting-independence gaps.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: quarterly-board-minutes-with-governance-memo
+name: 季度董事会minutes治理memo
 task_id: corporate-governance/draft-board-minutes-for-quarterly-meeting
 description: Formal quarterly board meeting minutes matching prior meeting format, accompanied by a governance issues memorandum flagging interested director participation, privilege protection for compliance discussions, and remote participation verification.
 activates_for: [planner, solver, checker]

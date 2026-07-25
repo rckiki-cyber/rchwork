@@ -1,5 +1,5 @@
 ---
-name: compare-trust-documents-against-client-instructions
+name: 比较信托文件againstclient指示
 task_id: trusts-estates-private-client/compare-trust-documents-against-client-instructions
 description: Comparing trust draft documents against client instructions requires provision-by-provision deviation analysis that traces the practical downstream consequences of each departure and explains the drafting decisions behind any intentional divergence.
 activates_for: [planner, solver, checker]

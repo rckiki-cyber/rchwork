@@ -1,5 +1,5 @@
 ---
-name: compare-expert-market-share-estimates-against-agency-data
+name: 比较专家市场股份estimatesagainst机构数据
 task_id: antitrust-competition/compare-expert-market-share-estimates-against-agency-data
 description: Closes gaps in independent arithmetic verification of concentration calculations, identification of methodology differences that explain divergent results, and cross-examination vulnerability assessment.
 activates_for: [planner, solver, checker]

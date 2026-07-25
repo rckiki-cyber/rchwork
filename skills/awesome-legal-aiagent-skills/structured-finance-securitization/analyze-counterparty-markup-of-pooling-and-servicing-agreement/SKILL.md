@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-psa
+name: 分析counterpartymarkuppsa
 task_id: structured-finance-securitization/analyze-counterparty-markup-of-pooling-and-servicing-agreement
 description: Reviewing a counterparty redline of a pooling and servicing agreement where deletions of required backup servicer provisions, fee structure changes, and waterfall modifications must be assessed against an internal playbook and deal economics.
 activates_for: [planner, solver, checker]

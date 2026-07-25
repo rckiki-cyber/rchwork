@@ -1,5 +1,5 @@
 ---
-name: identify-rfe-issues-scenario-01
+name: 识别rfe问题scenario
 task_id: immigration/identify-rfe-issues/scenario-01
 description: H-1B request-for-evidence issue identification memo where each agency-identified concern is analyzed for its impact on petition approvability, with a response strategy and evidence recommendation for each issue organized by RFE category.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-issues-oma-power-plant-acquisition
+name: 识别问题omapowerplant收购
 task_id: energy-natural-resources/identify-issues-in-operations-and-maintenance-agreement
 description: Guides issue identification in an operations and maintenance agreement for a power plant acquisition by assessing pending subcontractor disputes and their post-closing implications, identifying market-standard deviations in key personnel and renewal mechanics, and addressing consequential damages limitations on the owner's primary loss exposure.
 activates_for: [planner, solver, checker]

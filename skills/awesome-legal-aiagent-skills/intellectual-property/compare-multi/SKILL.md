@@ -1,5 +1,5 @@
 ---
-name: compare-multi-jurisdiction-employment-agreements
+name: 比较多管辖雇佣协议
 task_id: intellectual-property/compare-multi
 description: Jurisdiction-organized deviation report comparing employment agreement drafts for multiple jurisdictions against a company playbook and outside counsel guidance.
 activates_for: [planner, solver, checker]

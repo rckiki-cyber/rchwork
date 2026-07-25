@@ -1,5 +1,5 @@
 ---
-name: extract-key-changes-from-proposed-regulation
+name: extractkey变更拟议法规
 task_id: corporate-governance/extract-key-changes-from-proposed-regulation
 description: Agents extract the main proposed provisions and prepare a regulatory impact summary memorandum that evaluates operational effects, disclosure obligations, transaction-process implications, implementation burden, books-and-records considerations, and comment-period opportunities.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-daubert-motion-exclude-damages-expert
+name: 起草daubert动议exclude损害赔偿专家
 task_id: intellectual-property/draft-daubert-motion-to-exclude-plaintiffs-damages-expert
 description: Daubert motion to exclude or limit opposing damages expert testimony in a patent infringement case, grounded in methodology challenges supported by the rebuttal expert report and case record.
 activates_for: [planner, solver, checker]

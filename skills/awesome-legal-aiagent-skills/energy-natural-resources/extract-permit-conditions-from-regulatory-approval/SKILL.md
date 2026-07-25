@@ -1,5 +1,5 @@
 ---
-name: extract-permit-conditions-compliance-matrix-wind-solar
+name: extractpermit条件合规矩阵windsolar
 task_id: energy-natural-resources/extract-permit-conditions-from-regulatory-approval
 description: Guides construction of a compliance tracking matrix from multiple regulatory approvals by assigning responsible parties to every condition, identifying cross-approval conflicts, flagging missing approvals, and producing a Critical Issues section for time-sensitive or deal-blocking items.
 activates_for: [planner, solver, checker]

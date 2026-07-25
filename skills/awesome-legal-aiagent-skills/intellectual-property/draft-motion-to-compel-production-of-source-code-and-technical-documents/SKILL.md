@@ -1,5 +1,5 @@
 ---
-name: draft-motion-to-compel-source-code
+name: 起草动议compelsourcecode
 task_id: intellectual-property/draft-motion-to-compel-production-of-source-code-and-technical-documents
 description: Motion to compel production of disputed discovery responses involving source code and technical documents in a patent matter, with a supporting memorandum, counsel declaration, and proposed protective order.
 activates_for: [planner, solver, checker]

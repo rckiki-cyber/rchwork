@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-proposed-stipulation-of-facts
+name: 起草markup拟议stipulationfacts
 task_id: tax/draft-markup-of-proposed-stipulation-of-facts
 description: Redlining a proposed stipulation of facts requires a paragraph-by-paragraph response that accepts, revises, objects to, or proposes additions to each paragraph based on factual accuracy and strategic impact on the client's legal theory.
 activates_for: [planner, solver, checker]

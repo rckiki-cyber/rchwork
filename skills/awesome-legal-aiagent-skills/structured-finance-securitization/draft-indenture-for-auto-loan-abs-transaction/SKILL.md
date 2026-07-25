@@ -1,5 +1,5 @@
 ---
-name: draft-indenture-for-auto-loan-abs
+name: 起草indentureauto贷款abs
 task_id: structured-finance-securitization/draft-indenture-for-auto-loan-abs-transaction
 description: Drafting a trust indenture for an auto loan ABS issuance by adapting a prior transaction template to a new structure that introduces a non-advancing servicer, turbo principal waterfall, and subordinated note class, while flagging structural issues that require resolution before the document is finalized.
 activates_for: [planner, solver, checker]

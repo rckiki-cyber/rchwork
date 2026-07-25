@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-from-section-16-filings
+name: extractkey条款section提交
 task_id: capital-markets/extract-key-terms-from-section-16-filings
 description: Section 16 filing extraction where the baseline captures reported transaction data, but the workflow also checks arithmetic consistency, ownership computations, timing, indirect ownership, derivative terms, and potential short-swing exposure at a procedural level.
 activates_for: [planner, solver, checker]

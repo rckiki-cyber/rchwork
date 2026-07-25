@@ -1,5 +1,5 @@
 ---
-name: state-privacy-law-compliance-timeline
+name: 陈述隐私法律合规timeline
 task_id: corporate-governance/assess-compliance-timeline-for-newly-enacted-state-privacy-law
 description: Compliance gap analysis and remediation timeline for a newly enacted state consumer data privacy statute, identifying gaps in consumer rights procedures, sensitive data handling, data processor agreements, and enforcement risk analysis.
 activates_for: [planner, solver, checker]

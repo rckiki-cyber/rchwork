@@ -1,5 +1,5 @@
 ---
-name: draft-opposition-to-motion-to-dismiss
+name: 起草opposition动议dismiss
 task_id: litigation-dispute-resolution/draft-opposition-to-motion-to-dismiss
 description: Opposing a motion to dismiss claims for restrictive covenant breach, trade secret misappropriation, and tortious interference requires demonstrating that each count's factual allegations satisfy the applicable pleading standard, integrating the factual allegations and any incorporated materials referenced in the complaint.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-confidential-information-memorandum
+name: 起草confidentialinformation备忘录
 task_id: corporate-ma/draft-confidential-information-memorandum
 description: Guides drafting of a sell-side confidential information memorandum with core sections, management biographies, facility-level operating detail, capex categorization, and reconciliation of cross-source data discrepancies.
 activates_for: [planner, solver, checker]

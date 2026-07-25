@@ -1,5 +1,5 @@
 ---
-name: extract-disclosure-requirements-from-environmental-reporting-framework
+name: extract披露要求环境reporting框架
 task_id: environmental-esg/extract-disclosure-requirements-from-environmental-reporting-framework
 description: Guides extraction of disclosure requirements from an environmental reporting framework and preparation of a gap analysis comparing those requirements against a company's current reporting practices and data.
 activates_for: [planner, solver, checker]

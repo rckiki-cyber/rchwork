@@ -1,5 +1,5 @@
 ---
-name: draft-spa-buyer-side-dataroom
+name: 起草spa买方sidedataroom
 task_id: corporate-ma/draft-spa-drafting
 description: Guides drafting of a buyer-side stock purchase agreement from a data room where equity ownership, financing payoff mechanics, change-of-control compensation issues, and regulatory clearance provisions must all be sourced from transactional documents.
 activates_for: [planner, solver, checker]

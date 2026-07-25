@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-notice-of-deficiency
+name: 识别问题通知deficiency
 task_id: tax/identify-issues-in-notice-of-deficiency
 description: Identifying issues in a notice of deficiency requires checking the notice for arithmetic consistency, analyzing each adjustment issue by issue, and organizing the analysis so that procedural deadlines, litigation posture, and overall exposure are addressed in a clear memorandum.
 activates_for: [planner, solver, checker]

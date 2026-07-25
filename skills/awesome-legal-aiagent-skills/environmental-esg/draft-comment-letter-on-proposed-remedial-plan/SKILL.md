@@ -1,5 +1,5 @@
 ---
-name: draft-comment-letter-on-proposed-remedial-plan
+name: 起草comment函件拟议remedial计划
 task_id: environmental-esg/draft-comment-letter-on-proposed-remedial-plan
 description: Guides drafting of a formal regulatory comment letter on a proposed remedial plan by grounding objections in applicable cleanup standards, remedy selection criteria, and community health and safety concerns supported by site data.
 activates_for: [planner, solver, checker]

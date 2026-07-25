@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-spa-markup
+name: 分析counterpartyspamarkup
 task_id: corporate-ma/analyze-counterparty-spa-markup
 description: Guides provision-by-provision analysis of a counterparty's stock purchase agreement redline, evaluating deviations against the negotiation playbook and assessing the compounded legal and economic impact of markup changes.
 activates_for: [planner, solver, checker]

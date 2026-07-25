@@ -1,5 +1,5 @@
 ---
-name: identify-witness-testimony-inconsistencies-vulnerabilities
+name: 识别证人证词inconsistenciesvulnerabilities
 task_id: white-collar-defense-investigations/identify-inconsistencies-and-vulnerabilities-in-prior-witness-testimony
 description: Impeachment vulnerability memorandum focused on contradictory statements across multiple prior testimony forums, assessing false statement exposure in each forum, and analyzing the impact of inconsistencies on key defenses including good-faith reliance on professional advice.
 activates_for: [planner, solver, checker]

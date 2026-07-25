@@ -1,5 +1,5 @@
 ---
-name: eu-ai-act-high-risk-gap-analysis
+name: euaiacthigh风险gap分析
 task_id: corporate-governance/analyze-eu-ai-act-high
 description: Gap analysis of AI systems operated by an autonomous vehicle provider against the EU AI Act high-risk classification framework, technical obligations, and conformity assessment pathways.
 activates_for: [planner, solver, checker]

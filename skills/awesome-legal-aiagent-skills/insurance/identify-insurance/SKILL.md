@@ -1,5 +1,5 @@
 ---
-name: identify-insurance-issues-acquisition-agreement
+name: 识别保险问题收购协议
 task_id: insurance/identify-insurance
 description: Agents identifying insurance issues in an acquisition agreement flag headline coverage gaps, connect those gaps to supporting evidence in the record, identify standalone uninsured exposures, and address closing deliverables that support post-closing insurance placement.
 activates_for: [planner, solver, checker]

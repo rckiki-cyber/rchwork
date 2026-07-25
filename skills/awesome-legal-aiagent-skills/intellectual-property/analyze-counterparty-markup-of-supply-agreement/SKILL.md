@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-supply-agreement
+name: 分析counterpartymarkup供应协议
 task_id: intellectual-property/analyze-counterparty-markup-of-supply-agreement
 description: Comprehensive deviation report analyzing a counterparty-marked supply agreement against the company's standard form and procurement playbook, incorporating critical-supplier dependency context.
 activates_for: [planner, solver, checker]

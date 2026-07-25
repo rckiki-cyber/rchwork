@@ -1,5 +1,5 @@
 ---
-name: draft-reduction-in-force-selection-memorandum
+name: 起草reduction不可抗力selection备忘录
 task_id: employment-labor/draft-reduction-in-force-selection-memorandum
 description: Guides the drafter in producing a privileged attorney-client memorandum on reduction-in-force selection criteria and legal risk analysis, including facility-level notice analysis, disparate-impact review, selection criteria documentation, and review of internal communications for risk indicators.
 activates_for: [planner, solver, checker]

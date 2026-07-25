@@ -1,5 +1,5 @@
 ---
-name: review-counterparty-redlines-nda-template
+name: 审查counterpartyredlinesnda模板
 task_id: intellectual-property/review-counterparty-redlines-to-standard-nda-template
 description: Reviewing multiple counterparties' redlined NDAs against a clean template and playbook to produce a deviation analysis with risk assessments and recommendations.
 activates_for: [planner, solver, checker]

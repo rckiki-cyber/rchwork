@@ -1,5 +1,5 @@
 ---
-name: identify-governance-and-legal-issues-in-counterparty-settlement-agreement
+name: 识别治理法律问题counterparty和解协议
 task_id: corporate-governance/identify-governance-and-legal-issues-in-counterparty-settlement-agreement
 description: Agents identify major settlement terms, compare them to the underlying project or liability baseline in the source materials, flag the absence of appropriate carve-outs from broad release language, identify required regulatory approvals for any transfer or assumption of obligations, and assess time-bar risk on ancillary claims that may affect settlement leverage.
 activates_for: [planner, solver, checker]

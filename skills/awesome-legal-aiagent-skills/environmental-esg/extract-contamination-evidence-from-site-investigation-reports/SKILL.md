@@ -1,5 +1,5 @@
 ---
-name: extract-contamination-evidence-from-site-investigation-reports
+name: extractcontamination证据site调查报告
 task_id: environmental-esg/extract-contamination-evidence-from-site-investigation-reports
 description: Guides preparation of a contamination evidence memorandum by systematically extracting and organizing detected contaminants, concentrations, affected media, and spatial extent across multiple investigation reports spanning different time periods.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-psa-rmbs
+name: 起草markuppsarmbs
 task_id: structured-finance-securitization/draft-markup-of-pooling-and-servicing-agreement
 description: Preparing a seller-side markup of a draft RMBS pooling and servicing agreement where ERISA transfer restrictions for certain certificate classes, REMIC election authority, nonrecoverable advance standards, and an independent reviewer mechanism must each be addressed against a seller playbook and prior deal precedent.
 activates_for: [planner, solver, checker]

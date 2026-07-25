@@ -1,5 +1,5 @@
 ---
-name: draft-opposition-summary-judgment-patent
+name: 起草opposition摘要判决专利
 task_id: intellectual-property/draft-opposition-to-summary-judgment
 description: Opposition to a motion for summary judgment in patent infringement litigation, based on the trial record, expert reports, deposition testimony, and briefing guidelines.
 activates_for: [planner, solver, checker]

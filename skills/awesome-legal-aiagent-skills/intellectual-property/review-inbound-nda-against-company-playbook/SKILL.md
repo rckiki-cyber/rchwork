@@ -1,5 +1,5 @@
 ---
-name: review-inbound-nda-company-playbook
+name: 审查inboundnda公司playbook
 task_id: intellectual-property/review-inbound-nda-against-company-playbook
 description: Reviewing an inbound NDA draft against a company playbook and related deal-context materials to produce a prioritized deviation report with redline recommendations.
 activates_for: [planner, solver, checker]

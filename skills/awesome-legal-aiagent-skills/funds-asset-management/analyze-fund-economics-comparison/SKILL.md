@@ -1,5 +1,5 @@
 ---
-name: analyze-fund-economics-comparison
+name: 分析基金economicscomparison
 task_id: funds-asset-management/analyze-fund-economics-comparison
 description: Review fund formation materials including governing fund documents, offering materials, side letters, a fee workbook, a waterfall model, a prior-fund term sheet, and an investor commitment schedule to produce a full fund economics analysis covering consistency checks, side-letter economics, MFN cascade impact modeling, prior-fund comparison, and model error identification.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: sec-reporting-compliance-timeline
+name: secreporting合规timeline
 task_id: corporate-governance/assess-compliance-timeline-for-new-sec-reporting-requirements
 description: Compliance timeline assessment identifying obligations, errors, and gaps across multiple new SEC reporting requirements, including filer status classification, cybersecurity disclosures, and executive compensation clawback rules, using general rule-based analysis rather than scenario-specific conclusions.
 activates_for: [planner, solver, checker]

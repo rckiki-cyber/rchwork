@@ -1,5 +1,5 @@
 ---
-name: review-msa-playbook-deviation-review
+name: 审查msaplaybookdeviationreview
 task_id: intellectual-property/review-msa-playbook-deviation-review
 description: Reviewing a redlined master services agreement against a standard template and internal contracting guidance to produce a deviation report informed by deal context and diligence materials.
 activates_for: [planner, solver, checker]

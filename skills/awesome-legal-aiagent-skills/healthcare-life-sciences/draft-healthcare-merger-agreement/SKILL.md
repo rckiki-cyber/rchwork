@@ -1,5 +1,5 @@
 ---
-name: hls-draft-healthcare-merger-agreement
+name: hls草案医疗合并协议
 task_id: healthcare-life-sciences/draft-healthcare-merger-agreement
 description: Drafts a definitive reverse triangular merger agreement for a healthcare transaction with healthcare-specific representations, regulatory and operational covenants, earn-out mechanics, antitrust considerations, and a companion drafting issues memorandum flagging ambiguities and buyer-side risks.
 activates_for: [planner, solver, checker]

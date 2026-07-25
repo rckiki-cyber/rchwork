@@ -1,5 +1,5 @@
 ---
-name: draft-tax-opinion-letter-section-355
+name: 起草税务意见函件section
 task_id: tax/draft-tax-opinion-letter
 description: A federal income tax opinion letter on a spin-off transaction should analyze the statutory and regulatory requirements for a tax-free reorganization and distribution with multi-factor reasoning and factual support, and should address the principal requirements in separate sections with appropriate opinion qualification language.
 activates_for: [planner, solver, checker]

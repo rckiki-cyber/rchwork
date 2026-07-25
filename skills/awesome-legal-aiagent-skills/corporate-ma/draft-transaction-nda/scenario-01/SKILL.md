@@ -1,5 +1,5 @@
 ---
-name: draft-transaction-nda-scenario-01
+name: 起草transactionndascenario
 task_id: corporate-ma/draft-transaction-nda/scenario-01
 description: Guides drafting of a bilateral M&A NDA from a precedent and negotiated term sheet where transaction-specific features and prior negotiations must be incorporated, together with a drafting notes memo.
 activates_for: [planner, solver, checker]

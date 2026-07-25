@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-offtake-agreement-solar-storage
+name: extractkey条款offtake协议solarstorage
 task_id: energy-natural-resources/extract-key-terms-from-offtake-agreement
 description: Guides extraction and investment-committee presentation of key offtake agreement terms for a project acquisition by distinguishing standard from non-standard provisions, assessing assignability for the acquirer, and flagging credit-support, dispatch, force-majeure, tax, and financing-related issues that affect acquisition underwriting.
 activates_for: [planner, solver, checker]

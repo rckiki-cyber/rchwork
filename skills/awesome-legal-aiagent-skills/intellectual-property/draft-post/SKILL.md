@@ -1,5 +1,5 @@
 ---
-name: draft-post-trial-brief-patent
+name: 起草post审判摘要专利
 task_id: intellectual-property/draft-post
 description: Post-trial brief in a patent infringement action, presented as proposed findings of fact and conclusions of law on infringement, validity, and damages, based on the trial record and exhibits.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-complaint-for-cercla-cost-recovery-action
+name: 起草起诉状cercla成本recovery诉讼
 task_id: environmental-esg/draft-complaint-for-cercla-cost-recovery-action
 description: Guides drafting of a federal complaint for environmental cost recovery by ensuring each liability element is pled with document-supported specificity for each potentially responsible party, and that response-cost categories and compliance with applicable cleanup standards are properly framed.
 activates_for: [planner, solver, checker]

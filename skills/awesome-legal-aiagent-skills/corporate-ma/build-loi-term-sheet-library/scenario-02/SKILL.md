@@ -1,5 +1,5 @@
 ---
-name: build-loi-term-sheet-library-s02
+name: buildloi期限sheetlibrarys02
 task_id: corporate-ma/build-loi-term-sheet-library/scenario-02
 description: Guides construction of a structured LOI and term sheet precedent database from transaction documents, with complete field population across the required terms for benchmarking and negotiation support.
 activates_for: [planner, solver, checker]

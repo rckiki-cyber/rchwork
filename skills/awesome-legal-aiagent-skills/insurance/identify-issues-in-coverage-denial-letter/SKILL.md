@@ -1,5 +1,5 @@
 ---
-name: identify-issues-coverage-denial-letter
+name: 识别问题coveragedenial函件
 task_id: insurance/identify-issues-in-coverage-denial-letter
 description: Agents analyzing an insurance coverage denial letter should test each denial ground against the policy language, the insurer's own positions, and the underlying facts; identify omitted coverage theories, internal inconsistencies, timing defenses, causation issues, mitigation arguments, and potential bad-faith exposure under applicable law.
 activates_for: [planner, solver, checker]

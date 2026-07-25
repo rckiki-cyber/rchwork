@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-last-will-and-testament
+name: 识别问题lastwilltestament
 task_id: trusts-estates-private-client/identify-issues-in-last-will-and-testament
 description: Closes the gap where agents identify will deficiencies without applying the governing jurisdiction’s interested witness rule precisely, analyzing testamentary capacity through medical and medication evidence, addressing the divorce–beneficiary designation disconnect, and identifying an executor–trustee–beneficiary conflict’s specific implication for estate administration choices.
 activates_for: [planner, solver, checker]

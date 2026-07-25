@@ -1,5 +1,5 @@
 ---
-name: research-fair-use-defense-marketing
+name: 研究fairuse抗辩marketing
 task_id: intellectual-property/research-fair-use-defense-for-proposed-marketing-use-of-third
 description: Analyze a proposed commercial marketing use of third-party copyrighted content to assess the availability of a fair use defense, including cease-and-desist context and internal IP policy compliance.
 activates_for: [planner, solver, checker]

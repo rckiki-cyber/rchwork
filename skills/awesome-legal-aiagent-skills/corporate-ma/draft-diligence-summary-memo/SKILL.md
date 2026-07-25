@@ -1,5 +1,5 @@
 ---
-name: draft-diligence-summary-memo
+name: 起草尽职调查摘要memo
 task_id: corporate-ma/draft-diligence-summary-memo
 description: Guides preparation of an investment-committee-ready acquisition diligence summary memo synthesizing multi-workstream findings by severity, presenting implied multiples at management and QoE EBITDA, and recommending pre-closing covenants for identified structural deficiencies.
 activates_for: [planner, solver, checker]

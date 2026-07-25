@@ -1,5 +1,5 @@
 ---
-name: draft-updated-privacy-policy
+name: 起草updated隐私政策
 task_id: data-privacy-cybersecurity/draft-updated-privacy-policy
 description: Privacy policy updates for AI-powered health tools fail when the agent does not ground new disclosures in the product description and the privacy impact assessment, and does not separately memo the legal risks arising from the new product's data uses.
 activates_for: [planner, solver, checker]

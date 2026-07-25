@@ -1,5 +1,5 @@
 ---
-name: fda-device-registration-rule-gap-analysis
+name: fdadevice登记规则gap分析
 task_id: corporate-governance/compare-proposed-fda-rule-against-current-device-registration-requirements
 description: Gap analysis comparing a proposed FDA device registration rule against current device registration and listing requirements and a client's device portfolio, verifying a third-party consulting memo and addressing client-specific questions about transition timelines and implementation obligations.
 activates_for: [planner, solver, checker]

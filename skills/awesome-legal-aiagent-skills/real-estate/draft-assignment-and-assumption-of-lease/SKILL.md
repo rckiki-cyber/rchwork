@@ -1,5 +1,5 @@
 ---
-name: draft-assignment-and-assumption-of-lease
+name: 起草转让assumptionlease
 task_id: real-estate/draft-assignment-and-assumption-of-lease
 description: Guides drafting of a commercial lease assignment and assumption by reconciling the governing lease documents, addressing assignor liability, consent conditions, and ancillary rights, and flagging cross-document discrepancies in a companion memo.
 activates_for: [planner, solver, checker]

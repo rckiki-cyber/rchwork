@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-markup-series-b-spa
+name: ecvc草案markupseriesbspa
 task_id: emerging-companies-venture-capital/draft-markup-of-series-b-preferred-stock-purchase-agreement
 description: Marking up a preferred stock purchase agreement from the company's perspective requires comparing the draft to the agreed term sheet, reviewing all schedules and exhibits for hidden anti-dilution mechanics, identifying any investor-specific consent rights that go beyond the general class vote, reconciling the share authorization in the transaction documents against the charter documents, and checking whether any signing representations are inconsistent with the diligence record.
 activates_for: [planner, solver, checker]

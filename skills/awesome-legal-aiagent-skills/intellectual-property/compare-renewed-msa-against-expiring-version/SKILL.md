@@ -1,5 +1,5 @@
 ---
-name: compare-renewed-msa-expiring-version
+name: 比较renewedmsaexpiringversion
 task_id: intellectual-property/compare-renewed-msa-against-expiring-version
 description: Comprehensive deviation report comparing a renewed MSA against the expiring version and the applicable contract playbook, with analysis informed by internal correspondence.
 activates_for: [planner, solver, checker]

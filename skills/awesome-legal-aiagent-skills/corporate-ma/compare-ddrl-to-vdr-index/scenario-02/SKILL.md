@@ -1,5 +1,5 @@
 ---
-name: compare-ddrl-to-vdr-index-s02
+name: 比较ddrlvdrindexs02
 task_id: corporate-ma/compare-ddrl-to-vdr-index/scenario-02
 description: Guides DDRL-to-VDR gap analysis by requiring a substantive assessment of each gap, distinguishing simple document omissions from compliance deficiencies and ownership or chain-of-title defects that may require pre-closing remediation.
 activates_for: [planner, solver, checker]

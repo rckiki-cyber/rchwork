@@ -1,5 +1,5 @@
 ---
-name: draft-competitor-confidentiality-agreement-review
+name: 起草competitor保密协议review
 task_id: antitrust-competition/draft-competitor-confidentiality-agreement-review
 description: Closes gaps in identifying antitrust risks in competitor confidentiality agreements, including information exchange, no-poach enforceability, clean-team protocols, interaction effects, and pre-clearance coordination risk.
 activates_for: [planner, solver, checker]

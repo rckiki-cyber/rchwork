@@ -1,5 +1,5 @@
 ---
-name: draft-disclosure-schedule-preparation
+name: 起草披露附表preparation
 task_id: corporate-ma/draft-disclosure-schedule-preparation
 description: Guides preparation of a complete disclosure schedule package keyed to the acquisition agreement, with a master table of contents, individual schedules for each representation, and an Outstanding Items Memo tracking pre-closing actions including IP chain-of-title gaps, regulatory notice requirements, and open-source copyleft issues.
 activates_for: [planner, solver, checker]

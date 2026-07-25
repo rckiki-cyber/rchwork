@@ -1,5 +1,5 @@
 ---
-name: draft-commitments-proposal
+name: 起草commitments建议书
 task_id: antitrust-competition/draft-commitments-proposal
 description: Closes gaps in structural versus behavioral remedy justification, licensing term specificity, crown jewel provision structure, purchaser criteria adequacy, and procedural provisions commonly required in merger remedy commitments.
 activates_for: [planner, solver, checker]

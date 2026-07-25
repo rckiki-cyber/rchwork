@@ -1,5 +1,5 @@
 ---
-name: hls-draft-management-services-agreement
+name: hls草案管理层服务协议
 task_id: healthcare-life-sciences/draft-management-services-agreement
 description: Drafts a healthcare management services agreement for a physician group engaging a management services organization, with attention to corporate practice limits, federal fraud-and-abuse constraints, fee-splitting concerns, governance mechanics, termination provisions, data rights, and related supporting materials.
 activates_for: [planner, solver, checker]

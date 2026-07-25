@@ -1,5 +1,5 @@
 ---
-name: draft-markup-spa-provisions-buyer
+name: 起草markupspa条款买方
 task_id: corporate-ma/draft-markup-of-stock-purchase-agreement-provisions
 description: Guides preparation of a detailed buyer-side SPA markup memorandum with draft-ready redline language, requiring identification of all indebtedness categories from the target's financial statements, verification of escrow economics against the operative transaction terms, cross-checking of earnout economics against the operative transaction terms, and evaluation of whether any extended environmental representation survival is supported by diligence findings.
 activates_for: [planner, solver, checker]

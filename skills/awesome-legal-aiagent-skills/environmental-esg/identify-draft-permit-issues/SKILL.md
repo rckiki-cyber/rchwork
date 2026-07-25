@@ -1,5 +1,5 @@
 ---
-name: identify-draft-permit-issues
+name: 识别草案permit问题
 task_id: environmental-esg/identify-draft-permit-issues
 description: Guides preparation of an NPDES permit issues memorandum by systematically evaluating draft permit conditions against applicable water pollution control requirements and supporting technical documents to identify legal and technical deficiencies for public comment strategy.
 activates_for: [planner, solver, checker]

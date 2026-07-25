@@ -1,5 +1,5 @@
 ---
-name: its-identify-issues-trade-compliance-policy-manual
+name: itsidentify问题贸易合规政策手册
 task_id: international-trade-sanctions/identify-issues-in-trade-compliance-policy-manual
 description: Produces a gap analysis memorandum for a trade compliance policy manual that identifies substantive regulatory gaps, procedural deficiencies, and governance issues in areas such as deemed export controls, anti-boycott reporting, foreign-produced item analysis, sanctions coverage, product classification, and compliance-function independence.
 activates_for: [planner, solver, checker]

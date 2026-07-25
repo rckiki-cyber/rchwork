@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-counterparty-postnuptial-agreement
+name: 起草markupcounterpartypostnuptial协议
 task_id: trusts-estates-private-client/draft-markup-of-counterparty-postnuptial-agreement
 description: Producing an article-by-article redline markup of a proposed postnuptial agreement requires identifying provisions that are asymmetric, undisclosed, or potentially unconscionable, and replacing them with client-protective language accompanied by explanatory commentary.
 activates_for: [planner, solver, checker]

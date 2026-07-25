@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-from-intercompany-agreements
+name: extractkey条款intercompany协议
 task_id: tax/extract-key-terms-from-intercompany-agreements
 description: Extracting key terms from intercompany agreements requires populating structured tables for each agreement type and flagging issues such as auto-renewals at stale pricing, percentage inconsistencies across related documents, missing benchmarking support, and deadlines that affect the timing of the response.
 activates_for: [planner, solver, checker]

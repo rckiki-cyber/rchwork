@@ -1,5 +1,5 @@
 ---
-name: draft-separation-agreement-and-release
+name: 起草separation协议解除
 task_id: employment-labor/draft-separation-agreement-and-release
 description: Guides the drafter in producing a separation agreement and general release for a senior employee, addressing age-discrimination waiver requirements, equity-plan provisions, and key litigation-risk issues in the cover memorandum.
 activates_for: [planner, solver, checker]

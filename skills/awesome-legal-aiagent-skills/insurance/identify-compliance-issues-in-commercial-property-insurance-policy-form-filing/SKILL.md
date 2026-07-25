@@ -1,5 +1,5 @@
 ---
-name: identify-compliance-issues-commercial-property-filing
+name: 识别合规问题商业财产提交
 task_id: insurance/identify-compliance-issues-in-commercial-property-insurance-policy-form-filing
 description: Agents reviewing a commercial property insurance policy form filing identify regulatory issues, verify calculations independently, and check for required disclosures and form consistency without assuming the filing is compliant.
 activates_for: [planner, solver, checker]

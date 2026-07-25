@@ -1,5 +1,5 @@
 ---
-name: draft-current-report-on-form-8-k
+name: 起草现行报告表格k
 task_id: capital-markets/draft-current-report-on-form-8
 description: Form 8-K drafting task focused on identifying all triggered items from a reported transaction, drafting each item with the required disclosures, and preparing a cover memorandum that flags discrepancies, inconsistencies, or arithmetic errors in the source materials.
 activates_for: [planner, solver, checker]

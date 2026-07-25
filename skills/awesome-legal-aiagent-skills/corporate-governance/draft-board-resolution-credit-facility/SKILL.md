@@ -1,5 +1,5 @@
 ---
-name: board-resolution-credit-facility
+name: 董事会解决creditfacility
 task_id: corporate-governance/draft-board-resolution-credit-facility
 description: Board resolution authorizing entry into a senior secured revolving credit facility, with a cover memorandum identifying observer-versus-director classification issues, signing authority gaps, stockholder consent requirements, and financial covenant discrepancies.
 activates_for: [planner, solver, checker]

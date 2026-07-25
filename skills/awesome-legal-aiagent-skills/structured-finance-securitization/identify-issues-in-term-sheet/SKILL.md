@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-consumer-abs-term-sheet
+name: 识别问题consumerabs期限sheet
 task_id: structured-finance-securitization/identify-issues-in-term-sheet
 description: Identifying issues in a consumer loan asset-backed securitization term sheet by cross-referencing collateral data, servicing agreement terms, and structuring materials to surface pool balance discrepancies, commingling exposure, independent review gaps, retention sizing issues, step-down structural risks, and state law compliance concerns that require resolution before pricing.
 activates_for: [planner, solver, checker]

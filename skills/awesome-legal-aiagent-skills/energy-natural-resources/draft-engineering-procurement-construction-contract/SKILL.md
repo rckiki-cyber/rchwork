@@ -1,5 +1,5 @@
 ---
-name: draft-epc-contract-utility-solar
+name: 起草epc合同utilitysolar
 task_id: energy-natural-resources/draft-engineering-procurement-construction-contract
 description: Guides drafting of an owner-oriented EPC contract for a utility-scale solar project by checking internal consistency of liquidated damages provisions, coordinating construction and commercial timing constraints, and documenting cross-document conflicts in a companion issues memo.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-statement-of-defense
+name: 起草报表抗辩
 task_id: arbitration-international-dispute-resolution/draft-statement-of-defense
 description: Ensures a statement of defense addresses procedural termination issues, applies any contractual liability limitation, corrects damages methodology where pricing tiers are involved, and includes a duty to mitigate analysis.
 activates_for: [planner, solver, checker]

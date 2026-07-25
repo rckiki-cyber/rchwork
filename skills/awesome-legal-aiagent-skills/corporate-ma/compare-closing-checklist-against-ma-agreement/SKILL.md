@@ -1,5 +1,5 @@
 ---
-name: compare-closing-checklist-vs-ma-agreement
+name: 比较交割清单vsma协议
 task_id: corporate-ma/compare-closing-checklist-against-ma-agreement
 description: Guides a two-directional comparison between an acquisition agreement and a closing checklist to identify missing items, inaccurate terms, and miscategorized deliverables, with verification of stated figures against the agreement’s formulas and defined terms.
 activates_for: [planner, solver, checker]

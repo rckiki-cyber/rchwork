@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-vendor-proposal
+name: extractkey条款卖方建议书
 task_id: intellectual-property/extract-key-terms-from-vendor-proposal
 description: Reviewing a vendor proposal package against a request-for-proposal package to produce a structured term sheet summary with risk assessments, requiring comparison across responding vendors and identification of gaps versus stated requirements.
 activates_for: [planner, solver, checker]

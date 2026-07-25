@@ -1,5 +1,5 @@
 ---
-name: extract-default-triggers-from-credit-agreement
+name: extract违约triggerscredit协议
 task_id: banking-finance/extract-default-triggers-from-credit-agreement
 description: Extract default triggers from a credit agreement and related amendments, cross-reference them against deal materials and compliance data, and produce a structured risk report with next steps.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-discovery-responses
+name: 识别问题证据开示回应
 task_id: trusts-estates-private-client/identify-issues-in-discovery-responses
 description: Closes the gap where agents identify discovery deficiencies without computing procedural deadlines and waiver consequences, quantifying the impact of omissions, connecting suspicious transfers to dissipation, and flagging sworn declaration arithmetic errors.
 activates_for: [planner, solver, checker]

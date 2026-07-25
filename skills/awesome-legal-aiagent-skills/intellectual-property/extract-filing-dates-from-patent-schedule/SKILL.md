@@ -1,5 +1,5 @@
 ---
-name: extract-filing-dates-patent-schedule
+name: extract提交日期专利附表
 task_id: intellectual-property/extract-filing-dates-from-patent-schedule
 description: Reconciling patent portfolio filing dates and status across multiple diligence sources for a transactional patent schedule, requiring priority-chain verification, discrepancy flagging, and maintenance-fee risk assessment at a category level.
 activates_for: [planner, solver, checker]

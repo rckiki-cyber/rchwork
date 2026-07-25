@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-proposed-protective-order
+name: 起草markup拟议protective命令
 task_id: antitrust-competition/draft-markup-of-proposed-protective-order
 description: Closes gaps in issue-specific protective order markup including in-house counsel competitive wall requirements, inter-agency sharing notice, clawback protection, and expert conflict screening mechanisms.
 activates_for: [planner, solver, checker]

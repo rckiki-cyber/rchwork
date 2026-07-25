@@ -1,5 +1,5 @@
 ---
-name: draft-dip-financing-motion
+name: 起草dipfinancing动议
 task_id: bankruptcy-restructuring/draft-dip-financing-motion
 description: Ensures a DIP financing motion discloses roll-up structure, challenge period terms, carve-out justification, and milestone rationale, and proactively addresses the objections that courts routinely raise to DIP provisions.
 activates_for: [planner, solver, checker]

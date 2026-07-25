@@ -1,5 +1,5 @@
 ---
-name: extract-market-share-data-scenario-02
+name: extract市场股份数据scenario
 task_id: antitrust-competition/extract-market-share-data/scenario-02
 description: Closes gaps in per-source revenue accuracy, sub-segment HHI computation, hot-document obligations, and explicit characterization of self-serving internal materials.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-tax-issues-in-counterpartys-summary-judgment-brief
+name: 识别税务问题counterpartys摘要判决摘要
 task_id: tax/identify-tax-issues-in-counterpartys-summary-judgment-brief
 description: Analyzing a government summary judgment brief requires verifying the internal consistency of any stated deficiency computation, assessing whether the brief addresses the relevant economic substance analysis under both prongs of the applicable doctrine, and identifying whether any factual contradictions within the brief have implications on more than one issue.
 activates_for: [planner, solver, checker]

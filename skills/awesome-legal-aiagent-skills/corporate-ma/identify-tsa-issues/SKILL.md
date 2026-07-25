@@ -1,5 +1,5 @@
 ---
-name: identify-tsa-issues
+name: 识别tsa问题
 task_id: corporate-ma/identify-tsa-issues
 description: Guides preparation of a transition services agreement issue memo for the service recipient where legal, commercial, and operational risks must be identified and cross-checked against the governing transaction documents and internal materials.
 activates_for: [planner, solver, checker]

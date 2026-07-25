@@ -1,5 +1,5 @@
 ---
-name: review-data-room-red-flag
+name: 审查数据roomredflag
 task_id: corporate-ma/review-data-room-red-flag-review
 description: Guides preparation of a data room red flag memorandum for an acquisition where a large, heterogeneous data room requires systematic review to identify material risks requiring deal team attention.
 activates_for: [planner, solver, checker]

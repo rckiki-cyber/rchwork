@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-ira
+name: ecvc草案ira
 task_id: emerging-companies-venture-capital/draft-investors-rights-agreement
 description: Drafting an amended and restated investors’ rights agreement for a preferred stock financing requires calibrating investor-status thresholds to the post-financing cap table, sequencing piggyback cutbacks explicitly, addressing MFN interaction with side letters to avoid circularity, and resolving over-subscription when multiple participation rights coexist.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-earnout-issues
+name: 识别earnout问题
 task_id: corporate-ma/identify-earnout-issues
 description: Guides review of an earnout calculation notice where disputed revenue recognition, calculation errors, and purchase agreement mechanics must be analyzed to identify arguable bases for objection.
 activates_for: [planner, solver, checker]

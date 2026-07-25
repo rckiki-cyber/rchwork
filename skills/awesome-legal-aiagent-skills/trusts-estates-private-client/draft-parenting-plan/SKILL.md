@@ -1,5 +1,5 @@
 ---
-name: draft-parenting-plan
+name: 起草parenting计划
 task_id: trusts-estates-private-client/draft-parenting-plan
 description: Drafting a comprehensive parenting plan requires translating mediator recommendations and case-specific child-care, medical, therapeutic, and school-related information into a legally complete residential schedule and decision-making framework, with a companion cover memo addressing risks and open issues.
 activates_for: [planner, solver, checker]

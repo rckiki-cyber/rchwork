@@ -1,5 +1,5 @@
 ---
-name: extract-procedural-requirements-from-institutional-rules
+name: extractprocedural要求institutional规则
 task_id: arbitration-international-dispute-resolution/extract-procedural-requirements-from-institutional-rules
 description: Ensures a procedural compliance checklist computes each deadline from its trigger event, identifies overlapping deadlines, flags forfeiture and waiver risks, and addresses emergency-order enforceability at the seat.
 activates_for: [planner, solver, checker]

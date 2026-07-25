@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-purchase-and-sale-agreement
+name: 分析counterpartymarkup购买sale协议
 task_id: real-estate/analyze-counterparty-markup-of-purchase-and-sale-agreement
 description: Guides prioritized issue analysis of a seller's counsel markup of a purchase and sale agreement by structuring comparison against the buyer's form, deal economics, and transmittal context to produce actionable memorandum recommendations.
 activates_for: [planner, solver, checker]

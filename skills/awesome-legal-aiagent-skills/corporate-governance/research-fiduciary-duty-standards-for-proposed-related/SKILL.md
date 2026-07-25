@@ -1,5 +1,5 @@
 ---
-name: research-fiduciary-duty-standards-for-proposed-related
+name: 研究fiduciaryduty标准拟议关联
 task_id: corporate-governance/research-fiduciary-duty-standards-for-proposed-related
 description: Agents should describe the applicable standard of review for a conflicted related-party transaction, identify the burden-shifting framework that can move review away from entire fairness only if the required process protections are present from the outset, evaluate whether the committee process is sufficiently independent and empowered, and flag any transaction assets, liabilities, or process gaps that require further analysis.
 activates_for: [planner, solver, checker]

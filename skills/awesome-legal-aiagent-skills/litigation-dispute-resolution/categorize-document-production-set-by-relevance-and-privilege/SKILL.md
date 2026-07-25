@@ -1,5 +1,5 @@
 ---
-name: categorize-document-production-set-by-relevance-and-privilege
+name: categorize文件productionsetrelevanceprivilege
 task_id: litigation-dispute-resolution/categorize-document-production-set-by-relevance-and-privilege
 description: Reviewing a production set for relevance and privilege requires making document-by-document classifications under attorney-client privilege, work product, and related confidentiality doctrines, while producing a privilege log that is sufficiently detailed to withstand challenge.
 activates_for: [planner, solver, checker]

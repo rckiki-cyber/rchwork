@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-high-yield-indenture-dividend-recap
+name: 识别问题highyieldindenture分红recap
 task_id: capital-markets/identify-issues-in-high
 description: High-yield indenture issue analysis for a proposed dividend recapitalization, focusing on covenant restrictions, basket availability, calculation checks, and drafting ambiguities that may create structural risk.
 activates_for: [planner, solver, checker]

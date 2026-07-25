@@ -1,5 +1,5 @@
 ---
-name: draft-opposition-to-motion-to-compel-arbitration
+name: 起草opposition动议compel仲裁
 task_id: employment-labor/draft-opposition-to-motion-to-compel-arbitration
 description: Guides the drafter in preparing a court-filed memorandum of law opposing a motion to compel arbitration, leading with the governing statutory anti-waiver theory and developing alternative grounds in the alternative.
 activates_for: [planner, solver, checker]

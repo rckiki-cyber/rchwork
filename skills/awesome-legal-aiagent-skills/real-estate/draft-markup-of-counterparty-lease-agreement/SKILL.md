@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-counterparty-lease-agreement
+name: 起草markupcounterpartylease协议
 task_id: real-estate/draft-markup-of-counterparty-lease-agreement
 description: Guides tenant-side markup and commentary of a proposed lease by anchoring each redline position to the applicable playbook and deal summary, preserving the commercial terms the user provided, and organizing the output with prioritized cover commentary.
 activates_for: [planner, solver, checker]

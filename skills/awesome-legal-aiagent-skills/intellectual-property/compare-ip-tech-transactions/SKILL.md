@@ -1,5 +1,5 @@
 ---
-name: compare-ip-tech-transactions-term-sheet
+name: 比较iptechtransactions期限sheet
 task_id: intellectual-property/compare-ip-tech-transactions
 description: Deviation report comparing a transaction term sheet against an engagement letter, identifying deviations and inconsistencies flagged by general counsel.
 activates_for: [planner, solver, checker]

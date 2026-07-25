@@ -1,5 +1,5 @@
 ---
-name: its-compare-entity-details-export-control
+name: itscompare实体details出口control
 task_id: international-trade-sanctions/compare-entity-details-against-export-control-classification-lists
 description: Produces a per-transaction export control compliance assessment that identifies applicable license exceptions, restricted-party screening issues, re-export chain analysis, and military end-use obligations for each transaction in the review set.
 activates_for: [planner, solver, checker]

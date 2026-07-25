@@ -1,5 +1,5 @@
 ---
-name: compare-breach-notification-report-against-notification-threshold-guidance
+name: 比较违约notification报告againstnotificationthresholdguidance
 task_id: data-privacy-cybersecurity/compare-breach-notification-report-against-notification-threshold-guidance
 description: Gap analyses for breach notification matters should use the internal threshold guidance as the primary benchmark, compare the draft report against the underlying forensic findings and incident timeline, and identify any omissions or inconsistencies affecting notification thresholds, timing, and content.
 activates_for: [planner, solver, checker]

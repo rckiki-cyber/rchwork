@@ -1,5 +1,5 @@
 ---
-name: <kebab-case-skill-slug>
+name: 技能模板
 task_id: <harvey-domain>/<harvey-task-slug>
 description: <one sentence — the procedural / framing gap this skill closes for *this class of work* (e.g., "reviewing corporate authorization documents for a credit-facility closing across multi-entity, multi-jurisdiction guarantor groups"). Do not mention specific dollar amounts, percentages, named entities, verbatim quotes, or jurisdiction- / statute- / entity-type-specific citations that you only know to mention because you read *this* scenario's documents. The description should read like the title of a CLE module, not the abstract of a single matter.>
 activates_for: [planner, solver, checker]

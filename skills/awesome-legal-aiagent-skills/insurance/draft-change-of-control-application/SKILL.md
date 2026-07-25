@@ -1,5 +1,5 @@
 ---
-name: draft-form-a-change-of-control-insurance
+name: 起草表格变更control保险
 task_id: insurance/draft-change-of-control-application
 description: Agents drafting a change-of-control application for an insurance regulator should build a complete ownership-and-control narrative, identify financing and governance items that may need disclosure or approval, and check for filing obligations in each potentially affected jurisdiction.
 activates_for: [planner, solver, checker]

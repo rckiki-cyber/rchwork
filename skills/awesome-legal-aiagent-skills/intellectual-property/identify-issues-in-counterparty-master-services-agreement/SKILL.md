@@ -1,5 +1,5 @@
 ---
-name: identify-issues-counterparty-msa
+name: 识别问题counterpartymsa
 task_id: intellectual-property/identify-issues-in-counterparty-master-services-agreement
 description: Reviewing a counterparty-form master services agreement against a contracting playbook and deal materials to produce a redline recommendation memo with prioritized risk ratings.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-environmental-litigation-settlement-agreement
+name: 起草markup环境诉讼和解协议
 task_id: environmental-esg/draft-markup-of-environmental-litigation-settlement-agreement
 description: Guides preparation of a strategic redline markup of a proposed environmental litigation settlement or consent decree by evaluating remedy adequacy, penalty provisions, contribution protection scope, compliance schedules, enforceability, and the client's negotiating posture.
 activates_for: [planner, solver, checker]

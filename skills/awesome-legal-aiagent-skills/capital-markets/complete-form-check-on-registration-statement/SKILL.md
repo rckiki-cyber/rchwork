@@ -1,5 +1,5 @@
 ---
-name: complete-form-check-on-registration-statement
+name: complete表格check登记报表
 task_id: capital-markets/complete-form-check-on-registration-statement
 description: S-1 form check for a registration statement where the baseline identifies surface-level omissions but does not fully test internal consistency of financial tables, ownership disclosures, dilution computations, and other structure-dependent disclosures against the supporting record.
 activates_for: [planner, solver, checker]

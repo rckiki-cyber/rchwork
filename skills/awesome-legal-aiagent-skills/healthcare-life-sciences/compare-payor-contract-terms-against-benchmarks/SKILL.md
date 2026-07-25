@@ -1,5 +1,5 @@
 ---
-name: hls-compare-payor-contract-benchmarks
+name: hlscomparepayor合同benchmarks
 task_id: healthcare-life-sciences/compare-payor-contract-terms-against-benchmarks
 description: Analyzes multiple payor contracts against a benchmark report on a contract-by-contract basis to identify rate deviations, structural adverse terms, and acquisition-relevant provisions with quantified financial impact.
 activates_for: [planner, solver, checker]

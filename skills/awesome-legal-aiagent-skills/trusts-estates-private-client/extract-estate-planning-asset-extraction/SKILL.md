@@ -1,5 +1,5 @@
 ---
-name: extract-estate-planning-asset-extraction
+name: extract不动产planning资产extraction
 task_id: trusts-estates-private-client/extract-estate-planning-asset-extraction
 description: Closes the gap where agents compile asset schedules using a net worth summary without verifying whether irrevocable trust assets are incorrectly included in the client's owned-asset total, and without identifying ineffective beneficiary designations and their estate and income tax consequences.
 activates_for: [planner, solver, checker]

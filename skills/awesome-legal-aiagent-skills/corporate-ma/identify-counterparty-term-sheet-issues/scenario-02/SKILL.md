@@ -1,5 +1,5 @@
 ---
-name: identify-counterparty-term-sheet-issues-scenario-02
+name: 识别counterparty期限sheet问题scenario
 task_id: corporate-ma/identify-counterparty-term-sheet-issues/scenario-02
 description: Guides preparation of a seller-side prioritized issues memo identifying material problems in a buyer's proposed non-binding M&A term sheet, cross-referenced against deal economics and market data.
 activates_for: [planner, solver, checker]

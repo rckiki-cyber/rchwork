@@ -1,5 +1,5 @@
 ---
-name: draft-markup-ica-second-lien-perspective
+name: 起草markupicasecondlienperspective
 task_id: energy-natural-resources/draft-markup-of-intercreditor-agreement
 description: Guides drafting of a second-lien lender's markup of an intercreditor agreement by identifying market-standard standstill concepts, DIP financing protections, credit-bidding considerations, and bankruptcy-related carve-outs, accompanied by an executive strategy memo that separates priority positions from negotiable positions.
 activates_for: [planner, solver, checker]

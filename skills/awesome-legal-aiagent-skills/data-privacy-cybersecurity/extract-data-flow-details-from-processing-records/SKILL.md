@@ -1,5 +1,5 @@
 ---
-name: extract-data-flow-details-from-processing-records
+name: extract数据flowdetailsprocessing记录
 task_id: data-privacy-cybersecurity/extract-data-flow-details-from-processing-records
 description: Data flow extraction from processing records fails when the agent does not systematically reconcile the primary record of processing against supporting agreements, transfer assessments, and technical architecture to surface discrepancies between the documented and actual data flows.
 activates_for: [planner, solver, checker]

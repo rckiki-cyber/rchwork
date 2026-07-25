@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-plan-objection
+name: 分析counterparty计划异议
 task_id: bankruptcy-restructuring/analyze-counterparty-plan-objection-for-meritorious-and-deficient-arguments
 description: Ensures a plan objection analysis applies the governing legal standards to each argument with a fact-driven assessment, rather than offering only descriptive paraphrases of the objector's positions.
 activates_for: [planner, solver, checker]

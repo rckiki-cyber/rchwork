@@ -1,5 +1,5 @@
 ---
-name: draft-proffer-agreement-cooperating-witness
+name: 起草proffer协议cooperating证人
 task_id: white-collar-defense-investigations/draft-proffer-agreement
 description: Proffer agreement and accompanying cover memorandum for a cooperating witness in a federal investigation, covering direct use protection, derivative use risk analysis, false statement exposure, and the strategic framework for deciding whether to proffer.
 activates_for: [planner, solver, checker]

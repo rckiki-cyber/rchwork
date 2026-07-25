@@ -1,5 +1,5 @@
 ---
-name: hls-draft-fda-warning-letter-response
+name: hls草案fdawarning函件回应
 task_id: healthcare-life-sciences/draft-corrective-action-response-to-fda-warning-letter
 description: Drafts a corrective action response to an FDA warning letter that addresses each cited observation, identifies the applicable device and facility identifiers, and lays out observation-sequenced remediation steps and timelines.
 activates_for: [planner, solver, checker]

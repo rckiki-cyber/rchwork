@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-construction-contract
+name: 分析counterpartymarkupconstruction合同
 task_id: real-estate/analyze-counterparty-markup-of-construction-contract
 description: Guides comprehensive redline analysis of a construction contract markup by structuring multi-document cross-reference, risk quantification, and playbook- and lender-calibrated response recommendations.
 activates_for: [planner, solver, checker]

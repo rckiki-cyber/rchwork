@@ -1,5 +1,5 @@
 ---
-name: draft-complaint-trade-secret-misappropriation
+name: 起草起诉状贸易secretmisappropriation
 task_id: intellectual-property/draft-complaint
 description: Federal complaint for trade secret misappropriation and related claims, plus a strategic memo flagging anticipated defenses and litigation concerns, based on forensic and employment documentation.
 activates_for: [planner, solver, checker]

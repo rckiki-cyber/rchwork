@@ -1,5 +1,5 @@
 ---
-name: compare-rw-against-precedent-indenture
+name: 比较rwagainst先例indenture
 task_id: structured-finance-securitization/compare-representations-and-warranties-against-precedent-indenture
 description: Comparing representations and warranties sections in a draft indenture against a precedent to identify deviations in breach standards, cure periods, collateral quality representations, origination channel coverage, and other categories of protections, as well as representations present in the precedent but absent from the draft.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-engagement-letter
+name: 起草engagement函件
 task_id: corporate-ma/draft-engagement-letter
 description: Guides drafting of a customized engagement letter from intake materials and a firm template, requiring precise party identification, matter-specific scope with explicit exclusions, and a companion cover memo flagging source-document conflicts and open items.
 activates_for: [planner, solver, checker]

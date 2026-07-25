@@ -1,5 +1,5 @@
 ---
-name: compare-i9-roster-audit
+name: 比较i9roster审计
 task_id: immigration/compare-i
 description: Cross-audit comparing an employee roster against employment eligibility verification records to identify compliance gaps at the individual employee level, with employee-specific documentation, timing, and reverification analysis.
 activates_for: [planner, solver, checker]

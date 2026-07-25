@@ -1,5 +1,5 @@
 ---
-name: draft-acquisition-due-diligence
+name: 起草收购due尽职调查
 task_id: corporate-ma/draft-acquisition-due-diligence
 description: Guides preparation of a comprehensive acquisition due diligence memo, requiring category-by-category analysis that identifies corporate structural deficiencies, IP ownership chain gaps, indemnification risks, tax nexus exposure, and material contract change-of-control issues.
 activates_for: [planner, solver, checker]

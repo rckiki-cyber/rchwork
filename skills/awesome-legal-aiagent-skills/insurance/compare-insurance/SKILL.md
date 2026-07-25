@@ -1,5 +1,5 @@
 ---
-name: compare-manufacturing-claim-property-policy-exclusions
+name: 比较manufacturing索赔财产政策exclusions
 task_id: insurance/compare-insurance
 description: Agents analyzing a complex property claim against a commercial policy should compare the claimed loss categories against the operative coverage grants, exclusions, endorsements, valuation provisions, deductibles, and mitigation-related clauses; address causation doctrines where relevant; and test the claim timeline and arithmetic against the policy terms.
 activates_for: [planner, solver, checker]

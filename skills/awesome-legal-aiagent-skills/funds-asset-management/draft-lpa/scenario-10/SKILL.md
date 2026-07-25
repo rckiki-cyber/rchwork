@@ -1,5 +1,5 @@
 ---
-name: draft-lpa-scenario-10
+name: 起草lpascenario
 task_id: funds-asset-management/draft-lpa/scenario-10
 description: Draft a digital asset fund LPA with asset-class-specific valuation provisions, multi-signature custody mechanics, staking governance, airdrop and hard-fork treatment, and a drafting notes annex flagging open issues.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-pricing-terms-from-transfer-agreement
+name: extract定价条款transfer协议
 task_id: funds-asset-management/extract-pricing-terms-from-transfer-agreement
 description: Extract all pricing-relevant terms from a secondary LP interest transfer document set into a structured pricing term sheet, with an appended issues log identifying discrepancies, ambiguities, and gaps across the documents.
 activates_for: [planner, solver, checker]

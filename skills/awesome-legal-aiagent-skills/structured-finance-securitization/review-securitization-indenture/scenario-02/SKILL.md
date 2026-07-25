@@ -1,5 +1,5 @@
 ---
-name: review-equipment-lease-abs-indenture-scenario-02
+name: 审查equipmentleaseabsindenturescenario
 task_id: structured-finance-securitization/review-securitization-indenture/scenario-02
 description: Reviewing a draft indenture for an equipment lease receivables securitization, with the additional analytical requirement of comparing the initial trigger calibration against the sponsor's most recent annualized net loss rate and identifying whether historical losses are trending upward as part of the assessment.
 activates_for: [planner, solver, checker]

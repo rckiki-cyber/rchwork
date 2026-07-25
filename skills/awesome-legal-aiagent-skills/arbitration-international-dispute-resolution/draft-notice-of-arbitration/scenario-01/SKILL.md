@@ -1,5 +1,5 @@
 ---
-name: draft-notice-of-arbitration-scenario-01
+name: 起草通知仲裁scenario
 task_id: arbitration-international-dispute-resolution/draft-notice-of-arbitration/scenario-01
 description: Ensures a notice of arbitration identifies the parties, describes the dispute and relief sought, addresses any contractual liability cap in a neutral way, references the filing fee, and uses documented prior knowledge and settlement history as factual context where relevant.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-investment-advisory-agreement
+name: 起草markup投资advisory协议
 task_id: funds-asset-management/draft-markup-of-investment-advisory-agreement
 description: Redline an investment adviser's form advisory agreement from the client's perspective, producing a marked-up draft with a cover memo that prioritizes changes by negotiating importance and ties each proposed modification to the applicable legal, regulatory, or client-policy basis.
 activates_for: [planner, solver, checker]

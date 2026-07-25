@@ -1,5 +1,5 @@
 ---
-name: hls-extract-icf-terms
+name: hlsextracticf条款
 task_id: healthcare-life-sciences/extract-key-terms-from-informed-consent-form
 description: Reviews an informed consent form against applicable informed-consent requirements, any required privacy authorization, institutional review board contact requirements, conflict-of-interest disclosure expectations, and cross-document consistency to identify missing elements, omissions, and discrepancies.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-target-diligence-profile-scenario-02
+name: 起草目标尽职调查profilescenario
 task_id: corporate-ma/draft-target-diligence-profile/scenario-02
 description: Guides preparation of a target diligence profile for an investment committee where legal, financial, environmental, and insurance diligence findings must be synthesized into a structured risk assessment.
 activates_for: [planner, solver, checker]

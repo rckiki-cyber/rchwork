@@ -1,5 +1,5 @@
 ---
-name: identify-deficiencies-and-grounds-for-challenge-in-government-fine-notice
+name: 识别deficienciesgroundschallenge政府罚款通知
 task_id: immigration/identify-deficiencies-and-grounds-for-challenge-in-government-fine-notice
 description: Issue memorandum identifying deficiencies and grounds for challenge in a government fine notice, where each contestable ground must be supported by specific analysis of penalty-rate applicability, violation categorization, and quantified financial impact.
 activates_for: [planner, solver, checker]

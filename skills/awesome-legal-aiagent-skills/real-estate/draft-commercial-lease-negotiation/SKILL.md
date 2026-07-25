@@ -1,5 +1,5 @@
 ---
-name: draft-commercial-lease-negotiation
+name: 起草商业lease谈判
 task_id: real-estate/draft-commercial-lease-negotiation
 description: Guides preparation of a full tenant-side lease negotiation package by aligning redline positions against the governing baseline documents and internal requirements, and producing all required deliverables in consistent form.
 activates_for: [planner, solver, checker]

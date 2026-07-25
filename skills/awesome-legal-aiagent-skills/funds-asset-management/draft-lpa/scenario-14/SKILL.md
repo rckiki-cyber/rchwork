@@ -1,5 +1,5 @@
 ---
-name: draft-lpa-scenario-14
+name: 起草lpascenario
 task_id: funds-asset-management/draft-lpa/scenario-14
 description: Draft a successor fund limited partnership agreement that adapts a prior-fund precedent to incorporate plan-asset exemption provisions, real estate valuation mechanics, and terms drawn from multiple supplemental source documents that may contain conflicting or ambiguous provisions.
 activates_for: [planner, solver, checker]

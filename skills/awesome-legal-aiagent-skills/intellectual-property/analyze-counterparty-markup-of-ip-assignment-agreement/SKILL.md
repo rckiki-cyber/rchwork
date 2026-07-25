@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-ip-assignment
+name: 分析counterpartymarkupip转让
 task_id: intellectual-property/analyze-counterparty-markup-of-ip-assignment-agreement
 description: Risk-prioritized redline analysis of a counterparty-marked IP assignment agreement against the original draft and internal acquisition playbook, focusing on how to compare the markup against baseline drafting conventions and transaction objectives.
 activates_for: [planner, solver, checker]

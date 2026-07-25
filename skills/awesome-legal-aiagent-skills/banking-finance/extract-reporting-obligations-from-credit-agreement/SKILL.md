@@ -1,5 +1,5 @@
 ---
-name: extract-reporting-obligations-from-credit-agreement
+name: extractreporting义务credit协议
 task_id: banking-finance/extract-reporting-obligations-from-credit-agreement
 description: Extract all reporting, notice, and certificate obligations from a credit facility's loan documents into a structured matrix with a compliance calendar and an inconsistencies log.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-employment-agreement-offer-letter
+name: 起草雇佣协议要约函件
 task_id: intellectual-property/draft-employment-agreement-from-offer-letter-terms
 description: Executive employment agreement for a senior technology hire drafted from an offer letter and supporting materials, with a cross-document discrepancy memo flagging inconsistencies for resolution.
 activates_for: [planner, solver, checker]

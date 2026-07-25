@@ -1,5 +1,5 @@
 ---
-name: identify-settlement-proposal-issues-divorce-scenario-02
+name: 识别和解建议书问题divorcescenario
 task_id: trusts-estates-private-client/identify-settlement-proposal-issues/scenario-02
 description: Generalizes the settlement-issue spotting workflow for a contested divorce proposal, with emphasis on checking support-duration assumptions against the marriage-length context, verifying whether equity-compensation division uses a coverture-style fraction for each vesting tranche, and noting when one asset allocation is being used to justify trade-offs in another area.
 activates_for: [planner, solver, checker]

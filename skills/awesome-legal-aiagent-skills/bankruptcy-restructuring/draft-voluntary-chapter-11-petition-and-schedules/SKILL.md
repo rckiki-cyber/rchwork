@@ -1,5 +1,5 @@
 ---
-name: draft-voluntary-chapter-11-petition-and-schedules
+name: 起草voluntarychapter申请附表
 task_id: bankruptcy-restructuring/draft-voluntary-chapter-11-petition-and-schedules
 description: Ensures a chapter 11 petition and schedules package correctly categorizes assets and liabilities across the relevant schedule types and that the companion issues memorandum systematically analyzes potential avoidance exposure and related restructuring issues based on the source documents.
 activates_for: [planner, solver, checker]

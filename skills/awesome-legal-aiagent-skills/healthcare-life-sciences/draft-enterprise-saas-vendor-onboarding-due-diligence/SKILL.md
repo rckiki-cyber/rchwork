@@ -1,5 +1,5 @@
 ---
-name: hls-draft-enterprise-saas-vendor-dd
+name: hls草案enterprisesaas卖方dd
 task_id: healthcare-life-sciences/draft-enterprise-saas-vendor-onboarding-due-diligence
 description: Drafts a tailored enterprise SaaS vendor onboarding questionnaire and internal cover memo for a healthcare system, with the cover memo linking each questionnaire section to prior internal review themes in general terms and the questionnaire including a response deadline.
 activates_for: [planner, solver, checker]

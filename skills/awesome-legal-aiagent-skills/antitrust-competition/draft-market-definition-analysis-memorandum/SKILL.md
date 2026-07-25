@@ -1,5 +1,5 @@
 ---
-name: draft-market-definition-analysis-memorandum
+name: 起草市场definition分析备忘录
 task_id: antitrust-competition/draft-market-definition-analysis-memorandum
 description: Closes gaps in narrow vs. broad product market analysis, buyer-side harm, and hot-document identification in strategic planning market definition memos.
 activates_for: [planner, solver, checker]

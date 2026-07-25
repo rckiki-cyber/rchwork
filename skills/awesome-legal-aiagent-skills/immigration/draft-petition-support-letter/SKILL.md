@@ -1,5 +1,5 @@
 ---
-name: draft-eb1a-expert-opinion-letter
+name: 起草eb1a专家意见函件
 task_id: immigration/draft-petition-support-letter
 description: Expert opinion letter for an extraordinary-ability petition accompanied by a privileged issues memo, where the letter must rely exclusively on verifiable claims and the memo must flag every statistic or assertion that cannot be confirmed from the supporting documentation.
 activates_for: [planner, solver, checker]

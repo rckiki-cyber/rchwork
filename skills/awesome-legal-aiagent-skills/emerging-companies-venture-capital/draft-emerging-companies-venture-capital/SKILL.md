@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-ip-assignment-agreement
+name: ecvc草案ip转让协议
 task_id: emerging-companies-venture-capital/draft-emerging-companies-venture-capital
 description: An omnibus IP assignment for an early-stage financing should address open-source contamination risks, employee-invention assignment carve-outs, federally funded invention obligations, and prior-employer overlap risks — not just enumerate the categories of assigned IP.
 activates_for: [planner, solver, checker]

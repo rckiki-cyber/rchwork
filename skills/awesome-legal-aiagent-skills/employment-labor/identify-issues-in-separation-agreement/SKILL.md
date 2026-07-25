@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-separation-agreement
+name: 识别问题separation协议
 task_id: employment-labor/identify-issues-in-separation-agreement
 description: Guides counsel in producing a categorized issues memorandum identifying legal, enforceability, and factual consistency defects in a draft executive separation agreement, with severity ratings and recommended corrections.
 activates_for: [planner, solver, checker]

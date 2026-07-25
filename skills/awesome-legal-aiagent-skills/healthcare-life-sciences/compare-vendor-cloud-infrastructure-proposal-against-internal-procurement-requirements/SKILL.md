@@ -1,5 +1,5 @@
 ---
-name: hls-compare-vendor-cloud-proposal-procurement
+name: hlscompare卖方cloud建议书采购
 task_id: healthcare-life-sciences/compare-vendor-cloud-infrastructure-proposal-against-internal-procurement-requirements
 description: Compares a vendor cloud infrastructure proposal against internal procurement requirements and related security or compliance addenda to identify financial, technical, legal, and regulatory gaps, then organizes the differences into a negotiation-focused gap analysis.
 activates_for: [planner, solver, checker]

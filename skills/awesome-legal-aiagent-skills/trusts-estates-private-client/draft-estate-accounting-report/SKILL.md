@@ -1,5 +1,5 @@
 ---
-name: draft-estate-accounting-report
+name: 起草不动产会计报告
 task_id: trusts-estates-private-client/draft-estate-accounting-report
 description: Drafting a first and final judicial accounting for a surrogate’s court submission requires reconciling the fiduciary’s summary against underlying financial records, classifying receipts and disbursements into the proper accounting schedules, computing any fiduciary compensation under the applicable statutory framework, and explaining investment performance and distribution calculations in a manner consistent with the governing estate administration rules.
 activates_for: [planner, solver, checker]

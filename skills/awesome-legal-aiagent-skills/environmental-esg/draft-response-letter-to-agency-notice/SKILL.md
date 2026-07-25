@@ -1,5 +1,5 @@
 ---
-name: draft-response-letter-to-agency-notice
+name: 起草回应函件机构通知
 task_id: environmental-esg/draft-response-letter-to-agency-notice
 description: Guides drafting of a formal response to an agency notice of violation by organizing defenses by allegation, distinguishing defensible from conceded allegations, proposing a supplemental environmental project where appropriate, and requesting an informal conference.
 activates_for: [planner, solver, checker]

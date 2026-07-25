@@ -1,5 +1,5 @@
 ---
-name: its-identify-issues-export-license-application
+name: itsidentify问题出口许可application
 task_id: international-trade-sanctions/identify-issues-in-export-license-application
 description: Produces a comprehensive issues memorandum for a draft export license application that compares stated technical parameters against source materials, evaluates screening and denial-risk considerations for restricted-party transactions, reviews personnel and publication relationships for diversion indicators, assesses remote-access and technical-data-transfer pathways, and checks whether current export-control parameters have been applied.
 activates_for: [planner, solver, checker]

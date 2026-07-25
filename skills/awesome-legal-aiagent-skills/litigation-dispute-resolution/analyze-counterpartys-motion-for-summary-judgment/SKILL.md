@@ -1,5 +1,5 @@
 ---
-name: analyze-counterpartys-motion-for-summary-judgment
+name: 分析counterpartys动议摘要判决
 task_id: litigation-dispute-resolution/analyze-counterpartys-motion-for-summary-judgment
 description: Defending against a summary judgment motion requires identifying genuine factual disputes, exposing mischaracterizations in the movant's statement of undisputed facts, and pinpointing evidentiary deficiencies that preclude judgment as a matter of law.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: research-corporate-veil-piercing-standards-across-target-jurisdictions
+name: 研究公司veilpiercing标准跨境目标管辖
 task_id: litigation-dispute-resolution/research-corporate-veil-piercing-standards-across-target-jurisdictions
 description: A multi-jurisdictional veil-piercing research memo should identify the applicable entity-law standards across the relevant jurisdictions, apply those standards to the corporate structure and intercompany financial relationships reflected in the source materials, assess direct-liability theories as alternatives, and recommend structural remediation steps to reduce exposure.
 activates_for: [planner, solver, checker]

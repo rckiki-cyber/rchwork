@@ -1,5 +1,5 @@
 ---
-name: compare-expert-opinions-trial-record
+name: 比较专家意见审判记录
 task_id: intellectual-property/compare-expert-opinions-against-trial-record
 description: Post-trial memorandum evaluating the consistency and supportability of competing expert opinions against the trial record for post-trial motion purposes.
 activates_for: [planner, solver, checker]

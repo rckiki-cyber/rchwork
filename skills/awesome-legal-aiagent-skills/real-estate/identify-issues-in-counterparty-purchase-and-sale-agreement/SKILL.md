@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterparty-purchase-and-sale-agreement
+name: 识别问题counterparty购买sale协议
 task_id: real-estate/identify-issues-in-counterparty-purchase-and-sale-agreement
 description: Guides buyer-side identification of issues in a seller's draft purchase and sale agreement by anchoring each issue to the executed letter of intent, the buyer's acquisition playbook, and financial due diligence, and producing a prioritized issues memorandum.
 activates_for: [planner, solver, checker]

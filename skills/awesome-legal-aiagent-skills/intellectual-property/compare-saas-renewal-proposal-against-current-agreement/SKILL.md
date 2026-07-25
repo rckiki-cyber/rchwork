@@ -1,5 +1,5 @@
 ---
-name: compare-saas-renewal-proposal-current
+name: 比较saas续期建议书现行
 task_id: intellectual-property/compare-saas-renewal-proposal-against-current-agreement
 description: Deviation report evaluating a SaaS renewal proposal against the current agreement and amendments, with issue characterization and negotiation guidance for internal presentation.
 activates_for: [planner, solver, checker]

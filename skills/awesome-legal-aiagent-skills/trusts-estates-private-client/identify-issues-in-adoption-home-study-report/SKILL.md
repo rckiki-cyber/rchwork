@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-adoption-home-study-report
+name: 识别问题adoptionhomestudy报告
 task_id: trusts-estates-private-client/identify-issues-in-adoption-home-study-report
 description: Closes the gap where agents review adoption home study packages by checking background check timing, reference count and composition, registry-search documentation, evaluator independence, and unresolved discrepancies against the applicable adoption requirements.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-credit-agreement
+name: 识别问题credit协议
 task_id: banking-finance/identify-issues-in-credit-agreement
 description: Compares a final credit agreement against the governing deal materials and internal instructions from the borrower’s side, and produces a prioritized issue-spotting memorandum with severity classifications and recommendations.
 activates_for: [planner, solver, checker]

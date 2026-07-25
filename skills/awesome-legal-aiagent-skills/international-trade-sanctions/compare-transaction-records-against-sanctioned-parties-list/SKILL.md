@@ -1,5 +1,5 @@
 ---
-name: its-compare-transaction-records-sanctions-list
+name: itscomparetransaction记录制裁list
 task_id: international-trade-sanctions/compare-transaction-records-against-sanctioned-parties-list
 description: Produces a sanctions screening report covering transactions in the review period by comparing counterparties, dates, ownership chains, and vessel identifiers against applicable sanctions lists and highlighting items that warrant escalation or disclosure review.
 activates_for: [planner, solver, checker]

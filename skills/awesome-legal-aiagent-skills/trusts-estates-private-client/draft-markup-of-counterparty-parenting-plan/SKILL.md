@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-counterparty-parenting-plan
+name: 起草markupcounterpartyparenting计划
 task_id: trusts-estates-private-client/draft-markup-of-counterparty-parenting-plan
 description: Producing a redline markup of an opposing party's proposed parenting plan requires advancing the client's position through targeted revisions with embedded commentary, correcting any misstated modification standard, and addressing child-specific educational accommodations and transportation burden with the applicable governing authority.
 activates_for: [planner, solver, checker]

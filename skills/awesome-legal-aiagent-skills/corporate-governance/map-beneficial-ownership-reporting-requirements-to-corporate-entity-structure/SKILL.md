@@ -1,5 +1,5 @@
 ---
-name: map-beneficial-ownership-reporting-requirements-to-corporate-entity-structure
+name: mapbeneficialownershipreporting要求公司实体结构
 task_id: corporate-governance/map-beneficial-ownership-reporting-requirements-to-corporate-entity-structure
 description: Agents apply the large operating company exemption using all required prongs, trace beneficial ownership through layered ownership structures to identify individual beneficial owners, analyze foreign joint venture partners by tracing through to individuals where feasible, and assess substantial control for governance-rights holders who do not own equity.
 activates_for: [planner, solver, checker]

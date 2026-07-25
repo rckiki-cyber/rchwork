@@ -1,5 +1,5 @@
 ---
-name: compare-side-letter-provisions-against-limited-partnership-agreement
+name: 比较side函件条款against有限合伙协议
 task_id: funds-asset-management/compare-side-letter-provisions-against-limited-partnership-agreement
 description: Review an executed side letter against the fund's limited partnership agreement and any internal approval materials to produce a deviation analysis memorandum identifying substantive departures from standard terms, with enforceability analysis, risk ratings, and recommended next steps.
 activates_for: [planner, solver, checker]

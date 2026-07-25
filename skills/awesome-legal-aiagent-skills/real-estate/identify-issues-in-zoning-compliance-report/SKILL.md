@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-zoning-compliance-report
+name: 识别问题zoning合规报告
 task_id: real-estate/identify-issues-in-zoning-compliance-report
 description: Guides identification of issues in a seller's zoning compliance report for a mixed-use acquisition by comparing the report against the underlying zoning ordinance, survey, variance approval, environmental materials, and purchase agreement provisions, and organizing findings by severity.
 activates_for: [planner, solver, checker]

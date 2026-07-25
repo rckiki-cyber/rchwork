@@ -1,5 +1,5 @@
 ---
-name: extract-compliance-findings-from-internal-audit-report
+name: extract合规findingsinternal审计报告
 task_id: corporate-governance/extract-compliance-findings-from-internal-audit-report
 description: Agents summarize audit findings while also assessing audit independence, limitations in transaction-monitoring testing, sanctions-disclosure considerations, customer classification risks, and the basis for any disagreement over management severity adjustments.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-commercial-real-estate-closing-checklist
+name: 起草商业不动产不动产交割清单
 task_id: real-estate/draft-commercial-real-estate-closing-checklist
 description: Guides drafting of a comprehensive commercial real estate closing checklist by deriving required deliverables and conditions from the purchase and sale agreement, title materials, financing materials, environmental materials, and transaction status updates.
 activates_for: [planner, solver, checker]

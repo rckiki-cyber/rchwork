@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-executive-employment-agreement
+name: 起草markupexecutive雇佣协议
 task_id: employment-labor/draft-markup-of-executive-employment-agreement
 description: Guides the drafter in producing a section-by-section redlined markup of an executive employment agreement anchored to the approved term sheet, internal compensation guidance, and applicable regulatory requirements.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-reinsurance-treaty
+name: extractkey条款再保险treaty
 task_id: insurance/extract-key-terms-from-reinsurance-treaty
 description: Agents extracting key terms from a reinsurance treaty should capture headline provisions, cross-reference related documents, and check for internal consistency, missing elections, ambiguous formulas, and operational mechanics across the treaty package.
 activates_for: [planner, solver, checker]

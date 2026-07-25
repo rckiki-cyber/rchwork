@@ -1,5 +1,5 @@
 ---
-name: extract-reporting-obligations-from-advisory-agreement
+name: extractreporting义务advisory协议
 task_id: funds-asset-management/extract-reporting-obligations-from-advisory-agreement
 description: Extract all reporting obligations from an investment advisory agreement and companion documents into a consolidated reporting obligation matrix, and identify structural and compliance issues including sequencing dependencies, deadline ambiguities, and gaps between the adviser's ongoing obligations and the agreement's periodic reporting cadence.
 activates_for: [planner, solver, checker]

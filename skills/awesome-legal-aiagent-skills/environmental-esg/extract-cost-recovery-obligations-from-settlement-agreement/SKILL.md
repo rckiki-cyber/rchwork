@@ -1,5 +1,5 @@
 ---
-name: extract-cost-recovery-obligations-from-settlement-agreement
+name: extract成本recovery义务和解协议
 task_id: environmental-esg/extract-cost-recovery-obligations-from-settlement-agreement
 description: Guides preparation of a cost recovery obligation matrix by extracting all payment obligations, reimbursement mechanics, trust fund requirements, and risk triggers from a settlement agreement and cross-referencing against financial records.
 activates_for: [planner, solver, checker]

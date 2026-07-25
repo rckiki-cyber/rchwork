@@ -1,5 +1,5 @@
 ---
-name: compare-financial-declaration-against-tax-returns
+name: 比较财务declarationagainst税务returns
 task_id: trusts-estates-private-client/compare-financial-declaration-against-tax-returns
 description: Comparing a sworn financial declaration against multiple years of tax returns requires source-by-source income reconciliation, correction of improper expense deductions in rental income calculations, and assessment of the legal consequences of material misstatements in sworn filings.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-ip-assignment-series-a
+name: 起草ip转让series
 task_id: intellectual-property/draft-intellectual-property-assignment-agreement
 description: Execution-ready founder IP assignment agreement and cover memo for a startup financing transaction, addressing material IP risks and pre-closing action items identified in diligence.
 activates_for: [planner, solver, checker]

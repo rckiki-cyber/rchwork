@@ -1,5 +1,5 @@
 ---
-name: review-business-unit-msas-corporate-template
+name: 审查业务unitmsas公司模板
 task_id: intellectual-property/review-business-unit-msas-against-corporate-template
 description: Reviewing multiple business unit MSA templates against a corporate template and a higher-authority risk policy to produce a deviation-by-deviation conformance report with risk ratings and a remediation roadmap.
 activates_for: [planner, solver, checker]

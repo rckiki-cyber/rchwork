@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterpartys-draft-prenuptial-agreement
+name: 识别问题counterpartys草案prenuptial协议
 task_id: trusts-estates-private-client/identify-issues-in-counterpartys-draft-prenuptial-agreement
 description: Closes the gap where agents identify surface-level prenuptial issues without challenging the adequacy of financial disclosure, flagging relevant enforcement considerations, assessing maintenance waiver unconscionability risk, and identifying provisions that may be unenforceable or overbroad.
 activates_for: [planner, solver, checker]

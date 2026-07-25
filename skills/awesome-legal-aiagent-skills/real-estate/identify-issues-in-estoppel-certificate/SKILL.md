@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-estoppel-certificate
+name: 识别问题estoppelcertificate
 task_id: real-estate/identify-issues-in-estoppel-certificate
 description: Guides tenant-by-tenant review of estoppel certificates against lease abstracts, rent roll, and acquisition agreement requirements, identifying factual discrepancies, qualification language, and coverage gaps that affect closing conditions.
 activates_for: [planner, solver, checker]

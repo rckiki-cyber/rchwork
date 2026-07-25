@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-escrow-agreement
+name: 起草markup托管协议
 task_id: corporate-ma/draft-markup-of-escrow-agreement
 description: Guides preparation of a partner-ready marked-up escrow agreement with bracketed commentary on material issues, including independent verification of escrow amounts against the governing acquisition agreement formula, review of permitted investments, earnings-follow-principal allocation, release mechanics, claims procedure, tax reporting, governing law, fees, successor appointment mechanics, and citation of the applicable internal rationale for each proposed change.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: compare-credit-agreement-to-commitment-letter
+name: 比较credit协议commitment函件
 task_id: corporate-ma/compare-credit-agreement-to-commitment-letter
 description: Guides provision-by-provision comparison of a draft credit agreement against the commitment letter and term sheet, identifying deviations in pricing, structural protections, and covenant mechanics, and classifying each as a commitment-letter breach or within an acceptable range.
 activates_for: [planner, solver, checker]

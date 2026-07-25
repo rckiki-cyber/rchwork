@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-land-option-agreement-solar
+name: extractkey条款landoption协议solar
 task_id: energy-natural-resources/extract-key-terms-from-land-option-agreement
 description: Guides extraction of key terms from a solar project land option agreement by cross-referencing title and access encumbrances, comparing each term against relevant diligence standards, and flagging ambiguities in escalation mechanics and casualty provisions that create long-term risk.
 activates_for: [planner, solver, checker]

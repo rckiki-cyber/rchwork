@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterpartys-emergency-application-for-interim-measures
+name: 识别问题counterpartysemergencyapplication中期measures
 task_id: arbitration-international-dispute-resolution/identify-issues-in-counterpartys-emergency-application-for-interim-measures
 description: Helps a respondent analyze an emergency interim measures application by checking financial assertions against source materials, testing proportionality, and assessing irreparable harm, urgency, and procedural requirements.
 activates_for: [planner, solver, checker]

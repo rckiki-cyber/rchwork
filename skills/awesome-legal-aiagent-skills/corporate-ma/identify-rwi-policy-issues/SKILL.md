@@ -1,5 +1,5 @@
 ---
-name: identify-rwi-policy-issues
+name: 识别rwi政策问题
 task_id: corporate-ma/identify-rwi-policy-issues
 description: Guides preparation of a prioritized RWI policy gap analysis identifying coverage exclusions, definition mismatches, and underwriting limitations that create uninsured exposure relative to the acquisition agreement representations.
 activates_for: [planner, solver, checker]

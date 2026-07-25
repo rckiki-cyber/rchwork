@@ -1,5 +1,5 @@
 ---
-name: compare-environmental-settlement-against-precedents
+name: 比较环境和解against先例
 task_id: white-collar-defense-investigations/compare-proposed-settlement-terms-against-precedent-resolutions
 description: Comparative analysis memorandum assessing proposed consent decree settlement terms against precedent resolutions, evaluating structural and quantitative settlement differences, audit scope, officer certification provisions, and negotiation considerations for the board.
 activates_for: [planner, solver, checker]

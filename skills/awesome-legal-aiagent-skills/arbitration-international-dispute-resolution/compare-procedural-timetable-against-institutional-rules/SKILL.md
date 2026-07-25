@@ -1,5 +1,5 @@
 ---
-name: compare-procedural-timetable-against-institutional-rules
+name: 比较proceduraltimetableagainstinstitutional规则
 task_id: arbitration-international-dispute-resolution/compare-procedural-timetable-against-institutional-rules
 description: Ensures a procedural order compliance review identifies the applicable institutional arbitration rules edition, checks for mandatory procedural milestones, and verifies article cross-references against the governing version.
 activates_for: [planner, solver, checker]

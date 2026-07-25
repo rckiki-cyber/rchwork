@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-patent-specification
+name: extractkey条款专利specification
 task_id: intellectual-property/extract-key-terms-from-patent-specification
 description: Preparing a claim construction chart from a patent specification and prosecution history, using intrinsic-record hierarchy analysis and connecting each construction to downstream infringement and validity analysis.
 activates_for: [planner, solver, checker]

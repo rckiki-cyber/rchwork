@@ -1,5 +1,5 @@
 ---
-name: initial-response-framework-ftc-cid
+name: initial回应框架ftccid
 task_id: corporate-governance/draft-initial-response-framework-for-regulatory-inquiry
 description: Initial response framework memorandum for a regulatory civil investigative demand, addressing coordination-risk signals in internal communications, the distinction between attorney-client privilege and work product doctrine for internal investigation documents, the duty to preserve timing relative to receipt of the demand, compensation-scrutiny issues in service arrangements, and a promotional-claims internal-objection timeline relevant to deception analysis.
 activates_for: [planner, solver, checker]

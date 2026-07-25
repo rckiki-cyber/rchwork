@@ -1,5 +1,5 @@
 ---
-name: draft-antitrust-complaint
+name: 起草反垄断起诉状
 task_id: antitrust-competition/draft-antitrust-complaint
 description: Draft a federal antitrust complaint by pleading plausible facts, tying allegations to source documents at a categorical level, organizing claims by theory of liability, and requesting appropriate relief.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-transfer-pricing-documentation-review
+name: 识别transfer定价documentationreview
 task_id: tax/identify-transfer-pricing-documentation-review
 description: A transfer pricing documentation issue-identification memorandum should methodically identify gaps, explain why each gap matters, and outline the follow-up steps needed to remediate the record. Incomplete documentation should be analyzed by specifying what is missing, why it is insufficient, and how the deficiency should be addressed.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-environmental-liabilities-from-target-disclosure-schedules
+name: extract环境负债目标披露附表
 task_id: environmental-esg/extract-environmental-liabilities-from-target-disclosure-schedules
 description: Guides preparation of an environmental liability summary memorandum for an acquisition target by extracting and synthesizing disclosed liabilities from disclosure schedules, environmental site assessments, regulatory correspondence, and financial accruals.
 activates_for: [planner, solver, checker]

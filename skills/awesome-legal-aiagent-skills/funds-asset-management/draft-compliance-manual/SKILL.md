@@ -1,5 +1,5 @@
 ---
-name: draft-compliance-manual
+name: 起草合规手册
 task_id: funds-asset-management/draft-compliance-manual
 description: Draft a comprehensive compliance policies and procedures manual for a registered investment adviser, addressing deficiencies and gaps identified across source materials such as examination reports, deficiency letters, risk alerts, and internal assessments.
 activates_for: [planner, solver, checker]

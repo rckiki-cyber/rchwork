@@ -1,5 +1,5 @@
 ---
-name: draft-workplace-investigation-report
+name: 起草职场调查报告
 task_id: employment-labor/draft-workplace-investigation-report
 description: Guides the drafter in producing a comprehensive independent workplace investigation report that applies structured credibility assessments, synthesizes multi-complainant evidence, and evaluates the employer's harassment-prevention and response framework.
 activates_for: [planner, solver, checker]

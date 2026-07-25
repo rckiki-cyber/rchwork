@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-trust-agreement-draft
+name: 识别问题信托协议草案
 task_id: trusts-estates-private-client/identify-issues-in-trust-agreement-draft
 description: Reviews a dynasty trust draft for structural and drafting issues, including beneficiary-trustee distribution authority, trustee substitution or removal powers, spendthrift and creditor-protection provisions, GST allocation mechanics, and completion of required trust-administration checklist items, using a category-based legal analysis without relying on scenario-specific facts or conclusions.
 activates_for: [planner, solver, checker]

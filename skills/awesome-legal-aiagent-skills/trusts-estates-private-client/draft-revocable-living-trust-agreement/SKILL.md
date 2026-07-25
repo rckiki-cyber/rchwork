@@ -1,5 +1,5 @@
 ---
-name: draft-revocable-living-trust-agreement
+name: 起草revocableliving信托协议
 task_id: trusts-estates-private-client/draft-revocable-living-trust-agreement
 description: Closes the gap where agents draft generic revocable trust agreements without resolving cross-document conflicts, flagging coordination issues for retirement and deferred compensation beneficiary designations, and addressing distribution conditions that raise public policy or tax concerns.
 activates_for: [planner, solver, checker]

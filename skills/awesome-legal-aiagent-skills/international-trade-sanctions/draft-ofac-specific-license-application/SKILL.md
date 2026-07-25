@@ -1,5 +1,5 @@
 ---
-name: its-draft-ofac-specific-license-application
+name: its草案ofac特定许可application
 task_id: international-trade-sanctions/draft-ofac-specific-license-application
 description: Produces a complete OFAC specific license application package and a pre-filing issues memorandum that addresses required application elements, party-screening disclosures, line-item schedule checks, shipping route completeness, and re-export authorization requirements for the full transaction chain.
 activates_for: [planner, solver, checker]

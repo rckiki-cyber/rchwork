@@ -1,5 +1,5 @@
 ---
-name: do-insurance-indemnification-gap-analysis
+name: do保险补偿gap分析
 task_id: corporate-governance/compare-do-insurance-policy-against-indemnification-agreement
 description: Coverage gap analysis memorandum comparing a D&O insurance policy against an indemnification agreement, identifying structural mismatches in timing, conduct standards, consent requirements, subrogation, tail coverage, and related protection gaps.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: review-insurance-policy-construction
+name: 审查保险政策construction
 task_id: insurance/review-insurance-policy
 description: Agents reviewing construction project insurance policies against lender requirements should identify coverage gaps, classify each issue by severity, compare policy terms to lender expectations, and propose specific remediation steps where needed.
 activates_for: [planner, solver, checker]

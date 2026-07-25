@@ -1,5 +1,5 @@
 ---
-name: compare-ppa-against-term-sheet-wind
+name: 比较ppaagainst期限sheetwind
 task_id: energy-natural-resources/compare-power-purchase-agreement-against-term-sheet
 description: Guides a term-sheet-to-executed-agreement comparison by classifying each deviation as favorable or adverse, identifying internal inconsistencies, distinguishing authorized from unexplained changes, and recommending specific corrective actions for each deviation.
 activates_for: [planner, solver, checker]

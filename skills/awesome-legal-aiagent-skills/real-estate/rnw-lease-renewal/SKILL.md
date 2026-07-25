@@ -1,5 +1,5 @@
 ---
-name: rnw-lease-renewal
+name: rnwlease续期
 task_id: real-estate/rnw-lease-renewal
 description: Guides location-by-location deviation analysis of lease renewal proposals against market comparables, existing lease abstracts, the applicable lease policy framework, and the financial summary, producing a structured deviation report with economic quantification and response options.
 activates_for: [planner, solver, checker]

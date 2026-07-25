@@ -1,5 +1,5 @@
 ---
-name: its-identify-cfius-voluntary-notice-deficiencies
+name: itsidentifycfiusvoluntary通知deficiencies
 task_id: international-trade-sanctions/identify-compliance-and-substantive-deficiencies-in-draft-cfius-voluntary-notice
 description: Produces a categorized deficiency memorandum for a draft CFIUS voluntary notice that identifies disclosure gaps, omitted ancillary agreements, board nomination rights analysis issues, government contract omissions, regulatory correspondence non-disclosures, and mandatory filing trigger analysis.
 activates_for: [planner, solver, checker]

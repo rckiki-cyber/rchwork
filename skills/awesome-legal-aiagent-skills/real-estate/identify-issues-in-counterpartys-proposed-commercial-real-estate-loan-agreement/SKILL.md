@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterpartys-proposed-commercial-real-estate-loan-agreement
+name: 识别问题counterpartys拟议商业不动产不动产贷款协议
 task_id: real-estate/identify-issues-in-counterpartys-proposed-commercial-real-estate-loan-agreement
 description: Guides borrower-side identification of issues in a proposed commercial real estate loan agreement and related guaranty by comparing the draft against the appraisal, underwriting materials, Phase I environmental summary, and attorney instructions to identify lender-favorable departures from market norms and prepare a prioritized issues memorandum.
 activates_for: [planner, solver, checker]

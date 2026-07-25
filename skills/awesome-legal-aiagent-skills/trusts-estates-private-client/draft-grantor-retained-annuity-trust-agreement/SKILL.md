@@ -1,5 +1,5 @@
 ---
-name: draft-grantor-retained-annuity-trust-agreement
+name: 起草grantorretainedannuity信托协议
 task_id: trusts-estates-private-client/draft-grantor-retained-annuity-trust-agreement
 description: Drafting a grantor retained annuity trust agreement for privately held shares requires identifying the applicable transfer and valuation mechanics, checking any ownership-transfer restrictions in the governing company documents, confirming trustee independence and authority, and flagging valuation and mortality considerations in the issues memo.
 activates_for: [planner, solver, checker]

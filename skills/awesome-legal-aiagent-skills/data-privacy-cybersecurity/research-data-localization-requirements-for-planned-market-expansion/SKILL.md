@@ -1,5 +1,5 @@
 ---
-name: research-data-localization-requirements-for-planned-market-expansion
+name: 研究数据localization要求planned市场expansion
 task_id: data-privacy-cybersecurity/research-data-localization-requirements-for-planned-market-expansion
 description: Data localisation memos for multi-country market expansions fail when the agent applies generic cross-border transfer analysis without addressing each target jurisdiction's specific localisation or residency requirements and without assessing whether the current cloud and infrastructure architecture can be adapted to satisfy those requirements.
 activates_for: [planner, solver, checker]

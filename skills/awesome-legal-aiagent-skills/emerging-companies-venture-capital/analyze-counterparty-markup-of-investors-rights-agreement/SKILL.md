@@ -1,5 +1,5 @@
 ---
-name: ecvc-analyze-counterparty-markup-ira
+name: 风投交易对手IRA修订分析
 task_id: emerging-companies-venture-capital/analyze-counterparty-markup-of-investors-rights-agreement
 description: IRA markup analysis requires evaluating the cumulative effect of changes to registration rights, information rights, pay-to-play provisions, and consistency with the agreed term sheet — not treating revisions as isolated issues.
 activates_for: [planner, solver, checker]

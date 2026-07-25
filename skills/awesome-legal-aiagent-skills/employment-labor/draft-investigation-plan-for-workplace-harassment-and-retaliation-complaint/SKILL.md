@@ -1,5 +1,5 @@
 ---
-name: draft-investigation-plan-for-workplace-harassment-and-retaliation-complaint
+name: 起草调查计划职场harassmentretaliation起诉状
 task_id: employment-labor/draft-investigation-plan-for-workplace-harassment-and-retaliation-complaint
 description: Guides the drafter in preparing a privileged investigation plan memorandum that addresses investigator neutrality, preservation obligations, witness sequencing, prior-complaint review, and privilege considerations.
 activates_for: [planner, solver, checker]

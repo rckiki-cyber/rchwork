@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-safe-agreement
+name: ecvc草案safe协议
 task_id: emerging-companies-venture-capital/draft-safe-agreement
 description: Drafting a SAFE requires correctly implementing the conversion mechanics, resolving denominator circularity when multiple SAFEs co-convert, specifying dissolution payment priority relative to outstanding preferred, and defining MFN "more favorable terms" to prevent over-broad term upgrades.
 activates_for: [planner, solver, checker]

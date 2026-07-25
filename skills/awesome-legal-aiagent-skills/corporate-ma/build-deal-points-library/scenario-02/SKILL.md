@@ -1,5 +1,5 @@
 ---
-name: build-deal-points-library-s02
+name: 构建交易要点库场景二
 task_id: corporate-ma/build-deal-points-library/scenario-02
 description: Guides construction of a structured M&A deal points library from a set of executed agreements, capturing the key economic, indemnification, covenant, and closing terms needed for benchmarking and precedent research.
 activates_for: [planner, solver, checker]

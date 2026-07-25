@@ -1,5 +1,5 @@
 ---
-name: identify-antitrust-issues-in-counterparty-complaint
+name: 识别反垄断问题counterparty起诉状
 task_id: antitrust-competition/identify-antitrust-issues-in-counterparty-complaint
 description: Closes gaps in damages methodology critique with corrected calculation, foreclosure percentage computation, statute of limitations date analysis, and market concentration correction.
 activates_for: [planner, solver, checker]

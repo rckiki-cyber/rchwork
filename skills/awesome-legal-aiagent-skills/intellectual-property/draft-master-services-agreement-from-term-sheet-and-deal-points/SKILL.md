@@ -1,5 +1,5 @@
 ---
-name: draft-msa-from-term-sheet-deal-points
+name: 起草msa期限sheetdealpoints
 task_id: intellectual-property/draft-master-services-agreement-from-term-sheet-and-deal-points
 description: Execution-ready master services agreement and issues memorandum for a multi-year software-as-a-service consulting engagement, based on a signed term sheet, deal points memo, proposal, playbook, and negotiation emails.
 activates_for: [planner, solver, checker]

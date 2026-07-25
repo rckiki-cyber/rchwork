@@ -1,5 +1,5 @@
 ---
-name: identify-issues-proposed-contract-amendment
+name: 识别问题拟议合同修订
 task_id: intellectual-property/identify-issues-in-proposed-contract-amendment
 description: Reviewing a proposed contract amendment against the operative agreement, prior amendments, and internal guidance to identify conflicts, unintended consequences, and missing provisions.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: assess-saas-renewal-pricing-sla
+name: 评估saas续期定价sla
 task_id: intellectual-property/assess-saas-renewal-pricing-and-sla-changes
 description: Contract review memorandum evaluating renewal pricing and service-level modifications against the operative agreement and historical performance data.
 activates_for: [planner, solver, checker]

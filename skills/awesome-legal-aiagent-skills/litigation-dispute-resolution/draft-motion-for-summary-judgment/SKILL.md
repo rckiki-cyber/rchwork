@@ -1,5 +1,5 @@
 ---
-name: draft-motion-for-summary-judgment
+name: 起草动议摘要判决
 task_id: litigation-dispute-resolution/draft-motion-for-summary-judgment
 description: Drafting a summary judgment motion in a failed enterprise software implementation dispute requires constructing a statement of undisputed material facts from the record evidence and matching each undisputed fact to the elements of breach of contract, fraudulent inducement, and negligent misrepresentation, with both the motion brief and the statement of undisputed material facts as separate required outputs.
 activates_for: [planner, solver, checker]

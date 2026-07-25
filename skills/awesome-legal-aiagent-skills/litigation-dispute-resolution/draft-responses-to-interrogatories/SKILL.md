@@ -1,5 +1,5 @@
 ---
-name: draft-responses-to-interrogatories
+name: 起草回应interrogatories
 task_id: litigation-dispute-resolution/draft-responses-to-interrogatories
 description: Drafting verified interrogatory responses requires making specific, well-grounded objections where warranted, providing substantive answers to each non-objectionable interrogatory based on the client's records and interview memo, and complying with the verification requirement.
 activates_for: [planner, solver, checker]

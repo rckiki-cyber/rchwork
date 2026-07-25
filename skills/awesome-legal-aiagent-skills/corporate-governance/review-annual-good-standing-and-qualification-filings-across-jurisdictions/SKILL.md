@@ -1,5 +1,5 @@
 ---
-name: review-annual-good-standing-and-qualification-filings-across-jurisdictions
+name: 审查年度goodstandingqualification提交跨境管辖
 task_id: corporate-governance/review-annual-good-standing-and-qualification-filings-across-jurisdictions
 description: Agents identify missing or overdue filings and assess the compliance implications at a category level, including administrative status issues, registered-agent lapses, foreign qualification gaps, and franchise-tax payment discrepancies, without stating task-specific outcomes or remediation amounts.
 activates_for: [planner, solver, checker]

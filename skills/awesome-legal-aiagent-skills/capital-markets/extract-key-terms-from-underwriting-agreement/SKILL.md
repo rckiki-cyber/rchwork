@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-from-underwriting-agreement
+name: extractkey条款承销协议
 task_id: capital-markets/extract-key-terms-from-underwriting-agreement
 description: Underwriting agreement term extraction where the baseline captures core economics but may miss cross-document discrepancies, non-standard provisions, and exhibit completeness gaps.
 activates_for: [planner, solver, checker]

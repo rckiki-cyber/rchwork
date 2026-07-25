@@ -1,5 +1,5 @@
 ---
-name: compare-saas-sla-vs-internal-standards
+name: 比较saasslavsinternal标准
 task_id: intellectual-property/compare-saas-agreement-against-service-level-standards
 description: Gap analysis memorandum comparing a SaaS agreement's service level provisions against internal service level standards, identifying material deviations and omissions.
 activates_for: [planner, solver, checker]

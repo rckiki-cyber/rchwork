@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-side-letter
+name: 起草markupside函件
 task_id: funds-asset-management/draft-markup-of-side-letter
 description: Redline a proposed side letter on behalf of an LP client by reference to the LP's investment policy, the governing fund documents, and prior fund precedent, producing a marked-up draft with a cover memo that prioritizes changes and identifies the LP's policy basis for each position.
 activates_for: [planner, solver, checker]

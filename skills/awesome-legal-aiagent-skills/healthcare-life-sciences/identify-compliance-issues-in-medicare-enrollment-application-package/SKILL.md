@@ -1,5 +1,5 @@
 ---
-name: hls-identify-medicare-enrollment-issues
+name: hlsidentifymedicareenrollment问题
 task_id: healthcare-life-sciences/identify-compliance-issues-in-medicare-enrollment-application-package
 description: Reviews a Medicare enrollment application package for compliance deficiencies by checking disclosure completeness, authority of signatories, accuracy of status certifications, lease and compensation arrangements, screening of required individuals, accreditation assertions, and consistency across related application materials.
 activates_for: [planner, solver, checker]

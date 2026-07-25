@@ -1,5 +1,5 @@
 ---
-name: triage-counterparty-redlines-company-msa-template
+name: triagecounterpartyredlines公司msa模板
 task_id: intellectual-property/triage-counterparty-redlines-to-company-msa-template
 description: Triaging a counterparty's redlined MSA against the company's standard template and playbook, incorporating deal context and insurance details, to produce a prioritized deviations report.
 activates_for: [planner, solver, checker]

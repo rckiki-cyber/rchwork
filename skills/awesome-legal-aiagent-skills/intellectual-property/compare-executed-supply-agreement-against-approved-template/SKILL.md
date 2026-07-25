@@ -1,5 +1,5 @@
 ---
-name: compare-executed-supply-agreement-template
+name: 比较executed供应协议模板
 task_id: intellectual-property/compare-executed-supply-agreement-against-approved-template
 description: Full deviation report comparing an executed supplier agreement against the approved template, with risk ratings and remediation paths, incorporating supplier profile and delegation-of-authority context.
 activates_for: [planner, solver, checker]

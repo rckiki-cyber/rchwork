@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-board-consent-resolutions
+name: ecvc草案董事会同意解决
 task_id: emerging-companies-venture-capital/draft-board-consent-resolutions
 description: A board written consent for a preferred stock financing should resolve the financing authorization, address any option plan adjustments and grant approvals, handle convertible instrument conversion mechanics, disclose and manage any interested-director issues, and authorize closing actions and document execution.
 activates_for: [planner, solver, checker]

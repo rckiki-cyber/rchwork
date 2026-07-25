@@ -1,5 +1,5 @@
 ---
-name: identify-issues-concession-agreement-toll-road
+name: 识别问题concession协议tollroad
 task_id: energy-natural-resources/identify-issues-in-concession-agreement
 description: Guides issue identification in a toll road concession agreement for acquisition due diligence by prioritizing transfer-restriction and technical-qualification threshold issues, characterizing reserve shortfalls as current breaches where supported by the agreement, and organizing analysis with appropriate legal and commercial context.
 activates_for: [planner, solver, checker]

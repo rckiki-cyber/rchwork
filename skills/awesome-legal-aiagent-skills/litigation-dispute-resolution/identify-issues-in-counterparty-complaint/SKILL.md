@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterparty-complaint
+name: 识别问题counterparty起诉状
 task_id: litigation-dispute-resolution/identify-issues-in-counterparty-complaint
 description: Identifying issues in a counterparty's verified complaint requires cross-referencing the complaint's factual allegations against the governing contract documents, termination notices, and pre-suit correspondence to identify pleading deficiencies, contractual defenses, and potential counterclaims.
 activates_for: [planner, solver, checker]

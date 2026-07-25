@@ -1,5 +1,5 @@
 ---
-name: employee-statement-documentary-inconsistency-analysis
+name: 员工报表documentaryinconsistency分析
 task_id: corporate-governance/compare-employee-statements-against-documentary-evidence
 description: Inconsistency analysis memorandum for an investigation committee comparing each declarant's sworn statements against documentary evidence, assessing credibility, and identifying potential legal exposure from financial reporting irregularities.
 activates_for: [planner, solver, checker]

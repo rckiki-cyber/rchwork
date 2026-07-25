@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-technical-patent-specs
+name: extractkey条款技术专利specs
 task_id: intellectual-property/extract-key-terms-from-technical-patent-specifications
 description: Preparing a claim construction chart for a patent specification and related technical materials, requiring intrinsic record analysis, identification of functional claiming issues, and linkage between construction choices and infringement analysis.
 activates_for: [planner, solver, checker]

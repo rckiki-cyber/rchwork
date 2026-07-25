@@ -1,5 +1,5 @@
 ---
-name: analyze-gdpr-amendment-impact-on-data-processing-agreement-portfolio
+name: 分析gdpr修订impact数据processing协议portfolio
 task_id: data-privacy-cybersecurity/analyze-gdpr-amendment-impact-on-data-processing-agreement-portfolio
 description: Portfolio-level data processing agreement amendment impact analyses fail when the agent assesses each agreement in isolation rather than systematically mapping every new or amended obligation across the portfolio and the agreement register matrix.
 activates_for: [planner, solver, checker]

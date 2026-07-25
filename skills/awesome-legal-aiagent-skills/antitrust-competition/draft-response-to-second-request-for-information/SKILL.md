@@ -1,5 +1,5 @@
 ---
-name: draft-response-to-second-request-for-information
+name: 起草回应second请求information
 task_id: antitrust-competition/draft-response-to-second-request-for-information
 description: Closes gaps in market-concentration analysis, hot-document identification with mandatory internal-document production, serial-acquisition risk analysis, spoliation assessment, and timing-model review.
 activates_for: [planner, solver, checker]

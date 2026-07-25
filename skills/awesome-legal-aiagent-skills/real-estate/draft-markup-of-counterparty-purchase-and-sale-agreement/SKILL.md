@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-counterparty-purchase-and-sale-agreement
+name: 起草markupcounterparty购买sale协议
 task_id: real-estate/draft-markup-of-counterparty-purchase-and-sale-agreement
 description: Guides buyer-side article-by-article markup commentary of a seller's draft purchase and sale agreement by reconciling against the negotiated term sheet, the buyer's playbook, and due diligence findings, and producing a structured commentary memo with prioritized positions.
 activates_for: [planner, solver, checker]

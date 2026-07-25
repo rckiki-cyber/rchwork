@@ -1,5 +1,5 @@
 ---
-name: draft-remediation-plan-for-sec-examination-deficiency-findings
+name: 起草remediation计划secexaminationdeficiencyfindings
 task_id: corporate-governance/draft-remediation-plan-for-sec-examination-deficiency-findings
 description: Agents address each deficiency in isolation without identifying cross-cutting structural risk, governance independence concerns, corrective outreach obligations, performance disclosure methodology issues in multi-class products, or testimonial disclosure completeness requirements.
 activates_for: [planner, solver, checker]

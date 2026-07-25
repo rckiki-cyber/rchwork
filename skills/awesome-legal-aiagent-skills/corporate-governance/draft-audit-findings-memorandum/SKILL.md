@@ -1,5 +1,5 @@
 ---
-name: sec-examination-audit-findings-memo
+name: secexamination审计findingsmemo
 task_id: corporate-governance/draft-audit-findings-memorandum
 description: Privileged audit findings memorandum for the board summarizing examination deficiency findings, analyzing their severity and legal basis, identifying evidence of intent where relevant, and recommending a response strategy.
 activates_for: [planner, solver, checker]

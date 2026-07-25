@@ -1,5 +1,5 @@
 ---
-name: draft-statement-of-claim
+name: 起草报表索赔
 task_id: arbitration-international-dispute-resolution/draft-statement-of-claim
 description: Ensures an ICC arbitration statement of claim correctly distinguishes seat from venue, identifies the joint venture entity as a separate legal person, addresses non-signatory joinder, and explains how to compute lost profits using the claimant's ownership share.
 activates_for: [planner, solver, checker]

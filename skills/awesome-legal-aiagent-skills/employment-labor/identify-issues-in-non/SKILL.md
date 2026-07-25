@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-non-compete-agreement
+name: 识别问题noncompete协议
 task_id: employment-labor/identify-issues-in-non
 description: Guides counsel in producing a prioritized enforceability memorandum that identifies legal, consideration, and drafting defects in a non-compete agreement, organized by issue priority for use in advising an executive client.
 activates_for: [planner, solver, checker]

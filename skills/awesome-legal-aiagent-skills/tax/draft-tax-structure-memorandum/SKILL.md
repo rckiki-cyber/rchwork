@@ -1,5 +1,5 @@
 ---
-name: draft-tax-structure-memorandum-pe-acquisition
+name: 起草税务结构备忘录pe收购
 task_id: tax/draft-tax-structure-memorandum
 description: A tax structure memorandum for a private equity acquisition of an S-corporation target should compare structural alternatives with per-seller after-tax computations and address election mechanics for a deemed asset sale, inventory-method recapture, the business interest limitation under current and prospective adjusted taxable income definitions, and related basis and depreciation issues.
 activates_for: [planner, solver, checker]

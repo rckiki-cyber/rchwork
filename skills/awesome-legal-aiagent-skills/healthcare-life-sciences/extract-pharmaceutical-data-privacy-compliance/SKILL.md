@@ -1,5 +1,5 @@
 ---
-name: hls-extract-pharma-data-privacy-compliance
+name: hlsextract制药数据隐私合规
 task_id: healthcare-life-sciences/extract-pharmaceutical-data-privacy-compliance
 description: Compiles a regulatory obligation register for a pharmaceutical digital health platform launch covering healthcare privacy and security, consumer communications consent, anti-kickback and patient-assistance-program structure, substance-use-disorder confidentiality, multi-jurisdiction breach notification, professional licensure, and consumer health-data notification obligations.
 activates_for: [planner, solver, checker]

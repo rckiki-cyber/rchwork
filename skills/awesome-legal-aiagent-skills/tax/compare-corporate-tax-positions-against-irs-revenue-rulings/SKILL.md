@@ -1,5 +1,5 @@
 ---
-name: compare-corporate-tax-positions-against-irs-revenue-rulings
+name: 比较公司税务positionsagainstirsrevenue裁定
 task_id: tax/compare-corporate-tax-positions-against-irs-revenue-rulings
 description: Assessing corporate tax positions against revenue rulings requires careful attribution of each ruling to the specific position it governs, recomputation of affected credits or deductions, and aggregation of the net exposure across all positions.
 activates_for: [planner, solver, checker]

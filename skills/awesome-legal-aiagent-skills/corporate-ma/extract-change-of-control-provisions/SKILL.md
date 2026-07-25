@@ -1,5 +1,5 @@
 ---
-name: extract-change-of-control-provisions
+name: extract变更control条款
 task_id: corporate-ma/extract-change-of-control-provisions
 description: Guides systematic extraction and risk assessment of change-of-control provisions across a target's material contract portfolio in a merger or similar control transaction.
 activates_for: [planner, solver, checker]

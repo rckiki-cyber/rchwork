@@ -1,5 +1,5 @@
 ---
-name: compare-non-compete-agreements-against-state-law
+name: 比较noncompete协议against州法律
 task_id: employment-labor/compare-non
 description: Guides the analyst through a multi-jurisdiction enforceability analysis of a restrictive-covenant agreement, including jurisdiction-specific defects, procedural compliance failures, and assessment of a demand letter's legal claims.
 activates_for: [planner, solver, checker]

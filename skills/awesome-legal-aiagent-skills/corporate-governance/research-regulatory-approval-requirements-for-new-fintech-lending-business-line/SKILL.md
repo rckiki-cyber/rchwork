@@ -1,5 +1,5 @@
 ---
-name: research-regulatory-approval-requirements-for-new-fintech-lending-business-line
+name: 研究监管批准要求新型fintechlending业务业务线
 task_id: corporate-governance/research-regulatory-approval-requirements-for-new-fintech-lending-business-line
 description: Agents identify the applicable state licensing and federal consumer-finance approval requirements for a new fintech lending business line, analyze product economics against any applicable rate limits where needed, assess fair-lending and model-governance obligations for credit decisioning tools, and determine whether any holding-company or supervisory approvals must be obtained before launch.
 activates_for: [planner, solver, checker]

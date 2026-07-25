@@ -1,5 +1,5 @@
 ---
-name: draft-due-diligence-summary-memorandum-rtl
+name: 起草due尽职调查摘要备忘录rtl
 task_id: structured-finance-securitization/draft-due-diligence-summary-memorandum
 description: Drafting a due diligence summary memorandum for a residential transition loan ABS transaction where loan-level legal issues, servicer assessment, geographic concentration analysis, and open items must be synthesized across multiple diligence reports into a structured deliverable.
 activates_for: [planner, solver, checker]

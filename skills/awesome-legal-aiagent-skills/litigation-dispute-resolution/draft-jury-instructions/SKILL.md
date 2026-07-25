@@ -1,5 +1,5 @@
 ---
-name: draft-jury-instructions
+name: 起草jury指示
 task_id: litigation-dispute-resolution/draft-jury-instructions
 description: Drafting proposed jury instructions for retaliation, whistleblower, and implied contract claims requires adapting pattern instructions to the claims and issues remaining after prior rulings, pairing each instruction with a special verdict form question, and flagging legal disputes in a cover memo.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: compare-charter-against-offering
+name: 比较charteragainst发售
 task_id: capital-markets/compare-charter-against-offering
 description: Three-document cross-check where the baseline typically performs only pairwise comparisons and misses conflicts that surface only when all three documents are read together.
 activates_for: [planner, solver, checker]

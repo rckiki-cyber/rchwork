@@ -1,5 +1,5 @@
 ---
-name: update-dpa-template-gdpr-adequacy-decision
+name: 更新dpa模板gdpradequacy决定
 task_id: intellectual-property/update-data-processing-agreement-template-for-new-gdpr-adequacy-decision
 description: Revising a DPA template to reflect an updated adequacy framework and related guidance, producing an issues memo and a redlined revised template.
 activates_for: [planner, solver, checker]

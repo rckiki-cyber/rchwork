@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-plan-of-reorganization
+name: 分析counterpartymarkup计划reorganization
 task_id: bankruptcy-restructuring/analyze-counterparty-markup-of-plan-of-reorganization
 description: Ensures a plan-deviation report addresses every redlined change with enforceability analysis, feasibility impact, cross-issue linkage, and an explicit Accept/Reject/Negotiate recommendation rather than limiting analysis to issues flagged in the transmittal email.
 activates_for: [planner, solver, checker]

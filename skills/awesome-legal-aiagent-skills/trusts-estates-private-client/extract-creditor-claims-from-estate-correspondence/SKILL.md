@@ -1,5 +1,5 @@
 ---
-name: extract-creditor-claims-from-estate-correspondence
+name: extractcreditor索赔不动产correspondence
 task_id: trusts-estates-private-client/extract-creditor-claims-from-estate-correspondence
 description: Closes the gap where agents list creditor claims without computing the applicable claims filing deadline, identifying potentially untimely claims, prorating invoices that straddle the relevant cutoff date, correcting arithmetic errors in invoices, and producing an adjusted total claims figure with a reconciliation.
 activates_for: [planner, solver, checker]

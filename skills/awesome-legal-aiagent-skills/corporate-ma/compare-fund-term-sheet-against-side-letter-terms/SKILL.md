@@ -1,5 +1,5 @@
 ---
-name: compare-fund-term-sheet-side-letter
+name: 比较基金期限sheetside函件
 task_id: corporate-ma/compare-fund-term-sheet-against-side-letter-terms
 description: Guides deviation analysis between a fund term sheet and an LP side letter, identifying MFN cascade effects, structural impossibilities, capital account distortion risks, and disclosure tension for public-entity LPs.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-scope-terms-from-matter-plan
+name: extractscope条款事项计划
 task_id: litigation-dispute-resolution/extract-scope-terms-from-matter-plan
 description: Extracting scope terms from engagement materials requires identifying scope-defining provisions across the relevant engagement materials, then flagging any inter-document inconsistencies that create ambiguity about what work is authorized.
 activates_for: [planner, solver, checker]

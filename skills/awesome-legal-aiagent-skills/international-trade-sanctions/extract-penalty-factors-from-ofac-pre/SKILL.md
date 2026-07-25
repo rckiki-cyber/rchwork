@@ -1,5 +1,5 @@
 ---
-name: its-extract-penalty-factors-ofac-ppn
+name: itsextract处罚factorsofacppn
 task_id: international-trade-sanctions/extract-penalty-factors-from-ofac-pre
 description: Produces a penalty assessment memorandum from an OFAC Pre-Penalty Notice that identifies potential duplicate or phantom transactions to test the violation count, assesses the transition from constructive to actual knowledge, evaluates statute-of-limitations defenses for early transactions, flags criminal referral risk, and develops a penalty-range analysis.
 activates_for: [planner, solver, checker]

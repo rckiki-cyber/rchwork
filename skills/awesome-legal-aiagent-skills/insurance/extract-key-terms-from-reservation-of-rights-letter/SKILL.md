@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-reservation-of-rights-letter
+name: extractkey条款reservation权利函件
 task_id: insurance/extract-key-terms-from-reservation-of-rights-letter
 description: Agents extracting terms from a reservation of rights letter should identify coverage defenses, policy provisions, implicated exclusions or endorsements, any state-law standards that affect how those provisions operate, and any limits or reservation gaps that may matter to the coverage analysis.
 activates_for: [planner, solver, checker]

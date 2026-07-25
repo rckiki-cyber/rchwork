@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-annual-tax-compliance-report
+name: 识别问题年度税务合规报告
 task_id: tax/identify-issues-in-annual-tax-compliance-report
 description: Reviewing a draft annual tax compliance report requires checking the arithmetic and legal basis for each material computation, verifying the applicable tax rules for the relevant period, and quantifying any discrepancies identified.
 activates_for: [planner, solver, checker]

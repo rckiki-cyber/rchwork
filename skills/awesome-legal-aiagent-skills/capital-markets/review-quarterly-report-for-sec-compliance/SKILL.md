@@ -1,5 +1,5 @@
 ---
-name: review-quarterly-report-for-sec-compliance
+name: 审查季度报告sec合规
 task_id: capital-markets/review-quarterly-report-for-sec-compliance
 description: Form 10-Q compliance review focused on checking whether the filing’s cover page, financial statements, and MD&A disclosures follow the required form and whether period-specific disclosure items are handled consistently with the applicable accounting and SEC framework.
 activates_for: [planner, solver, checker]

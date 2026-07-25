@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-postnuptial-agreement
+name: 分析counterpartymarkuppostnuptial协议
 task_id: trusts-estates-private-client/analyze-counterparty-markup-of-postnuptial-agreement
 description: Redline review of a counterparty's postnuptial agreement markup requires change-tracking against the client's original draft and financial disclosures to surface asymmetric provisions, financial quantification, and cumulative enforceability risk.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: environmental-diligence-chemical-manufacturing
+name: 环境尽职调查chemicalmanufacturing
 task_id: corporate-ma/conduct-targeted-environmental-regulatory-diligence-for-chemical-manufacturing-acquisition
 description: Guides facility-by-facility environmental diligence for a manufacturing acquisition, requiring permit status analysis, remediation accrual comparison, contamination-defense assessment, pollution legal liability insurance review, and identification of unreported incidents from disclosure schedules.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-response-to-investigative-subpoena
+name: 起草回应investigative传票
 task_id: antitrust-competition/draft-response-to-investigative-subpoena
 description: Closes gaps in the three-deliverable structure, objection framework, sensitive document flagging, and complete privilege log format requirements for a government investigative subpoena response.
 activates_for: [planner, solver, checker]

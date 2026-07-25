@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-insurance-acquisition-closing-docs
+name: extractkey条款保险收购交割docs
 task_id: insurance/extract-key-terms-from-insurance-company-acquisition-closing-documents
 description: Agents extracting terms from acquisition closing documents should produce a structurally complete summary, verify cross-document consistency, check arithmetic in line items, surface operational risks embedded in transition services arrangements, and compile a post-closing obligation tracker.
 activates_for: [planner, solver, checker]

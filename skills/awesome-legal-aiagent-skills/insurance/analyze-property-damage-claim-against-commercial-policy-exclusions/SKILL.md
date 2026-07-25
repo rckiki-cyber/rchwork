@@ -1,5 +1,5 @@
 ---
-name: analyze-property-damage-claim-commercial-policy
+name: 分析财产损害索赔商业政策
 task_id: insurance/analyze-property-damage-claim-against-commercial-policy-exclusions
 description: Agents reviewing a commercial property damage claim against policy exclusions should apply each exclusion to each claimed category, test any exception to an exclusion against the governing policy language and applicable law, and verify covered amounts after any sublimits or other policy caps are applied.
 activates_for: [planner, solver, checker]

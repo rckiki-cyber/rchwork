@@ -1,5 +1,5 @@
 ---
-name: ecvc-identify-issues-stock-transfer-agreement
+name: ecvcidentify问题stocktransfer协议
 task_id: emerging-companies-venture-capital/identify-issues-in-stock-transfer-agreement
 description: Identifying issues in a secondary stock transfer agreement requires confirming transfer-restriction notice and waiver timing, checking for conflicts in company approval under the applicable corporate statute, assessing whether ownership-restriction representations are too broad, and evaluating whether any secondary-sale pricing may create compensation-tax or valuation follow-on issues.
 activates_for: [planner, solver, checker]

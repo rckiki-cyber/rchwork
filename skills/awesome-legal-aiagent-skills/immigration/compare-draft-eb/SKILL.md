@@ -1,5 +1,5 @@
 ---
-name: compare-draft-eb-petition
+name: 比较草案eb申请
 task_id: immigration/compare-draft-eb
 description: Gap analysis review of a draft petition package where exhibit completeness, sequential numbering integrity, and form currency are prone to being overlooked when the filing checklist is reconciled against the petition body.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-restrictive-covenant-agreement
+name: 起草markuprestrictive承诺协议
 task_id: corporate-ma/draft-markup-of-restrictive-covenant-agreement
 description: Guides preparation of a section-by-section restrictive covenant agreement markup memo and negotiation priority matrix, requiring analysis of customer non-solicitation scope, passive investment carve-outs, enforceability under the selected governing law, and carve-outs for board or community service where relevant.
 activates_for: [planner, solver, checker]

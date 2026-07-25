@@ -1,5 +1,5 @@
 ---
-name: analyze-transaction-restrictions-s01
+name: 分析transactionrestrictionss01
 task_id: corporate-ma/analyze-transaction-restrictions/scenario-01
 description: Guides comprehensive analysis of acquisition consent requirements and transaction restrictions across financing documents, joint venture arrangements, government contracts, commercial contracts, and regulatory notification obligations for a reverse triangular merger.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-consular-processing-packet
+name: 识别问题consularprocessingpacket
 task_id: immigration/identify-issues-in-consular-processing-packet
 description: Pre-interview issue review of a consular processing packet where the analysis must assess document completeness, application consistency, inadmissibility-related concerns, and administrative processing risk factors using severity ratings.
 activates_for: [planner, solver, checker]

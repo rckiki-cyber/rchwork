@@ -1,5 +1,5 @@
 ---
-name: action-by-incorporator-delaware
+name: 诉讼incorporatordelaware
 task_id: corporate-governance/draft-action-by-incorporator
 description: Drafting an action by written consent of the sole incorporator for a Delaware corporation formation, separating incorporator-authority actions from initial board actions and producing a cover memo identifying cross-document discrepancies.
 activates_for: [planner, solver, checker]

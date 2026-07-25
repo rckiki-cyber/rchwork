@@ -1,5 +1,5 @@
 ---
-name: review-executive-employment-agreement-playbook
+name: 审查executive雇佣协议playbook
 task_id: intellectual-property/review-executive-employment-agreement-against-company-playbook
 description: Reviewing a draft executive employment agreement against a company playbook, equity plan, and negotiation correspondence to produce a deviation report.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: its-draft-ad-scope-ruling-request
+name: its草案adscope裁定请求
 task_id: international-trade-sanctions/draft-antidumping-duty-scope-ruling-request
 description: Produces a Commerce scope ruling request under the applicable scope-analysis framework, accompanied by an internal strategy memorandum that addresses shared manufacturing process vulnerabilities, circumvention inquiry risk, and subsidy disclosure obligations.
 activates_for: [planner, solver, checker]

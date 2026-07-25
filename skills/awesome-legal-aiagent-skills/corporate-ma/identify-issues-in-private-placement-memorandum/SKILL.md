@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-ppm
+name: 识别问题ppm
 task_id: corporate-ma/identify-issues-in-private-placement-memorandum
 description: Guides preparation of a partner-ready issue memo for a private fund offering disclosure package that requires cross-document consistency review across the primary offering memorandum, governing agreement, subscription materials, adviser disclosure, and any side letter tracker.
 activates_for: [planner, solver, checker]

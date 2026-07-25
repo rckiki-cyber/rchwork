@@ -1,5 +1,5 @@
 ---
-name: draft-updated-anti-harassment-policy
+name: 起草updatedantiharassment政策
 task_id: employment-labor/draft-updated-anti
 description: Guides the drafter in producing an updated multi-state anti-harassment policy and compliance implementation memorandum that addresses mandatory training requirements and prior policy deficiencies.
 activates_for: [planner, solver, checker]

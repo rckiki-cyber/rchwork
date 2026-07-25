@@ -1,5 +1,5 @@
 ---
-name: identify-issues-saas-subscription-agreement
+name: 识别问题saassubscription协议
 task_id: intellectual-property/identify-issues-in-saas-subscription-agreement
 description: Reviewing a SaaS subscription agreement package from the customer’s perspective, cross-referencing related technical, privacy, and commercial documents, and internal correspondence, to identify risk allocation and compliance gaps.
 activates_for: [planner, solver, checker]

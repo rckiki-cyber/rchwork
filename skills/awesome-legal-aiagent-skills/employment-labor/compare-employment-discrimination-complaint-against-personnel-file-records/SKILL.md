@@ -1,5 +1,5 @@
 ---
-name: compare-employment-discrimination-complaint-against-personnel-file-records
+name: 比较雇佣discrimination起诉状againstpersonnelfile记录
 task_id: employment-labor/compare-employment-discrimination-complaint-against-personnel-file-records
 description: Guides defense counsel through a systematic cross-check of factual allegations in a complaint against personnel records, HR investigation materials, and compensation data, producing a structured discrepancy analysis.
 activates_for: [planner, solver, checker]

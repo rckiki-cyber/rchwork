@@ -1,5 +1,5 @@
 ---
-name: analyze-disclosure-schedule-markup
+name: 分析披露附表markup
 task_id: corporate-ma/analyze-disclosure-schedule-markup-against-merger-agreement
 description: Guides gap analysis of supplemental disclosure schedules against the merger agreement's original representations, with cross-schedule consistency review, contractual-effects assessment, and identification of the buyer's response options and deadlines.
 activates_for: [planner, solver, checker]

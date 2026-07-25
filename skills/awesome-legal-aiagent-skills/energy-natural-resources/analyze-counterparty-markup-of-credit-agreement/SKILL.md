@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-credit-agreement-pipeline
+name: 分析counterpartymarkupcredit协议pipeline
 task_id: energy-natural-resources/analyze-counterparty-markup-of-credit-agreement
 description: Guides systematic analysis of a lender's markup of a credit agreement by tracing each change's financial impact through the financial model, identifying compounding interactions between related provisions, and separating legal enforceability issues from commercial negotiating points.
 activates_for: [planner, solver, checker]

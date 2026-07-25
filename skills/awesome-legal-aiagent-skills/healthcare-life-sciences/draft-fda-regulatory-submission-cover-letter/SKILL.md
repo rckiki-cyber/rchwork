@@ -1,5 +1,5 @@
 ---
-name: hls-draft-fda-pas-cover-letter
+name: hls草案fdapascover函件
 task_id: healthcare-life-sciences/draft-fda-regulatory-submission-cover-letter
 description: Drafts an FDA Prior Approval Supplement cover letter and a companion discrepancy memo that resolves cross-document conflicts on supplement classification, facility identifiers, regulatory authority citations, and user fee category.
 activates_for: [planner, solver, checker]

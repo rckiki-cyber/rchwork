@@ -1,5 +1,5 @@
 ---
-name: compare-commercial-insurance-coverage-specifications
+name: 比较商业保险coveragespecifications
 task_id: insurance/compare-commercial-insurance-policy-terms-against-coverage-specifications
 description: Agents producing a gap analysis memo against coverage specifications should identify shortfalls, explain the business exposure each shortfall can create, and present findings in a severity-prioritized structure without assuming any particular fact pattern.
 activates_for: [planner, solver, checker]

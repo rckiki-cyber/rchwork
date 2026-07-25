@@ -1,5 +1,5 @@
 ---
-name: draft-workplace-policy-memorandum
+name: 起草职场政策备忘录
 task_id: employment-labor/draft-workplace-policy-memorandum
 description: Guides the drafter in producing a legal risk memorandum analyzing a return-to-office policy against accommodation obligations, collective-bargaining constraints, notice-act considerations, caregiver protections, and retaliation risks.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-saas-subscription
+name: 分析counterpartymarkupsaassubscription
 task_id: intellectual-property/analyze-counterparty-markup-of-saas-subscription-agreement
 description: Deviation report with risk classifications and counter-language recommendations for a vendor-marked SaaS subscription agreement evaluated against the company's standard form and available performance history.
 activates_for: [planner, solver, checker]

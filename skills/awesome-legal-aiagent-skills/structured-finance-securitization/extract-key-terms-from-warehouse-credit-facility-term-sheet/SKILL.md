@@ -1,5 +1,5 @@
 ---
-name: extract-key-terms-warehouse-credit-facility
+name: extractkey条款warehousecreditfacility
 task_id: structured-finance-securitization/extract-key-terms-from-warehouse-credit-facility-term-sheet
 description: Extract material terms from a warehouse credit facility term sheet and any supplemental side letter, compare overlapping provisions for consistency, identify undefined or ambiguous covenant language, and flag structural issues in events of default and eligibility provisions for follow-up analysis and negotiation.
 activates_for: [planner, solver, checker]

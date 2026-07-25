@@ -1,5 +1,5 @@
 ---
-name: draft-transfer-agreement-secondary-fund-interest-sale
+name: 起草transfer协议次要基金权益sale
 task_id: funds-asset-management/draft-transfer-agreement-for-secondary-fund-interest-sale
 description: Draft a seller-protective transfer agreement for a secondary market sale of a fund interest, incorporating protections and closing mechanics drawn from the governing fund documents, related side letters, consent materials, and capital account records.
 activates_for: [planner, solver, checker]

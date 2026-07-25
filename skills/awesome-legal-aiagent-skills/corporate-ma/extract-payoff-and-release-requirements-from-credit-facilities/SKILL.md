@@ -1,5 +1,5 @@
 ---
-name: extract-payoff-release-requirements
+name: extractpayoff解除要求
 task_id: corporate-ma/extract-payoff-and-release-requirements-from-credit-facilities
 description: Guides preparation of a comprehensive payoff requirements memorandum for an acquisition closing where multiple credit facilities with intercreditor arrangements must be reviewed for payoff amounts, release conditions, and closing mechanics.
 activates_for: [planner, solver, checker]

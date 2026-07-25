@@ -1,5 +1,5 @@
 ---
-name: post-series-a-delaware-bylaws
+name: 张贴seriesdelawarebylaws
 task_id: corporate-governance/draft-bylaws-for-post
 description: Execution-ready bylaws for a Delaware corporation following a financing, incorporating board composition from transaction documents, mandatory indemnification and advancement provisions, exclusive forum clauses, and a structured amendment regime, with a cover memo flagging cross-document discrepancies.
 activates_for: [planner, solver, checker]

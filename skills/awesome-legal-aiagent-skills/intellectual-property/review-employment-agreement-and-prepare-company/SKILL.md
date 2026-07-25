@@ -1,5 +1,5 @@
 ---
-name: review-employment-agreement-prepare-company-markup
+name: 审查雇佣协议prepare公司markup
 task_id: intellectual-property/review-employment-agreement-and-prepare-company
 description: Reviewing a draft employment agreement from the company’s perspective against a playbook and approved offer-letter terms to prepare a markup with recommended positions.
 activates_for: [planner, solver, checker]

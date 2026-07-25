@@ -1,5 +1,5 @@
 ---
-name: analyze-restrictive-covenant-multi-jurisdiction
+name: 分析restrictive承诺多管辖
 task_id: intellectual-property/analyze-restrictive-covenant-enforceability-across-multiple-jurisdictions
 description: Board-ready memorandum and companion risk matrix analyzing restrictive covenant enforceability across employment agreements governed by multiple state laws, prepared in the context of an acquisition diligence.
 activates_for: [planner, solver, checker]

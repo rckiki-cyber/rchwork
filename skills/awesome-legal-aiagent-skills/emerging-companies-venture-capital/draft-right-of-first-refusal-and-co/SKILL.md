@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-rofr-co-sale
+name: ecvc草案rofrcosale
 task_id: emerging-companies-venture-capital/draft-right-of-first-refusal-and-co
 description: Drafting an amended and restated right of first refusal and co-sale agreement requires identifying the relevant holders and any related holding vehicles as parties where appropriate, conditioning permitted estate-planning transfers on retention of voting control, addressing charitable transfer carve-outs, keying termination to post-offering tradability rather than the offering date, and stating de minimis thresholds in durable terms rather than absolute share counts.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: its-extract-trade-sanctions-entity-details
+name: itsextract贸易制裁实体details
 task_id: international-trade-sanctions/extract-international-trade-sanctions
 description: Produces an entity extraction risk report from a trade finance transaction package that screens all parties across the deal chain, analyzes screening discrepancies including birth-date mismatches, flags free-zone opacity risks, and identifies shipping term anomalies indicative of transshipment diversion.
 activates_for: [planner, solver, checker]

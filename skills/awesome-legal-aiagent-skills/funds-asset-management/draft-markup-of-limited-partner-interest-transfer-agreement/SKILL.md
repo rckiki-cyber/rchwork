@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-lp-interest-transfer-agreement
+name: 起草markuplp权益transfer协议
 task_id: funds-asset-management/draft-markup-of-limited-partner-interest-transfer-agreement
 description: Redline a buyer’s draft limited partner interest transfer agreement from the seller’s perspective, converting a buyer-favorable draft into a seller-protective document by adding closing conditions, tax provisions, and other transfer protections identified by reviewing the governing partnership agreement, related side arrangements, financing terms, and capital account information.
 activates_for: [planner, solver, checker]

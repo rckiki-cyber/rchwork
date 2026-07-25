@@ -1,5 +1,5 @@
 ---
-name: draft-counterclaim-against-plaintiff-for-breach-of-joint-development-agreement
+name: 起草counterclaimagainstplaintiff违约合资development协议
 task_id: litigation-dispute-resolution/draft-counterclaim-against-plaintiff-for-breach-of-joint-development-agreement
 description: Drafting a counterclaim for breach of a joint development agreement requires identifying the counterclaims arising from the same transaction, pleading ownership and misuse theories with factual specificity, and coordinating the counterclaim's factual narrative with the defense of the plaintiff's complaint.
 activates_for: [planner, solver, checker]

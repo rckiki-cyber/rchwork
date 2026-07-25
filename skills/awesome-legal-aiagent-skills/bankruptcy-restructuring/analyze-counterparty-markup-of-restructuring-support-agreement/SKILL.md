@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-restructuring-support-agreement
+name: 分析counterpartymarkup重组support协议
 task_id: bankruptcy-restructuring/analyze-counterparty-markup-of-restructuring-support-agreement
 description: Ensures an RSA markup analysis evaluates the economic impact of each material change, classifies each deviation against the company's stated negotiating positions, and surfaces cross-issue interaction effects that individual-issue analysis would miss.
 activates_for: [planner, solver, checker]

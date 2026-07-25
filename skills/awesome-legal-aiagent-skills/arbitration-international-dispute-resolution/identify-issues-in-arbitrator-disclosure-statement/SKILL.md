@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-arbitrator-disclosure-statement
+name: 识别问题arbitrator披露报表
 task_id: arbitration-international-dispute-resolution/identify-issues-in-arbitrator-disclosure-statement
 description: Ensures an arbitrator disclosure issues memo analyzes income concentration and win-rate patterns quantitatively, identifies undisclosed co-panelist or other relationship issues using external sources where appropriate, and flags challenge timing as urgent where applicable.
 activates_for: [planner, solver, checker]

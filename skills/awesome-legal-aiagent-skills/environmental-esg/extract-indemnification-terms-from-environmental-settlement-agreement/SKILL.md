@@ -1,5 +1,5 @@
 ---
-name: extract-indemnification-terms-from-environmental-settlement-agreement
+name: extract补偿条款环境和解协议
 task_id: environmental-esg/extract-indemnification-terms-from-environmental-settlement-agreement
 description: Guides preparation of a comprehensive indemnification summary memorandum by extracting all indemnification obligations, procedures, coverage limits, and claim carve-outs from a multi-document settlement package.
 activates_for: [planner, solver, checker]

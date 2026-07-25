@@ -1,5 +1,5 @@
 ---
-name: draft-equity-incentive-plan
+name: 起草股权incentive计划
 task_id: capital-markets/draft-equity-incentive-plan
 description: Equity incentive plan drafting where the baseline produces a plan document but omits a companion drafting memo resolving conflicts among multiple source documents and flagging statutory, governance, and capitalization nuances.
 activates_for: [planner, solver, checker]

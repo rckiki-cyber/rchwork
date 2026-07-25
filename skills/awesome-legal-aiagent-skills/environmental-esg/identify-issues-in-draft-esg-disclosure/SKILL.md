@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-draft-esg-disclosure
+name: 识别问题草案esg披露
 task_id: environmental-esg/identify-issues-in-draft-esg-disclosure
 description: Guides preparation of a severity-ranked ESG disclosure issues memorandum by cross-checking draft report claims against underlying data, active enforcement matters, board records, and internal communications that may reveal material inaccuracies or legal exposure.
 activates_for: [planner, solver, checker]

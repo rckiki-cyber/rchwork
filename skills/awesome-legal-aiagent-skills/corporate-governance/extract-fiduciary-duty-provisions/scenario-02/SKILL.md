@@ -1,5 +1,5 @@
 ---
-name: extract-fiduciary-duty-provisions-scenario-02
+name: extractfiduciaryduty条款scenario
 task_id: corporate-governance/extract-fiduciary-duty-provisions/scenario-02
 description: Agents extract fiduciary-duty, exculpation, indemnification, and governance provisions across multiple fund documents, comparing how each vehicle allocates duties, limits liability, structures information rights, and handles conflict-approval mechanics.
 activates_for: [planner, solver, checker]

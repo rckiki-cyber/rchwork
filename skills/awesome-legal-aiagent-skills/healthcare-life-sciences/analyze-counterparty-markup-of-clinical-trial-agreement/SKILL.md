@@ -1,5 +1,5 @@
 ---
-name: hls-analyze-counterparty-markup-cta
+name: 卫生法CTA交易对手修订分析
 task_id: healthcare-life-sciences/analyze-counterparty-markup-of-clinical-trial-agreement
 description: Reviews a site’s redline of a sponsor clinical trial agreement against a negotiation playbook to classify changes by risk level and recommend negotiating positions, with attention to intellectual property, indemnification, insurance, audit rights, publication, assignment, and program-wide precedent effects.
 activates_for: [planner, solver, checker]

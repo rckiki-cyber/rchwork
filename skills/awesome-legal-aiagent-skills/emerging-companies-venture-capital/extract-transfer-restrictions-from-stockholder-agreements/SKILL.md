@@ -1,5 +1,5 @@
 ---
-name: ecvc-extract-transfer-restrictions
+name: 风投转让限制提取
 task_id: emerging-companies-venture-capital/extract-transfer-restrictions-from-stockholder-agreements
 description: A transfer restriction analysis for a proposed secondary sale must identify whether transfer restrictions apply to the relevant classes of equity, characterize the consequence of transferring without any required joinder, explain drag-along obligations that bind transferees upon joinder, and confirm whether any common-stock holder has registration rights eligibility.
 activates_for: [planner, solver, checker]

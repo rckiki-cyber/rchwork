@@ -1,5 +1,5 @@
 ---
-name: review-insurance-policy
+name: 审查保险政策
 task_id: real-estate/review-insurance-policy
 description: Guides gap analysis of a construction project's insurance program against the governing financing documents by reviewing each policy line by line against the applicable insurance requirements and the project's risk profile, and flagging material coverage gaps.
 activates_for: [planner, solver, checker]

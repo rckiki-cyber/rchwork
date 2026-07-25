@@ -1,5 +1,5 @@
 ---
-name: extract-distribution-requirements-from-trust-agreement
+name: extract分销要求信托协议
 task_id: trusts-estates-private-client/extract-distribution-requirements-from-trust-agreement
 description: Closes the gap where agents summarize distribution provisions at a general level without computing adjusted figures, applying section-by-section prohibition conditions to each pending request, flagging ambiguous expense definitions, and identifying trust protector conflicts that affect the approval process.
 activates_for: [planner, solver, checker]

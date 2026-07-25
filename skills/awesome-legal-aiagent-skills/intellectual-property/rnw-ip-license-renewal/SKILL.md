@@ -1,5 +1,5 @@
 ---
-name: rnw-ip-license-renewal
+name: rnwip许可续期
 task_id: intellectual-property/rnw-ip-license-renewal
 description: Analyze IP license renewal proposals from the licensee’s perspective by comparing proposed renewal terms, commercial need, patent validity and enforceability considerations, sublicense implications, and financial impact to produce a renewal analysis memorandum.
 activates_for: [planner, solver, checker]

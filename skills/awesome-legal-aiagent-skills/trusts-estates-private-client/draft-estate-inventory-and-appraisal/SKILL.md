@@ -1,5 +1,5 @@
 ---
-name: draft-estate-inventory-and-appraisal
+name: 起草不动产inventoryappraisal
 task_id: trusts-estates-private-client/draft-estate-inventory-and-appraisal
 description: Drafting a court-ready estate inventory and appraisal requires correct probate versus non-probate classification, item-by-item listing of securities, art, firearms, and jewelry, appraiser certification, and an issues memo flagging business-entity transfer restrictions and valuation documentation gaps.
 activates_for: [planner, solver, checker]

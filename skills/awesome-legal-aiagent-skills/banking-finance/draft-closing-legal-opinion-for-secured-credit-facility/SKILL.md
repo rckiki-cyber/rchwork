@@ -1,5 +1,5 @@
 ---
-name: draft-closing-legal-opinion-for-secured-credit-facility
+name: 起草交割法律意见担保creditfacility
 task_id: banking-finance/draft-closing-legal-opinion-for-secured-credit-facility
 description: Drafts a borrower-side closing legal opinion for a senior secured credit facility and an issues memo cataloging deficiencies that prevent or qualify any required opinion.
 activates_for: [planner, solver, checker]

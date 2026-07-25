@@ -1,5 +1,5 @@
 ---
-name: review-commercial-lease-company-playbook
+name: 审查商业lease公司playbook
 task_id: intellectual-property/review-commercial-lease-against-company-playbook
 description: Reviewing a draft commercial lease against a real estate contracting playbook and related deal correspondence to produce a prioritized deviation report with recommended redline language.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: review-counterparty-employment-agreement-for-acquisition-targets-key-executive
+name: 审查counterparty雇佣协议收购目标keyexecutive
 task_id: employment-labor/review-counterparty-employment-agreement-for-acquisition-targets-key-executive
 description: Guides the analyst in producing an acquiror-perspective issues memorandum on a key executive's employment agreement and amendment, identifying provisions that constrain post-closing flexibility, create severance exposure, or require compliance review.
 activates_for: [planner, solver, checker]

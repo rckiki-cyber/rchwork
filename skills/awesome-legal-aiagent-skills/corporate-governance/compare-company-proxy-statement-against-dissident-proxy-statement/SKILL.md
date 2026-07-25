@@ -1,5 +1,5 @@
 ---
-name: proxy-statement-dissident-comparison
+name: 委托报表dissidentcomparison
 task_id: corporate-governance/compare-company-proxy-statement-against-dissident-proxy-statement
 description: Governance analysis memorandum comparing company and dissident proxy filings, verifying financial claims, identifying material omissions in dissident materials, and assessing contest dynamics.
 activates_for: [planner, solver, checker]

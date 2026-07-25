@@ -1,5 +1,5 @@
 ---
-name: extract-issuer-financial-statements-scenario-01
+name: extractissuer财务报表scenario
 task_id: capital-markets/extract-issuer-financial-statements/scenario-01
 description: Financial statement extraction for a debt offering where the baseline extracts individual line items but does not cross-reference them against the offering materials and financing documents to surface discrepancies and required disclosure enhancements.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: hipaa-security-rule-baa-portfolio-impact
+name: hipaa担保规则baaportfolioimpact
 task_id: corporate-governance/assess-impact-of-hipaa-security-rule-updates-on-business-associate-agreement-portfolio
 description: Gap analysis of a business associate agreement portfolio against proposed privacy and security rule updates, identifying deficiencies in encryption, breach notification, patch management, and technical safeguard provisions in individual agreements and across the portfolio.
 activates_for: [planner, solver, checker]

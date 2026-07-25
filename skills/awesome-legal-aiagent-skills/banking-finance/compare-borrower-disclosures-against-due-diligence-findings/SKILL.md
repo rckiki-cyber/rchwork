@@ -1,5 +1,5 @@
 ---
-name: compare-borrower-disclosures-against-due-diligence-findings
+name: 比较borrower披露againstdue尽职调查findings
 task_id: banking-finance/compare-borrower-disclosures-against-due-diligence-findings
 description: Cross-references borrower disclosure schedules against due diligence findings and produces a severity-organized discrepancy memorandum with issue-specific recommended next steps for each gap.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-buyer-favorable-spa
+name: 起草买方favorablespa
 task_id: corporate-ma/draft-purchase-agreement
 description: Guides drafting of a buyer-favorable stock purchase agreement from transaction materials, with an accompanying issues memorandum identifying material concerns encountered during drafting.
 activates_for: [planner, solver, checker]

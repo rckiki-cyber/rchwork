@@ -1,5 +1,5 @@
 ---
-name: compare-asserted-claims-accused-product
+name: 比较asserted索赔accused产品
 task_id: intellectual-property/compare-asserted-patent-claims-against-accused-product
 description: Element-by-element claim chart and non-infringement analysis comparing asserted patent claims to an accused product implementation, using the patent record, prosecution history, and technical materials to test each limitation and any infringement theory.
 activates_for: [planner, solver, checker]

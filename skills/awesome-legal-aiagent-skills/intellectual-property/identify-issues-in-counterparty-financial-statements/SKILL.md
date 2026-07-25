@@ -1,5 +1,5 @@
 ---
-name: identify-issues-counterparty-financial-statements
+name: 识别问题counterparty财务报表
 task_id: intellectual-property/identify-issues-in-counterparty-financial-statements
 description: Preparing a counterparty risk assessment memo from audited financial statements, a draft supply agreement, and diligence materials, requiring financial stability analysis and contractual risk allocation assessment.
 activates_for: [planner, solver, checker]

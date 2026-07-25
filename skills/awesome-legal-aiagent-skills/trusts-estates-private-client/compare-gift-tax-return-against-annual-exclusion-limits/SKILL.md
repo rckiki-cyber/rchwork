@@ -1,5 +1,5 @@
 ---
-name: compare-gift-tax-return-against-annual-exclusion-limits
+name: 比较gift税务returnagainst年度exclusionlimits
 task_id: trusts-estates-private-client/compare-gift-tax-return-against-annual-exclusion-limits
 description: Reviewing a filed gift tax return against the transaction ledger and supporting documents requires reconciling all transfers, verifying annual exclusion qualification conditions, distinguishing direct-payment exclusions from ordinary exclusion gifts, and tracing any election-driven filing obligations.
 activates_for: [planner, solver, checker]

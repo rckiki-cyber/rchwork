@@ -1,5 +1,5 @@
 ---
-name: identify-issues-vendor-cloud-infrastructure-proposal
+name: 识别问题卖方cloudinfrastructure建议书
 task_id: intellectual-property/identify-issues-in-vendor-cloud-infrastructure-proposal
 description: Reviewing a vendor cloud infrastructure proposal and draft agreement against an internal assessment to produce an issue memorandum with severity ratings and recommended fixes.
 activates_for: [planner, solver, checker]

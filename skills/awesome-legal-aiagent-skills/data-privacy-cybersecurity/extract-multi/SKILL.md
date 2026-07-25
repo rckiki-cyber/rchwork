@@ -1,5 +1,5 @@
 ---
-name: extract-multi
+name: extract多
 task_id: data-privacy-cybersecurity/extract-multi
 description: Multi-state privacy obligation extraction memos fail when the agent does not apply each statute's applicability threshold to the company's actual profile before extracting obligations and does not differentiate between obligations that are unique to one state and those that are shared across states.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-responses-to-requests-for-production
+name: 起草回应请求production
 task_id: litigation-dispute-resolution/draft-responses-to-requests-for-production
 description: Draft responses to requests for production by reviewing the requests, the available document set, and any privilege or objection materials; state objections with supporting reasons where warranted; indicate whether responsive, non-objectionable documents will be produced; note any withheld material at a categorical level; and prepare the required companion litigation analysis deliverable.
 activates_for: [planner, solver, checker]

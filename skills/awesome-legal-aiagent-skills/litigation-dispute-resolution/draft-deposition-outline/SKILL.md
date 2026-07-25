@@ -1,5 +1,5 @@
 ---
-name: draft-deposition-outline
+name: 起草证言录取大纲
 task_id: litigation-dispute-resolution/draft-deposition-outline
 description: A deposition outline for an adverse supervisor witness in an employment discrimination and retaliation case should progress topically from background and credibility-building through document authentication, comparator analysis, and targeted admission-seeking, with each section tied to the relevant proof issues and supported by document-specific questions and authentication steps.
 activates_for: [planner, solver, checker]

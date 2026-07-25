@@ -1,5 +1,5 @@
 ---
-name: draft-ice-noi-response-package
+name: 起草icenoi回应package
 task_id: immigration/draft-response-to-notice-of-inspection
 description: Draft a multi-document response package to an employment verification notice of inspection, keeping the external response, privileged internal audit materials, and remediation planning separate and handling each according to its audience and privilege posture.
 activates_for: [planner, solver, checker]

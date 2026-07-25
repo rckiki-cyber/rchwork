@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-intercreditor-agreement-wind
+name: 分析counterpartymarkupintercreditor协议wind
 task_id: energy-natural-resources/analyze-counterparty-markup-of-intercreditor-agreement
 description: Guides systematic benchmarking of a counterparty's intercreditor agreement markup against market precedent data, with analysis of economic and control impacts and identification of provisions whose combined effect is materially more adverse than any individual change.
 activates_for: [planner, solver, checker]

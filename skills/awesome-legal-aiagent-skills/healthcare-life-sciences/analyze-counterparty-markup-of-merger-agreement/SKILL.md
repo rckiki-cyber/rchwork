@@ -1,5 +1,5 @@
 ---
-name: hls-analyze-counterparty-markup-merger-agreement
+name: hlsanalyzecounterpartymarkup合并协议
 task_id: healthcare-life-sciences/analyze-counterparty-markup-of-merger-agreement
 description: Reviews a counterparty's redline of a merger agreement against the initial draft and related deal materials to identify compounded risk interactions, representation issues, and asymmetric risk allocation with term-sheet deviation analysis.
 activates_for: [planner, solver, checker]

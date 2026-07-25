@@ -1,5 +1,5 @@
 ---
-name: draft-markup-saas-subscription-healthcare
+name: 起草markupsaassubscription医疗
 task_id: intellectual-property/draft-markup-of-saas-subscription-agreement
 description: Section-by-section markup commentary memo with proposed redlines and priority classifications for a vendor-form SaaS agreement reviewed against a company playbook in a regulated healthcare procurement context.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: review-form-adv-part-2a-for-regulatory-and-disclosure-deficiencies
+name: 审查表格advpart2a监管披露deficiencies
 task_id: funds-asset-management/review-form-adv-part-2a-for-regulatory-and-disclosure-deficiencies
 description: Review a Form ADV Part 2A brochure against supporting records and produce an issues memo organized by Item number with severity ratings, regulatory basis citations, and remediation recommendations with timelines for each deficiency.
 activates_for: [planner, solver, checker]

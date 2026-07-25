@@ -1,5 +1,5 @@
 ---
-name: identify-issues-tech-licensing-term-sheet
+name: 识别问题tech许可期限sheet
 task_id: intellectual-property/identify-issues-in-technology-licensing-term-sheet
 description: Reviewing a technology licensing term sheet against a company playbook and supporting deal documents to prepare a comprehensive issue memorandum.
 activates_for: [planner, solver, checker]

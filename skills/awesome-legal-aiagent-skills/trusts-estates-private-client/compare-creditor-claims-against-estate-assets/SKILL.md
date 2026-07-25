@@ -1,5 +1,5 @@
 ---
-name: compare-creditor-claims-against-estate-assets
+name: 比较creditor索赔against不动产资产
 task_id: trusts-estates-private-client/compare-creditor-claims-against-estate-assets
 description: Reconciling creditor claims against estate assets requires applying the governing probate priority framework, separating secured and unsecured components of each claim, and distinguishing allowable claims from those that are legally defective or inadequately documented.
 activates_for: [planner, solver, checker]

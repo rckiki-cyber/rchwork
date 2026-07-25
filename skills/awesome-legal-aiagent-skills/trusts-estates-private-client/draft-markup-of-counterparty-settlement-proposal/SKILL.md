@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-counterparty-settlement-proposal
+name: 起草markupcounterparty和解建议书
 task_id: trusts-estates-private-client/draft-markup-of-counterparty-settlement-proposal
 description: Produce a redline markup of an opposing proposed marital settlement agreement with marginal commentary. Focus on contract-ready replacement language, issue spotting against supporting financial and parenting materials, and a priority-ordered cover memo that frames the negotiation posture in procedural terms.
 activates_for: [planner, solver, checker]

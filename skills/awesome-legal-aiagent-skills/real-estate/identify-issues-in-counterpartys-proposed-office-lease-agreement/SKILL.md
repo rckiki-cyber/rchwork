@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterpartys-proposed-office-lease-agreement
+name: 识别问题counterpartys拟议officelease协议
 task_id: real-estate/identify-issues-in-counterpartys-proposed-office-lease-agreement
 description: Guides tenant-side identification of issues in a proposed office lease by anchoring each issue to the tenant's requirements and stated priorities, benchmarking economics against available market information, and producing a prioritized issues memorandum.
 activates_for: [planner, solver, checker]

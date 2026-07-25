@@ -1,5 +1,5 @@
 ---
-name: draft-challenge-to-arbitrator-appointment
+name: 起草challengearbitratorappointment
 task_id: arbitration-international-dispute-resolution/draft-challenge-to-arbitrator-appointment
 description: Ensures an arbitrator-challenge submission organizes relationships under the applicable conflict-of-interest framework, treats non-disclosure as an independent challenge basis where supported, and analyzes speaking-engagement topic relevance for potential predisposition.
 activates_for: [planner, solver, checker]

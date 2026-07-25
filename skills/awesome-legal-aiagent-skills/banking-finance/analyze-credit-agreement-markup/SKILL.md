@@ -1,5 +1,5 @@
 ---
-name: analyze-credit-agreement-markup
+name: 分析credit协议markup
 task_id: banking-finance/analyze-credit-agreement-markup
 description: Produces a change analysis memo comparing a borrower-marked credit agreement against the prior draft and any governing commitment materials, with issue-by-issue risk classification and procedural recommendations on each deviation.
 activates_for: [planner, solver, checker]

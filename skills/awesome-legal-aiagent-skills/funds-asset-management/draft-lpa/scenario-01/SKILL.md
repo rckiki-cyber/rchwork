@@ -1,5 +1,5 @@
 ---
-name: draft-lpa-scenario-01
+name: 起草lpascenario
 task_id: funds-asset-management/draft-lpa/scenario-01
 description: Draft a complete limited partnership agreement for a new fund by adapting an attached precedent to a term sheet and drafting instructions, with all terms updated consistently throughout.
 activates_for: [planner, solver, checker]

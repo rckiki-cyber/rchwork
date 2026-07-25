@@ -1,5 +1,5 @@
 ---
-name: hls-draft-healthcare-apa
+name: hls草案医疗apa
 task_id: healthcare-life-sciences/draft-healthcare-asset-purchase-agreement
 description: Drafts a healthcare asset purchase agreement for an ambulatory surgery center acquisition, focusing on healthcare-specific operational transition issues, regulatory-compliance drafting, employee and lease transfer mechanics, and post-closing adjustment structure.
 activates_for: [planner, solver, checker]

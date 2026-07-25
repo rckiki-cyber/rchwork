@@ -1,5 +1,5 @@
 ---
-name: draft-motion-enhanced-damages-284
+name: 起草动议enhanced损害赔偿
 task_id: intellectual-property/draft-motion-for-enhanced-damages
 description: Post-trial motion for enhanced damages in a patent infringement matter under the applicable patent damages statute, grounded in the governing discretionary-enhancement standard, the trial record, and post-verdict evidence of continued infringement.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterparty-confirmation-objection
+name: 识别问题counterpartyconfirmation异议
 task_id: bankruptcy-restructuring/identify-issues-in-counterparty-confirmation-objection
 description: Ensures a confirmation objection analysis applies the relevant confirmation standards to each argument, flags confirmation vulnerabilities the objector did not raise, and assesses the objector's own strategic position for weaknesses.
 activates_for: [planner, solver, checker]

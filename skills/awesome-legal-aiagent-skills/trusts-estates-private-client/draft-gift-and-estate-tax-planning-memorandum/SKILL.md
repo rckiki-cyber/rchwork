@@ -1,5 +1,5 @@
 ---
-name: draft-gift-and-estate-tax-planning-memorandum
+name: 起草gift不动产税务planning备忘录
 task_id: trusts-estates-private-client/draft-gift-and-estate-tax-planning-memorandum
 description: A gift and estate tax planning memorandum for a high-net-worth client requires analyzing federal and state transfer-tax exposure, reviewing life-insurance ownership and transfer risks, assessing withdrawal-right mechanics for trust gifts, and evaluating timing-sensitive lifetime-giving strategies under any applicable exclusion regime.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-obligations-from-executed-marital-settlement-agreement
+name: extract义务executedmarital和解协议
 task_id: trusts-estates-private-client/extract-obligations-from-executed-marital-settlement-agreement
 description: Closes the gap where agents list settlement-agreement provisions without cross-referencing the agreement text against attached exhibits for numerical discrepancies, identifying ambiguous support-termination conditions, flagging post-decree filing deadline risk created by a phased engagement, and noting enforcement gaps in ongoing reporting and contribution obligations.
 activates_for: [planner, solver, checker]

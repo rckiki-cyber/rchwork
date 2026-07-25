@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-limited-partnership-interest-transfer-agreement
+name: 分析counterpartymarkup有限合伙权益transfer协议
 task_id: funds-asset-management/analyze-counterparty-markup-of-limited-partnership-interest-transfer-agreement
 description: Review a buyer's redline of a secondary limited partnership interest transfer agreement against the seller's clean draft, fund governing documents, and internal negotiation guidance to produce a prioritized redline analysis memorandum with financial exposure analysis and recommended counter-positions.
 activates_for: [planner, solver, checker]

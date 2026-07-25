@@ -1,5 +1,5 @@
 ---
-name: review-privilege-log-clawback-review
+name: 审查privilegelogclawbackreview
 task_id: litigation-dispute-resolution/review-privilege-log-clawback-review
 description: Assessing an opposing party's privilege log for defensibility requires reviewing each log entry against the applicable privilege standards and cross-referencing sample documents to identify log entries with insufficient descriptions, unsupported privilege claims, or documents that appear to have been improperly withheld, producing both a deficiency memo and a clawback candidate list.
 activates_for: [planner, solver, checker]

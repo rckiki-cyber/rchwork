@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-stockholder-written-consent
+name: ecvc草案stockholderwritten同意
 task_id: emerging-companies-venture-capital/draft-stockholder-written-consent
 description: A stockholder written consent for a financing transaction should be drafted to address any authorized share shortfall, coordinate any charter amendment with the issuance of a new security class or series, evaluate equity incentive plan provisions that automatically increase the reserve and their interaction with any plan-imposed issuance cap, and condition issuance on the charter amendment becoming effective with the appropriate state filing office.
 activates_for: [planner, solver, checker]

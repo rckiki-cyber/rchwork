@@ -1,5 +1,5 @@
 ---
-name: identify-settlement-proposal-issues-divorce-scenario-01
+name: 识别和解建议书问题divorcescenario
 task_id: trusts-estates-private-client/identify-settlement-proposal-issues/scenario-01
 description: Helps an agent review a contested divorce settlement proposal for asset characterization, support, tax, parenting, and release-language issues, with attention to quantification where the record permits and to preserving future enforcement and modification rights.
 activates_for: [planner, solver, checker]

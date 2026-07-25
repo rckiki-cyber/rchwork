@@ -1,5 +1,5 @@
 ---
-name: review-real-estate-diligence
+name: 审查不动产不动产尽职调查
 task_id: real-estate/review-real-estate-diligence
 description: Guides preparation of a real estate due diligence memorandum by abstracting each lease instrument, identifying material risks from tax records and any sublease, and organizing findings according to the supervising lawyer’s instructions.
 activates_for: [planner, solver, checker]

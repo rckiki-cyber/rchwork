@@ -1,5 +1,5 @@
 ---
-name: draft-response-to-regulatory-inquiry-letter
+name: 起草回应监管询问函件
 task_id: data-privacy-cybersecurity/draft-response-to-regulatory-inquiry-letter
 description: Regulatory inquiry responses involving health data sharing should be drafted by mapping each inquiry item to a corresponding response, preserving the distinction between the external response and any privileged internal analysis, and checking that representations align with the underlying factual record.
 activates_for: [planner, solver, checker]

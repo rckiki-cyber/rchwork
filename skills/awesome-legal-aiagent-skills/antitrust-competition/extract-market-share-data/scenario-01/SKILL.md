@@ -1,5 +1,5 @@
 ---
-name: extract-market-share-data-scenario-01
+name: extract市场股份数据scenario
 task_id: antitrust-competition/extract-market-share-data/scenario-01
 description: Supports multi-source reconciliation, concentration analysis, document-production review, and cumulative acquisition-risk assessment for an antitrust transaction memorandum.
 activates_for: [planner, solver, checker]

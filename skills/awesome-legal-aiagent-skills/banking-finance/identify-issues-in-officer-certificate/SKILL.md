@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-officer-certificate
+name: 识别问题高管certificate
 task_id: banking-finance/identify-issues-in-officer-certificate
 description: Reviews an officer's certificate package against the applicable credit agreement conditions precedent, identifying signatory deficiencies, stale representations, undisclosed events, and certification errors.
 activates_for: [planner, solver, checker]

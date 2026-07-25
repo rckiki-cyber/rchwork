@@ -1,5 +1,5 @@
 ---
-name: draft-term-sheet-to-lpa-edit
+name: 起草期限sheetlpaedit
 task_id: funds-asset-management/draft-term-sheet-to-lpa-edit
 description: Mark up a prior fund LPA precedent in tracked changes to conform to a new fund's term sheet, adding required new sections, and flagging open questions and valuation methodology concerns with partner notes.
 activates_for: [planner, solver, checker]

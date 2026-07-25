@@ -1,5 +1,5 @@
 ---
-name: draft-litigation-hold-notice-for-new-product-liability-matter
+name: 起草诉讼hold通知新型产品责任事项
 task_id: litigation-dispute-resolution/draft-litigation-hold-notice-for-new-product-liability-matter
 description: Drafting a litigation hold notice for a newly-served class action requires identifying likely custodians from the complaint’s allegations, mapping each to relevant data sources, addressing any active data-migration or retention risk that could affect preservation, and producing both a hold notice and a preservation action memo as separate deliverables.
 activates_for: [planner, solver, checker]

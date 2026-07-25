@@ -1,5 +1,5 @@
 ---
-name: cpsc-settlement-versus-allegations-gap-analysis
+name: cpsc和解versusallegationsgap分析
 task_id: corporate-governance/compare-final-settlement-against-initial-allegations
 description: Gap analysis memorandum comparing a final regulatory settlement against initial agency allegations, identifying changes in scope, financial exposure, contingent compliance obligations, and downstream enforcement and litigation implications.
 activates_for: [planner, solver, checker]

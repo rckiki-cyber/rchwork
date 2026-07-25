@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-warn-act-notice
+name: 识别问题warnact通知
 task_id: employment-labor/identify-issues-in-warn-act-notice
 description: Guides the analyst in producing a detailed compliance-issues memorandum for a worker-notice package, identifying procedural and substantive deficiencies across employee, union, and government notices, with citations to the applicable notice requirements and recommended corrections.
 activates_for: [planner, solver, checker]

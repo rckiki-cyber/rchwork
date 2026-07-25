@@ -1,5 +1,5 @@
 ---
-name: draft-markup-quota-share-reinsurance-treaty
+name: 起草markupquota股份再保险treaty
 task_id: insurance/draft-markup-of-quota-share-reinsurance-treaty
 description: Agents producing a quota share treaty markup memo identify commission changes, assess the economic significance of retention and profit-participation mechanics, evaluate arbitration substitutions as structural changes, and note any internal approval requirements before accepting below-floor commission terms.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-privileged-communications-from-production-set
+name: 保密通信提交集提取
 task_id: litigation-dispute-resolution/extract-privileged-communications-from-production-set
 description: Reviewing a flagged document batch for privilege and clawback issues requires applying attorney-client privilege and work product doctrine to each flagged document, assessing whether the governing clawback order provides adequate protection, and producing both a privilege log and a clawback memorandum with recommended actions.
 activates_for: [planner, solver, checker]

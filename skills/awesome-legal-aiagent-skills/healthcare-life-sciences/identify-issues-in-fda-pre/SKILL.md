@@ -1,5 +1,5 @@
 ---
-name: hls-identify-fda-presub-issues
+name: hlsidentifyfdapresub问题
 task_id: healthcare-life-sciences/identify-issues-in-fda-pre
 description: Reviews a pre-submission package for a novel medical device to identify issues in product classification, biocompatibility categorization, software concern classification, electromagnetic compatibility testing gaps, investigational study requirements, predicate selection, imaging-compatibility claims, drug-use instructions, and clinical study design deficiencies.
 activates_for: [planner, solver, checker]

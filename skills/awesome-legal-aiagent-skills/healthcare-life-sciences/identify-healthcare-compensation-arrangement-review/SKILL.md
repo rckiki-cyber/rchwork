@@ -1,5 +1,5 @@
 ---
-name: hls-identify-healthcare-compensation-arrangement
+name: hlsidentify医疗薪酬arrangement
 task_id: healthcare-life-sciences/identify-healthcare-compensation-arrangement-review
 description: Reviews a medical director compensation arrangement against applicable healthcare fraud-and-abuse compensation rules, nonprofit excess benefit principles, and related documentation standards, identifying fair market value opinion gaps, ownership-conflict issues, referral-motivated compensation indicators in internal communications, and time-tracking deficiencies.
 activates_for: [planner, solver, checker]

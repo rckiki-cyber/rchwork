@@ -1,5 +1,5 @@
 ---
-name: identify-governance-deficiencies-in-prior-year-proxy-statement
+name: 识别治理deficienciesprior年委托报表
 task_id: corporate-governance/identify-governance-deficiencies-in-prior-year-proxy-statement
 description: Agents identify general governance concerns, check for internal inconsistencies in compensation disclosures, verify whether broad compliance statements are contradicted by specific data elsewhere in the same filing, compare the company’s clawback policy against the applicable proxy-disclosure and recovery-policy standard, and assess whether materially inaccurate proxy disclosures create anti-fraud liability risk.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-requests-for-production-for-objectionable-and-overbroad-discovery-demands
+name: 分析counterparty请求productionobjectionableoverbroad证据开示demands
 task_id: litigation-dispute-resolution/analyze-counterparty-requests-for-production-for-objectionable-and-overbroad-discovery-demands
 description: Reviewing incoming requests for production requires evaluating each request against scope-of-discovery principles, applicable case-specific orders, and governing agreements to identify requests that are objectionable as overbroad, unduly burdensome, privileged, or beyond permissible scope.
 activates_for: [planner, solver, checker]

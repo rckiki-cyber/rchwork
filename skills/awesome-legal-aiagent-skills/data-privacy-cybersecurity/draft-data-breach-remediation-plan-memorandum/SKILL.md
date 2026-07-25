@@ -1,5 +1,5 @@
 ---
-name: draft-data-breach-remediation-plan-memorandum
+name: 起草数据违约remediation计划备忘录
 task_id: data-privacy-cybersecurity/draft-data-breach-remediation-plan-memorandum
 description: Board-level breach remediation memos fail when the agent does not integrate the forensic investigation findings, prior risk assessment gaps, and applicable regulatory obligations into a sequenced remediation plan with specific owners, timelines, and evidence of completion.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: ecvc-analyze-counterparty-markup-spa
+name: 风投交易对手SPA修订分析
 task_id: emerging-companies-venture-capital/analyze-counterparty-markup-of-stock-purchase-agreement
 description: Purchase agreement markup analysis should detect economically important changes hidden in definitions, schedules, and exhibits; assess the impact of preference, conversion, redemption, and control mechanics across scenarios; and cross-check representation changes against diligence materials rather than only listing revised provisions.
 activates_for: [planner, solver, checker]

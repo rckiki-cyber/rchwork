@@ -1,5 +1,5 @@
 ---
-name: compare-distribution-amounts-against-plan-requirements
+name: 比较分销amountsagainst计划要求
 task_id: bankruptcy-restructuring/compare-distribution-amounts-against-plan-requirements
 description: Prepare a compliance analysis memorandum that checks distributions against governing plan requirements, tests the underlying arithmetic and allocation logic, reviews reserve mechanics, and identifies procedural follow-up items for the responsible estate personnel.
 activates_for: [planner, solver, checker]

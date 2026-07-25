@@ -1,5 +1,5 @@
 ---
-name: compare-trust-distributions-against-trust-instrument
+name: 比较信托分销against信托instrument
 task_id: trusts-estates-private-client/compare-trust-distributions-against-trust-instrument
 description: A trust distribution compliance review requires reading the governing instrument against every ledger entry, confirming required co-trustee execution, verifying loan authority and repayment terms, and assessing whether any charitable distribution limits were respected in each period.
 activates_for: [planner, solver, checker]

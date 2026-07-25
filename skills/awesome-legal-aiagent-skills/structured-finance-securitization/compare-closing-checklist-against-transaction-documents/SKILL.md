@@ -1,5 +1,5 @@
 ---
-name: compare-closing-checklist-against-transaction-documents
+name: 比较交割清单againsttransaction文件
 task_id: structured-finance-securitization/compare-closing-checklist-against-transaction-documents
 description: Comparing a closing checklist against executed transaction documents where filing jurisdiction, missing parties in account control agreements, absent market-standard deliverables, and document title discrepancies each require independent legal assessment from the depositor's perspective.
 activates_for: [planner, solver, checker]

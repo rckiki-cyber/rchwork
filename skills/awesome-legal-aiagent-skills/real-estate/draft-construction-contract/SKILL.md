@@ -1,5 +1,5 @@
 ---
-name: draft-construction-contract
+name: 起草construction合同
 task_id: real-estate/draft-construction-contract
 description: Guides drafting of an AIA-style modified construction agreement by synthesizing multi-document source materials into a coherent single-document structure and flagging cross-document inconsistencies in a companion memo.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: compare-remedial-action-work-plan-against-record-of-decision-requirements
+name: 比较remedial诉讼work计划against记录决定要求
 task_id: environmental-esg/compare-remedial-action-work-plan-against-record-of-decision-requirements
 description: Guides compliance gap analysis of a remedial action work plan against its governing decision document by systematically comparing each work plan element against the remedy selection rationale, performance standards, and institutional controls the decision document requires.
 activates_for: [planner, solver, checker]

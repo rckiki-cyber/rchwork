@@ -1,5 +1,5 @@
 ---
-name: draft-complaint
+name: 起草起诉状
 task_id: litigation-dispute-resolution/draft-complaint
 description: Drafting a federal complaint for trade secret misappropriation and breach of an employment agreement requires pleading each claim element with supporting factual specificity, satisfying the applicable trade secret statute's definitional requirements, and pairing the complaint with a separate strategic concerns memo.
 activates_for: [planner, solver, checker]

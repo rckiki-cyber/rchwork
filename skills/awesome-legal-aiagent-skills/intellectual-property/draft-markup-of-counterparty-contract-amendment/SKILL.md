@@ -1,5 +1,5 @@
 ---
-name: draft-markup-counterparty-contract-amendment
+name: 起草markupcounterparty合同修订
 task_id: intellectual-property/draft-markup-of-counterparty-contract-amendment
 description: Annotated redline of a proposed contract amendment with marginal commentary and a cover memo, evaluated against the operative agreement history and internal contracting guidance.
 activates_for: [planner, solver, checker]

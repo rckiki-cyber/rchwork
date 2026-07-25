@@ -1,5 +1,5 @@
 ---
-name: extract-signing-requirements-from-estate-plan-documents
+name: extract签署要求不动产计划文件
 task_id: trusts-estates-private-client/extract-signing-requirements-from-estate-plan-documents
 description: Closes the gap where agents produce generic signing checklists without identifying signatories who cannot complete required steps at the ceremony, flagging document-specific formal requirements and applying witness disqualification rules to named witnesses.
 activates_for: [planner, solver, checker]

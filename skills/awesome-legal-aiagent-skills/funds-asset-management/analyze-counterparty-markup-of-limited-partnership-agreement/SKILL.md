@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-limited-partnership-agreement
+name: 分析counterpartymarkup有限合伙协议
 task_id: funds-asset-management/analyze-counterparty-markup-of-limited-partnership-agreement
 description: Review a counterparty markup of a limited partnership agreement against the applicable negotiation playbook, term sheet, and relevant precedent documents to produce a classified redline review memorandum with financial impact analysis and negotiation guidance.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-bid-procedures-motion
+name: 起草投标程序动议
 task_id: bankruptcy-restructuring/draft-bid-procedures-motion
 description: Ensures a bid procedures motion includes the core procedural elements commonly addressed in a chapter 11 sale process — a free-and-clear sale basis, stalking horse protections, bidder assurance requirements, and a cure-claims handling mechanism — and is accompanied by a separate issues memorandum with severity-rated findings.
 activates_for: [planner, solver, checker]

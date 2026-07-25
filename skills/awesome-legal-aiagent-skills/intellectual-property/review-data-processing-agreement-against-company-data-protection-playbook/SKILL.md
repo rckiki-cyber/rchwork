@@ -1,5 +1,5 @@
 ---
-name: review-dpa-company-data-protection-playbook
+name: 审查dpa公司数据protectionplaybook
 task_id: intellectual-property/review-data-processing-agreement-against-company-data-protection-playbook
 description: Reviewing a vendor data processing agreement against an internal data protection playbook and related technical due diligence materials to produce a deviation report with risk ratings and remediation recommendations.
 activates_for: [planner, solver, checker]

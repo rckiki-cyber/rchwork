@@ -1,5 +1,5 @@
 ---
-name: draft-credit-compliance-cert
+name: 起草credit合规cert
 task_id: banking-finance/draft-credit-compliance-cert
 description: Prepares a quarterly covenant compliance package consisting of a compliance memo, a calculation workbook, and an officer-certifiable certificate, including independent verification of the borrower's preliminary figures.
 activates_for: [planner, solver, checker]

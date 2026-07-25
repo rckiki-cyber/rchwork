@@ -1,5 +1,5 @@
 ---
-name: its-extract-ownership-structure-sanctions
+name: itsextractownership结构制裁
 task_id: international-trade-sanctions/extract-ownership-structure-from-corporate-records
 description: Produces an ownership report that traces beneficial ownership through multi-tier corporate and trust structures, aggregates sanctions-attributable ownership across all paths, and flags structural inconsistencies and post-designation non-divestiture as risk factors.
 activates_for: [planner, solver, checker]

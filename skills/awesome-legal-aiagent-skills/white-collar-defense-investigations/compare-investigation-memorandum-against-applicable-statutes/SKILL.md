@@ -1,5 +1,5 @@
 ---
-name: statutory-gap-analysis-internal-investigation-memo
+name: statutorygap分析internal调查memo
 task_id: white-collar-defense-investigations/compare-investigation-memorandum-against-applicable-statutes
 description: Statutory gap analysis of an internal investigation memorandum, identifying legal errors where the memo misstates scienter requirements, omits required statutory elements, or fails to analyze nexus elements that the underlying facts clearly establish.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-lease-terms-from-existing-lease-portfolio
+name: extractlease条款现有leaseportfolio
 task_id: real-estate/extract-lease-terms-from-existing-lease-portfolio
 description: Guides lease abstraction for a multi-tenant portfolio acquisition by extracting key terms from each lease instrument, cross-checking against the rent roll and any lender or buyer instructions, and producing a structured abstraction report with a portfolio-level executive summary.
 activates_for: [planner, solver, checker]

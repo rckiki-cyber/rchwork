@@ -1,5 +1,5 @@
 ---
-name: draft-subscription-agreement
+name: 起草subscription协议
 task_id: funds-asset-management/draft-subscription-agreement
 description: Draft a subscription agreement for a governmental plan investor's commitment to a fund and prepare an issues memo identifying cross-document inconsistencies, where the investor's regulatory status, tax treatment, and investment authorization present distinct issues that must each be accurately addressed.
 activates_for: [planner, solver, checker]

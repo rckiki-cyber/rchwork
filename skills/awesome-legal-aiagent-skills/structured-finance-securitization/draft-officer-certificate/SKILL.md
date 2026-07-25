@@ -1,5 +1,5 @@
 ---
-name: draft-officer-certificate-auto-abs
+name: 起草高管certificateautoabs
 task_id: structured-finance-securitization/draft-officer-certificate
 description: Drafting an officer's certificate for an auto loan ABS closing where pool-level eligibility representations must be certified under both the PSA and the indenture, which may impose different thresholds for the same criteria, alongside conditions precedent and perfection method certifications specific to motor vehicle receivables.
 activates_for: [planner, solver, checker]

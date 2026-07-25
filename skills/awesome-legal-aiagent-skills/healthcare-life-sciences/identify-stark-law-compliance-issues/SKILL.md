@@ -1,5 +1,5 @@
 ---
-name: hls-identify-stark-compliance-issues
+name: hlsidentifystark合规问题
 task_id: healthcare-life-sciences/identify-stark-law-compliance-issues
 description: Reviews physician compensation arrangements, lease agreements, compliance hotline logs, and fair-market-value opinions to produce an issue-identification memorandum addressing Stark Law compliance risk, exposure at risk by arrangement, voluntary-disclosure considerations, and the relationship between unresolved compliance complaints and broader litigation or notice concerns.
 activates_for: [planner, solver, checker]

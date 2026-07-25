@@ -1,5 +1,5 @@
 ---
-name: draft-markup-tsa-seller
+name: 起草markuptsa卖方
 task_id: corporate-ma/draft-markup-of-transition-services-agreement-tsa
 description: Guides seller-side transition services agreement redline work where gaps between playbook positions and counterparty draft require priority-tiered classification tied to parent transaction agreement conflicts.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-internal-ai-acceptable-use-policy
+name: 起草internalaiacceptableuse政策
 task_id: corporate-governance/draft-internal-ai-acceptable-use-policy
 description: Agents produce an AI acceptable use policy that addresses overlapping legal, labor, privacy, data handling, and insurance considerations and surfaces unresolved items as open action items in the accompanying executive memo.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: its-draft-trade-compliance-policy-manual
+name: its草案贸易合规政策手册
 task_id: international-trade-sanctions/draft-trade-compliance-policy-manual
 description: Drafts a comprehensive multi-chapter trade compliance policy manual that converts remediation commitments into binding policy, specifies technology access matrices for the deemed export program, addresses EU general export authorizations and catch-all controls for EU operations, and incorporates privilege protocols for investigation records.
 activates_for: [planner, solver, checker]

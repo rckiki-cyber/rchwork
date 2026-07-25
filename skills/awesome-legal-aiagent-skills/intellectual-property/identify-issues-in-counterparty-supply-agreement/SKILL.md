@@ -1,5 +1,5 @@
 ---
-name: identify-issues-counterparty-supply-agreement
+name: 识别问题counterparty供应协议
 task_id: intellectual-property/identify-issues-in-counterparty-supply-agreement
 description: Reviewing a proposed master supply agreement against a procurement playbook and supplier performance data to produce a risk-rated issues memo with negotiation recommendations.
 activates_for: [planner, solver, checker]

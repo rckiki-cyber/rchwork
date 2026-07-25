@@ -1,5 +1,5 @@
 ---
-name: compare-source-code-docs-patent-claims
+name: 比较sourcecodedocs专利索赔
 task_id: intellectual-property/compare-source-code-documentation-against-patent-claims
 description: Limitation-by-limitation claim chart and non-infringement analysis for asserted patent claims based on product architecture specifications, prosecution history, and source code documentation.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-weaknesses-opposing-claim-construction-brief
+name: 识别weaknessesopposing索赔construction摘要
 task_id: intellectual-property/identify-weaknesses-in-opposing-partys-claim-construction-brief
 description: Reviewing an opposing party's opening claim construction brief to identify legal errors, intrinsic-record mischaracterizations, and construction vulnerabilities for the responsive brief, using only category-level references to the record and governing framework.
 activates_for: [planner, solver, checker]

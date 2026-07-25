@@ -1,5 +1,5 @@
 ---
-name: compare-closing-docs
+name: 比较交割docs
 task_id: corporate-ma/compare-closing-docs
 description: Guides substantive verification of closing deliverables against transaction-document requirements, including arithmetic checks, definition cross-checks, and conformity of certificates and ancillary documents to their stated conditions.
 activates_for: [planner, solver, checker]

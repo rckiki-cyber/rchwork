@@ -1,5 +1,5 @@
 ---
-name: synthesize-disclosure-schedules-against-diligence-findings
+name: 综合披露附表against尽职调查findings
 task_id: corporate-ma/synthesize-disclosure-schedules-against-diligence-findings
 description: Guides preparation of a gap analysis memorandum for an acquisition transaction by cross-referencing disclosure schedules against diligence findings and relevant representations to identify omissions, inconsistencies, and disclosure concerns.
 activates_for: [planner, solver, checker]

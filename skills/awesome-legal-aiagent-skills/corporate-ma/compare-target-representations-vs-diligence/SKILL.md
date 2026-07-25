@@ -1,5 +1,5 @@
 ---
-name: compare-target-reps-vs-diligence
+name: 比较目标repsvs尽职调查
 task_id: corporate-ma/compare-target-representations-vs-diligence
 description: Guides cross-referencing transaction representations and disclosure materials against diligence findings, mapping each material discrepancy to the implicated provision, assessing financial and risk impact, and identifying appropriate protective drafting or process responses.
 activates_for: [planner, solver, checker]

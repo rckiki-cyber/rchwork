@@ -1,5 +1,5 @@
 ---
-name: draft-sale-and-contribution-agreement-auto
+name: 起草salecontribution协议auto
 task_id: structured-finance-securitization/draft-sale-and-contribution-agreement
 description: Drafting a sale and contribution agreement for an asset-backed securitization by updating a prior deal template to reflect changed pool parameters and structural terms, ensuring true sale and accounting derecognition treatment, and flagging departures and open items in an issues memorandum.
 activates_for: [planner, solver, checker]

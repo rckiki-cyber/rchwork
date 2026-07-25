@@ -1,5 +1,5 @@
 ---
-name: draft-environmental
+name: 起草环境
 task_id: environmental-esg/draft-environmental
 description: Guides drafting of a formal public comment letter opposing reissuance of a draft NPDES permit by structuring legal and technical objections around the applicable permitting standards, anti-backsliding concerns, and water quality-based effluent limit adequacy.
 activates_for: [planner, solver, checker]

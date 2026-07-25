@@ -1,5 +1,5 @@
 ---
-name: draft-expert-report-on-construction-delay-and-damages
+name: 起草专家报告constructiondelay损害赔偿
 task_id: arbitration-international-dispute-resolution/draft-expert-report-on-construction-delay-and-damages
 description: Ensures a construction delay expert report conducts a proper concurrency analysis, applies the relevant home office overhead methodology correctly, resolves float ownership under the contract, and logs all cross-document inconsistencies.
 activates_for: [planner, solver, checker]

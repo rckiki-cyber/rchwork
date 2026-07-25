@@ -1,5 +1,5 @@
 ---
-name: compare-form-adv-against-compliance-manual
+name: 比较表格advagainst合规手册
 task_id: funds-asset-management/compare-form-adv-against-compliance-manual
 description: Compare a registered investment adviser's public disclosure against its compliance manual and supporting documents to produce a gap analysis memorandum organized by disclosure item, with severity ratings and remediation timelines.
 activates_for: [planner, solver, checker]

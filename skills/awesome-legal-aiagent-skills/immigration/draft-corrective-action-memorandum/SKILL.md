@@ -1,5 +1,5 @@
 ---
-name: draft-corrective-action-memorandum
+name: 起草corrective诉讼备忘录
 task_id: immigration/draft-corrective-action-memorandum
 description: I-9 compliance corrective action memorandum following an internal audit, where the remediation plan must distinguish between paperwork corrections, anti-discrimination concerns requiring separate treatment, and ongoing work-authorization obligations for nonimmigrant employees.
 activates_for: [planner, solver, checker]

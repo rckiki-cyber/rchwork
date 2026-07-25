@@ -1,5 +1,5 @@
 ---
-name: draft-witness-interview-memorandum
+name: 起草证人interview备忘录
 task_id: corporate-governance/draft-witness-interview-memorandum
 description: Agents produce structurally complete interview memos that omit required formal identification elements, fail to develop the legal significance of the witness's own statements on key investigative theories, and miss the documentation conventions required for privilege preservation in internal investigations.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-errors-counterparty-post-trial-brief
+name: 识别errorscounterpartypost审判摘要
 task_id: intellectual-property/identify-errors-and-vulnerabilities-in-counterpartys-post
 description: Reviewing an opposing party's post-trial brief to identify mischaracterizations, legal errors, and factual vulnerabilities for use in preparing a response brief.
 activates_for: [planner, solver, checker]

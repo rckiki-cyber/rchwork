@@ -1,5 +1,5 @@
 ---
-name: research-ucc-warranty-disclaimer-requirements-for-new-product-launch
+name: 研究ucc保证disclaimer要求新型产品launch
 task_id: litigation-dispute-resolution/research-ucc-warranty-disclaimer-requirements-for-new-product-launch
 description: A UCC warranty analysis memo for a new product launch should audit the relevant warranty documents and marketing materials for potential express warranty creation, assess whether disclaimer language satisfies the applicable conspicuousness and form requirements, and identify remediation steps for materials that do not comply.
 activates_for: [planner, solver, checker]

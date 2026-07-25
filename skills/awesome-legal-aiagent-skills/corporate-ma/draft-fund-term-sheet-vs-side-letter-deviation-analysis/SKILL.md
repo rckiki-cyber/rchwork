@@ -1,5 +1,5 @@
 ---
-name: draft-fund-term-sheet-side-letter-deviation
+name: 起草基金期限sheetside函件deviation
 task_id: corporate-ma/draft-fund-term-sheet-vs-side-letter-deviation-analysis
 description: Guides preparation of a fund term sheet versus side letter deviation report, requiring severity ratings for structural conflicts, MFN cascade analysis across eligible investors, misrepresentation exposure assessment, and identification of governing law conflicts between side letters and the fund governing documents.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-disputed-claim-terms-joint-statement
+name: extractdisputed索赔条款合资报表
 task_id: intellectual-property/extract-disputed-claim-terms-from-joint-statement
 description: Preparing a claim construction chart from a joint statement and related patent materials, requiring intrinsic record analysis, means-plus-function screening, prosecution history analysis, and priority ranking for hearing preparation.
 activates_for: [planner, solver, checker]

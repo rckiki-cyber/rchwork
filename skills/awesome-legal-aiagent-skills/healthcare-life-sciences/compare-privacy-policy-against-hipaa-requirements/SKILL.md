@@ -1,5 +1,5 @@
 ---
-name: hls-compare-privacy-policy-hipaa
+name: hlscompare隐私政策hipaa
 task_id: healthcare-life-sciences/compare-privacy-policy-against-hipaa-requirements
 description: Conducts an element-by-element privacy-rule gap analysis of a privacy notice and related privacy policy, addressing marketing authorization concepts, dual compliance-role obligations, and data-sharing agreement coverage gaps.
 activates_for: [planner, solver, checker]

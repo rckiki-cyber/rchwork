@@ -1,5 +1,5 @@
 ---
-name: analyze-reasonable-accommodation-request-under-ada-requirements
+name: 分析reasonableaccommodation请求underada要求
 task_id: employment-labor/analyze-reasonable-accommodation-request-under-ada-requirements
 description: Guides the analyst through a workplace accommodation memorandum covering disability qualification, procedural timeline compliance, and accommodation-by-accommodation reasonableness analysis.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-incident-response-plan
+name: 识别问题incident回应计划
 task_id: data-privacy-cybersecurity/identify-issues-in-incident-response-plan
 description: Incident response plan issue memos for healthcare organisations fail when the agent does not cross-reference the incident response plan against supporting materials such as audit findings, insurance terms, vendor agreements, and compliance memoranda to identify structural gaps between the plan's written requirements and the organisation's actual capabilities.
 activates_for: [planner, solver, checker]

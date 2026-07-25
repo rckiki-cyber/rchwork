@@ -1,5 +1,5 @@
 ---
-name: identify-deficiencies-in-counterpartys-statement-of-claim
+name: 识别deficienciescounterpartys报表索赔
 task_id: arbitration-international-dispute-resolution/identify-deficiencies-and-vulnerabilities-in-counterpartys-statement-of-claim
 description: Ensures a defense-oriented issues memo checks the claim for arithmetic integrity, applies any contractual liability cap, tests the pleaded fraud theory against the governing fraud standard, and identifies disclosure-based and notice-based defenses.
 activates_for: [planner, solver, checker]

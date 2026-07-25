@@ -1,5 +1,5 @@
 ---
-name: sec-climate-disclosure-gap-analysis
+name: secclimate披露gap分析
 task_id: corporate-governance/analyze-sec-climate-disclosure-rule-compliance-gaps
 description: Gap analysis of a public company's climate-related disclosures and reporting infrastructure against applicable climate-related disclosure requirements, covering board governance, greenhouse gas emissions, severe weather financial effects, and attestation obligations.
 activates_for: [planner, solver, checker]

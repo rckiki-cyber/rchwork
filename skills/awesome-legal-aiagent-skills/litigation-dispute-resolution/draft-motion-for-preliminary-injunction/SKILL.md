@@ -1,5 +1,5 @@
 ---
-name: draft-motion-for-preliminary-injunction
+name: 起草动议preliminaryinjunction
 task_id: litigation-dispute-resolution/draft-motion-for-preliminary-injunction
 description: A preliminary injunction memorandum in a trade secret and non-compete matter should analyze the governing preliminary-injunction factors, connect the requested relief to record evidence of alleged misappropriation and ongoing harm, and assess enforceability of any restrictive covenant under the applicable jurisdiction’s law.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: its-draft-restricted-party-screening-procedures
+name: its草案restricted方screening程序
 task_id: international-trade-sanctions/draft-restricted-party-screening-procedures
 description: Drafts a restricted party screening procedures chapter for an export management and compliance program that addresses identified audit findings and remediation commitments, specifies the beneficial ownership collection mechanism, describes the screening-calibration trade-off between false positives and false negatives, identifies record-retention considerations using general legal authorities, and integrates military end-use screening requirements.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-industry-summary-s02
+name: 起草行业摘要s02
 task_id: corporate-ma/draft-industry-summary/scenario-02
 description: Guides preparation of an industry and market analysis memo for a diagnostics acquisition by cross-checking sell-side and independent data, quantifying reimbursement-driven financial impact, flagging customer concentration with imminent contract expiration, and providing a recency-adjusted precedent transaction multiple.
 activates_for: [planner, solver, checker]

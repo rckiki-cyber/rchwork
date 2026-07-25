@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-existing-employee-handbook
+name: 识别问题现有员工handbook
 task_id: employment-labor/identify-issues-in-existing-employee-handbook
 description: Guides counsel in producing a prioritized issue memorandum identifying legal compliance gaps and litigation risks in a multi-state employee handbook, with jurisdiction-specific analysis and issue prioritization.
 activates_for: [planner, solver, checker]

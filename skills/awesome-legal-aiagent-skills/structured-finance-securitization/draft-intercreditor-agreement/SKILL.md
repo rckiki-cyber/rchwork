@@ -1,5 +1,5 @@
 ---
-name: draft-intercreditor-agreement-first-second-lien
+name: 起草intercreditor协议firstsecondlien
 task_id: structured-finance-securitization/draft-intercreditor-agreement
 description: Draft an intercreditor agreement governing the relationship between first-lien and second-lien lenders, addressing standstill mechanics, automatic lien release scope, adequate protection waivers, refinancing treatment, amendment consent rights, and consistency of defined terms across related financing documents.
 activates_for: [planner, solver, checker]

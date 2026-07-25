@@ -1,5 +1,5 @@
 ---
-name: review-dispute-summary-scenario-02
+name: 审查争议摘要scenario
 task_id: arbitration-international-dispute-resolution/review-dispute-summary/scenario-02
 description: Ensures a dispute summary issues memo identifies omitted contractual provisions, corrects threshold errors, and applies the same analytical review for dilution, restrictive covenants, selective quotation, cure periods, waiver, and related factual discrepancies as the baseline scenario.
 activates_for: [planner, solver, checker]

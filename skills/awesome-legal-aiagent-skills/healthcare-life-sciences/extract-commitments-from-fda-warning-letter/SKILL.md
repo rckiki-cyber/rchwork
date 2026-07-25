@@ -1,5 +1,5 @@
 ---
-name: hls-extract-fda-warning-letter-obligations
+name: hlsextractfdawarning函件义务
 task_id: healthcare-life-sciences/extract-commitments-from-fda-warning-letter
 description: Extract compliance obligations from a warning letter and supporting inspection materials into a structured spreadsheet register with required columns, categorized obligations, phased timeline, and a summary/risk assessment tab.
 activates_for: [planner, solver, checker]

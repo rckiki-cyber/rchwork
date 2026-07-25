@@ -1,5 +1,5 @@
 ---
-name: hls-compare-ctp-fda-requirements
+name: hlscomparectpfda要求
 task_id: healthcare-life-sciences/compare-clinical-trial-protocol-against-fda-regulatory-requirements
 description: Compares a clinical trial protocol against applicable regulatory requirements and pre-submission guidance to produce a gap analysis memorandum with citation-level support and remediation recommendations.
 activates_for: [planner, solver, checker]

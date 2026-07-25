@@ -1,5 +1,5 @@
 ---
-name: its-draft-sanctions-compliance-program-framework
+name: its草案制裁合规方案框架
 task_id: international-trade-sanctions/draft-sanctions-compliance-program-framework
 description: Drafts a board-ready sanctions compliance program framework organized by a five-pillar compliance framework that identifies the root cause of prior incidents, requires screening tool reconfiguration, integrates export-control and sanctions screening for dual-use goods, addresses conflicts between U.S. sanctions compliance obligations and foreign blocking or antiboycott-type restrictions, and establishes a direct board reporting line for the compliance function.
 activates_for: [planner, solver, checker]

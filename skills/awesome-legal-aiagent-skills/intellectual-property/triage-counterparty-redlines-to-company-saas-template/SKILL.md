@@ -1,5 +1,5 @@
 ---
-name: triage-counterparty-redlines-company-saas-template
+name: triagecounterpartyredlines公司saas模板
 task_id: intellectual-property/triage-counterparty-redlines-to-company-saas-template
 description: Triaging a counterparty's redlined SaaS agreement against the company's standard template and playbook to produce a structured deviation report.
 activates_for: [planner, solver, checker]

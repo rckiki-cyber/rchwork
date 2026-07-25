@@ -1,5 +1,5 @@
 ---
-name: compare-esg-disclosure-against-regulatory-requirements
+name: 比较esg披露against监管要求
 task_id: environmental-esg/compare-esg-disclosure-against-regulatory-requirements
 description: Guides gap analysis of a draft ESG report by walking each applicable regulatory framework's disclosure requirements systematically rather than treating ESG disclosure as a single undifferentiated category.
 activates_for: [planner, solver, checker]

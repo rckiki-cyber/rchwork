@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-arbitration-agreement
+name: 分析counterpartymarkup仲裁协议
 task_id: arbitration-international-dispute-resolution/analyze-counterparty-markup-of-arbitration-agreement
 description: Ensures a counterparty arbitration agreement redline is analyzed for interaction effects between changes, gap-filling rules under the relevant governing law, non-signatory enforceability, and multi-agreement consolidation risks.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: analyze-restrictive-covenant-six-agreements
+name: 分析restrictive承诺six协议
 task_id: intellectual-property/analyze-restrictive-covenant-enforceability-across-six-employment-agreements
 description: Jurisdiction-by-jurisdiction memorandum analyzing restrictive covenants in multiple employment agreements in connection with a planned acquisition-related transaction.
 activates_for: [planner, solver, checker]

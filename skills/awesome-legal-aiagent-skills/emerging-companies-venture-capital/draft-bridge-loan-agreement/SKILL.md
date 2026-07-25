@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-bridge-loan-agreement
+name: ecvc草案bridge贷款协议
 task_id: emerging-companies-venture-capital/draft-bridge-loan-agreement
 description: Drafting a convertible bridge loan requires precise conversion-denominator definitions, explicit accrued-interest treatment, sequencing or aggregation rules for concurrent conversions of other instruments, and review of any tax-attribute risks that could be affected by a significant new equity issuance.
 activates_for: [planner, solver, checker]

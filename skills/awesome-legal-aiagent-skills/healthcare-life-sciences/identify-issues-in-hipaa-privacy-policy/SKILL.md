@@ -1,5 +1,5 @@
 ---
-name: hls-identify-hipaa-privacy-policy-issues
+name: hlsidentifyhipaa隐私政策问题
 task_id: healthcare-life-sciences/identify-issues-in-hipaa-privacy-policy
 description: Produces a per-document compliance gap report identifying privacy-rule deficiencies, using subsection-level citations where available, and covering common HIPAA privacy-policy topics such as marketing communications, notice of privacy practices distribution, separate confidentiality regimes for substance use disorder records, electronic-accounting obligations, business associate scope alignment, patient restriction rights, reproductive-health privacy provisions, and minimum-necessary access controls.
 activates_for: [planner, solver, checker]

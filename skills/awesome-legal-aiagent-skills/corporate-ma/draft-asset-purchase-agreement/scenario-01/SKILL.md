@@ -1,5 +1,5 @@
 ---
-name: draft-asset-purchase-agreement-s01
+name: 起草资产购买协议s01
 task_id: corporate-ma/draft-asset-purchase-agreement/scenario-01
 description: Guides drafting of a complete buyer-side carve-out acquisition document suite, requiring all core documents to be substantively complete, the commercial terms to be carried consistently across the suite, regulatory closing conditions to be included where applicable, and the outside date and escrow mechanics to be handled consistently throughout.
 activates_for: [planner, solver, checker]

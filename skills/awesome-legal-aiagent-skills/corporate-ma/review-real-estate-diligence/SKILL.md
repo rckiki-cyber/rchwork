@@ -1,5 +1,5 @@
 ---
-name: review-real-estate-diligence
+name: 审查不动产不动产尽职调查
 task_id: corporate-ma/review-real-estate-diligence
 description: Guides preparation of a real estate due diligence memorandum for an acquisition involving a portfolio of leased, owned, and subleased properties, including review of lease terms, consent issues, purchase rights, and property tax allocation.
 activates_for: [planner, solver, checker]

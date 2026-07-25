@@ -1,5 +1,5 @@
 ---
-name: hls-identify-healthcare-merger-agreement-issues
+name: hlsidentify医疗合并协议问题
 task_id: healthcare-life-sciences/identify-issues-in-healthcare-merger-agreement
 description: Reviews a healthcare merger agreement and supporting diligence materials to identify structural, regulatory, valuation, restrictive-covenant, reimbursement, earnout, indemnity, and operational issues that may affect closing, integration, and post-closing performance.
 activates_for: [planner, solver, checker]

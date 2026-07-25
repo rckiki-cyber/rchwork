@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-epc-contract-solar
+name: 分析counterpartymarkupepc合同solar
 task_id: energy-natural-resources/analyze-counterparty-markup-of-engineering-procurement-construction-contract
 description: Guides analysis of an EPC redline by systematically connecting each markup change to its impact on financing closing conditions, schedule and completion-risk exposure, fixed-price structure integrity, warranty and indemnity risk allocation, and applicable legal constraints.
 activates_for: [planner, solver, checker]

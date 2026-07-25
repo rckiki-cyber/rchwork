@@ -1,5 +1,5 @@
 ---
-name: identify-excessive-or-duplicative-research-charges-in-litigation-invoice
+name: 识别excessiveduplicativeresearchcharges诉讼发票
 task_id: litigation-dispute-resolution/identify-excessive-or-duplicative-research-charges-in-litigation-invoice
 description: Reviewing research charges in a litigation invoice requires comparing each research entry against the relevant case phase, prior billing history or invoice summaries, and the applicable billing guidelines to identify excessive hours, duplicative research already performed, and charges that violate research-billing restrictions.
 activates_for: [planner, solver, checker]

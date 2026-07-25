@@ -1,5 +1,5 @@
 ---
-name: extract-intercreditor-agreement-terms
+name: extractintercreditor协议条款
 task_id: banking-finance/extract-intercreditor-agreement-terms
 description: Extracts and cross-references key terms from multiple intercreditor agreements in a Chapter 11 context, identifying conflicts, ambiguities, and bankruptcy-related enforcement issues.
 activates_for: [planner, solver, checker]

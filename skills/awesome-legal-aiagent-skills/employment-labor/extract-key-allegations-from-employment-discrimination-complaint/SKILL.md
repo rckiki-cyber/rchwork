@@ -1,5 +1,5 @@
 ---
-name: extract-key-allegations-from-employment-discrimination-complaint
+name: extractkeyallegations雇佣discrimination起诉状
 task_id: employment-labor/extract-key-allegations-from-employment-discrimination-complaint
 description: Guides preparation of a structured allegation summary memorandum for an employment discrimination complaint, covering the asserted counts, alleged incidents, comparators, timing issues, and damages categories.
 activates_for: [planner, solver, checker]

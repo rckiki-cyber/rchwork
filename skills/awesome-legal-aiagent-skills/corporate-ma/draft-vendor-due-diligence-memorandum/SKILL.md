@@ -1,5 +1,5 @@
 ---
-name: draft-vendor-due-diligence-memorandum
+name: 起草卖方due尽职调查备忘录
 task_id: corporate-ma/draft-vendor-due-diligence-memorandum
 description: Guides preparation of a vendor due diligence memorandum for a procurement committee where contractual, security, compliance, and reference findings must be synthesized into a structured recommendation.
 activates_for: [planner, solver, checker]

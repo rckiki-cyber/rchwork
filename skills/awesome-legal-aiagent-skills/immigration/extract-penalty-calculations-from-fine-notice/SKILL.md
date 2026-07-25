@@ -1,5 +1,5 @@
 ---
-name: extract-penalty-calculations-from-fine-notice
+name: extract处罚calculations罚款通知
 task_id: immigration/extract-penalty-calculations-from-fine-notice
 description: Structured audit of a civil penalty notice where the analysis must reconstruct the penalty calculation arithmetic from the notice's components, verify each step against the underlying findings, and identify contestable errors in violation count, rate application, or adjustment factor direction.
 activates_for: [planner, solver, checker]

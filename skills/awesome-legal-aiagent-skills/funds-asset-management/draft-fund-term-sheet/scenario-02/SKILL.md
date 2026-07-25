@@ -1,5 +1,5 @@
 ---
-name: draft-fund-term-sheet-scenario-02
+name: 起草基金期限sheetscenario
 task_id: funds-asset-management/draft-fund-term-sheet/scenario-02
 description: Draft an investor-ready fund term sheet and issues memo identifying cross-document conflicts, off-market flags, and open items from fundraise source documents.
 activates_for: [planner, solver, checker]

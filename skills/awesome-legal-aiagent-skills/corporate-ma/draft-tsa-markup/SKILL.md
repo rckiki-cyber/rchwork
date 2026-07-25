@@ -1,5 +1,5 @@
 ---
-name: draft-tsa-markup-buyer-side
+name: 起草tsamarkup买方side
 task_id: corporate-ma/draft-tsa-markup
 description: Guides buyer-side redline of a seller-drafted transition services agreement by applying the buyer’s playbook, the signed acquisition agreement, and supporting cost data to produce a fully annotated markup, including proposed additions where the draft is silent.
 activates_for: [planner, solver, checker]

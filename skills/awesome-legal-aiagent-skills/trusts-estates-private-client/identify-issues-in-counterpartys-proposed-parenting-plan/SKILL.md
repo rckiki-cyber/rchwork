@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterpartys-proposed-parenting-plan
+name: 识别问题counterpartys拟议parenting计划
 task_id: trusts-estates-private-client/identify-issues-in-counterpartys-proposed-parenting-plan
 description: Focuses the analysis on identifying defects in a proposed parenting plan by comparing the plan’s actual residential schedule to its label, checking the plan against the governing jurisdiction’s mandatory requirements, and evaluating whether the proposed allocation of time and decision-making is internally consistent and practically workable.
 activates_for: [planner, solver, checker]

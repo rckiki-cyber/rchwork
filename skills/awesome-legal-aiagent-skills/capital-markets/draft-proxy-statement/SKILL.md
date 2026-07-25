@@ -1,5 +1,5 @@
 ---
-name: draft-proxy-statement
+name: 起草委托报表
 task_id: capital-markets/draft-proxy-statement
 description: DEF 14A proxy statement drafting for an annual meeting with a contested director election; the baseline produces standard narrative sections but does not fully verify tabular consistency, shareholder-proposal handling, or governance disclosures tied to the company’s specific profile.
 activates_for: [planner, solver, checker]

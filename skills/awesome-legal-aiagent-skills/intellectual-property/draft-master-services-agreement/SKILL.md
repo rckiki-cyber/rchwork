@@ -1,5 +1,5 @@
 ---
-name: draft-master-services-agreement
+name: 起草master服务协议
 task_id: intellectual-property/draft-master-services-agreement
 description: Comprehensive master services agreement for a healthcare data analytics engagement, with a cover memo explaining key drafting decisions and open items, based on a prior agreement, playbook, and negotiated business terms.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-credit-agreement-lbo
+name: 识别问题credit协议lbo
 task_id: structured-finance-securitization/identify-issues-in-credit-agreement
 description: Identifying issues in a final credit agreement for an acquisition financing by comparing each material provision against the preliminary financing materials, explaining the practical operational impact of each deviation, and prioritizing issues for a negotiation call.
 activates_for: [planner, solver, checker]

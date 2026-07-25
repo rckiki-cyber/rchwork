@@ -1,5 +1,5 @@
 ---
-name: corrective-action-plan-sec-ocie-deficiency
+name: corrective诉讼计划secociedeficiency
 task_id: corporate-governance/draft-corrective-action-plan
 description: Formal corrective action plan in response to a regulatory examination deficiency letter, addressing root causes, communications-recordkeeping scope, compliance-officer independence, performance-data reconciliation, and retroactive disclosure amendment obligations.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: extract-relevant-transactions-from-accounting-records
+name: extractrelevanttransactions会计记录
 task_id: white-collar-defense-investigations/extract-relevant-transactions-from-accounting-records
 description: Transaction summary memorandum extracting and aggregating potentially relevant transactions from accounting records for an investigation, tracing ownership connections between vendors and company insiders, and analyzing fee structures for evidence of possible diversion.
 activates_for: [planner, solver, checker]

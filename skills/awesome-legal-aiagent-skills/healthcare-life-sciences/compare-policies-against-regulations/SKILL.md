@@ -1,5 +1,5 @@
 ---
-name: hls-compare-policies-hipaa-security-rule
+name: hlscompare政策hipaa担保规则
 task_id: healthcare-life-sciences/compare-policies-against-regulations
 description: Compares security and privacy policies against the HIPAA Security Rule on a policy-by-policy basis, organizing gaps by applicable safeguard category and tailoring remediation sequencing to external compliance deadlines.
 activates_for: [planner, solver, checker]

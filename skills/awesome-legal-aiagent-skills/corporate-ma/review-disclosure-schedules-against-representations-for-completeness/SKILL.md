@@ -1,5 +1,5 @@
 ---
-name: review-disclosure-schedules-completeness
+name: 审查披露附表completeness
 task_id: corporate-ma/review-disclosure-schedules-against-representations-for-completeness
 description: Guides preparation of a gap analysis memorandum cross-referencing disclosure schedules against merger agreement representations, with findings organized by section and prioritized for deal team use.
 activates_for: [planner, solver, checker]

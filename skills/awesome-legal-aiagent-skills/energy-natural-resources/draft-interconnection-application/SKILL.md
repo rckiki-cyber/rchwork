@@ -1,5 +1,5 @@
 ---
-name: draft-interconnection-application-hybrid-solar-storage
+name: 起草interconnectionapplicationhybridsolarstorage
 task_id: energy-natural-resources/draft-interconnection-application
 description: Guides completion of a large generator interconnection application for a hybrid solar-plus-storage facility by populating required fields from source documents, flagging regulatory, site-control, technical, and credit-support issues in an internal issues memo, and analyzing available interconnection service options.
 activates_for: [planner, solver, checker]

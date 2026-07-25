@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-ppa-solar
+name: 分析counterpartymarkupppasolar
 task_id: energy-natural-resources/analyze-counterparty-markup-of-power-purchase-agreement
 description: Guides analysis of a buyer's markup of a power purchase agreement by connecting related changes that compound risk exposure, benchmarking performance provisions against market ranges, identifying changes that threaten project financing, and separately identifying changes that appear commercially reasonable to accept.
 activates_for: [planner, solver, checker]

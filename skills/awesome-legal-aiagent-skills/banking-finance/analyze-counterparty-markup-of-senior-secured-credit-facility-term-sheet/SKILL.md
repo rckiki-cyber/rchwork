@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-senior-secured-credit-facility-term-sheet
+name: 分析counterpartymarkup优先担保creditfacility期限sheet
 task_id: banking-finance/analyze-counterparty-markup-of-senior-secured-credit-facility-term-sheet
 description: Produces a deviation analysis memo comparing a lender's markup against the original term sheet, applying a negotiation playbook to classify and recommend a response to each change.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-antitrust-issues-in-counterpartys-expert-economic-report
+name: 识别反垄断问题counterpartys专家economic报告
 task_id: antitrust-competition/identify-antitrust-issues-in-counterpartys-expert-economic-report
 description: Closes gaps in econometric specification critique including residual diagnostics, structural-break testing, methodological linkage to prior exclusion history, and consistency analysis between affected-commerce measures and market-share evidence.
 activates_for: [planner, solver, checker]

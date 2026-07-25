@@ -1,5 +1,5 @@
 ---
-name: analyze-mfn-waterfall-analysis
+name: 分析mfnwaterfall分析
 task_id: funds-asset-management/analyze-mfn-waterfall-analysis
 description: Review a fund's governing fund documents, a set of individual LP side letters, a GP policy memo, a tracking spreadsheet, and a capital commitment schedule at closing to produce a comprehensive MFN waterfall analysis and recommendation memorandum with LP-by-LP eligibility determinations, economic comparisons, cascade analysis, and pre-notice amendment recommendations.
 activates_for: [planner, solver, checker]

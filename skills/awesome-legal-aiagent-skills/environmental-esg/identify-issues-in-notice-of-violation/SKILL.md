@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-notice-of-violation
+name: 识别问题通知违反
 task_id: environmental-esg/identify-issues-in-notice-of-violation
 description: Guides preparation of a defense memorandum for an industrial facility's notice-of-violation response by assessing each alleged violation against available permit records, operational data, and monitoring results to identify defensible positions and mitigation arguments.
 activates_for: [planner, solver, checker]

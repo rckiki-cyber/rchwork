@@ -1,5 +1,5 @@
 ---
-name: analyze-arbitration-agreement-markup-analysis
+name: 分析仲裁协议markup分析
 task_id: arbitration-international-dispute-resolution/analyze-arbitration-agreement-markup-analysis
 description: Evaluates a counterparty redline of an arbitration agreement provision-by-provision and for interaction effects, playbook compliance, and enforcement consequences.
 activates_for: [planner, solver, checker]

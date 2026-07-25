@@ -1,5 +1,5 @@
 ---
-name: analyze-responses-to-ddrl-s01
+name: 分析回应ddrls01
 task_id: corporate-ma/analyze-responses-to-ddrl/scenario-01
 description: Guides cross-verification of seller responses to diligence requests against the underlying document set to identify false or incomplete characterizations, regulatory contradictions, financial inconsistencies, and outstanding information gaps.
 activates_for: [planner, solver, checker]

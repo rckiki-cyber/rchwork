@@ -1,5 +1,5 @@
 ---
-name: draft-first-day-motions-package
+name: 起草first日动议package
 task_id: bankruptcy-restructuring/draft-first-day-motions-package
 description: Ensures a comprehensive first-day package addresses key operational, contractual, labor, tax, insurance, cash-management, and organizational issues that commonly arise in a chapter 11 filing, while preserving the standard motion-specific requirements.
 activates_for: [planner, solver, checker]

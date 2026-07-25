@@ -1,5 +1,5 @@
 ---
-name: draft-dpa-markup-defense-counsel
+name: 起草dpamarkup抗辩counsel
 task_id: white-collar-defense-investigations/draft-markup-of-deferred-prosecution-agreement
 description: Section-by-section markup of a government-drafted deferred prosecution agreement with defense counsel redlines and comments, addressing penalty reduction, criminal charge scope, monitor provisions, and agreement term in light of applicable enforcement policy.
 activates_for: [planner, solver, checker]

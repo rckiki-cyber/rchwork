@@ -1,5 +1,5 @@
 ---
-name: assess-breach-notification-obligations-across-affected-jurisdictions
+name: 评估违约notification义务跨境affected管辖
 task_id: data-privacy-cybersecurity/assess-breach-notification-obligations-across-affected-jurisdictions
 description: Multi-jurisdiction breach notification memos fail when the agent applies only federal frameworks and omits state-by-state notification deadlines, business-associate reporting chains, and cyber-insurance reporting obligations that may be triggered by the same incident.
 activates_for: [planner, solver, checker]

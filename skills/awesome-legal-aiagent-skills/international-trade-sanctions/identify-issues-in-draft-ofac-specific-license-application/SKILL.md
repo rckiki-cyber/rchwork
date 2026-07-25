@@ -1,5 +1,5 @@
 ---
-name: its-identify-issues-ofac-specific-license-application
+name: itsidentify问题ofac特定许可application
 task_id: international-trade-sanctions/identify-issues-in-draft-ofac-specific-license-application
 description: Produces an issues memorandum for a draft sanctions-specific license application that identifies potentially disqualifying defects in party screening and payment routing, analyzes whether any general authorization may already cover part of the proposed activity, flags shipping-chain disclosure issues, addresses stale due diligence, and assesses prior licensing-history disclosure obligations.
 activates_for: [planner, solver, checker]

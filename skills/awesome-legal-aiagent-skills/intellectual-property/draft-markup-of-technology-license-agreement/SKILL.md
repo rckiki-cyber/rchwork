@@ -1,5 +1,5 @@
 ---
-name: draft-markup-technology-license-agreement
+name: 起草markup技术许可协议
 task_id: intellectual-property/draft-markup-of-technology-license-agreement
 description: Comprehensive redline with bracketed commentary on deviations from the negotiation playbook and on missing provisions, for a technology license agreement evaluated against internal instructions and product documentation.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-environmental-indemnity-agreement
+name: 分析counterpartymarkup环境补偿协议
 task_id: environmental-esg/analyze-counterparty-markup-of-environmental-indemnity-agreement
 description: Guides risk-prioritized redline analysis of an environmental indemnity agreement by grounding each markup in site-condition findings, transaction structure, and the contractual allocation of known versus unknown environmental liabilities.
 activates_for: [planner, solver, checker]

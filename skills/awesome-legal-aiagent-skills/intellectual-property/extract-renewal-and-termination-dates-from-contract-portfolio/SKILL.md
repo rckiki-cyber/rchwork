@@ -1,5 +1,5 @@
 ---
-name: extract-renewal-termination-dates-contract-portfolio
+name: extract续期termination日期合同portfolio
 task_id: intellectual-property/extract-renewal-and-termination-dates-from-contract-portfolio
 description: Building a compliance tracker and summary memo from a contract portfolio audit, requiring deadline urgency flagging, auto-renewal risk identification, and prioritized recommendations.
 activates_for: [planner, solver, checker]

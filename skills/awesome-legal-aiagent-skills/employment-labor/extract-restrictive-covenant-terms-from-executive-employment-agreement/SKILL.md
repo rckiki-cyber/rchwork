@@ -1,5 +1,5 @@
 ---
-name: extract-restrictive-covenant-terms-from-executive-employment-agreement
+name: extractrestrictive承诺条款executive雇佣协议
 task_id: employment-labor/extract-restrictive-covenant-terms-from-executive-employment-agreement
 description: Guides the analyst in producing a structured restrictive covenant summary memorandum that identifies restrictive covenants across multiple agreements, flags inter-agreement conflicts, and assesses consideration adequacy and applicable-law enforceability.
 activates_for: [planner, solver, checker]

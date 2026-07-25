@@ -1,5 +1,5 @@
 ---
-name: hls-draft-enterprise-saas-vendor-onboarding
+name: hls草案enterprisesaas卖方onboarding
 task_id: healthcare-life-sciences/draft-enterprise-saas-vendor-onboarding
 description: Drafts a tailored healthcare SaaS vendor onboarding questionnaire and internal cover memo that addresses AI/ML governance, security and incident-response enhancements, applicable consumer health-data privacy considerations, and cross-border data handling.
 activates_for: [planner, solver, checker]

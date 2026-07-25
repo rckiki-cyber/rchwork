@@ -1,5 +1,5 @@
 ---
-name: compare-collateral-tape-against-eligibility-criteria
+name: 比较collateraltapeagainsteligibilitycriteria
 task_id: structured-finance-securitization/compare-collateral-tape-against-eligibility-criteria
 description: Reviewing a CLO collateral tape against governing eligibility criteria in the applicable transaction documents to identify loan-level failures, portfolio concentration breaches, and the appropriate remediation path for each category of deficiency.
 activates_for: [planner, solver, checker]

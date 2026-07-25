@@ -1,5 +1,5 @@
 ---
-name: draft-proposed-claim-construction-order
+name: 起草拟议索赔construction命令
 task_id: intellectual-property/draft-proposed-claim-construction-order
 description: Proposed Markman order for disputed patent claim terms based on the claim construction briefs, hearing transcript, patent claims, and chambers instructions.
 activates_for: [planner, solver, checker]

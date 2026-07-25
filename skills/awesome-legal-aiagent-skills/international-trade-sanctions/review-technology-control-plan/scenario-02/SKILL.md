@@ -1,5 +1,5 @@
 ---
-name: its-review-tcp-scenario-02
+name: TCPA合规审查
 task_id: international-trade-sanctions/review-technology-control-plan/scenario-02
 description: Produces an ITAR compliance issues memorandum for a Technology Control Plan review in connection with an upcoming manufacturing license renewal, emphasizing renewal disclosure obligations, training enforcement follow-through, cloud migration version-control gaps, and multi-facility coordination deficiencies at a category level without scenario-specific details.
 activates_for: [planner, solver, checker]

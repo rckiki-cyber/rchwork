@@ -1,5 +1,5 @@
 ---
-name: compare-document-production-against-discovery-requests
+name: 比较文件productionagainst证据开示请求
 task_id: litigation-dispute-resolution/compare-document-production-against-discovery-requests
 description: A discovery gap analysis requires comparing each requested document category against the production index and privilege log to identify what was not produced, assess the sufficiency of privilege assertions, and evaluate whether a motion to compel is warranted.
 activates_for: [planner, solver, checker]

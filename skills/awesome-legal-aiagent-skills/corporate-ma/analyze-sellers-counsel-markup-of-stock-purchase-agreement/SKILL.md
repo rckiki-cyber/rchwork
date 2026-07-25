@@ -1,5 +1,5 @@
 ---
-name: analyze-sellers-counsel-markup-spa
+name: 分析卖方counselmarkupspa
 task_id: corporate-ma/analyze-sellers-counsel-markup-of-stock-purchase-agreement
 description: Guides buyer-side analysis of a seller-side markup of a stock purchase agreement by requiring a two-pass review that separates disclosed changes from silent ones and assesses the combined economic effect of interacting indemnification revisions.
 activates_for: [planner, solver, checker]

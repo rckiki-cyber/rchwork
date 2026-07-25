@@ -1,5 +1,5 @@
 ---
-name: draft-qualified-domestic-relations-order
+name: 起草qualified国内relations命令
 task_id: trusts-estates-private-client/draft-qualified-domestic-relations-order
 description: Closes the gap where agents draft QDROs without resolving the separate-interest-vs.-shared-payment design choice, locking in the coverture fraction denominator, addressing survivor benefit requirements, and producing each plan's QDRO as a standalone document.
 activates_for: [planner, solver, checker]

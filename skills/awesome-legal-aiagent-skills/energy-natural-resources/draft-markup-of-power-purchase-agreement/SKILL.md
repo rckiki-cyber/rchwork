@@ -1,5 +1,5 @@
 ---
-name: draft-markup-ppa-buyer-perspective
+name: 起草markupppa买方perspective
 task_id: energy-natural-resources/draft-markup-of-power-purchase-agreement
 description: Guides drafting of a buyer-side PPA markup by using contract-ready language for commercial terms, narrowing force majeure and seller discretion, protecting buyer interests in environmental attributes, and producing both an annotated redline and a cover memo.
 activates_for: [planner, solver, checker]

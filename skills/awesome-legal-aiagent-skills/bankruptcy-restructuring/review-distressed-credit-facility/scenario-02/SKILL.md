@@ -1,5 +1,5 @@
 ---
-name: review-distressed-credit-facility-scenario-02
+name: 审查distressedcreditfacilityscenario
 task_id: bankruptcy-restructuring/review-distressed-credit-facility/scenario-02
 description: Ensures a distressed credit facility review applies the same structural analyses as the related scenario class — pledge limitation scope, financing pre-consent feasibility, standstill expiration, cross-agreement change-of-control triggers, and any joint-venture put option cross-reference — while keeping the analysis procedural and document-driven.
 activates_for: [planner, solver, checker]

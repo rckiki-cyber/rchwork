@@ -1,5 +1,5 @@
 ---
-name: anti-corruption-regional-sales-practices-gap
+name: anticorruption区域sales实务gap
 task_id: corporate-governance/compare-regional-sales-practices-against-anti
 description: Privileged anti-corruption gap analysis for a newly acquired subsidiary's regional sales practices, assessing exposure across third-party agent relationships, gift and hospitality expenditures, government official hiring, and books-and-records compliance.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: summarize-research-sec-beneficial-ownership-rule-changes
+name: 总结researchsecbeneficialownership规则变更
 task_id: corporate-governance/summarize-research-sec-beneficial-ownership-rule-changes
 description: Agents summarize amended beneficial ownership filing deadlines by applying the relevant filing regime, accounting for business-day calculations where required, verifying timeliness against the triggering event, and distinguishing individual reporting obligations from any group-formation analysis.
 activates_for: [planner, solver, checker]

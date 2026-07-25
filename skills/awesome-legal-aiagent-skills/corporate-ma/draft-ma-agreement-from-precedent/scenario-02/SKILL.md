@@ -1,5 +1,5 @@
 ---
-name: draft-ma-agreement-from-precedent-s02
+name: 起草ma协议先例s02
 task_id: corporate-ma/draft-ma-agreement-from-precedent/scenario-02
 description: Guides drafting of a stock purchase agreement from a precedent and term sheet, requiring a companion issues memo that identifies non-compete scope problems, explains earnout and rollover provisions absent from the precedent, and distinguishes fundamental, general, and tax representation survival period requirements.
 activates_for: [planner, solver, checker]

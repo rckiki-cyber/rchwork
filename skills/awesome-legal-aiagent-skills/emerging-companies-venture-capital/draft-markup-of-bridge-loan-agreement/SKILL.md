@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-markup-bridge-loan
+name: ecvc草案markupbridge贷款
 task_id: emerging-companies-venture-capital/draft-markup-of-bridge-loan-agreement
 description: Mark up a bridge loan agreement from the company's perspective by checking each provision against the agreed term sheet, aligning any security package with the agreed secured or unsecured structure, narrowing financial covenants to operationally workable concepts, reviewing change-of-control language for financing carve-outs, calibrating lender-consent mechanics, and addressing how any outstanding convertible instruments interact with the note conversion mechanics.
 activates_for: [planner, solver, checker]

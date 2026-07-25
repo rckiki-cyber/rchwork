@@ -1,5 +1,5 @@
 ---
-name: its-identify-issues-cfius-mandatory-declaration
+name: itsidentify问题cfiusmandatorydeclaration
 task_id: international-trade-sanctions/identify-issues-in-cfius-mandatory-declaration
 description: Produces a comprehensive issue memorandum for a draft CFIUS mandatory declaration that identifies subsidiary omissions, technology-class specificity gaps, foreign government substantial interest threshold errors, control definition misapplications, personal identification deficiencies, and FOCI mitigation instrument inadequacies.
 activates_for: [planner, solver, checker]

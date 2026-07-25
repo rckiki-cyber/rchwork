@@ -1,5 +1,5 @@
 ---
-name: draft-response-to-irs-notice-of-deficiency
+name: 起草回应irs通知deficiency
 task_id: tax/draft-response-to-irs-notice-of-deficiency
 description: A formal response to a notice of deficiency should challenge each proposed adjustment with supporting legal authority and a computation-based explanation, request an Appeals conference, and follow the procedural requirements governing addressees and response deadlines.
 activates_for: [planner, solver, checker]

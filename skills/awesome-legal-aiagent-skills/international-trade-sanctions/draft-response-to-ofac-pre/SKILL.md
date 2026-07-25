@@ -1,5 +1,5 @@
 ---
-name: its-draft-ofac-ppn-response
+name: its草案ofacppn回应
 task_id: international-trade-sanctions/draft-response-to-ofac-pre
 description: Drafts a formal OFAC Pre-Penalty Notice response that checks the transaction list against internal records, tests the penalty calculation methodology, evaluates available compliance and reliance arguments, and presents alternative penalty scenarios for settlement advocacy.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-term-sheet-markup-scenario-01
+name: 起草期限sheetmarkupscenario
 task_id: corporate-ma/draft-term-sheet-markup/scenario-01
 description: Guides seller-side term sheet markup and commentary memorandum for a strategic subsidiary acquisition, where valuation, purchase price mechanics, working capital, risk allocation, and related deal terms must be revised using deal materials and market comparables.
 activates_for: [planner, solver, checker]

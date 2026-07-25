@@ -1,5 +1,5 @@
 ---
-name: review-update-employment-agreement-template-state-regs
+name: 审查update雇佣协议模板州regs
 task_id: intellectual-property/review-and-update-employment-agreement-template-for-new-state-labor-regulations
 description: Reviewing an executive employment agreement template against a new state workplace fairness statute to produce a compliance memo and a redlined updated template.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-limited-partnership-agreement
+name: 起草有限合伙协议
 task_id: funds-asset-management/draft-limited-partnership-agreement
 description: Draft a limited partnership agreement for a growth equity fund using the principal transaction documents as source material, and prepare a companion issues memo flagging cross-document conflicts and drafting decisions.
 activates_for: [planner, solver, checker]

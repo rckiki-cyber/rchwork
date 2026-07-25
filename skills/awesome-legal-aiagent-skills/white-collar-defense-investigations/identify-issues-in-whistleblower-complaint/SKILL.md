@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-whistleblower-complaint-pharma-fraud
+name: 识别问题whistleblower起诉状制药fraud
 task_id: white-collar-defense-investigations/identify-issues-in-whistleblower-complaint
 description: Issue-spotting memorandum analyzing a whistleblower complaint involving alleged revenue fraud, identifying securities fraud theories, comparing whistleblower protection pathways, and tracing the adverse employment action timeline against protected activity dates.
 activates_for: [planner, solver, checker]

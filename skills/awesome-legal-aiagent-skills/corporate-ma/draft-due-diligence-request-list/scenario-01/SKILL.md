@@ -1,5 +1,5 @@
 ---
-name: draft-due-diligence-request-list-s01
+name: 起草due尽职调查请求lists01
 task_id: corporate-ma/draft-due-diligence-request-list/scenario-01
 description: Guides drafting of a tailored due diligence request list for a healthcare IT or software acquisition, with an executive summary of key diligence themes and target-specific requests addressing open-source licensing risk, multi-jurisdiction tax nexus gaps, time-sensitive contract renewals, and restrictive covenant enforceability.
 activates_for: [planner, solver, checker]

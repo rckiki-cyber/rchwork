@@ -1,5 +1,5 @@
 ---
-name: extract-critical-vendor-terms-from-supply-contracts
+name: extractcritical卖方条款供应合同
 task_id: bankruptcy-restructuring/extract-critical-vendor-terms-from-supply-contracts
 description: Ensures a vendor contract extraction memo identifies the key economic and legal terms relevant to chapter 11 assumption/rejection analysis, evaluates cure obligations from the available payment records, analyzes anti-assignment and bankruptcy-related provisions, and provides a structured assumption/rejection assessment with estimated rejection exposure for each contract.
 activates_for: [planner, solver, checker]

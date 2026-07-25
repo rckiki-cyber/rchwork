@@ -1,5 +1,5 @@
 ---
-name: compare-ip-litigation-claim-chart
+name: 比较ip诉讼索赔chart
 task_id: intellectual-property/compare-ip-litigation
 description: Element-by-element infringement comparison chart mapping asserted patent claims to accused product features, with separate handling for claim construction, literal infringement, doctrine of equivalents, prosecution-history limits, and overall strength assessment.
 activates_for: [planner, solver, checker]

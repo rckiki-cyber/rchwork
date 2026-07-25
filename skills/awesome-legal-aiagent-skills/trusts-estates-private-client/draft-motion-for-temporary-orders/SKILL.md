@@ -1,5 +1,5 @@
 ---
-name: draft-motion-for-temporary-orders
+name: 起草动议temporary命令
 task_id: trusts-estates-private-client/draft-motion-for-temporary-orders
 description: Drafting a motion for temporary orders in a high-conflict divorce requires integrating child custody, spousal support, and asset-restraining provisions into a single filing, supported by a client declaration with financial documentation and a proposed order that conforms to any applicable standing orders and local rules.
 activates_for: [planner, solver, checker]

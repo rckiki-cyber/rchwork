@@ -1,5 +1,5 @@
 ---
-name: identify-disclosure-schedule-issues
+name: 识别披露附表问题
 task_id: corporate-ma/identify-disclosure-schedule-issues
 description: Guides cross-referencing of disclosure schedules against transaction representations, diligence materials, and source documents to identify gaps, inconsistencies, and incompleteness requiring remediation.
 activates_for: [planner, solver, checker]

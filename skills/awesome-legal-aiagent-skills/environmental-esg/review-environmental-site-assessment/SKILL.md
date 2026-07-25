@@ -1,5 +1,5 @@
 ---
-name: review-environmental-site-assessment
+name: 审查环境site评估
 task_id: environmental-esg/review-environmental-site-assessment
 description: Guides preparation of an environmental issues memorandum for a portfolio acquisition by integrating Phase I and Phase II findings across multiple properties and assessing the adequacy of transaction environmental protections for each site.
 activates_for: [planner, solver, checker]

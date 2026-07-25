@@ -1,5 +1,5 @@
 ---
-name: compare-privacy-program-documentation-against-applicable-data-protection-regulations
+name: 比较隐私方案documentationagainstapplicable数据protection法规
 task_id: data-privacy-cybersecurity/compare-privacy-program-documentation-against-applicable-data-protection-regulations
 description: Enterprise privacy program gap analyses fail when the agent reviews documents serially rather than building a cross-document picture of the program and reconciling it against applicable data-protection obligations simultaneously.
 activates_for: [planner, solver, checker]

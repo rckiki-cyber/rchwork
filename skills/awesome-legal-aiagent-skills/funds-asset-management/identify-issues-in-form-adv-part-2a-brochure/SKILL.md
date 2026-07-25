@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-form-adv-part-2a-brochure
+name: 识别问题表格advpart2abrochure
 task_id: funds-asset-management/identify-issues-in-form-adv-part-2a-brochure
 description: Review a Form ADV Part 2A brochure against supporting compliance and fund documents and produce a findings memo organized by item number with severity ratings and remediation recommendations for each identified deficiency.
 activates_for: [planner, solver, checker]

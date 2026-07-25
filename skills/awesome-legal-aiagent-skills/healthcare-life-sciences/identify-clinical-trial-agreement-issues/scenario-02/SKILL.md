@@ -1,5 +1,5 @@
 ---
-name: hls-identify-cta-issues-scenario-02
+name: hlsidentifycta问题scenario
 task_id: healthcare-life-sciences/identify-clinical-trial-agreement-issues/scenario-02
 description: Reviews a proposed clinical trial agreement against an institutional research playbook to identify governing-law choice issues, exclusion-screening cadence gaps, fair-market-value concerns for compensation, side-letter governance bypass risks, pass-through cost-control gaps, liability-allocation issues for protocol deviations, and safety-reporting misalignment.
 activates_for: [planner, solver, checker]

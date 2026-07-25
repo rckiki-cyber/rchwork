@@ -1,5 +1,5 @@
 ---
-name: hls-draft-compliance-training-manual
+name: hls草案合规培训手册
 task_id: healthcare-life-sciences/draft-compliance-training-manual
 description: Drafts a corporate-integrity-agreement-compliant comprehensive employee compliance training manual that identifies and resolves cross-document errors, covers whistleblower anti-retaliation, foreign anti-corruption, government pricing, and contractor obligations, with role-differentiated modules.
 activates_for: [planner, solver, checker]

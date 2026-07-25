@@ -1,5 +1,5 @@
 ---
-name: extract-rw-from-sale-and-contribution-agreement
+name: extractrwsalecontribution协议
 task_id: structured-finance-securitization/extract-representations-and-warranties-from-sale-and-contribution-agreement
 description: Mapping representations and warranties in a sale and contribution agreement against a tiered compliance framework to identify required representations that are absent, analyze the effects of knowledge qualifiers on risk allocation and enforceability, and identify pool-data characteristics that create existing breach risk.
 activates_for: [planner, solver, checker]

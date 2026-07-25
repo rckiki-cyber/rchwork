@@ -1,5 +1,5 @@
 ---
-name: draft-discovery-requests-patent
+name: 起草证据开示请求专利
 task_id: intellectual-property/draft-discovery-requests
 description: First set of interrogatories and requests for production in a patent infringement action, tailored to the case’s infringement, invalidity, and damages theories without relying on scenario-specific names, numbers, or quotations.
 activates_for: [planner, solver, checker]

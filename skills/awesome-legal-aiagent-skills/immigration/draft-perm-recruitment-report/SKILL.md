@@ -1,5 +1,5 @@
 ---
-name: draft-perm-recruitment-report
+name: 起草permrecruitment报告
 task_id: immigration/draft-perm-recruitment-report
 description: PERM recruitment report and companion compliance memo for a labor certification filing, where the report must document each mandatory and supplemental recruitment step in the required order and format, and the memo must separately identify compliance risks in the recruitment record.
 activates_for: [planner, solver, checker]

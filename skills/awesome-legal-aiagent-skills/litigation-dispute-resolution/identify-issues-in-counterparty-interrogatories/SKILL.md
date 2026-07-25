@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterparty-interrogatories
+name: 识别问题counterpartyinterrogatories
 task_id: litigation-dispute-resolution/identify-issues-in-counterparty-interrogatories
 description: Reviewing incoming interrogatories requires analyzing each interrogatory for proper form, scope limitations, and strategic risks to the defense, recommending objections and response strategies interrogatory-by-interrogatory, and accounting for the governing response deadline and the relevant contractual scope documents.
 activates_for: [planner, solver, checker]

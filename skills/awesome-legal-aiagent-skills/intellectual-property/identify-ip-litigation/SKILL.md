@@ -1,5 +1,5 @@
 ---
-name: identify-ip-litigation-ipr-defense
+name: 识别ip诉讼ipr抗辩
 task_id: intellectual-property/identify-ip-litigation
 description: Preparing a defensive prior art analysis memo and strategic recommendations for an inter partes review preliminary response, requiring claim chart verification, prior art combination analysis, and prosecution history assessment.
 activates_for: [planner, solver, checker]

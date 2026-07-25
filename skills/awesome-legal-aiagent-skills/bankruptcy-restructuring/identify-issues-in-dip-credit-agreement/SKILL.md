@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-dip-credit-agreement
+name: 识别问题dipcredit协议
 task_id: bankruptcy-restructuring/identify-issues-in-dip-credit-agreement
 description: Ensures a DIP credit agreement issue memo systematically analyzes claim elevation mechanics, investigation-period adequacy, carve-out sufficiency, avoidance-action lien coverage, MAC clause breadth, lender conflicts, and related budget and financing terms, with proposed modification language for each issue.
 activates_for: [planner, solver, checker]

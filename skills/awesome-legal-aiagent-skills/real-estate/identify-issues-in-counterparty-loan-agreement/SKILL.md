@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterparty-loan-agreement
+name: 识别问题counterparty贷款协议
 task_id: real-estate/identify-issues-in-counterparty-loan-agreement
 description: Guides borrower-side identification of issues in a draft construction loan agreement and guaranty by anchoring each issue to the agreed deal terms, project economics, organizational documents, and environmental findings, and producing a prioritized issue memorandum.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: draft-closing-checklist
+name: 起草交割清单
 task_id: corporate-ma/draft-closing-checklist
 description: Guides drafting of a comprehensive closing checklist from executed acquisition documents, requiring deal-specific conditions and deliverables drawn from the principal agreement with section references, cross-document discrepancy flags, and tracking of insurance, rollover, employment, and tax-certification items.
 activates_for: [planner, solver, checker]

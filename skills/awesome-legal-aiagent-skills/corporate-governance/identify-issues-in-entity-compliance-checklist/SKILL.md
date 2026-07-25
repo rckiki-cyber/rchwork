@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-entity-compliance-checklist
+name: 识别问题实体合规清单
 task_id: corporate-governance/identify-issues-in-entity-compliance-checklist
 description: Agents flag general checklist gaps in entity compliance reviews without turning the checklist into an answer key. Analyze whether corporate actions were properly authorized under the applicable entity law, whether foreign qualification may be required where the company conducts business, whether authorized share capacity is sufficient for a contemplated financing, and whether tax or filing lapses create lien, dissolution, or good-standing risks.
 activates_for: [planner, solver, checker]

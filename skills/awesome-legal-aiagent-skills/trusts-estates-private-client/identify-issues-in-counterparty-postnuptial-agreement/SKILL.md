@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterparty-postnuptial-agreement
+name: 识别问题counterpartypostnuptial协议
 task_id: trusts-estates-private-client/identify-issues-in-counterparty-postnuptial-agreement
 description: Closes the gap where agents review postnuptial agreements without applying the governing jurisdiction’s enforceability standards, identifying incomplete financial disclosure, flagging support-waiver limits, and assessing the economic asymmetry of one-sided provisions.
 activates_for: [planner, solver, checker]

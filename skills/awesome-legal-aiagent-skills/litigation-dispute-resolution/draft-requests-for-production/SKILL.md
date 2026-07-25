@@ -1,5 +1,5 @@
 ---
-name: draft-requests-for-production
+name: 起草请求production
 task_id: litigation-dispute-resolution/draft-requests-for-production
 description: Drafting a plaintiff's first set of requests for production in a breach of contract and trade secret misappropriation action requires linking request categories to the pleaded claims and defenses, including a Definitions and Instructions section, and specifying ESI format requirements.
 activates_for: [planner, solver, checker]

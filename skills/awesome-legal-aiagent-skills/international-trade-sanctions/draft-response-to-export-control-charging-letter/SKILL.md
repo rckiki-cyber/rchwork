@@ -1,5 +1,5 @@
 ---
-name: its-draft-response-export-control-charging-letter
+name: its草案回应出口controlcharging函件
 task_id: international-trade-sanctions/draft-response-to-export-control-charging-letter
 description: Drafts a formal administrative response that challenges each charge with individualized legal defenses, argues for mitigating credit based on independent internal discovery and voluntary disclosure, distinguishes willful from non-willful violations, and proposes a settlement position with a penalty analysis tied to the applicable statutory framework.
 activates_for: [planner, solver, checker]

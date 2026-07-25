@@ -1,5 +1,5 @@
 ---
-name: extract-oss-license-obligations-disclosure-schedule
+name: extractoss许可义务披露附表
 task_id: intellectual-property/extract-open-source-license-obligations-from-targets-disclosure-schedule
 description: Reviewing a target company's open source software disclosure schedule and related M&A diligence materials to identify compliance risks and transaction impact, requiring license-category analysis and consistency checking against deal-level IP representations.
 activates_for: [planner, solver, checker]

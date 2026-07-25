@@ -1,5 +1,5 @@
 ---
-name: draft-objections-to-document-production-request
+name: 起草异议文件production请求
 task_id: arbitration-international-dispute-resolution/draft-objections-to-document-production-request
 description: Ensures document production objections in a fund-related arbitration address confidentiality concerns with nuance, identify possible open-records exposure for certain institutional investors, and avoid blanket refusals by pairing each objection with a counter-proposal.
 activates_for: [planner, solver, checker]

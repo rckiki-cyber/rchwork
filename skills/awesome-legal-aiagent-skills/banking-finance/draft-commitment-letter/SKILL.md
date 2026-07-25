@@ -1,5 +1,5 @@
 ---
-name: draft-commitment-letter
+name: 起草commitment函件
 task_id: banking-finance/draft-commitment-letter
 description: Drafts a commitment letter and issues memo for an acquisition financing, applying limited conditionality conventions and reconciling economic terms across deal documents.
 activates_for: [planner, solver, checker]

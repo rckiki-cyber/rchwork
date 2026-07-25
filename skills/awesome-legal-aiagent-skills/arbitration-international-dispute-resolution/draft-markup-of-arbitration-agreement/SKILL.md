@@ -1,5 +1,5 @@
 ---
-name: draft-markup-of-arbitration-agreement
+name: 起草markup仲裁协议
 task_id: arbitration-international-dispute-resolution/draft-markup-of-arbitration-agreement
 description: Ensures an arbitration agreement markup produces two distinct deliverables, annotates each change with the applicable playbook position tier, and explains institutional choice and governing-law implications at a procedural level.
 activates_for: [planner, solver, checker]

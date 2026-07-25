@@ -1,5 +1,5 @@
 ---
-name: draft-nda-markup-scenario-01
+name: 起草ndamarkupscenario
 task_id: corporate-ma/draft-nda-markup/scenario-01
 description: Guides buyer-side NDA markup in a competitive auction process where playbook positions must be applied against a seller-drafted non-disclosure agreement to produce a prioritized issues memo and annotated redline.
 activates_for: [planner, solver, checker]

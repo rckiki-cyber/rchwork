@@ -1,5 +1,5 @@
 ---
-name: draft-data-processing-agreement
+name: 起草数据processing协议
 task_id: data-privacy-cybersecurity/draft-data-processing-agreement
 description: Drafting a GDPR-compliant data processing agreement for a cross-border health data analytics engagement fails when the agent does not reconcile conflicts among the controller’s data governance materials, the processor’s standard template, and the transfer-impact analysis before drafting, and does not apply the more protective standard where instructed.
 activates_for: [planner, solver, checker]

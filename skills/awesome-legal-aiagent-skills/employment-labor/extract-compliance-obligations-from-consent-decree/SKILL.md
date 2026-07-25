@@ -1,5 +1,5 @@
 ---
-name: extract-compliance-obligations-from-consent-decree
+name: extract合规义务同意decree
 task_id: employment-labor/extract-compliance-obligations-from-consent-decree
 description: Guides the analyst in extracting obligations from a consent decree into a structured tracker, including deadline mapping, compliance status, cascading risk identification, and cross-referencing related modifying or supplementing documents.
 activates_for: [planner, solver, checker]

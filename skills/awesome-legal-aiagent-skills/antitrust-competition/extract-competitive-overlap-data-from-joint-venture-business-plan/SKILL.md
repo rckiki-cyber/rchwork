@@ -1,5 +1,5 @@
 ---
-name: extract-competitive-overlap-data-from-joint-venture-business-plan
+name: extractcompetitiveoverlap数据合资合资业务计划
 task_id: antitrust-competition/extract-competitive-overlap-data-from-joint-venture-business-plan
 description: Closes gaps in cross-document data reconciliation, pipeline-to-pipeline overlap analysis, merger control filing-threshold assessment, and clean team information distribution compliance.
 activates_for: [planner, solver, checker]

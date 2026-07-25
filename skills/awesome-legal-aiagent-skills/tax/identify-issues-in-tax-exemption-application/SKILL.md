@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-tax-exemption-application
+name: 识别问题税务exemptionapplication
 task_id: tax/identify-issues-in-tax-exemption-application
 description: Reviewing a nonprofit tax exemption application package requires identifying issues that may cause denial, delay, or a request for additional information; prioritizing those that should be corrected before filing; and providing concrete, procedural next steps rather than only noting potential problems.
 activates_for: [planner, solver, checker]

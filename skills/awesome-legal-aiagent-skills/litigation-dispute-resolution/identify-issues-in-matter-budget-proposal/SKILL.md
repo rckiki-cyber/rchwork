@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-matter-budget-proposal
+name: 识别问题事项预算建议书
 task_id: litigation-dispute-resolution/identify-issues-in-matter-budget-proposal
 description: Reviewing a litigation budget proposal requires comparing proposed staffing, rates, and phase-level allocations against the governing billing guidelines and prior-period actuals, flagging rate change requests that conflict with the guidelines, unauthorized timekeeper additions, and phase allocations that appear disproportionate to the case posture.
 activates_for: [planner, solver, checker]

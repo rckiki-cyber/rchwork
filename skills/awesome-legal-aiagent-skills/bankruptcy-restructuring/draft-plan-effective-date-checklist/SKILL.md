@@ -1,5 +1,5 @@
 ---
-name: draft-plan-effective-date-checklist
+name: 起草计划effective日期清单
 task_id: bankruptcy-restructuring/draft-plan-effective-date-checklist
 description: Ensures a plan effective date checklist provides a dashboard summary, condition-level detail with responsible party and risk rating, and proactive identification of practical risks that are not formal conditions precedent but can still delay the effective date.
 activates_for: [planner, solver, checker]

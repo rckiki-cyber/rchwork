@@ -1,5 +1,5 @@
 ---
-name: compare-parenting-plan-against-state-guidelines
+name: 比较parenting计划against州指南
 task_id: trusts-estates-private-client/compare-parenting-plan-against-state-guidelines
 description: A compliance gap analysis of a proposed parenting plan against governing statutory requirements demands provision-by-provision mapping against the applicable checklist, support-calculation analysis under the governing state model, and client-specific risk statements for each identified gap.
 activates_for: [planner, solver, checker]

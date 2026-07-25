@@ -1,5 +1,5 @@
 ---
-name: draft-management-rollover-agreement
+name: 起草管理层rollover协议
 task_id: corporate-ma/draft-management-rollover-agreement
 description: Guides drafting of a management rollover agreement and companion issues memo, requiring resolution of tax-treatment bifurcation, acceleration-trigger conflicts, call price discrepancies, restrictive-covenant enforceability, distribution-priority conflicts, and spousal-consent requirements in jurisdictions where marital property rules may affect equity interests.
 activates_for: [planner, solver, checker]

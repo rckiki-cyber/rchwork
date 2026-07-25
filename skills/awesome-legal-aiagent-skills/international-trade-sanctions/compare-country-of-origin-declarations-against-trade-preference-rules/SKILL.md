@@ -1,5 +1,5 @@
 ---
-name: its-compare-country-of-origin-declarations
+name: 原产地声明比较
 task_id: international-trade-sanctions/compare-country-of-origin-declarations-against-trade-preference-rules
 description: Produces a compliance gap report comparing import entry country-of-origin claims against applicable trade preference rules, distinguishing fraudulent certificates from curable calculation errors, quantifying duty exposure entry by entry, and evaluating whether voluntary disclosure procedures are appropriate where underpayments are identified.
 activates_for: [planner, solver, checker]

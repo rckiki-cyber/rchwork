@@ -1,5 +1,5 @@
 ---
-name: multi-state-paid-leave-expansion-compliance
+name: 多州paidleaveexpansion合规
 task_id: corporate-governance/compare-state-paid-leave-requirements-for-multi
 description: Multi-state paid leave compliance memorandum for a company expanding into new states, identifying employer contribution calculation issues, PTO payout policy issues, temporary worker coverage gaps, and payroll infrastructure requirements.
 activates_for: [planner, solver, checker]

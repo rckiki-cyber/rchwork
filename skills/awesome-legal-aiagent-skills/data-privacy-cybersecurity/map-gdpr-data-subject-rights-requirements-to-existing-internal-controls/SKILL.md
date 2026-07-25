@@ -1,5 +1,5 @@
 ---
-name: map-gdpr-data-subject-rights-requirements-to-existing-internal-controls
+name: mapgdpr数据subject权利要求现有internalcontrols
 task_id: data-privacy-cybersecurity/map-gdpr-data-subject-rights-requirements-to-existing-internal-controls
 description: Data subject rights gap analyses are strongest when the agent maps the applicable rights framework against operational evidence showing how requests are actually handled in practice, rather than relying only on written policies or procedures.
 activates_for: [planner, solver, checker]

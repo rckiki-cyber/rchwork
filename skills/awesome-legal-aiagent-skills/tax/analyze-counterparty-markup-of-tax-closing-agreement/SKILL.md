@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-tax-closing-agreement
+name: 分析counterpartymarkup税务交割协议
 task_id: tax/analyze-counterparty-markup-of-tax-closing-agreement
 description: Analyzing a counter-markup of a tax closing agreement requires side-by-side comparison of every changed term, quantification of incremental exposure where possible, and review of scope and penalty language for legal defects — not merely a narrative summary of differences.
 activates_for: [planner, solver, checker]

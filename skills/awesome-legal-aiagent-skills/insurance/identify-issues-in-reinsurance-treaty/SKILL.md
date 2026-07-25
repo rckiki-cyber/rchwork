@@ -1,5 +1,5 @@
 ---
-name: identify-issues-reinsurance-treaty
+name: 识别问题再保险treaty
 task_id: insurance/identify-issues-in-reinsurance-treaty
 description: Agents reviewing a reinsurance treaty identify drafting issues, including collateral adequacy, insolvency-clause payment mechanics, intermediary-risk allocation, exclusion gaps for emerging contaminants, commutation mechanics, and notice/prejudice provisions.
 activates_for: [planner, solver, checker]

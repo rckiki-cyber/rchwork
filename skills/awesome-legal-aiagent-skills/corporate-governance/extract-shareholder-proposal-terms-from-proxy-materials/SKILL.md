@@ -1,5 +1,5 @@
 ---
-name: extract-shareholder-proposal-terms-from-proxy-materials
+name: extract股东建议书条款委托重大
 task_id: corporate-governance/extract-shareholder-proposal-terms-from-proxy-materials
 description: Agents extract shareholder proposal terms and summarize proxy materials by topic, including voting outcomes, board recommendations, prior-year history, director relationships, committee composition issues, proxy access mechanics, voting-standard implications, and related-party transaction disclosures.
 activates_for: [planner, solver, checker]

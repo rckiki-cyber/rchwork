@@ -1,5 +1,5 @@
 ---
-name: compare-proposed-merger-remedies-against-precedent-commitment-decisions
+name: 比较拟议合并救济against先例commitment决定
 task_id: antitrust-competition/compare-proposed-merger-remedies-against-precedent-commitment-decisions
 description: Closes gaps in remedy deviation identification, preference for structural over behavioral remedies, and concrete recommendations for remedy improvements tied to relevant precedent decisions.
 activates_for: [planner, solver, checker]

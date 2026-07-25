@@ -1,5 +1,5 @@
 ---
-name: its-review-draft-voluntary-self
+name: itsreview草案voluntaryself
 task_id: international-trade-sanctions/review-draft-voluntary-self
 description: Produces a prioritized issue memorandum reviewing draft voluntary self-disclosures for completeness, accuracy, citation hygiene, intent-characterization consistency with the evidentiary record, missing concurrent disclosure obligations, and cross-document internal consistency.
 activates_for: [planner, solver, checker]

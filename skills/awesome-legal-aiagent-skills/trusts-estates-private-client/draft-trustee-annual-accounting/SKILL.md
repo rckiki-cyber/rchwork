@@ -1,5 +1,5 @@
 ---
-name: draft-trustee-annual-accounting
+name: 起草trustee年度会计
 task_id: trusts-estates-private-client/draft-trustee-annual-accounting
 description: Closes the gap where agents produce trust accountings without cross-checking source documents for misclassifications, allocation errors, valuation issues, and separate identification of tax-exempt income.
 activates_for: [planner, solver, checker]

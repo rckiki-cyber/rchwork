@@ -1,5 +1,5 @@
 ---
-name: assess-litigation-hold-scope-for-custodian-identification
+name: 评估诉讼holdscopecustodianidentification
 task_id: litigation-dispute-resolution/assess-litigation-hold-scope-for-custodian-identification
 description: A litigation hold memo should identify likely custodians of potentially relevant information, map the principal sources of their data, and flag preservation risks such as auto-deletion, off-boarding, or system migrations that may affect collection.
 activates_for: [planner, solver, checker]

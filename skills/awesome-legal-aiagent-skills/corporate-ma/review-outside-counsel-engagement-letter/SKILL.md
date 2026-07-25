@@ -1,5 +1,5 @@
 ---
-name: review-outside-counsel-engagement-letter
+name: 审查outsidecounselengagement函件
 task_id: corporate-ma/review-outside-counsel-engagement-letter
 description: Guides preparation of a severity-ranked issues memo identifying problematic, missing, or adverse provisions in an outside counsel engagement letter for patent litigation representation, cross-referenced against internal guidelines and related engagement materials.
 activates_for: [planner, solver, checker]

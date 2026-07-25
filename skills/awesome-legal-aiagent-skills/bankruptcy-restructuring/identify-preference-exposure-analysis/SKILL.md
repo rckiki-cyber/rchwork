@@ -1,5 +1,5 @@
 ---
-name: identify-preference-exposure-analysis
+name: 识别preferenceexposure分析
 task_id: bankruptcy-restructuring/identify-preference-exposure-analysis
 description: Ensures a preference exposure review memo checks the preparer's calculations, identifies transfers that may be subject to extended look-back treatment, applies the correct limitations period for avoidance actions, and confirms that only qualifying post-transfer new value is credited.
 activates_for: [planner, solver, checker]

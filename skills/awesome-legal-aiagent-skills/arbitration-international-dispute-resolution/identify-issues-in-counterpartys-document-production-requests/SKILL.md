@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-counterpartys-document-production-requests
+name: 识别问题counterpartys文件production请求
 task_id: arbitration-international-dispute-resolution/identify-issues-in-counterpartys-document-production-requests
 description: Ensures a document production request issues memo distinguishes privileged attorney-client communications from non-privileged non-attorney communications, applies the applicable control test for documents held by non-parties, and identifies overlapping requests for consolidation.
 activates_for: [planner, solver, checker]

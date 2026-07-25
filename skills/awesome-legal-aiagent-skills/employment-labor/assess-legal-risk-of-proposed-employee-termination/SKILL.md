@@ -1,5 +1,5 @@
 ---
-name: assess-legal-risk-of-proposed-employee-termination
+name: 评估法律风险拟议员工termination
 task_id: employment-labor/assess-legal-risk-of-proposed-employee-termination
 description: Guides the analyst through a privileged termination risk assessment, integrating protected-activity timeline analysis, burden-shifting frameworks, and pretext vulnerability identification across multiple employment-law theories.
 activates_for: [planner, solver, checker]

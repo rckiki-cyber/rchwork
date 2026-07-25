@@ -1,5 +1,5 @@
 ---
-name: identify-issues-joint-development-agreement
+name: 识别问题合资development协议
 task_id: intellectual-property/identify-issues-in-joint-development-agreement
 description: Reviewing a joint development agreement against related governance, data access, insurance, and product specification materials to identify intellectual property ownership ambiguities and structural risks.
 activates_for: [planner, solver, checker]

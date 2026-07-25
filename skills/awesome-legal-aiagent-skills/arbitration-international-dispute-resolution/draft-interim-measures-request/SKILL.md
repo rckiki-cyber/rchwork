@@ -1,5 +1,5 @@
 ---
-name: draft-interim-measures-request
+name: 起草中期measures请求
 task_id: arbitration-international-dispute-resolution/draft-interim-measures-request
 description: Ensures an ICC emergency interim measures application for a cross-border commercial dispute frames the governing arbitral rules, addresses non-party limitations, and considers a cross-undertaking in damages.
 activates_for: [planner, solver, checker]

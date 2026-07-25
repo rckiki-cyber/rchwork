@@ -1,5 +1,5 @@
 ---
-name: extract-and-categorize-assets-from-financial-disclosure-schedules
+name: extractcategorize资产财务披露附表
 task_id: trusts-estates-private-client/extract-and-categorize-assets-from-financial-disclosure-schedules
 description: Closes the gap where agents rely exclusively on the filed financial disclosure without cross-referencing source documents to identify omitted assets, stale or unsupported valuations, inappropriate depreciation on non-depreciable personal property, and contested valuation methodologies.
 activates_for: [planner, solver, checker]

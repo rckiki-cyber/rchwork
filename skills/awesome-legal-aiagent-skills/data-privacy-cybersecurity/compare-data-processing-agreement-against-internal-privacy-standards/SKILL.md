@@ -1,5 +1,5 @@
 ---
-name: compare-data-processing-agreement-against-internal-privacy-standards
+name: 比较数据processing协议againstinternal隐私标准
 task_id: data-privacy-cybersecurity/compare-data-processing-agreement-against-internal-privacy-standards
 description: Vendor DPA deviation reports are strongest when the agent benchmarks the agreement against the relevant internal privacy standards and any applicable external requirements, then converts each gap into a structured deviation analysis with practical negotiation guidance.
 activates_for: [planner, solver, checker]

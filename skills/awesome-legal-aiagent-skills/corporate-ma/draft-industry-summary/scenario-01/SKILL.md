@@ -1,5 +1,5 @@
 ---
-name: draft-industry-summary-s01
+name: 起草行业摘要s01
 task_id: corporate-ma/draft-industry-summary/scenario-01
 description: Guides preparation of an industry summary and market analysis memo for an acquisition evaluation by cross-checking company-provided market data against independent sources, identifying potential base-year selection bias in growth calculations, quantifying regulatory and reimbursement headwinds at a category level, and adjusting precedent transaction multiples for period-specific outliers.
 activates_for: [planner, solver, checker]

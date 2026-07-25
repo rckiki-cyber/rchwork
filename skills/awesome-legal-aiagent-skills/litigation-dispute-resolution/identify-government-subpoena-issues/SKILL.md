@@ -1,5 +1,5 @@
 ---
-name: identify-government-subpoena-issues
+name: 识别政府传票问题
 task_id: litigation-dispute-resolution/identify-government-subpoena-issues
 description: Advising on a government subpoena in a criminal or regulatory investigation requires analyzing the subpoena's scope against the available documents, assessing privilege and self-incrimination implications, identifying potential individual exposure from responsive communications and records, and recommending a response strategy.
 activates_for: [planner, solver, checker]

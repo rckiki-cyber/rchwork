@@ -1,5 +1,5 @@
 ---
-name: draft-gp-led-secondary-memo
+name: 起草gpled次要memo
 task_id: funds-asset-management/draft-gp-led-secondary-memo
 description: Review GP-led continuation vehicle transaction documents and prepare a structuring memorandum covering legal structure, conflict disclosures, tax and regulatory considerations, and key structural risks for the deal team and investment committee.
 activates_for: [planner, solver, checker]

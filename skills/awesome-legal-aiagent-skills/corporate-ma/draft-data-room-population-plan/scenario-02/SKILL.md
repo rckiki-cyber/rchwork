@@ -1,5 +1,5 @@
 ---
-name: draft-data-room-population-plan-s02
+name: 起草数据roompopulation计划s02
 task_id: corporate-ma/draft-data-room-population-plan/scenario-02
 description: Guides preparation of a data room population plan with critical DDRL review, regulatory filing-check validation, open-source audit staleness assessment, LGPL copyleft risk identification, anti-assignment consent tracking, and resolution of instruction conflicts.
 activates_for: [planner, solver, checker]

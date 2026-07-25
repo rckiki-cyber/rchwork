@@ -1,5 +1,5 @@
 ---
-name: analyze-environmental-liability-exposure
+name: 分析环境责任exposure
 task_id: corporate-ma/analyze-environmental-liability-exposure-in-targets-operations
 description: Guides facility-by-facility environmental liability analysis for an acquisition, evaluating accrual adequacy, undisclosed contingent exposures, regulatory escalation risk, and SPA protection adequacy.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: map-regulatory-notification-deadlines-for-multi
+name: map监管notificationdeadlines多
 task_id: data-privacy-cybersecurity/map-regulatory-notification-deadlines-for-multi
 description: Multi-jurisdiction breach notification deadline matrices fail when the agent does not use the jurisdiction map as the authoritative source for identifying which jurisdictions have affected individuals and does not separate overdue notifications from pending notifications.
 activates_for: [planner, solver, checker]

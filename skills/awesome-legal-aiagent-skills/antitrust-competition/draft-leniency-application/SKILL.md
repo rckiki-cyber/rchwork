@@ -1,5 +1,5 @@
 ---
-name: draft-leniency-application
+name: 起草leniencyapplication
 task_id: antitrust-competition/draft-leniency-application
 description: Closes gaps in complete proffer content including coordination event specificity, affected-commerce calculation methodology, Type A condition analysis, and individual participant identification.
 activates_for: [planner, solver, checker]

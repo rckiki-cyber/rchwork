@@ -1,5 +1,5 @@
 ---
-name: draft-stock-purchase-agreement
+name: 起草stock购买协议
 task_id: corporate-ma/draft-stock-purchase-agreement
 description: Guides drafting of a comprehensive buyer-side stock purchase agreement from a term sheet, precedent, and multi-document diligence set where capitalization complexity, diligence findings, and deal-specific representations must be integrated.
 activates_for: [planner, solver, checker]

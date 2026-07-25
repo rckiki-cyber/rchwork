@@ -1,5 +1,5 @@
 ---
-name: extract-pricing-data-from-document-production
+name: extract定价数据文件production
 task_id: antitrust-competition/extract-pricing-data-from-document-production
 description: Supports extraction of complete pricing structures, temporal gap analysis between competitor contacts and later pricing changes, cost-justification assessment, and flagging of deletion or non-reply instructions.
 activates_for: [planner, solver, checker]

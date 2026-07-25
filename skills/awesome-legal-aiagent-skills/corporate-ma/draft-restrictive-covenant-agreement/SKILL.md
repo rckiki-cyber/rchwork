@@ -1,5 +1,5 @@
 ---
-name: draft-restrictive-covenant-agreement
+name: 起草restrictive承诺协议
 task_id: corporate-ma/draft-restrictive-covenant-agreement
 description: Guides drafting of a post-closing restrictive covenant agreement and accompanying memorandum where cumulative restriction duration, choice-of-law tensions, and garden leave mechanics require enforceability analysis.
 activates_for: [planner, solver, checker]

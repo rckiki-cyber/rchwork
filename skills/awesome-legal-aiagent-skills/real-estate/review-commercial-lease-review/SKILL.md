@@ -1,5 +1,5 @@
 ---
-name: review-commercial-lease-review
+name: 审查商业leasereview
 task_id: real-estate/review-commercial-lease-review
 description: Guides preparation of a tenant-side negotiation-ready issues list for a commercial lease by comparing the landlord’s form against the tenant’s requirements memo and market comparables, and producing a structured issues list organized by priority for partner review.
 activates_for: [planner, solver, checker]

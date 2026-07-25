@@ -1,5 +1,5 @@
 ---
-name: scenario-02
+name: 场景
 task_id: real-estate/extract-psa-key-terms/scenario-02
 description: Guides extraction of key terms from a commercial property purchase and sale agreement into a structured term sheet by reading the agreement carefully, cross-referencing supporting documents for issues, and organizing output by topic for client and partner use.
 activates_for: [planner, solver, checker]

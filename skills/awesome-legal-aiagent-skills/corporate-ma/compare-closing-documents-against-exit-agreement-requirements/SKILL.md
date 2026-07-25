@@ -1,5 +1,5 @@
 ---
-name: compare-closing-documents-exit-agreement
+name: 比较交割文件exit协议
 task_id: corporate-ma/compare-closing-documents-against-exit-agreement-requirements
 description: Guides comparison of a closing binder against agreement-based deliverable requirements, with substantive accuracy review of escrow mechanics, funds flow arithmetic, tax-related certificates, resignations, transition services terms, and other named deliverables.
 activates_for: [planner, solver, checker]

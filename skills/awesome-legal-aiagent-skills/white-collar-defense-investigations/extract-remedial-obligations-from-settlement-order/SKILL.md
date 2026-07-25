@@ -1,5 +1,5 @@
 ---
-name: extract-remedial-obligations-from-fcpa-settlement
+name: extractremedial义务fcpa和解
 task_id: white-collar-defense-investigations/extract-remedial-obligations-from-settlement-order
 description: Compliance obligation matrix extracting remedial obligations from a multi-agency anti-corruption settlement, distinguishing obligations by resolving authority, capturing financial terms and any offset or credit mechanism, mapping certification and reporting deadlines, and flagging gaps or conflicts between external commitments and internal implementation documents.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-phase-one-environmental-site-assessment
+name: 识别问题phaseone环境site评估
 task_id: environmental-esg/identify-issues-in-phase-one-environmental-site-assessment
 description: Guides preparation of an issues memorandum for a Phase I environmental site assessment in an industrial acquisition by assessing the adequacy of the assessment methodology, the significance of identified recognized environmental conditions, and the sufficiency of the purchase agreement's environmental protections.
 activates_for: [planner, solver, checker]

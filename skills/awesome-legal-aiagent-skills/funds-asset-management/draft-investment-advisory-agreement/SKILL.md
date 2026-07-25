@@ -1,5 +1,5 @@
 ---
-name: draft-investment-advisory-agreement
+name: 起草投资advisory协议
 task_id: funds-asset-management/draft-investment-advisory-agreement
 description: Draft an execution-ready investment advisory agreement for a separately managed account program and prepare a companion drafting-notes memo covering key decisions, cross-document inconsistencies, and regulatory considerations.
 activates_for: [planner, solver, checker]

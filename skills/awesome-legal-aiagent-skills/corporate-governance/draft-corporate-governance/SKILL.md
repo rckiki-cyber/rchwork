@@ -1,5 +1,5 @@
 ---
-name: special-board-meeting-minutes-digital-health
+name: 特别董事会meetingminutesdigital健康
 task_id: corporate-governance/draft-corporate-governance
 description: Formal board meeting minutes for a special board meeting of a digital health company, with a cover memorandum flagging common board-governance issues that may require conditional resolutions, disclosure specificity, observer-seat authorization review, quorum confirmation, and remote-participation confirmation.
 activates_for: [planner, solver, checker]

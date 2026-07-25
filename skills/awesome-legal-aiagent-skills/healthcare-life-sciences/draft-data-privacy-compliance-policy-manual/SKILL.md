@@ -1,5 +1,5 @@
 ---
-name: hls-draft-data-privacy-compliance-manual
+name: hls草案数据隐私合规手册
 task_id: healthcare-life-sciences/draft-data-privacy-compliance-policy-manual
 description: Drafts a comprehensive data privacy compliance policy manual and gap analysis for a digital health company operating under overlapping healthcare-privacy obligations, addressing biometric privacy laws, consumer health data statutes, advertising SDK data sharing, and implementation deadlines.
 activates_for: [planner, solver, checker]

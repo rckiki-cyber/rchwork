@@ -1,5 +1,5 @@
 ---
-name: identify-tech-license-agreement-issues-scenario-01
+name: 识别tech许可协议问题scenario
 task_id: intellectual-property/identify-technology-license-agreement-issues/scenario-01
 description: Reviewing a draft technology license agreement from the licensee's perspective against a licensing playbook and business requirements to prepare a risk-rated issues memo with recommended positions.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: research-trade-secret-protections-departing-employee
+name: 研究贸易secretprotectionsdeparting员工
 task_id: intellectual-property/research-trade-secret-protections-for-departing-employee
 description: Analyzing trade secret and restrictive covenant enforcement options following a departing employee scenario, using employment agreements, a forensic report, and exit documentation.
 activates_for: [planner, solver, checker]

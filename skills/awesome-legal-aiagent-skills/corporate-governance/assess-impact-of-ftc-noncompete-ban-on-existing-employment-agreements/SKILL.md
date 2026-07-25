@@ -1,5 +1,5 @@
 ---
-name: ftc-noncompete-ban-impact
+name: FTC竞业禁止禁令影响分析
 task_id: corporate-governance/assess-impact-of-ftc-noncompete-ban-on-existing-employment-agreements
 description: Regulatory impact memorandum classifying an employment agreement portfolio against the applicable noncompete restrictions, analyzing any senior-executive-style exception applicability, any sale-of-business-style exception scope, and pending-litigation strategic implications.
 activates_for: [planner, solver, checker]

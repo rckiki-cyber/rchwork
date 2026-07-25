@@ -1,5 +1,5 @@
 ---
-name: identify-prior-art-deficiencies-patent-defense
+name: 识别priorartdeficiencies专利抗辩
 task_id: intellectual-property/identify-prior-art-deficiencies-in-patent-infringement-defense
 description: Reviewing invalidity contentions in a patent infringement defense to identify weaknesses in the prior art analysis and strategic gaps in the invalidity defense, using claim-by-claim comparison, reference-date checking, and analysis of obviousness support.
 activates_for: [planner, solver, checker]

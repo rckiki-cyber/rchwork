@@ -1,5 +1,5 @@
 ---
-name: research-non-compete-enforceability-colorado
+name: 研究noncompeteenforceabilitycolorado
 task_id: employment-labor/research-non
 description: Guides the analyst in producing a comprehensive advisory memorandum on non-compete enforceability under the applicable Colorado framework, including choice-of-law analysis, statutory prerequisites, and consideration adequacy assessment.
 activates_for: [planner, solver, checker]

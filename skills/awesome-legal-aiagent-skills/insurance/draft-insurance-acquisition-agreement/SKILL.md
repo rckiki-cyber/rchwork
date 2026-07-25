@@ -1,5 +1,5 @@
 ---
-name: draft-stock-purchase-agreement-insurance-company
+name: 起草stock购买协议保险公司
 task_id: insurance/draft-insurance-acquisition-agreement
 description: Agents drafting a stock purchase agreement for a property and casualty insurer acquisition should use insurance-specific provisions addressing reserve indemnity escrow timing, defined-benefit pension obligations, reinsurance commutation fallbacks, and intercompany services transition terms.
 activates_for: [planner, solver, checker]

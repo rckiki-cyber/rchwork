@@ -1,5 +1,5 @@
 ---
-name: compare-reinsurance-treaty-underlying-policy-gap
+name: 比较再保险treatyunderlying政策gap
 task_id: insurance/compare-reinsurance-treaty-against-underlying-policy
 description: Agents comparing a reinsurance treaty against the underlying policy should treat the work as a structured gap analysis, quantify any unrecovered share for relevant loss categories where treaty limitations reduce recovery below the underlying policy treatment, and analyze how a per-occurrence cap interacts with current loss development.
 activates_for: [planner, solver, checker]

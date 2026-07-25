@@ -1,5 +1,5 @@
 ---
-name: extract-document-requests-from-regulatory-inquiry-letter
+name: extract文件请求监管询问函件
 task_id: data-privacy-cybersecurity/extract-document-requests-from-regulatory-inquiry-letter
 description: Regulatory response tracker construction benefits from reconciling requests across multiple regulatory inquiries into a unified tracker that accounts for overlapping requests, privilege implications, and preservation scope for each request.
 activates_for: [planner, solver, checker]

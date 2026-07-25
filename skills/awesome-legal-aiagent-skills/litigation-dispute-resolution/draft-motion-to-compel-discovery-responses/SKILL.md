@@ -1,5 +1,5 @@
 ---
-name: draft-motion-to-compel-discovery-responses
+name: 起草动议compel证据开示回应
 task_id: litigation-dispute-resolution/draft-motion-to-compel-discovery-responses
 description: A motion to compel discovery responses under the federal discovery rules generally requires showing that the requests were proper, that the responses were deficient, that good-faith meet-and-confer efforts were made and failed, and that the court should compel appropriate discovery relief and consider fees and costs where authorized.
 activates_for: [planner, solver, checker]

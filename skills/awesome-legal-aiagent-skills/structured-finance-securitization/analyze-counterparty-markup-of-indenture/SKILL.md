@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-clo-indenture
+name: 分析counterpartymarkupcloindenture
 task_id: structured-finance-securitization/analyze-counterparty-markup-of-indenture
 description: Reviewing a counterparty redline of a CLO indenture where changes to coverage test thresholds, portfolio constraints, and structural triggers must be evaluated against a negotiation playbook, deal materials, and the counterparty's own characterization of its changes.
 activates_for: [planner, solver, checker]

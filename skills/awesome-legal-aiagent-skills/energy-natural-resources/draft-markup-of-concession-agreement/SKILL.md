@@ -1,5 +1,5 @@
 ---
-name: draft-markup-concession-agreement-ccgt-mexico
+name: 起草markupconcession协议ccgtmexico
 task_id: energy-natural-resources/draft-markup-of-concession-agreement
 description: Guides drafting of a project-company-side markup of a concession agreement by prioritizing bankability-critical provisions, structuring termination and currency risk mechanisms, and producing a companion commentary memo with negotiability assessments and fallback positions for each markup.
 activates_for: [planner, solver, checker]

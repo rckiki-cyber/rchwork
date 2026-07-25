@@ -1,5 +1,5 @@
 ---
-name: compare-compliance-certificate-against-financial-covenants
+name: 比较合规certificateagainst财务承诺
 task_id: banking-finance/compare-compliance-certificate-against-financial-covenants
 description: Independently recalculate covenant metrics from financial data and credit agreement definitions, compare the results against the compliance certificate, and identify deviations together with appropriate follow-up steps.
 activates_for: [planner, solver, checker]

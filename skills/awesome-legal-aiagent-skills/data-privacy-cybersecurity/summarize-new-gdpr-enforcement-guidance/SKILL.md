@@ -1,5 +1,5 @@
 ---
-name: summarize-new-gdpr-enforcement-guidance
+name: 总结新型gdprenforcementguidance
 task_id: data-privacy-cybersecurity/summarize-new-gdpr-enforcement-guidance
 description: GDPR enforcement guidance executive briefs fail when the agent summarizes the guidance generically rather than filtering its implications through the company's specific processing activities and compliance tracker to produce actionable, company-specific takeaways for cross-functional leadership.
 activates_for: [planner, solver, checker]

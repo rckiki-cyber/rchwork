@@ -1,5 +1,5 @@
 ---
-name: hls-draft-markup-healthcare-merger-agreement
+name: hls草案markup医疗合并协议
 task_id: healthcare-life-sciences/draft-markup-of-healthcare-merger-agreement
 description: Produces a healthcare merger agreement markup commentary and issues summary chart that contextualizes each issue against the applicable negotiation playbook, incorporates cross-document references from related compliance and financing materials when they bear on the provision being analyzed, and applies a structured issue-analysis framework.
 activates_for: [planner, solver, checker]

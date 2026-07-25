@@ -1,5 +1,5 @@
 ---
-name: draft-petition-for-final-distribution
+name: 起草申请最终分销
 task_id: trusts-estates-private-client/draft-petition-for-final-distribution
 description: Drafting a petition for final distribution in probate requires reconciling the final accounting, identifying and reserving for claims and expenses, confirming tax compliance, and preparing a court-ready petition with a proposed order and distribution summary.
 activates_for: [planner, solver, checker]

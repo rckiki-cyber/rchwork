@@ -1,5 +1,5 @@
 ---
-name: special-board-meeting-minutes-acquisition
+name: 特别董事会meetingminutes收购
 task_id: corporate-governance/draft-board-meeting-minutes
 description: Formal board meeting minutes for a special meeting approving an acquisition, financing, and officer appointments, with a governance observations memorandum flagging conflict of interest procedures, quorum calculation, and other procedural concerns.
 activates_for: [planner, solver, checker]

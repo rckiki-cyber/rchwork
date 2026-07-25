@@ -1,5 +1,5 @@
 ---
-name: batch-nda-generation-multi-party
+name: batchndageneration多方
 task_id: corporate-governance/draft-batch-nda-generation
 description: Generation of a batch of individualized NDAs from a master template, with counterparty-specific modifications for entity type, directionality, governing law, and existing agreement conflicts, accompanied by a cover memorandum flagging all issues at a categorical level.
 activates_for: [planner, solver, checker]

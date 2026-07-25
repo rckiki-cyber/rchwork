@@ -1,5 +1,5 @@
 ---
-name: ecvc-draft-series-seed-founders-spa
+name: ecvc草案seriesseedfoundersspa
 task_id: emerging-companies-venture-capital/draft-series-seed-founders-stock-purchase-agreement
 description: Drafting a founders' stock purchase agreement requires checking authorized-share sufficiency across all reservation categories, aligning vesting commencement with any credited prior service, treating IP assignment as a closing condition for each founder, and including an acknowledgment framework for any timely tax-election filing associated with restricted stock.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-title-commitment
+name: 识别问题titlecommitment
 task_id: real-estate/identify-issues-in-title-commitment
 description: Guides identification and severity-ranked analysis of title commitment issues for a land acquisition by comparing the title commitment against the survey, purchase agreement requirements, lender requirements, and trust documentation, with curative recommendations for each material issue.
 activates_for: [planner, solver, checker]

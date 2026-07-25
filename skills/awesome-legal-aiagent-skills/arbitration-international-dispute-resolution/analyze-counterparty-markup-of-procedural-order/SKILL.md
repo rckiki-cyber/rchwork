@@ -1,5 +1,5 @@
 ---
-name: analyze-counterparty-markup-of-procedural-order
+name: 分析counterpartymarkupprocedural命令
 task_id: arbitration-international-dispute-resolution/analyze-counterparty-markup-of-procedural-order
 description: Ensures a counterparty's procedural order markup is analyzed against the case management conference record, tactical motivations are surfaced, and aggregate procedural consequences are assessed.
 activates_for: [planner, solver, checker]

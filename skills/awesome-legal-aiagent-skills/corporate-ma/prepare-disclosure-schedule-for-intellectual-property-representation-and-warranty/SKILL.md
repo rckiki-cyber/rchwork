@@ -1,5 +1,5 @@
 ---
-name: prepare-ip-disclosure-schedule
+name: 准备ip披露附表
 task_id: corporate-ma/prepare-disclosure-schedule-for-intellectual-property-representation-and-warranty
 description: Guides preparation of the IP disclosure schedule sub-sections for a company acquisition where owned IP, licenses, open-source software, claims, and employee or contractor IP assignment must be sourced from diligence materials.
 activates_for: [planner, solver, checker]

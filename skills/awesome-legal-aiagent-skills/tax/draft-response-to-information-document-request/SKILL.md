@@ -1,5 +1,5 @@
 ---
-name: draft-response-to-information-document-request
+name: 起草回应information文件请求
 task_id: tax/draft-response-to-information-document-request
 description: An information document request response package requires two separate deliverables — a formal production letter and a privileged internal memorandum — with the privilege boundary maintained strictly between them.
 activates_for: [planner, solver, checker]

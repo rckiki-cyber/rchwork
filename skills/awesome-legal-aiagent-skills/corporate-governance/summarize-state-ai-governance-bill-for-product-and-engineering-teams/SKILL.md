@@ -1,5 +1,5 @@
 ---
-name: summarize-state-ai-governance-bill-for-product-and-engineering-teams
+name: 总结州ai治理bill产品engineeringteams
 task_id: corporate-governance/summarize-state-ai-governance-bill-for-product-and-engineering-teams
 description: Agents summarize the bill's substantive requirements for product and engineering leadership, identifying implementation ambiguities, potential conflicts between documentation/retention requirements and privacy obligations, and opportunities to seek regulatory guidance on unresolved interpretive questions.
 activates_for: [planner, solver, checker]

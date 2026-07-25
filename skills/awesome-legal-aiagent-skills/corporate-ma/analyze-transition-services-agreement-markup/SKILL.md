@@ -1,5 +1,5 @@
 ---
-name: analyze-tsa-markup
+name: 分析tsamarkup
 task_id: corporate-ma/analyze-transition-services-agreement-markup
 description: Guides seller-side analysis of a buyer's transition services agreement markup, evaluating liability cap exposure, IP license scope creep, service-level penalty accumulation, and interaction with the purchase agreement's indemnification and earnout provisions.
 activates_for: [planner, solver, checker]

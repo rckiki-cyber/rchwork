@@ -1,5 +1,5 @@
 ---
-name: draft-pour
+name: 起草pour
 task_id: trusts-estates-private-client/draft-pour
 description: Drafting a pour-over will that coordinates with a revocable living trust for a blended family estate requires identifying assets not funded into the trust, confirming the trust's current operative version, and flagging prenuptial agreement interactions and execution requirements in a companion issues memo.
 activates_for: [planner, solver, checker]

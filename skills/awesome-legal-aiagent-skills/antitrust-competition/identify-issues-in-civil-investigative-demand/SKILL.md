@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-civil-investigative-demand
+name: 识别问题civilinvestigativedemand
 task_id: antitrust-competition/identify-issues-in-civil-investigative-demand
 description: Closes gaps in privilege survival analysis, data preservation and disclosure obligations, oral testimony scheduling, information-exchange assessment, and petition grounds.
 activates_for: [planner, solver, checker]

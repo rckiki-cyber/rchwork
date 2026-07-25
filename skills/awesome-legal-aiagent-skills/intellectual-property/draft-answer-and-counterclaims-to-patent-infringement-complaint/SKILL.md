@@ -1,5 +1,5 @@
 ---
-name: draft-answer-counterclaims-patent
+name: 起草答辩状counterclaims专利
 task_id: intellectual-property/draft-answer-and-counterclaims-to-patent-infringement-complaint
 description: Complete responsive pleading for a patent infringement defendant, comprising answer, affirmative defenses, and counterclaims, grounded in technical facts, prior art analysis, and the pleadings record.
 activates_for: [planner, solver, checker]

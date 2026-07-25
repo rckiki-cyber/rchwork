@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-closing-checklist
+name: 识别问题交割清单
 task_id: banking-finance/identify-issues-in-closing-checklist
 description: Cross-references a closing checklist against the governing credit documentation and submitted deliverables, then produces a severity-organized closing issues memo with remediation steps.
 activates_for: [planner, solver, checker]

@@ -1,5 +1,5 @@
 ---
-name: identify-issues-in-commitment-letter
+name: 识别问题commitment函件
 task_id: corporate-ma/identify-issues-in-commitment-letter
 description: Guides preparation of a sponsor-side issues memo identifying material deficiencies in a draft acquisition financing commitment letter package cross-referenced against the merger agreement summary, focusing on issue-spotting and consistency review rather than conclusions.
 activates_for: [planner, solver, checker]

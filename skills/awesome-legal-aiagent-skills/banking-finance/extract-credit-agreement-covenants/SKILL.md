@@ -1,5 +1,5 @@
 ---
-name: extract-credit-agreement-covenants
+name: extractcredit协议承诺
 task_id: banking-finance/extract-credit-agreement-covenants
 description: Extract and analyze financial covenants from a credit agreement for acquisition diligence, including compliance status, headroom calculations, and risks affecting future flexibility.
 activates_for: [planner, solver, checker]
