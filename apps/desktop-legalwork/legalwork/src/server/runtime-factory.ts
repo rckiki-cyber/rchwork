@@ -253,7 +253,7 @@ export async function createLegalworkServeRuntime(
     },
     ...mcpProviders.providers,
     ...webProviders.providers,
-    ...buildMemoryToolProviders(memoryStore),
+    ...buildMemoryToolProviders(memoryStore, threadStore),
     ...buildKnowledgeToolProviders(knowledgeStore)
   ]
   const childRegistry = new CapabilityRegistry(baseToolProviders)

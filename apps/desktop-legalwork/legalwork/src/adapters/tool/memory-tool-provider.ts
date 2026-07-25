@@ -8,8 +8,12 @@ import {
 } from '../../contracts/memory.js'
 import { MemoryPolicyError } from '../../memory/memory-policy.js'
 import type { MemoryStore } from '../../memory/memory-store.js'
+import type { ThreadStore } from '../../ports/thread-store.js'
 
-export function buildMemoryToolProviders(store: MemoryStore | undefined): CapabilityToolProvider[] {
+export function buildMemoryToolProviders(
+  store: MemoryStore | undefined,
+  threadStore?: ThreadStore | undefined
+): CapabilityToolProvider[] {
   if (!store) return []
   return [{
     id: 'memory',
@@ -179,7 +183,70 @@ export function buildMemoryToolProviders(store: MemoryStore | undefined): Capabi
           if (typeof args.id !== 'string') return { output: { error: 'id is required' }, isError: true }
           return { output: { memory: await store.delete(args.id) } }
         }
-      })
+      }),
+      ...(threadStore ? [
+        LocalToolHost.defineTool({
+          name: 'thread_list',
+          description: 'List accessible conversation threads with their titles, status, model, and turn count. Use this before thread_read to find relevant threads.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              search: { type: 'string', description: 'Optional keyword to filter threads by title' },
+              limit: { type: 'number', minimum: 1, maximum: 100, description: 'Max threads to list (default 20)' }
+            },
+            additionalProperties: false
+          },
+          policy: 'auto',
+          execute: async (args) => {
+            const limit = typeof args.limit === 'number' ? Math.min(100, Math.max(1, Math.floor(args.limit))) : 20
+            const threads = await threadStore.list({
+              includeArchived: true,
+              includeSide: true,
+              limit
+            })
+            const filtered = typeof args.search === 'string' && args.search.trim()
+              ? threads.filter((t) => t.title?.toLocaleLowerCase().includes(args.search!.toLocaleLowerCase()))
+              : threads
+            return {
+              output: {
+                total: filtered.length,
+                threads: filtered.slice(0, limit).map((t) => ({
+                  id: t.id,
+                  title: t.title || '',
+                  status: t.status,
+                  model: t.model,
+                  mode: t.mode,
+                  relation: t.relation,
+                  workspace: t.workspace,
+                  createdAt: t.createdAt,
+                  updatedAt: t.updatedAt
+                }))
+              }
+            }
+          }
+        }),
+        LocalToolHost.defineTool({
+          name: 'thread_read',
+          description: 'Read the full conversation of a thread by its id. Returns all turns with messages, tool calls, and results. Use thread_list first to find the thread id.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Thread id to read. Use thread_list to discover available ids.' }
+            },
+            required: ['id'],
+            additionalProperties: false
+          },
+          policy: 'auto',
+          execute: async (args) => {
+            const id = stringArg(args.id)
+            if (!id) return toolError('id is required')
+            const thread = await threadStore.get(id)
+            if (!thread) return toolError(`thread not found: ${id}`)
+            const formatted = formatThreadForAgent(thread)
+            return { output: formatted }
+          }
+        })
+      ] : [])
     ]
   }]
 }
@@ -210,3 +277,68 @@ function enumArg<T extends string>(
 function toolError(message: string) {
   return { output: { error: message }, isError: true as const }
 }
+
+function formatThreadForAgent(thread: {
+  id: string
+  title?: string
+  model?: string
+  turns?: Array<{
+    id: string
+    status: string
+    prompt: string
+    model?: string
+    items?: Array<{
+      kind: string
+      role?: string
+      text?: string
+      name?: string
+      output?: unknown
+      isError?: boolean
+    }>
+    createdAt?: string
+    startedAt?: string
+    finishedAt?: string
+  }>
+  createdAt?: string
+  updatedAt?: string
+}): Record<string, unknown> {
+  const turnLogs = (thread.turns ?? []).map((turn) => {
+    const messages = (turn.items ?? []).flatMap((item) => {
+      const label = item.role === 'user' ? '用户' : item.role === 'assistant' ? 'AI' : ''
+      if (item.kind === 'user_message' && item.text) {
+        return [`[用户消息] ${item.text}`]
+      }
+      if (item.kind === 'assistant_text' && item.text) {
+        return [`[AI回复] ${item.text}`]
+      }
+      if (item.kind === 'tool_call' && item.name) {
+        return [`[工具调用] ${item.name}${item.text ? `: ${item.text.slice(0, 200)}` : ''}`]
+      }
+      if (item.kind === 'tool_result') {
+        const tag = item.isError ? '工具错误' : '工具结果'
+        const outputStr = typeof item.output === 'string'
+          ? item.output.slice(0, 300)
+          : item.output ? JSON.stringify(item.output).slice(0, 300) : ''
+        return outputStr ? [`[${tag}] ${outputStr}`] : []
+      }
+      return []
+    })
+    return [
+      `--- 轮次 ${turn.id.slice(0, 8)} (${turn.status}) ---`,
+      `用户输入: ${turn.prompt || '(无)'}`,
+      ...messages,
+      turn.finishedAt ? `完成于: ${turn.finishedAt}` : ''
+    ].join('\n')
+  }).filter(Boolean)
+
+  return {
+    id: thread.id,
+    title: thread.title || '',
+    model: thread.model || '',
+    createdAt: thread.createdAt || '',
+    updatedAt: thread.updatedAt || '',
+    turnCount: (thread.turns ?? []).length,
+    conversation: turnLogs.join('\n\n')
+  }
+}
+
