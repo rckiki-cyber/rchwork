@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-25T11:46:11.461Z",
+  "generated_at": "2026-07-25T11:49:32.965Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
@@ -8,11 +8,17 @@
       "published_at": "2026-07-25T11:45:55Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.4",
       "prerelease": false,
-      "summary": "本次更新包括：修复优化。",
+      "summary": "本次更新包括：法规知识库、对话体验、修复优化。",
       "highlights": [
-        "LegalWork 0.3.4 已上线，安装后即可使用这一版的新能力与体验优化。"
+        "使用体验更新：📄 PDF 预览",
+        "修复了使用中的稳定性问题：修复 PDF 预览闪屏问题：ResizeObserver 改用 ref 不触发重渲染，消除「正在渲染 PDF」闪烁循环。",
+        "使用体验更新：🤖 知识库 AI 对话",
+        "使用体验更新：模型跟随主 Agent 当前选择，不再硬编码过时的 deepseek-chat。",
+        "使用体验更新：AI 侧边栏宽度自适应：最大宽度 520px → 580px，最小宽度 360px → 300px。"
       ],
       "categories": [
+        "法规知识库",
+        "对话体验",
         "修复优化"
       ],
       "assets": [
