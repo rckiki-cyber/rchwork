@@ -998,6 +998,7 @@
   "sessionUsageTokens": "{{tokens}} tokens",
   "sessionUsageCost": "{{cost}}",
   "sessionUsageContextSavings": "saved {{cost}}",
+  "sessionUsageContextSavingsShort": "saved {{tokens}}",
   "sessionUsageContextSavingsTitle": "Saved about {{tokens}} context tokens",
   "sessionUsageTurns": "{{turns}} turns",
   "sessionUsageCache": "cache {{cache}}",

@@ -1967,12 +1967,8 @@ export function FloatingComposer({
                   threadUsage
                     ? t('sessionUsageDetailsTitle', {
                         tokens: formatCompactNumber(threadUsage.totalTokens),
-                        cost: formatCost(threadUsage.costUsd, i18n.language, threadUsage.costCny),
-                        saved: formatCost(
-                          threadUsage.tokenEconomySavingsUsd,
-                          i18n.language,
-                          threadUsage.tokenEconomySavingsCny
-                        ),
+                        cost: '',
+                        saved: '',
                         cache: formatPercent(threadUsage.cacheHitRate),
                         cached: formatCompactNumber(threadUsage.cachedTokens),
                         miss: formatCompactNumber(threadUsage.cacheMissTokens),
@@ -1989,12 +1985,6 @@ export function FloatingComposer({
                         tokens: formatCompactNumber(threadUsage.totalTokens)
                       })}
                     </span>
-                    <span className="ds-composer-usage-cost-separator text-ds-faint">·</span>
-                    <span className="ds-composer-usage-cost shrink-0 truncate tabular-nums">
-                      {t('sessionUsageCost', {
-                        cost: formatCost(threadUsage.costUsd, i18n.language, threadUsage.costCny)
-                      })}
-                    </span>
                     {threadUsage.tokenEconomySavingsTokens > 0 ? (
                       <>
                         <span className="ds-composer-usage-context-savings-separator text-ds-faint">·</span>
@@ -2004,12 +1994,8 @@ export function FloatingComposer({
                             tokens: formatCompactNumber(threadUsage.tokenEconomySavingsTokens)
                           })}
                         >
-                          {t('sessionUsageContextSavings', {
-                            cost: formatCost(
-                              threadUsage.tokenEconomySavingsUsd,
-                              i18n.language,
-                              threadUsage.tokenEconomySavingsCny
-                            )
+                          {t('sessionUsageContextSavingsShort', {
+                            tokens: formatCompactNumber(threadUsage.tokenEconomySavingsTokens)
                           })}
                         </span>
                       </>

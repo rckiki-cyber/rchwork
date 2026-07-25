@@ -335,7 +335,7 @@ export class LearningIterationRuntime {
     this.queued = true
     this.cancelRequested = false
     this.manualQueue = true
-    this.message = '已排队，将在无任务且系统空闲后开始'
+    this.message = '正在准备学习'
     void this.tick()
     return { ok: true, message: this.message }
   }
@@ -346,6 +346,7 @@ export class LearningIterationRuntime {
     }
     this.cancelRequested = true
     this.queued = false
+    this.manualQueue = false
     this.message = this.running ? '将在当前阶段结束后停止' : '已取消等待'
     return { ok: true, message: this.message }
   }
@@ -423,22 +424,26 @@ export class LearningIterationRuntime {
     const state = await this.readState(settings)
     const today = localDay(this.now())
     const automaticEligible = state.lastLocalDay !== today
+    const manualSkip = this.manualQueue
     if (!automaticEligible) {
-      this.manualQueue = false
-      if (this.queued) {
-        this.queued = false
-        this.message = '今日已有成功记录，请在下一个自然日再检查'
+      if (!manualSkip) {
+        if (this.queued) {
+          this.queued = false
+          this.message = '今日已有成功记录，请在下一个自然日再检查'
+        }
+        this.manualQueue = false
+        return
       }
+      // Manual trigger: allow running even if daily quota was met
+    }
+    if (!manualSkip && state.lastRetryAt && !retryIsDue(state, this.now())) {
       return
     }
-    if (state.lastRetryAt && !retryIsDue(state, this.now())) {
-      if (!this.manualQueue) return
-      this.manualQueue = false
-    }
-    if (await this.isBusy(settings)) {
+    if (!manualSkip && await this.isBusy(settings)) {
       if (this.queued) this.message = '正在等待所有任务结束并达到空闲条件'
       return
     }
+    this.manualQueue = false
 
     this.running = true
     this.queued = false

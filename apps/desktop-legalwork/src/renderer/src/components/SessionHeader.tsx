@@ -184,11 +184,6 @@ export function SessionHeader({ compact = false, className = '' }: Props): React
                       tokens: formatCompactNumber(threadUsage.totalTokens)
                     })}
                   </span>
-                  <span className="inline-flex items-center rounded-full border border-ds-border bg-ds-card/70 px-2.5 py-1 font-medium text-ds-muted">
-                    {t('sessionUsageCost', {
-                      cost: formatCost(threadUsage.costUsd, i18n.language, threadUsage.costCny)
-                    })}
-                  </span>
                   <span
                     className="inline-flex items-center rounded-full border border-ds-border bg-ds-card/70 px-2.5 py-1 font-medium text-ds-muted"
                     title={t('sessionUsageCacheTitle', {
