@@ -74,8 +74,8 @@ __pycache__/
 
 # Research data (large binary files, not part of app)
 research/
-memory/
-MEMORY.md
+/memory/
+/MEMORY.md
 
 # Local skill drafts
 skills/legalwork-learning-iteration/
