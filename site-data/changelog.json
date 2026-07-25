@@ -3,6 +3,30 @@
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
+      "tag_name": "v0.3.2",
+      "name": "LegalWork 0.3.2",
+      "published_at": "2026-07-25T12:00:00Z",
+      "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.2",
+      "prerelease": false,
+      "summary": "Agent 长期记忆、学习迭代、Flint Chart 图表 MCP、排队/引导发送、大量 Bug 修复。",
+      "highlights": [
+        "🧠 Agent 长期记忆：Agent 可自动记忆用户偏好、工作流程和项目上下文。基于文件的持久化存储，支持 user/workspace/project 三级隔离、7 种分类与置信度评分、always/relevant 双召回策略、密钥/敏感信息安全策略。提供独立记忆管理面板，可在设置中查看、检索、编辑和删除记忆。",
+        "📚 学习迭代：后台自动从会话、知识库和 Skill 使用中提炼可复用的记忆与 Skill。支持每日自动检查、空闲窗口调度、AI 分析提取、双源证据验证、全维度 Skill 压力测试（6-10 个测试用例）、一键回滚全部变更。",
+        "📊 Flint Chart 图表 MCP：按需下载 Microsoft Flint 图表 MCP，支持 Vega-Lite / ECharts / Chart.js 图表生成与校验。Agent 在需要创建图表时会自动调用。",
+        "✉️ 排队/引导发送：任务执行中发送新消息时，可选择「排队」加入队列等待，或「引导」立即中断当前任务直接输入。默认排队，引导会在页面上显示为分段按钮。",
+        "🎨 UI/UX 改进：设置新增独立「记忆」管理页；模型选择器去除「国产模型/国外模型」标签；Toggle 开关关闭状态增加边框和背景色不再透明；知识库 AI 对话侧边栏在小窗口下不再被裁切。",
+        "⚡ 主进程与架构：全面移除 SDD 需求草稿模块（删除约 1500 行代码），Workbench 大幅精简；Claw 文件生成增强（bash 重定向目标识别）；学习迭代运行时、记忆系统与主进程深度集成。",
+        "🐛 Bug 修复：统一秘密检测函数消除跨模块不一致；always 记忆设置 60% 上限防止挤占相关召回；手动排队跳过重试退避；Bearer token 检测补回 ASCII =；explicitCorrection 完整绕过所有非安全限制；redactSecrets 覆盖范围与检测对齐；agent-loop 记忆注入 project 参数修复；导出 Word 修复 Buffer 兼容性"
+      ],
+      "categories": [
+        "Agent 记忆",
+        "学习迭代",
+        "插件市场",
+        "对话体验",
+        "修复优化"
+      ]
+    },
+    {
       "tag_name": "v0.3.1",
       "name": "LegalWork 0.3.1",
       "published_at": "2026-07-22T10:00:29Z",
