@@ -35,11 +35,21 @@
       "published_at": "2026-07-25T08:55:27Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.3",
       "prerelease": false,
-      "summary": "本次更新包括：修复优化。",
+      "summary": "金字塔知识库、引用优化、deep-research skill、学习迭代增强、多项 Agent 能力扩展。",
       "highlights": [
-        "LegalWork 0.3.3 已上线，安装后即可使用这一版的新能力与体验优化。"
+        "🏛️ 金字塔知识库：5 层结构（原则/架构/标准/实施/经验）、层级路由器、图谱边关系、层级感知检索，知识管理更精细。",
+        "📖 引用格式优化：GB/T 7714 引文引擎、引用验证器、反幻觉提示、技能联动，生成引用更准确。",
+        "🔬 deep-research skill：零依赖实现，基于 GPT Researcher 方法论，支持多源深度调研。",
+        "🎓 学习迭代增强：手动触发跳过空闲等待、强制执行与引导按钮、去除价格显示，体验更可控。",
+        "📹 视频分析 skill 上线：适配 DeepSeek 无视觉场景，通过文字/Whisper 实现视频推理分析。",
+        "📝 Word 导出按钮：AI 生成文档可一键导出为 DOCX，内嵌 SimSun 字体，排版更规范。",
+        "🧩 Agent 能力增强：新增 thread_list/thread_read 工具访问对话历史、SEND_FILE 标记经飞书发送文件。",
+        "🐛 修复 onClearWorkspace 始终可调用、日志审计若干问题。"
       ],
       "categories": [
+        "知识库",
+        "Agent 运行",
+        "插件技能",
         "修复优化"
       ],
       "assets": [
@@ -93,11 +103,21 @@
       "published_at": "2026-07-25T05:02:10Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.2",
       "prerelease": false,
-      "summary": "本次更新包括：修复优化。",
+      "summary": "Agent 长期记忆、学习迭代、Flint Chart 图表 MCP、排队/引导发送、大量 Bug 修复。",
       "highlights": [
-        "LegalWork 0.3.2 已上线，安装后即可使用这一版的新能力与体验优化。"
+        "🧠 Agent 长期记忆：Agent 可自动记忆用户偏好、工作流程和项目上下文。基于文件的持久化存储，支持 user/workspace/project 三级隔离、7 种分类与置信度评分、always/relevant 双召回策略、密钥/敏感信息安全策略。提供独立记忆管理面板。",
+        "📚 学习迭代：后台自动从会话、知识库和 Skill 使用中提炼可复用的记忆与 Skill。支持每日自动检查、空闲窗口调度、AI 分析提取、双源证据验证、全维度 Skill 压力测试、一键回滚全部变更。",
+        "📊 Flint Chart 图表 MCP：按需下载 Microsoft Flint 图表 MCP，支持 Vega-Lite / ECharts / Chart.js 图表生成与校验。",
+        "✉️ 排队/引导发送：任务执行中发送新消息时，可选择「排队」加入队列等待，或「引导」立即中断当前任务直接输入。",
+        "🎨 UI/UX 改进：设置新增独立「记忆」管理页；模型选择器去除「国产模型/国外模型」标签；Toggle 开关关闭状态增加边框和背景色；知识库 AI 对话侧边栏在小窗口下不再被裁切。",
+        "⚡ 架构精简：全面移除 SDD 需求草稿模块（删除约 1500 行代码），Workbench 大幅精简。",
+        "🐛 Bug 修复：统一秘密检测函数消除跨模块不一致；always 记忆设置上限防止挤占相关召回；手动排队跳过重试退避；Bearer token 检测修复；导出 Word 修复 Buffer 兼容性。"
       ],
       "categories": [
+        "Agent 记忆",
+        "学习迭代",
+        "插件市场",
+        "对话体验",
         "修复优化"
       ],
       "assets": [
