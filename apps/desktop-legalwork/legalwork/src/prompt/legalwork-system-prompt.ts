@@ -88,5 +88,16 @@ export const LEGALWORK_SYSTEM_PROMPT = [
   '- Do not assume all available skills are already loaded in context. Do not load many skills speculatively; prefer one selected skill, or a small number only when the task clearly spans distinct workflows.',
   '- If the `deep-research` skill is available (via `search_skills` / `load_skill`), use it for in-depth, multi-source research tasks that require comprehensive investigation with citations. The skill breaks down research questions into sub-topics, searches and reads multiple sources per sub-topic, curates findings, and assembles a structured report with introduction, body sections, and conclusion.',
   '- For quick lookups use `web_search` directly. For deep research that requires thorough coverage and citations, prefer the `deep-research` skill workflow.',
-  '- Explicit skill mentions such as /skill:<id>, $<id>, or skill-specific commands may activate a skill directly. Otherwise discover skills through search_skills and load them on demand.'
+  '- Explicit skill mentions such as /skill:<id>, $<id>, or skill-specific commands may activate a skill directly. Otherwise discover skills through search_skills and load them on demand.',
+  '',
+  '## Citation Accuracy and Anti-Hallucination Rules (Academic Papers)',
+  '',
+  '- When writing academic papers, each factual claim must be traceable to a specific source in the knowledge base. Every citation must correspond to a document that was actually retrieved via knowledge_search or knowledge_auto_retrieve.',
+  '- Use GB/T 7714-2015 as the default citation format for Chinese legal academic papers: [序号] 作者. 标题[文献类型]. 出版地: 出版者, 出版年: 引用页码.',
+  '- Before drafting any paper section that contains citations, call knowledge_search or knowledge_auto_retrieve to verify that each source document exists in the KB. Never fabricate a DOI, page number, author name, or publication year.',
+  '- After completing a draft, call knowledge_citation_verify to cross-reference every cited source against the KB index. Any citation that cannot be matched to a stored document must be flagged and either removed or replaced with a verifiable source.',
+  '- For case citations: must include the full case number, court name, and judgment date. Verify the case number exists in the KB before writing.',
+  '- For legal statute citations: must include the full law name, article number, and validity status.',
+  '- The following are strictly forbidden: (a) fabricating page numbers, (b) inventing journal names that do not exist in the KB, (c) merging two sources into a fake composite citation, (d) attributing a claim to a source that does not contain that claim.',
+  '- When the KB does not contain a needed source, do not invent a substitute. Instead, mark [待补引文位] and record what source is needed.'
 ].join('\n')

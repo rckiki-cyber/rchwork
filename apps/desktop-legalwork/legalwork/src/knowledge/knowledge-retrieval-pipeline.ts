@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path'
 import type { KnowledgeStore } from '../knowledge/knowledge-store.js'
 import type { KnowledgeContextRecord, KnowledgeRetrievalResult } from '../contracts/knowledge-retrieval.js'
 import { KnowledgeMeta, DEFAULT_KNOWLEDGE_META } from '../contracts/knowledge-retrieval.js'
+import { fieldsFromKnowledgeMeta, formatGbt7714, buildBibliography } from './citation-engine.js'
 
 const MAX_CONTEXT_CHARS = 8_000
 const MAX_SOURCES = 12
@@ -42,6 +43,7 @@ export class KnowledgeRetrievalPipeline {
     const records: KnowledgeContextRecord[] = []
     const contextEntries: string[] = []
     let totalChars = 0
+    const bibliographyEntries: Array<{ title: string; citation: string }> = []
 
     for (const hit of hits) {
       if (filtered.has(hit.path)) continue
@@ -55,6 +57,16 @@ export class KnowledgeRetrievalPipeline {
       if (meta.expiresAt) tags.push('has_expiry')
       if (confidenceTag) tags.push(confidenceTag)
 
+      // Build GB/T 7714 citation from metadata
+      const citationFields = fieldsFromKnowledgeMeta(
+        hit.title,
+        hit.relativePath,
+        { source: meta.source, author: meta.author, category: meta.category, tags: meta.tags, confidence: meta.confidence },
+        hit.category,
+        hit.content
+      )
+      const gbt7714Citation = formatGbt7714(citationFields)
+
       const record: KnowledgeContextRecord = {
         path: hit.relativePath,
         title: hit.title,
@@ -63,9 +75,15 @@ export class KnowledgeRetrievalPipeline {
         content: hit.content,
         citation,
         tags,
-        sourceKind: 'local'
+        sourceKind: 'local',
+        gbt7714Citation,
+        authors: citationFields.authors ?? [],
+        publicationYear: citationFields.year,
+        publicationName: citationFields.journalName,
+        doi: citationFields.doi
       }
       records.push(record)
+      bibliographyEntries.push({ title: hit.title, citation: gbt7714Citation })
 
       // Accumulate context text up to the limit
       const entry = this.formatEntry(record)
@@ -77,12 +95,21 @@ export class KnowledgeRetrievalPipeline {
 
     // 4. Format the final context text
     const contextText = this.formatContextText(contextEntries, query)
+    const bibliography = buildBibliography(
+      bibliographyEntries.map((e, i) => {
+        // Parse citation back from stored format
+        const fields = fieldsFromKnowledgeMeta(e.title, e.title, { source: '', author: '', category: '', tags: [], confidence: 'medium' })
+        return fields
+      })
+    )
 
     return {
       contextText,
       sources: records,
       consultedExternal: false,
-      latencyMs: Date.now() - startedAt
+      latencyMs: Date.now() - startedAt,
+      bibliography,
+      citations: bibliographyEntries.map((e) => e.citation)
     }
   }
 

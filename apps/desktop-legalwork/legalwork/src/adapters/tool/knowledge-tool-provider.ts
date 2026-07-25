@@ -299,6 +299,63 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
       }),
 
       // ── Writing Style ───────────────────────────────────────────
+      // ── Citation Verification ──────────────────────────────────────
+      LocalToolHost.defineTool({
+        name: 'knowledge_citation_verify',
+        description: 'Verify all citations in a completed paper draft against the knowledge base index. Extracts citation markers ([1], [2,3], [1-3]), cross-references each one against stored documents, and reports any unverifiable or misattributed citations. Use this AFTER drafting a paper or legal document and BEFORE delivering it. Only works on drafts that use [N] format citation markers.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            draft: { type: 'string', description: 'The complete paper or document draft text containing [N] format citation markers' }
+          },
+          required: ['draft'],
+          additionalProperties: false
+        },
+        policy: 'auto',
+        execute: async (args) => {
+          const draft = typeof args.draft === 'string' ? args.draft : ''
+          if (!draft) return { output: { error: 'draft is required' }, isError: true }
+
+          const diagnostics = await store.diagnostics()
+          if (diagnostics.documentCount === 0) {
+            return {
+              output: {
+                documentStats: { totalCitations: 0, verified: 0, notFound: 0, contentMismatch: 0, suspicious: 0 },
+                checks: [],
+                recommendations: ['知识库为空，无法核验引用。请先同步知识库。']
+              }
+            }
+          }
+
+          // Extract citations, then search KB for each one
+          const { extractCitations, parseCitationIndices, matchCitationToDocument, verifyPaperCitations } = await import('../../knowledge/citation-verifier.js')
+          const citations = extractCitations(draft)
+          const uniqueCitations = [...new Set(citations.map((c) => c.rawText))]
+
+          // Build a lightweight index from search results
+          const allDocs: Array<{ title: string; relativePath: string; keywords?: string[] }> = []
+          for (const rawText of uniqueCitations.slice(0, 20)) {
+            const cleanText = rawText.replace(/[[\]\d]/g, '').trim()
+            if (cleanText.length < 2) continue
+            const hits = await store.search({ query: cleanText, limit: 5 })
+            for (const hit of hits) {
+              if (!allDocs.some((d) => d.relativePath === hit.relativePath)) {
+                allDocs.push({
+                  title: hit.title,
+                  relativePath: hit.relativePath,
+                  keywords: hit.keywords
+                })
+              }
+            }
+          }
+
+          const result = verifyPaperCitations(draft, {
+            documents: allDocs as any,
+            chunks: []
+          })
+          return { output: result }
+        }
+      }),
       LocalToolHost.defineTool({
         name: 'knowledge_writing_style',
         description: 'Get the team writing style guide including legal syllogism structure, argumentation rhythm, citation requirements, document type templates (complaint, defense, legal opinion, agency opinion), and risk warning templates. Use this when drafting any legal document to ensure consistent team style.',

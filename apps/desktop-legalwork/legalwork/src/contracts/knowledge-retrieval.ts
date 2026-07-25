@@ -58,7 +58,17 @@ export const KnowledgeContextRecord = z.object({
   /** Tags from metadata */
   tags: z.array(z.string()).default([]),
   /** Whether this is from external web search vs local KB */
-  sourceKind: z.enum(['local', 'web']).default('local')
+  sourceKind: z.enum(['local', 'web']).default('local'),
+  /** Pre-formatted GB/T 7714 citation string for this source */
+  gbt7714Citation: z.string().optional(),
+  /** Authors extracted from document */
+  authors: z.array(z.string()).default([]),
+  /** Publication year (heuristic) */
+  publicationYear: z.number().int().optional(),
+  /** Publication name (journal, conference, etc.) */
+  publicationName: z.string().optional(),
+  /** DOI if present in document */
+  doi: z.string().optional()
 }).strict()
 export type KnowledgeContextRecord = z.infer<typeof KnowledgeContextRecord>
 
@@ -71,7 +81,11 @@ export const KnowledgeRetrievalResult = z.object({
   /** Whether external web search was also consulted */
   consultedExternal: z.boolean().default(false),
   /** Retrieval latency in ms */
-  latencyMs: z.number().int().nonnegative().default(0)
+  latencyMs: z.number().int().nonnegative().default(0),
+  /** Pre-formatted GB/T 7714 bibliography (can be injected directly as reference section) */
+  bibliography: z.string().default(''),
+  /** Individual GB/T 7714 citation strings, indexed 1..N */
+  citations: z.array(z.string()).default([])
 }).strict()
 export type KnowledgeRetrievalResult = z.infer<typeof KnowledgeRetrievalResult>
 
