@@ -166,6 +166,17 @@ async function getWorkspaceRoot(): Promise<string> {
   return ''
 }
 
+/** Get the configured Legalwork agent model from settings. */
+async function getRuntimeModel(): Promise<string> {
+  try {
+    const settings = await window.dsGui.getSettings()
+    if (settings?.agents?.legalwork?.model) return settings.agents.legalwork.model
+  } catch {
+    // fall through
+  }
+  return 'deepseek-v4-flash'
+}
+
 function joinKnowledgePath(base: string, child: string): string {
   const parts = [base, child]
     .join('/')
@@ -899,6 +910,7 @@ ${question.trim()}
 
       // Reuse the active knowledge-chat thread if one exists; otherwise create a side thread.
       const workspace = await getWorkspaceRoot()
+      const threadModel = await getRuntimeModel()
       let threadId = activeChatThreadId
       if (!threadId) {
         const threadResult = await requestJson<{ id: string }>(
@@ -907,7 +919,7 @@ ${question.trim()}
           {
             workspace,
             title: knowledgeChatTitle(question.trim()),
-            model: 'deepseek-chat',
+            model: threadModel,
             mode: 'agent',
             relation: 'side'
           }

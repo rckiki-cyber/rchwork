@@ -86,20 +86,21 @@ type Props = {
 export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   const renderKeyRef = useRef<string>('')
+  const renderWidthRef = useRef(480)
   const [pages, setPages] = useState<PdfRenderedPage[]>([])
   const [loading, setLoading] = useState(false)
   const [renderingMore, setRenderingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [renderWidth, setRenderWidth] = useState(480)
 
+  // Measure container width once on mount via a ref; ResizeObserver updates
+  // the ref but never re-renders, preventing the flash-loop from PDF re-render.
   useEffect(() => {
     const element = containerRef.current
     if (!element) return
     const updateWidth = (): void => {
       const width = Math.floor(element.clientWidth)
       if (width <= 0) return
-      const nextWidth = Math.min(Math.max(width - 32, 280), 960)
-      setRenderWidth((prev) => (Math.abs(prev - nextWidth) > 8 ? nextWidth : prev))
+      renderWidthRef.current = Math.min(Math.max(width - 32, 280), 960)
     }
     updateWidth()
     const observer = new ResizeObserver(updateWidth)
@@ -107,13 +108,15 @@ export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
     return () => {
       observer.disconnect()
     }
-  }, [base64Content])
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     const renderPdf = async (): Promise<void> => {
-      if (!base64Content || renderWidth <= 0) return
-      const renderKey = `${base64Content.length}:${renderWidth}`
+      if (!base64Content) return
+      const w = renderWidthRef.current
+      if (w <= 0) return
+      const renderKey = `${base64Content.length}:${w}`
       if (renderKeyRef.current === renderKey) return
       renderKeyRef.current = renderKey
       setLoading(true)
@@ -141,7 +144,7 @@ export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
           }
           const page = await withTimeout(pdf.getPage(pageNumber), PDF_RENDER_TIMEOUT_MS, `第 ${pageNumber} 页读取超时`)
           const baseViewport = page.getViewport({ scale: 1 })
-          const scale = renderWidth / baseViewport.width
+          const scale = w / baseViewport.width
           const viewport = page.getViewport({ scale })
           const canvas = document.createElement('canvas')
           const context = canvas.getContext('2d')
@@ -179,7 +182,7 @@ export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
     return () => {
       cancelled = true
     }
-  }, [base64Content, renderWidth])
+  }, [base64Content])
 
   return (
     <div ref={containerRef} className="min-h-full bg-[var(--ds-main)]">
