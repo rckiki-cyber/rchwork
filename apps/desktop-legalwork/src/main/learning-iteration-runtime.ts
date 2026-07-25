@@ -451,12 +451,6 @@ export class LearningIterationRuntime {
       await this.run(settings, state)
     } catch (error) {
       if (error instanceof LearningPausedError) {
-        if (this.forceRun) {
-          // Manual trigger: retry immediately instead of pausing
-          this.message = '正在重试学习'
-          void this.tick()
-          return
-        }
         await this.writeState(settings, {
           ...state,
           lastCheckedAt: this.now().toISOString(),
@@ -891,12 +885,9 @@ export class LearningIterationRuntime {
       }
       await sleep(1_500)
       if (await this.isBusy(settings)) {
-        await this.deps.runtimeRequest(
-          settings,
-          `/v1/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/interrupt`,
-          { method: 'POST', body: '{}' }
-        ).catch(() => undefined)
-        throw new LearningPausedError()
+        // Not idle: poll again without killing the turn. The turn was started
+        // intentionally and killing it wastes all tokens spent so far.
+        continue
       }
       const detailResponse = await this.request(
         settings,
