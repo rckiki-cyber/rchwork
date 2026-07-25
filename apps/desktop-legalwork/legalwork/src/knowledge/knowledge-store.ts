@@ -428,8 +428,10 @@ export class FileKnowledgeStore implements KnowledgeStore {
     const terms = queryTerms(query)
     const lowerQuery = query.toLowerCase()
     const queryTermSet = new Set(terms)
+    // Primary layer for layer-aware scoring boost
+    const primaryLayer = input.layer ?? (targetLayers.size === 1 ? [...targetLayers][0] : undefined)
     const hits = rerankChunks(candidates
-      .map((chunk) => scoreChunk(chunk, lowerQuery, terms, queryTermSet))
+      .map((chunk) => scoreChunk(chunk, lowerQuery, terms, queryTermSet, primaryLayer))
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score || a.chunk.relativePath.localeCompare(b.chunk.relativePath))
       .slice(0, RERANK_POOL_SIZE), Math.max(1, input.limit))
@@ -783,11 +785,17 @@ function chunkDocument(document: KnowledgeDocument, content: string): KnowledgeC
   return chunks
 }
 
-function scoreChunk(chunk: KnowledgeChunk, lowerQuery: string, terms: string[], queryTermSet: Set<string>): ScoredChunk {
+function scoreChunk(chunk: KnowledgeChunk, lowerQuery: string, terms: string[], queryTermSet: Set<string>, primaryLayer?: KnowledgeLayer): ScoredChunk {
   const haystack = `${chunk.title}\n${chunk.relativePath}\n${chunk.category ?? ''}\n${chunk.keywords?.join(' ') ?? ''}\n${chunk.content}`.toLowerCase()
   let score = haystack.includes(lowerQuery) ? 12 : 0
   const reasons: string[] = []
   if (score > 0) reasons.push('短语匹配')
+
+  // Layer-aware boost: chunks matching the primary target layer get a bonus
+  if (primaryLayer && chunk.layer === primaryLayer) {
+    score += 8
+    reasons.push('层匹配')
+  }
   const matchedTerms = new Set<string>()
   for (const term of terms) {
     let position = haystack.indexOf(term)

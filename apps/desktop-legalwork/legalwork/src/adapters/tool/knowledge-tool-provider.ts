@@ -1,6 +1,7 @@
 import type { CapabilityToolProvider } from './capability-registry.js'
 import { LocalToolHost } from './local-tool-host.js'
 import type { KnowledgeStore } from '../../knowledge/knowledge-store.js'
+import type { KnowledgeLayer } from '../../contracts/knowledge.js'
 
 export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): CapabilityToolProvider[] {
   if (!store) return []
@@ -13,12 +14,13 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
       // ── Read / Browse ──────────────────────────────────────────
       LocalToolHost.defineTool({
         name: 'knowledge_search',
-        description: 'Search the local legal knowledge base for relevant source files and excerpts by semantic keyword query. Returns ranked chunk snippets with source metadata (file path, score, excerpt). Use this when you need to find relevant legal provisions, contract clauses, or case materials.',
+        description: 'Search the local legal knowledge base for relevant source files and excerpts by semantic keyword query. Returns ranked chunk snippets with source metadata (file path, score, layer, excerpt). Supports pyramid layer filtering — pass a layer (principle, architecture, standard, implementation, experience) to narrow results to a specific abstraction level. Use this when you need to find relevant legal provisions, contract clauses, or case materials.',
         inputSchema: {
           type: 'object',
           properties: {
             query: { type: 'string', description: 'Search query for legal terms, clauses, case names, or keywords' },
-            limit: { type: 'number', minimum: 1, maximum: 20, description: 'Max results (default 8, max 20)' }
+            limit: { type: 'number', minimum: 1, maximum: 20, description: 'Max results (default 8, max 20)' },
+            layer: { type: 'string', enum: ['principle', 'architecture', 'standard', 'implementation', 'experience'], description: 'Optional: restrict to a specific knowledge layer. The knowledge base has 5 layers: L1原则, L2架构, L3规范, L4实现, L5经验. Use this when you know what abstraction level you need.' }
           },
           required: ['query'],
           additionalProperties: false
@@ -30,10 +32,15 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
           const limit = typeof args.limit === 'number' && Number.isFinite(args.limit)
             ? Math.max(1, Math.min(20, Math.floor(args.limit)))
             : 8
+          const layer = ['principle', 'architecture', 'standard', 'implementation', 'experience'].includes(args.layer as string)
+            ? args.layer as KnowledgeLayer
+            : undefined
+          const sources = await store.search({ query, limit, includeContent: true, layer })
           return {
             output: {
               query,
-              sources: await store.search({ query, limit, includeContent: true })
+              layer: layer ?? 'all',
+              sources
             }
           }
         }

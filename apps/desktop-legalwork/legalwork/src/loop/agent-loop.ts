@@ -706,6 +706,20 @@ export class AgentLoop {
     await this.recordPipelineStage(threadId, turnId, 'input_compressed', {
       historyItems: history.length
     })
+    // Detect pyramid knowledge layer from user prompt
+    let layerInstruction = ''
+    if (turn?.prompt) {
+      try {
+        const pyramidRouter = await import('../../knowledge/knowledge-pyramid-router.js')
+        const result = pyramidRouter.route(turn.prompt)
+        if (result.primaryLabel) {
+          layerInstruction = `The knowledge base uses a 5-layer pyramid (L1原则, L2架构, L3规范, L4实现, L5经验). This question appears to target ${result.primaryLabel}. When calling knowledge_search or knowledge_auto_retrieve, consider passing layer="${result.primaryLayer}" for more precise results.`
+        }
+      } catch {
+        // Pyramid router unavailable — skip
+      }
+    }
+
     const contextInstructions = [
       modelIdentityInstruction(modelCapabilities.id),
       ...(attachments.fileReferences.length ? [attachmentFileReferenceInstruction(attachments.fileReferences)] : []),
@@ -713,6 +727,7 @@ export class AgentLoop {
       ...(activeTodoInstruction ? [activeTodoInstruction] : []),
       ...memoryInstructions(memories),
       ...skillResolution.instructions,
+      ...(layerInstruction ? [layerInstruction] : []),
       ...(toolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
       ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : [])
     ]
