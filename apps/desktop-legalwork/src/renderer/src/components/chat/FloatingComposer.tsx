@@ -108,6 +108,7 @@ type Props = {
   modelPickerMode?: 'select' | 'combobox'
   queuedMessages: QueuedComposerMessage[]
   onRemoveQueuedMessage: (id: string) => void
+  onGuideQueuedMessage: (id: string) => void
   attachments?: AttachmentReference[]
   attachmentUploadEnabled?: boolean
   attachmentUploadBusy?: boolean
@@ -570,6 +571,7 @@ export function FloatingComposer({
   modelPickerMode = 'select',
   queuedMessages,
   onRemoveQueuedMessage,
+  onGuideQueuedMessage,
   attachments = [],
   attachmentUploadEnabled = false,
   attachmentUploadBusy = false,
@@ -1339,6 +1341,7 @@ export function FloatingComposer({
       <FloatingComposerQueuedMessages
         messages={queuedMessages}
         onRemove={onRemoveQueuedMessage}
+        onGuide={onGuideQueuedMessage}
       />
 
       <div className="relative">
@@ -1906,9 +1909,7 @@ export function FloatingComposer({
                   <Square className="h-3.5 w-3.5 fill-current" strokeWidth={2.4} />
                 </button>
               ) : null}
-              {/* Show guide/queue buttons when input has content: they revert to
-                  normal send when there is nothing to interrupt/queue. */}
-              {input.trim() && onInterruptAndSend ? (
+              {(busy || hasActiveWork) && input.trim() && onInterruptAndSend ? (
                 <>
                   <button
                     type="button"

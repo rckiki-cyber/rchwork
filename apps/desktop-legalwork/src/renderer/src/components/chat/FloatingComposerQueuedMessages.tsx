@@ -1,5 +1,5 @@
 import { type ReactElement } from 'react'
-import { Clock3, X } from 'lucide-react'
+import { Clock3, SendHorizonal, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 export type QueuedComposerMessage = {
@@ -11,9 +11,10 @@ export type QueuedComposerMessage = {
 type Props = {
   messages: QueuedComposerMessage[]
   onRemove: (id: string) => void
+  onGuide: (id: string) => void
 }
 
-export function FloatingComposerQueuedMessages({ messages, onRemove }: Props): ReactElement | null {
+export function FloatingComposerQueuedMessages({ messages, onRemove, onGuide }: Props): ReactElement | null {
   const { t } = useTranslation('common')
   if (messages.length === 0) return null
 
@@ -34,6 +35,15 @@ export function FloatingComposerQueuedMessages({ messages, onRemove }: Props): R
           >
             <span className="shrink-0 text-ds-faint">{index + 1}.</span>
             <span className="max-w-[360px] truncate">{message.displayText ?? message.text}</span>
+            <button
+              type="button"
+              onClick={() => onGuide(message.id)}
+              className="shrink-0 rounded-full p-1 text-[var(--ds-accent)] transition hover:bg-ds-hover"
+              aria-label={t('composerInterruptAndSend')}
+              title={t('composerInterruptAndSend')}
+            >
+              <SendHorizonal className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
             <button
               type="button"
               onClick={() => onRemove(message.id)}

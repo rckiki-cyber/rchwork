@@ -880,6 +880,17 @@ export function Workbench(): ReactElement {
     window.setTimeout(() => handleSend(), 0)
   }
 
+  const handleGuideQueuedMessage = (id: string): void => {
+    const store = useChatStore.getState()
+    const msg = store.queuedMessages.find((m) => m.id === id)
+    if (!msg) return
+    store.removeQueuedMessage(id)
+    interrupt()
+    window.setTimeout(() => {
+      void store.sendMessage(msg.text)
+    }, 0)
+  }
+
   const handleSendAsync = async (): Promise<void> => {
     const v = input.trim()
     const attachments = route === 'chat' ? composerAttachments : []
@@ -1613,6 +1624,7 @@ export function Workbench(): ReactElement {
                 onRemoveFileReference={removeComposerFileReference}
                 queuedMessages={queuedMessages}
                 onRemoveQueuedMessage={removeQueuedMessage}
+                onGuideQueuedMessage={handleGuideQueuedMessage}
                 onInterrupt={(options) => void interrupt(options)}
                 onInterruptAndSend={handleInterruptAndSend}
                 onPlanCommand={() => void handleGuiPlanCommand()}
