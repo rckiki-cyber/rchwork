@@ -289,6 +289,25 @@ export function buildMcpConfig(
   }
 }
 
+export function buildGptrMcpConfig(repoPath?: string): JsonRecord {
+  const scriptPath = repoPath
+    ? `${repoPath.replace(/\/+$/, '')}/server.py`
+    : '/path/to/gptr-mcp/server.py'
+  return buildMcpConfig(
+    'gptr-mcp',
+    'python',
+    [scriptPath],
+    {
+      trustScope: 'user',
+      timeoutMs: 300_000,
+      env: {
+        OPENAI_API_KEY: '',
+        TAVILY_API_KEY: ''
+      }
+    }
+  )
+}
+
 export function buildFlintChartMcpConfig(): JsonRecord {
   return buildMcpConfig(
     'flint-chart',
@@ -885,6 +904,17 @@ const RECOMMENDED_ITEMS: MarketplaceItem[] = [
     group: 'recommended',
     category: 'data',
     mcpConfig: () => buildFlintChartMcpConfig()
+  },
+  {
+    id: 'gptr-mcp',
+    kind: 'mcp',
+    titleKey: 'pluginMcpGptrTitle',
+    descriptionKey: 'pluginMcpGptrDesc',
+    group: 'recommended',
+    category: 'data',
+    configurable: true,
+    needsToken: true,
+    mcpConfig: () => buildGptrMcpConfig()
   },
   {
     id: 'pkulaw',
