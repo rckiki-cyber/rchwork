@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { SendIcon } from '../icons/SendIcon'
 import { getProvider } from '../../agent/registry'
+import { useChatStore } from '../../store/chat-store'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
 import {
   LEGALWORK_KNOWLEDGE_CLASSIFY_PATH,
@@ -164,17 +165,6 @@ async function getWorkspaceRoot(): Promise<string> {
     // fall through
   }
   return ''
-}
-
-/** Get the configured Legalwork agent model from settings. */
-async function getRuntimeModel(): Promise<string> {
-  try {
-    const settings = await window.dsGui.getSettings()
-    if (settings?.agents?.legalwork?.model) return settings.agents.legalwork.model
-  } catch {
-    // fall through
-  }
-  return 'deepseek-v4-flash'
 }
 
 function joinKnowledgePath(base: string, child: string): string {
@@ -910,7 +900,7 @@ ${question.trim()}
 
       // Reuse the active knowledge-chat thread if one exists; otherwise create a side thread.
       const workspace = await getWorkspaceRoot()
-      const threadModel = await getRuntimeModel()
+      const threadModel = useChatStore.getState().composerModel
       let threadId = activeChatThreadId
       if (!threadId) {
         const threadResult = await requestJson<{ id: string }>(
