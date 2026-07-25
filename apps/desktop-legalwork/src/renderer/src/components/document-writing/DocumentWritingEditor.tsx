@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   AlertCircle,
+  FileDown,
   FileText,
   Loader2,
   SendHorizonal,
@@ -118,6 +119,78 @@ export function DocumentWritingEditor({
   const { t } = useTranslation('common')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showAllFields, setShowAllFields] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportWord = useCallback(async (): Promise<void> => {
+    if (!generatedContent || typeof window.dsGui?.exportLegalResearchToWord !== 'function') return
+    setExporting(true)
+    try {
+      const html = generatedContent
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+        .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+        .replace(/((?:<li>.*<\/li>\n?)+)/g, (match) => {
+          if (match.includes('<ul>')) return match
+          return `<ol>${match}</ol>`
+        })
+        .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+        .replace(/\n{2,}/g, '\n')
+        .split('\n')
+        .map((line) => {
+          const trimmed = line.trim()
+          if (!trimmed) return ''
+          if (/^<[holeu]/.test(trimmed) || /^<\/(ul|ol)>/.test(trimmed)) return line
+          return `<p style="font-family:SimSun;font-size:12pt;line-height:2;margin:4px 0">${trimmed}</p>`
+        })
+        .join('\n')
+
+      const fullHtml = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>${template.name}</title>
+  <style>
+    body { font-family: SimSun, serif; font-size: 12pt; line-height: 2; color: #222; max-width: 800px; margin: 0 auto; padding: 40px; }
+    h1 { font-size: 22pt; text-align: center; margin-bottom: 20px; }
+    h2 { font-size: 16pt; margin-top: 24px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+    h3 { font-size: 14pt; margin-top: 18px; }
+    p { font-family: SimSun; font-size: 12pt; line-height: 2; margin: 4px 0; text-indent: 2em; }
+    ul, ol { padding-left: 32px; margin: 6px 0; }
+    li { font-family: SimSun; font-size: 12pt; line-height: 2; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th, td { border: 1px solid #bbb; padding: 6px 10px; text-align: left; font-family: SimSun; font-size: 12pt; }
+    th { background: #f0f0f0; font-weight: bold; }
+    code { background: #f5f5f5; padding: 2px 5px; border-radius: 3px; font-size: 11pt; }
+    pre { background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; }
+    blockquote { border-left: 4px solid #ddd; margin-left: 0; padding-left: 16px; color: #666; }
+  </style>
+</head>
+<body>
+  ${html}
+</body>
+</html>`
+
+      const defaultName = template.name.replace(/[<>:"/\\|?*]/g, '_')
+      const result = await window.dsGui.exportLegalResearchToWord({ html: fullHtml, defaultName })
+      if (!result.ok && !result.canceled) {
+        console.error('[document-writing] Word export failed:', result.message)
+      }
+    } catch (error) {
+      console.error('[document-writing] Word export error:', error)
+    } finally {
+      setExporting(false)
+    }
+  }, [generatedContent, template.name])
 
   const hasRequiredFields = useMemo(
     () => template?.fields.some((f) => f.required) ?? false,
@@ -349,15 +422,30 @@ export function DocumentWritingEditor({
           )}
 
           {generatedContent && (
-            <button
-              type="button"
-              onClick={() => {
-                onFieldChange('__reset__', '')
-              }}
-              className="ds-no-drag flex items-center justify-center gap-2 rounded-[8px] border border-[var(--ds-sidebar-row-ring)] bg-[var(--ds-sidebar-field-bg)] px-4 py-2 text-[13px] font-medium text-[var(--ds-ink)] transition hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)]"
-            >
-              {t('documentWritingEditFields')}
-            </button>
+            <>
+              <button
+                type="button"
+                disabled={exporting}
+                onClick={() => void handleExportWord()}
+                className="ds-no-drag mb-2 flex items-center justify-center gap-2 rounded-[8px] bg-emerald-600 px-4 py-2.5 text-[13px] font-medium text-white transition hover:brightness-110 disabled:opacity-50"
+              >
+                {exporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                ) : (
+                  <FileDown className="h-4 w-4" strokeWidth={2} />
+                )}
+                <span>导出 Word</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onFieldChange('__reset__', '')
+                }}
+                className="ds-no-drag flex items-center justify-center gap-2 rounded-[8px] border border-[var(--ds-sidebar-row-ring)] bg-[var(--ds-sidebar-field-bg)] px-4 py-2 text-[13px] font-medium text-[var(--ds-ink)] transition hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)]"
+              >
+                {t('documentWritingEditFields')}
+              </button>
+            </>
           )}
         </div>
       </div>
