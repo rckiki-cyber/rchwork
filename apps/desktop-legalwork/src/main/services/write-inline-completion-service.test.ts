@@ -6,6 +6,7 @@ import {
   defaultClawSettings,
   defaultKeyboardShortcuts,
   defaultLegalworkRuntimeSettings,
+  defaultLearningIterationSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
   defaultWriteSettings,
@@ -53,6 +54,7 @@ function createSettings(patch: Partial<AppSettingsV1['write']['inlineCompletion'
       }
     },
     schedule: defaultScheduleSettings(),
+    learningIteration: defaultLearningIterationSettings(),
     guiUpdate: {
       channel: 'stable'
     },

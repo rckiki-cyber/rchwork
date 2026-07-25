@@ -5,6 +5,7 @@ import {
   defaultClawSettings,
   defaultKeyboardShortcuts,
   defaultLegalworkRuntimeSettings,
+  defaultLearningIterationSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
   defaultWriteSettings,
@@ -35,6 +36,7 @@ function settingsForPort(port: number): AppSettingsV1 {
     write: defaultWriteSettings(),
     claw: defaultClawSettings(),
     schedule: defaultScheduleSettings(),
+    learningIteration: defaultLearningIterationSettings(),
     guiUpdate: { channel: 'stable' }
   }
 }

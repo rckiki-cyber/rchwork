@@ -108,7 +108,13 @@ function escapeXml(value: string): string {
 }
 
 function cleanText(value: string): string {
-  return value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replaceAll('\t', '    ')
+  return [...value]
+    .filter((character) => {
+      const code = character.charCodeAt(0)
+      return code > 0x1f || code === 0x09 || code === 0x0a || code === 0x0d
+    })
+    .join('')
+    .replaceAll('\t', '    ')
 }
 
 function paragraphXml(text: string): string {

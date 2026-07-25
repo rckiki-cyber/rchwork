@@ -22,6 +22,7 @@ import { normalizeModelProviderSettings } from './app-settings-provider'
 import { normalizeDeepseekBaseUrl } from './app-settings-normalizers'
 import { normalizeClawSettings } from './app-settings-claw'
 import { normalizeScheduleSettings } from './app-settings-schedule'
+import { normalizeLearningIterationSettings } from './app-settings-learning-iteration'
 import { normalizeWriteSettings } from './app-settings-write'
 
 export function normalizeAppSettings(settings: AppSettingsV1): AppSettingsV1 {
@@ -71,6 +72,7 @@ export function normalizeAppSettings(settings: AppSettingsV1): AppSettingsV1 {
     write: normalizeWriteSettings(maybeSettings.write),
     claw: normalizeClawSettings(maybeSettings.claw),
     schedule: normalizeScheduleSettings(maybeSettings.schedule),
+    learningIteration: normalizeLearningIterationSettings(maybeSettings.learningIteration),
     guiUpdate: {
       channel: normalizeGuiUpdateChannel(
         maybeSettings.guiUpdate?.channel ?? DEFAULT_GUI_UPDATE_CHANNEL

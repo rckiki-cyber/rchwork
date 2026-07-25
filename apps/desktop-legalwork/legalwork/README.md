@@ -263,7 +263,7 @@ Feature flags are intentionally explicit:
 - `capabilities.web` exposes `web_fetch` and/or `web_search`. The built-in provider can fetch HTTP(S) pages; search requires a provider implementation and may report unavailable.
 - `capabilities.skills` scans configured roots for `skill.json` manifests and, when `legacySkillMd` is true, older `SKILL.md` directories.
 - `capabilities.attachments` stores image bytes outside thread logs and allows turns to reference `attachmentIds`. Vision-capable models receive image parts; text-only models receive a bounded compressed base64 text fallback.
-- `capabilities.memory` stores long-term records under the data dir, retrieves scoped matches before turns, and exposes `memory_create`, `memory_update`, and `memory_delete` tools.
+- `capabilities.memory` stores long-term records under the data dir, retrieves scoped matches before turns, and exposes `memory_search`, `memory_create`, `memory_update`, and `memory_delete`. High-confidence `profile`, `preference`, `workflow`, and `project` records may be captured automatically. Interests, matter/client facts, low-confidence candidates, and account identifiers require confirmation; passwords, tokens, API keys, and verification codes are always rejected.
 - `capabilities.subagents` exposes `delegate_task` with `maxParallel` and `maxChildRuns` concurrency budgets.
 
 Use `GET /v1/runtime/info` for the runtime capability manifest and
@@ -322,11 +322,12 @@ The HTTP server exposes the following routes under `/v1/*`:
 | GET | `/v1/attachments/diagnostics` | attachment store status |
 | GET | `/v1/attachments/{id}` | attachment metadata |
 | GET | `/v1/attachments/{id}/content?thread_id=...&workspace=...` | authorized attachment bytes as base64 |
-| GET | `/v1/memory?workspace=...&include_deleted=false` | list memory records in scope |
+| GET | `/v1/memory?workspace=...&query=...&category=...&scope=...&state=...&limit=...&offset=...` | filter memory records and return `memories` plus `total` |
 | POST | `/v1/memory` | create a memory record |
 | GET | `/v1/memory/diagnostics` | memory store status |
-| PATCH | `/v1/memory/{id}` | update, disable, or retag a memory record |
+| PATCH | `/v1/memory/{id}` | edit, enable/disable, change recall policy, or restore a memory record |
 | DELETE | `/v1/memory/{id}` | tombstone a memory record |
+| DELETE | `/v1/memory/{id}?permanent=true` | physically remove an already tombstoned record |
 | GET | `/v1/usage` | cumulative token/cache/turn counters |
 
 SSE events use `id: <seq>`, `event: <kind>`, and JSON `data:`. A
@@ -374,12 +375,14 @@ activation and diagnostics deterministic. A safe migration path is:
 4. Once `/v1/runtime/tools` reports the Skill without validation
    errors, decide whether to keep legacy compatibility enabled.
 
-Existing thread-level `pinnedConstraints` are not converted into
-long-term memory automatically. They remain part of compaction items
-and replay exactly as before. If a constraint should become
-cross-thread recall, create an explicit memory record through the
-GUI memory review surface or the `memory_create` tool. If it should
-stay local to one thread, leave it as a pinned constraint.
+Existing thread-level `pinnedConstraints` remain part of compaction
+items and replay exactly as before. Stable, high-confidence profile,
+preference, workflow, and project facts can become cross-thread
+memory through the automatic capture policy. Explicit “remember…”
+requests are stored directly; uncertain or sensitive candidates must
+be confirmed first. Use Settings > Memory to search, edit, disable,
+restore, or permanently delete records. Legacy records are read with
+`other`, `relevant`, and `legacy` defaults without rewriting them.
 
 ## Troubleshooting
 

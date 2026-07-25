@@ -46,10 +46,6 @@ import {
   threadBelongsToWorkspace
 } from './chat-store-runtime-helpers'
 import {
-  isSddAssistantThread,
-  readSddThreadRegistry
-} from '../sdd/sdd-thread-registry'
-import {
   clearBusyWatchdog,
   resetBusyRecoveryAttempts,
   scheduleStartupRuntimeProbe,
@@ -438,15 +434,13 @@ export function createNavigationActions(
         ...thread,
         workspace: normalizeWorkspaceRoot(thread.workspace)
       }))
-      const sddThreadRegistry = readSddThreadRegistry()
       const codeWorkspaceRoots = rememberCodeWorkspaceRoots(
         get().codeWorkspaceRoots,
         threads
           .filter((thread) => isCodeThread(thread, get().clawChannels))
           .map((thread) => thread.workspace)
       )
-      const sidebarThreads = (await filterThreadsForSidebar(threads, p))
-        .filter((thread) => !isSddAssistantThread(thread, sddThreadRegistry))
+      const sidebarThreads = await filterThreadsForSidebar(threads, p)
       const forkRegistry = hydrateThreadForkRegistry(sidebarThreads, readThreadForkRegistry())
       saveThreadForkRegistry(forkRegistry)
       const enrichedThreads = enrichThreadsWithForkInfo(sidebarThreads, forkRegistry)
@@ -456,40 +450,20 @@ export function createNavigationActions(
       // from the sidebar and its live turn aborted by the selection clearing
       // path below.
       const activeId = get().activeThreadId
-      const activeRawThread = activeId
-        ? threads.find((thread) => thread.id === activeId) ?? null
-        : null
-      const activeThreadIsSdd =
-        isSddAssistantThread(activeRawThread, sddThreadRegistry) ||
-        isSddAssistantThread(
-          activeId ? get().threads.find((thread) => thread.id === activeId) ?? null : null,
-          sddThreadRegistry
-        )
       const activeThreadFilteredFromCodeSidebar =
         get().route === 'chat' &&
         activeId != null &&
-        !activeThreadIsSdd &&
         threads.some((thread) => thread.id === activeId) &&
         !sidebarThreads.some((thread) => thread.id === activeId)
-      const preservedSddActiveThread =
-        activeThreadIsSdd && activeId
-          ? activeRawThread ?? get().threads.find((thread) => thread.id === activeId) ?? null
-          : null
       const pendingActiveThread =
         activeId != null &&
         !activeThreadFilteredFromCodeSidebar &&
         !enrichedThreads.some((thread) => thread.id === activeId)
           ? get().threads.find((thread) => thread.id === activeId) ?? null
           : null
-      let displayThreads = pendingActiveThread
+      const displayThreads = pendingActiveThread
         ? [pendingActiveThread, ...enrichedThreads]
         : enrichedThreads
-      if (
-        preservedSddActiveThread &&
-        !displayThreads.some((thread) => thread.id === preservedSddActiveThread.id)
-      ) {
-        displayThreads = [preservedSddActiveThread, ...displayThreads]
-      }
       const activeThreadId = get().activeThreadId
       const activeThread = activeThreadId
         ? displayThreads.find((thread) => thread.id === activeThreadId) ?? null

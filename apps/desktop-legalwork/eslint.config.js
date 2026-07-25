@@ -5,7 +5,21 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['build/**', 'dist/**', 'node_modules/**', 'out/**', 'coverage/**']
+    ignores: [
+      'build/**',
+      'dist/**',
+      'node_modules/**',
+      'out/**',
+      'coverage/**',
+      'index.cjs',
+      '**/build/**',
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/out/**',
+      '**/coverage/**',
+      'vendor/**',
+      '**/venv/**'
+    ]
   },
   js.configs.recommended,
   {

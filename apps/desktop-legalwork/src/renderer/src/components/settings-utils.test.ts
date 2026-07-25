@@ -4,6 +4,7 @@ import {
   DEFAULT_MODEL_PROVIDER_ID,
   defaultClawSettings,
   defaultKeyboardShortcuts,
+  defaultLearningIterationSettings,
   defaultLegalworkRuntimeSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
@@ -36,6 +37,7 @@ function settings(providerId: string, model: string): AppSettingsV1 {
     write: defaultWriteSettings(),
     claw: defaultClawSettings(),
     schedule: defaultScheduleSettings(),
+    learningIteration: defaultLearningIterationSettings(),
     guiUpdate: { channel: 'stable' }
   }
 }

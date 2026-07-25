@@ -29,6 +29,18 @@ const api = {
   getScheduleStatus: () => ipcRenderer.invoke('schedule:status'),
   runScheduleTask: (taskId) =>
     ipcRenderer.invoke('schedule:task:run', taskId),
+  getLearningIterationStatus: () =>
+    ipcRenderer.invoke('learning-iteration:status'),
+  listLearningIterations: () =>
+    ipcRenderer.invoke('learning-iteration:list'),
+  getLearningIteration: (id) =>
+    ipcRenderer.invoke('learning-iteration:get', id),
+  queueLearningIteration: () =>
+    ipcRenderer.invoke('learning-iteration:queue'),
+  cancelLearningIteration: () =>
+    ipcRenderer.invoke('learning-iteration:cancel'),
+  rollbackLearningIteration: (id) =>
+    ipcRenderer.invoke('learning-iteration:rollback', id),
   startClawImInstallQr: (provider, options) =>
     ipcRenderer.invoke('claw:im-install:qrcode', { provider, isLark: options?.isLark }),
   pollClawImInstall: (provider, deviceCode) =>
@@ -49,6 +61,8 @@ const api = {
     ipcRenderer.invoke('deepseek:config:read'),
   setDeepseekConfigFile: (content) =>
     ipcRenderer.invoke('deepseek:config:write', content),
+  installOptionalMcpPackage: (packageId) =>
+    ipcRenderer.invoke('mcp:install-optional-package', packageId),
   openDeepseekConfigDir: () =>
     ipcRenderer.invoke('deepseek:config:open-dir'),
   getGitBranches: (workspaceRoot) =>

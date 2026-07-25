@@ -6,6 +6,7 @@ import {
   defaultClawSettings,
   defaultKeyboardShortcuts,
   defaultLegalworkRuntimeSettings,
+  defaultLearningIterationSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
   defaultWriteSettings,
@@ -32,6 +33,7 @@ function buildSettings(): AppSettingsV1 {
     keyboardShortcuts: defaultKeyboardShortcuts(),
     write: defaultWriteSettings(),
     schedule: defaultScheduleSettings(),
+    learningIteration: defaultLearningIterationSettings(),
     claw: {
       ...defaultClawSettings(),
       enabled: true,

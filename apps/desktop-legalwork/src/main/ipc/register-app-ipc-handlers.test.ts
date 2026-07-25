@@ -6,6 +6,7 @@ import {
   mergeScheduleSettings,
   defaultClawSettings,
   defaultLegalworkRuntimeSettings,
+  defaultLearningIterationSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
   defaultWriteSettings,
@@ -48,6 +49,7 @@ function settings(): AppSettingsV1 {
     write: defaultWriteSettings(),
     claw: defaultClawSettings(),
     schedule: defaultScheduleSettings(),
+    learningIteration: defaultLearningIterationSettings(),
     guiUpdate: { channel: 'stable' }
   }
 }
@@ -64,6 +66,7 @@ function registerOptions(overrides: Partial<Parameters<typeof import('./register
     fetchEndpointModels: vi.fn() as never,
     getClawRuntime: () => null,
     getScheduleRuntime: () => null,
+    getLearningIterationRuntime: () => null,
     startFeishuInstallQrcode: vi.fn() as never,
     pollFeishuInstall: vi.fn() as never,
     startWeixinInstallQrcode: vi.fn() as never,

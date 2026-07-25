@@ -122,6 +122,9 @@ const labels: Record<string, string> = {
   legalworkMemoryDisable: 'Disable memory',
   legalworkMemoryDelete: 'Delete memory',
   legalworkMemoryDisabled: 'Disabled',
+  legalworkMemoryActiveCount: '{{count}} active memories',
+  legalworkMemoryTrashCount: '{{count}} in Trash',
+  legalworkMemoryManage: 'Manage all memories',
   skill: 'Skill',
   skillsLocation: 'Skill location',
   skillsLocationDesc: 'Skill location description',
@@ -212,8 +215,12 @@ const labels: Record<string, string> = {
   sandboxExternal: 'External sandbox'
 }
 
-function t(key: string): string {
-  return labels[key] ?? key
+function t(key: string, options?: Record<string, unknown>): string {
+  let value = labels[key] ?? key
+  for (const [name, replacement] of Object.entries(options ?? {})) {
+    value = value.replace(`{{${name}}}`, String(replacement))
+  }
+  return value
 }
 
 function baseCtx(): Record<string, unknown> {
@@ -311,6 +318,7 @@ function baseCtx(): Record<string, unknown> {
     refreshLegalworkDiagnostics: asyncNoop,
     disableMemoryRecord: asyncNoop,
     deleteMemoryRecord: asyncNoop,
+    openMemorySettings: noop,
     pickClawWorkspace: asyncNoop,
     resetClawWorkspaceToDefault: noop,
     clawWorkspacePickerError: '',
@@ -370,7 +378,8 @@ describe('AgentsSettingsSection Legalwork diagnostics smoke', () => {
         providers: [{ id: 'builtin' }, { id: 'mcp' }, { id: 'web' }, { id: 'memory' }],
         mcpServers: [{ id: 'github' }],
         skills: { skills: [{ id: 'skill_docs' }] },
-        attachments: { count: 1 }
+        attachments: { count: 1 },
+        memory: { activeCount: 1, tombstoneCount: 2 }
       },
       memoryRecords: [
         {
@@ -392,10 +401,9 @@ describe('AgentsSettingsSection Legalwork diagnostics smoke', () => {
     expect(html).toContain('Providers')
     expect(html).toContain('MCP servers')
     expect(html).toContain('Discovered Skills')
-    expect(html).toContain('Prefer pnpm for this workspace')
-    expect(html).toContain('mem_1')
-    expect(html).toContain('Disable memory')
-    expect(html).toContain('Delete memory')
+    expect(html).toContain('1 active memories')
+    expect(html).toContain('2 in Trash')
+    expect(html).toContain('Manage all memories')
   })
 
   it('describes MCP config as an external-tool JSON file instead of model credentials', () => {

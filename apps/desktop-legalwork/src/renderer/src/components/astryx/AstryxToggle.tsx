@@ -31,8 +31,8 @@ export function AstryxToggle({
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cn(
-          'relative h-5 w-9 shrink-0 rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
-          checked ? 'bg-ds-ink' : 'bg-ds-border-strong',
+          'relative h-5 w-9 shrink-0 rounded-full border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
+          checked ? 'border-ds-ink bg-ds-ink' : 'border-ds-border-strong bg-ds-subtle',
           disabled && 'cursor-not-allowed'
         )}
         {...props}

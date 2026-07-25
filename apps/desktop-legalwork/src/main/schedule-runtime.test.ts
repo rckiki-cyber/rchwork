@@ -3,6 +3,7 @@ import {
   defaultClawSettings,
   defaultKeyboardShortcuts,
   defaultLegalworkRuntimeSettings,
+  defaultLearningIterationSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
   defaultWriteSettings,
@@ -70,6 +71,7 @@ function settingsWith(
       tasks,
       ...schedulePatch
     }),
+    learningIteration: defaultLearningIterationSettings(),
     guiUpdate: { channel: 'stable' }
   }
 }

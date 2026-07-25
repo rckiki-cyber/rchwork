@@ -271,7 +271,7 @@ function cleanReleaseLine(line: string): string {
     .replace(/_([^_]+)_/g, '$1')
     .replace(/~~([^~]+)~~/g, '$1')
     .replace(/^#{1,6}\s*/, '')
-    .replace(/^[\s>]*(?:[✅✓✗✘⚠️⚠•·▪▫◦●○]+)\s*/u, '')
+    .replace(/^[\s>]*(?:[✅✓✗✘⚠•·▪▫◦●○]\uFE0F?)+\s*/u, '')
     .replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '')
     .replace(/^\s*\[[ xX]\]\s+/, '')
     .replace(/\s+/g, ' ')

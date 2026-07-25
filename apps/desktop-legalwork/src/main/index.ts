@@ -14,6 +14,7 @@ import {
   getActiveAgentApiKey,
   getLegalworkRuntimeSettings,
   mergeClawSettings,
+  mergeLearningIterationSettings,
   mergeModelProviderSettings,
   mergeScheduleSettings,
   mergeWriteSettings,
@@ -39,6 +40,10 @@ import {
 import { configureLogger, logError, logWarn, pruneOnStartup } from './logger'
 import { createClawRuntime, type ClawRuntime } from './claw-runtime'
 import { createScheduleRuntime, type ScheduleRuntime } from './schedule-runtime'
+import {
+  createLearningIterationRuntime,
+  type LearningIterationRuntime
+} from './learning-iteration-runtime'
 import { runClawScheduleMcpServerFromArgv } from './claw-schedule-mcp-server'
 import {
   clawScheduleMcpSettingsChanged,
@@ -163,6 +168,7 @@ let store: JsonSettingsStore
 let logDir = ''
 let clawRuntime: ClawRuntime | null = null
 let scheduleRuntime: ScheduleRuntime | null = null
+let learningIterationRuntime: LearningIterationRuntime | null = null
 let managedRuntimesStoppedForQuit = false
 let managedRuntimesStopPromise: Promise<void> | null = null
 let appBehavior: AppBehaviorConfigV1 = normalizeAppBehaviorSettings()
@@ -199,6 +205,7 @@ async function stopManagedRuntimes(): Promise<void> {
       stopAllRuntimeSse()
       scheduleRuntime?.stop()
       clawRuntime?.stop()
+      learningIterationRuntime?.stop()
       stopWeixinBridgeRuntime()
       await legalworkRuntimeAdapter.stopAndWait()
     })().finally(() => {
@@ -351,7 +358,11 @@ function revealMainWindow(): void {
 }
 
 function syncTray(settings: AppSettingsV1): void {
-  appBehavior = settings.appBehavior
+  appBehavior = {
+    ...settings.appBehavior,
+    closeToTray: settings.appBehavior.closeToTray ||
+      (settings.learningIteration.enabled && settings.learningIteration.keepRunningInTray)
+  }
   if (!appBehavior.closeToTray) {
     if (tray) {
       tray.destroy()
@@ -884,6 +895,23 @@ app.whenReady().then(async () => {
       scheduleRuntime?.createScheduledTaskFromText(text, options) ?? Promise.resolve({ kind: 'noop' })
   })
   clawRuntime.sync(initial)
+  learningIterationRuntime = createLearningIterationRuntime({
+    store,
+    runtimeRequest,
+    getSystemIdleSeconds: () => powerMonitor.getSystemIdleTime(),
+    getExternalBusy: async () => {
+      const [scheduleStatus, clawStatus] = await Promise.all([
+        scheduleRuntime?.status(),
+        clawRuntime?.status()
+      ])
+      return Boolean(
+        scheduleStatus?.runningTaskIds.length ||
+        clawStatus?.runningTaskIds.length
+      )
+    },
+    logError
+  })
+  learningIterationRuntime.sync(initial)
   configureWeixinBridgeRuntimeContextProvider(async () => {
     const settings = await store.load()
     const channel = settings.claw.channels.find((item) => item.enabled && item.provider === 'weixin')
@@ -931,6 +959,10 @@ app.whenReady().then(async () => {
       write: mergeWriteSettings(prev.write, partial.write),
       claw: mergeClawSettings(prev.claw, partial.claw),
       schedule: mergeScheduleSettings(prev.schedule, partial.schedule),
+      learningIteration: mergeLearningIterationSettings(
+        prev.learningIteration,
+        partial.learningIteration
+      ),
       guiUpdate: { ...prev.guiUpdate, ...(partial.guiUpdate ?? {}) }
     })
     if (prev.log.enabled !== next.log.enabled || prev.log.retentionDays !== next.log.retentionDays) {
@@ -954,6 +986,7 @@ app.whenReady().then(async () => {
     queueRuntimeSettingsApply(prev, saved)
     scheduleRuntime?.sync(saved)
     clawRuntime?.sync(saved)
+    learningIterationRuntime?.sync(saved)
     syncWeixinBridgeRuntime(saved)
     syncLoginItemSettings(saved)
     syncTray(saved)
@@ -983,6 +1016,7 @@ app.whenReady().then(async () => {
     fetchEndpointModels: fetchModelsForEndpoint,
     getClawRuntime: () => clawRuntime,
     getScheduleRuntime: () => scheduleRuntime,
+    getLearningIterationRuntime: () => learningIterationRuntime,
     startFeishuInstallQrcode,
     pollFeishuInstall,
     startWeixinInstallQrcode,
@@ -1012,7 +1046,10 @@ app.whenReady().then(async () => {
   })
   powerMonitor.on('resume', () => {
     void store.load()
-      .then((settings) => ensureRuntime(settings))
+      .then(async (settings) => {
+        await ensureRuntime(settings)
+        learningIterationRuntime?.sync(settings)
+      })
       .catch((err) => {
         console.warn('[legalwork] runtime resume warmup failed:', err)
       })

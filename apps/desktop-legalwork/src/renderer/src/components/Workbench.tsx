@@ -3,7 +3,6 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 import { parseClawCommand } from '@shared/claw-commands'
-import { buildGuiPlanId, buildPlanRelativePath } from '@shared/gui-plan'
 import {
   findKeyboardShortcutCommand,
   keyboardEventToShortcut,
@@ -27,30 +26,19 @@ import { WorkbenchTopBar, type RightPanelMode } from './chat/WorkbenchTopBar'
 import { MessageTimeline } from './chat/MessageTimeline'
 import { FloatingComposer, type ComposerFileReference } from './chat/FloatingComposer'
 import {
+  buildSelectedSkillPrompt,
+  type ComposerSkillSelection
+} from './chat/composer-skill-selection'
+import {
   composerReasoningEffortRequestValue,
   type ComposerReasoningEffort
 } from './chat/FloatingComposerModelPicker'
 import { SideConversationPanel } from './chat/SideConversationPanel'
 import { SessionHeader } from './SessionHeader'
-import { SddAssistantPanel } from './sdd/SddAssistantPanel'
-import { SddDraftEditorView } from './sdd/SddDraftEditorView'
 import { SidebarTitlebarToggleButton } from './sidebar/SidebarPrimitives'
 import { composeWritePrompt } from '../write/quoted-selection'
 import { useWriteWorkspaceStore } from '../write/write-workspace-store'
 import { isWriteThreadId } from '../write/write-thread-registry'
-import { createSddDraft, forgetRememberedSddDraft, useSddDraftStore } from '../sdd/sdd-draft-store'
-import type { SddDraft } from '../sdd/sdd-draft-store'
-import { saveActiveSddDraftToDisk } from '../sdd/sdd-draft-actions'
-import { restoreRememberedSddDraft } from '../sdd/sdd-draft-restore'
-import { composeSddAssistantPrompt } from '../sdd/sdd-assistant-prompt'
-import { collectSddDraftImages, withAttachmentIds, type SddDraftImageReference } from '../sdd/sdd-draft-images'
-import { buildSddDraftToPlanPrompt } from '../sdd/sdd-plan-prompt'
-import {
-  isSddAssistantThread,
-  markSddAssistantThread,
-  releaseSddAssistantThread,
-  sddAssistantThreadIdForDraft
-} from '../sdd/sdd-thread-registry'
 import { parseGuiPlanCommand } from '../plan/plan-command'
 import { DevPreviewLaunchCard } from './DevPreviewLaunchCard'
 import { RuntimeBanner } from './RuntimeBanner'
@@ -113,12 +101,11 @@ const LegalResearchPanel = lazy(() =>
 const KnowledgeBaseView = lazy(() =>
   import('./knowledge-base/KnowledgeBaseView').then((module) => ({ default: module.KnowledgeBaseView }))
 )
-
-type PendingSddPlanTarget = {
-  planId: string
-  relativePath: string
-  workspaceRoot: string
-}
+const LearningIterationView = lazy(() =>
+  import('./learning-iteration/LearningIterationView').then((module) => ({
+    default: module.LearningIterationView
+  }))
+)
 
 const COMPOSER_FILE_CONTEXT_MAX_CHARS_PER_FILE = 60_000
 const COMPOSER_FILE_CONTEXT_MAX_TOTAL_CHARS = 180_000
@@ -160,29 +147,6 @@ function clipComposerFileContext(
   }
 }
 
-function sddDraftPlanRelativePath(draft: SddDraft): string {
-  const parts = draft.relativePath.replaceAll('\\', '/').split('/').filter(Boolean)
-  const draftFolder = parts.at(-2)?.trim() || draft.id.split(':').pop()?.trim() || `draft-${Date.now()}`
-  return buildPlanRelativePath(`sdd-${draftFolder}`)
-}
-
-function sddDraftSourceRequest(markdown: string, fallbackPath: string): string {
-  const firstMeaningfulLine = markdown
-    .split('\n')
-    .map((line) => line.replace(/^#+\s*/, '').trim())
-    .find(Boolean)
-  return (firstMeaningfulLine || fallbackPath).slice(0, 160)
-}
-
-function sddPlanMatchesPendingTarget(
-  plan: { id: string; workspaceRoot: string; relativePath: string } | null,
-  target: PendingSddPlanTarget | null
-): boolean {
-  if (!plan || !target) return false
-  if (plan.id === target.planId) return true
-  return buildGuiPlanId(plan.workspaceRoot, plan.relativePath) === target.planId
-}
-
 function mergeSkillCommands(
   runtimeSkills: CoreRuntimeSkillJson[],
   localSkills: SkillListItem[]
@@ -208,22 +172,6 @@ function mergeSkillCommands(
     } : skill)
   }
   return [...merged.values()]
-}
-
-function sddAssistantContextFromBlocks(blocks: ChatBlock[], maxMessages = 10): string {
-  const messages: string[] = []
-  for (const block of blocks) {
-    if (block.kind !== 'user' && block.kind !== 'assistant') continue
-    if (block.kind === 'user' && block.meta?.displayText) continue
-    const text = block.text.trim()
-    if (!text) continue
-    messages.push(`${block.kind === 'user' ? 'User' : 'Requirement AI'}:\n${text}`)
-  }
-  return messages.slice(-maxMessages).join('\n\n').slice(0, 12_000)
-}
-
-function base64ImageToFile(image: SddDraftImageReference): File {
-  return base64ToFile(image.dataBase64, fileNameFromPath(image.relativePath), image.mimeType)
 }
 
 function clipboardImageToFile(image: Extract<ClipboardImageReadResult, { ok: true }>): File {
@@ -268,6 +216,7 @@ export function Workbench(): ReactElement {
     openDocumentWriting,
     openLegalResearch,
     openKnowledgeBase,
+    openLearningIteration,
     chooseWorkspace,
     setWorkspaceRoot,
     clearWorkspace,
@@ -329,6 +278,7 @@ export function Workbench(): ReactElement {
       openDocumentWriting: s.openDocumentWriting,
       openLegalResearch: s.openLegalResearch,
       openKnowledgeBase: s.openKnowledgeBase,
+      openLearningIteration: s.openLearningIteration,
       chooseWorkspace: s.chooseWorkspace,
       setWorkspaceRoot: s.setWorkspaceRoot,
       clearWorkspace: s.clearWorkspace,
@@ -365,6 +315,8 @@ export function Workbench(): ReactElement {
     }))
   )
   const [input, setInput] = useState('')
+  const [selectedComposerSkill, setSelectedComposerSkill] =
+    useState<ComposerSkillSelection | null>(null)
   const [mode, setMode] = useState<'plan' | 'agent'>('agent')
   const [composerReasoningEffort, setComposerReasoningEffort] =
     useState<ComposerReasoningEffort>('max')
@@ -402,8 +354,6 @@ export function Workbench(): ReactElement {
   const setWriteAssistantModel = useWriteWorkspaceStore((s) => s.setAssistantModel)
   const [dataComplianceSection, setDataComplianceSection] = useState<DataComplianceSection>('review')
   const [desensitizeSection, setDesensitizeSection] = useState<DesensitizeSection>('material')
-  const activeSddDraft = useSddDraftStore((s) => s.activeDraft)
-  const sddDraftOperationStatus = useSddDraftStore((s) => s.operationStatus)
   const stageInsetClass = 'ds-stage-inset'
   const keyboardShortcuts = useKeyboardShortcutSettings()
   const keyboardShortcutBindings = useMemo(
@@ -435,8 +385,6 @@ export function Workbench(): ReactElement {
   const draftByThread = useRef<Record<string, string>>({})
   const prevThreadId = useRef<string | null>(null)
   const inputRef = useRef('')
-  const sddUpgradeInFlightRef = useRef(false)
-  const sddUpgradeTargetRef = useRef<PendingSddPlanTarget | null>(null)
 
   useEffect(() => {
     let recoveryTimer: ReturnType<typeof setTimeout> | null = null
@@ -587,12 +535,7 @@ export function Workbench(): ReactElement {
     setRightPanelMode,
     setRightSidebarWidth,
     t,
-    workspaceRoot,
-    onPlanBuildStarted: async (plan) => {
-      const threadId = plan.threadId?.trim() || useChatStore.getState().activeThreadId
-      if (!threadId || !releaseSddAssistantThread(threadId)) return
-      await useChatStore.getState().refreshThreads()
-    }
+    workspaceRoot
   })
 
   useEffect(() => {
@@ -685,7 +628,6 @@ export function Workbench(): ReactElement {
   const codeThreads = useMemo(
     () => threads.filter((thread) =>
       !isClawThread(thread, clawChannels) &&
-      !isSddAssistantThread(thread) &&
       !isLegalResearchThread(thread)
     ),
     [clawChannels, threads]
@@ -727,41 +669,6 @@ export function Workbench(): ReactElement {
       setRightPanelMode(null)
     }
   }, [activeGuiPlan, rightPanelMode, setRightPanelMode])
-
-  useEffect(() => {
-    if (
-      !activeGuiPlan ||
-      !sddUpgradeInFlightRef.current ||
-      !sddPlanMatchesPendingTarget(activeGuiPlan, sddUpgradeTargetRef.current)
-    ) {
-      return
-    }
-    sddUpgradeInFlightRef.current = false
-    sddUpgradeTargetRef.current = null
-    useSddDraftStore.getState().setOperationStatus('idle')
-    const completedDraft = useSddDraftStore.getState().activeDraft
-    if (completedDraft) forgetRememberedSddDraft(completedDraft)
-    useSddDraftStore.getState().clearActiveDraft()
-  }, [activeGuiPlan])
-
-  useEffect(() => {
-    if (
-      busy ||
-      !sddUpgradeInFlightRef.current ||
-      sddDraftOperationStatus !== 'upgrading' ||
-      sddPlanMatchesPendingTarget(activeGuiPlan, sddUpgradeTargetRef.current)
-    ) {
-      return
-    }
-    const timeout = window.setTimeout(() => {
-      if (!sddUpgradeInFlightRef.current) return
-      if (useSddDraftStore.getState().operationStatus !== 'upgrading') return
-      sddUpgradeInFlightRef.current = false
-      sddUpgradeTargetRef.current = null
-      useSddDraftStore.getState().setOperationStatus('error', t('planToolResultMissing'))
-    }, 800)
-    return () => window.clearTimeout(timeout)
-  }, [activeGuiPlan, busy, sddDraftOperationStatus, t])
 
   useEffect(() => {
     let cancelled = false
@@ -932,274 +839,6 @@ export function Workbench(): ReactElement {
     await handlePickAttachments([clipboardImageToFile(image)])
   }
 
-  const createSddAssistantThreadForDraft = async (draft: SddDraft): Promise<string | null> => {
-    const normalizedWorkspace = normalizeWorkspaceRoot(draft.workspaceRoot)
-    if (!normalizedWorkspace) {
-      setError(t('workspaceRequiredToCreateThread'))
-      return null
-    }
-    if (runtimeConnection !== 'ready') {
-      setError(t('runtimeActionNeedsConnection'))
-      return null
-    }
-    try {
-      const provider = getProvider()
-      const thread = await provider.createThread({
-        workspace: normalizedWorkspace,
-        title: t('sddAssistant'),
-        mode: 'agent'
-      })
-      const normalizedThread = {
-        ...thread,
-        workspace: normalizeWorkspaceRoot(thread.workspace) || normalizedWorkspace
-      }
-      markSddAssistantThread(draft, normalizedThread.id)
-      useChatStore.setState((state) => ({
-        activeThreadId: normalizedThread.id,
-        threads: state.threads.some((item) => item.id === normalizedThread.id)
-          ? state.threads
-          : [normalizedThread, ...state.threads]
-      }))
-      setRoute('chat')
-      await selectThread(normalizedThread.id)
-      void useChatStore.getState().refreshThreads()
-      return normalizedThread.id
-    } catch (error) {
-      setError(error instanceof Error ? error.message : String(error))
-      return null
-    }
-  }
-
-  const ensureSddAssistantThreadForDraft = async (draft: SddDraft): Promise<string | null> => {
-    const registeredThreadId = sddAssistantThreadIdForDraft(draft)
-    if (registeredThreadId) {
-      setRoute('chat')
-      if (useChatStore.getState().activeThreadId !== registeredThreadId) {
-        await selectThread(registeredThreadId)
-      }
-      if (useChatStore.getState().activeThreadId === registeredThreadId) {
-        return registeredThreadId
-      }
-    }
-    return createSddAssistantThreadForDraft(draft)
-  }
-
-  const openSddRequirementDraft = async (draft: SddDraft, content: string): Promise<boolean> => {
-    useSddDraftStore.getState().setActiveDraft(draft, content)
-    setInput('')
-    setMode('agent')
-    setRoute('chat')
-    setRightSidebarWidth((width) => Math.max(width, 420))
-    const sddThreadId = await ensureSddAssistantThreadForDraft(draft)
-    if (!sddThreadId) return false
-    setRightPanelMode('sdd-ai')
-    return true
-  }
-
-  const startNewSddRequirement = async (): Promise<void> => {
-    const activeCodeWorkspace = activeThreadId
-      ? normalizeWorkspaceRoot(codeThreads.find((thread) => thread.id === activeThreadId)?.workspace ?? '')
-      : ''
-    let targetWorkspace = activeCodeWorkspace || normalizeWorkspaceRoot(workspaceRoot)
-    if (!targetWorkspace) {
-      const picked = await chooseWorkspace({ selectThreadAfter: false })
-      targetWorkspace = normalizeWorkspaceRoot(picked ?? useChatStore.getState().workspaceRoot)
-    }
-    if (!targetWorkspace) {
-      setError(t('workspaceRequiredToCreateThread'))
-      return
-    }
-    const restored = await restoreRememberedSddDraft({
-      workspaceRoot: targetWorkspace,
-      readWorkspaceFile: window.dsGui.readWorkspaceFile
-    })
-    if (restored.kind === 'restored') {
-      await openSddRequirementDraft(restored.draft, restored.content)
-      return
-    }
-
-    const draftUuid = globalThis.crypto?.randomUUID?.() ?? `draft-${Date.now()}`
-    const draft = createSddDraft({ id: draftUuid, workspaceRoot: targetWorkspace })
-    const initialContent = [
-      `# ${t('sddUntitledRequirement')}`,
-      '',
-      `## ${t('sddTemplateBackground')}`,
-      '',
-      `## ${t('sddTemplateGoal')}`,
-      '',
-      `## ${t('sddTemplateAcceptance')}`,
-      ''
-    ].join('\n')
-    const result = await window.dsGui.createWorkspaceFile({
-      workspaceRoot: targetWorkspace,
-      path: draft.relativePath,
-      content: initialContent
-    })
-    if (!result.ok) {
-      setError(result.message)
-      return
-    }
-    const activeDraft = { ...draft, absolutePath: result.path }
-    await openSddRequirementDraft(activeDraft, initialContent)
-  }
-
-  const sendSddAssistantPrompt = async (value: string): Promise<void> => {
-    const v = value.trim()
-    const draft = useSddDraftStore.getState().activeDraft
-    if (!v || !draft) return
-    const threadId = await ensureSddAssistantThreadForDraft(draft)
-    if (!threadId) return
-    const snapshot = useSddDraftStore.getState()
-    void saveActiveSddDraftToDisk()
-    const prompt = composeSddAssistantPrompt({
-      userPrompt: v,
-      draftMarkdown: snapshot.content,
-      draftRelativePath: draft.relativePath,
-      workspaceRoot: draft.workspaceRoot
-    })
-    setInput('')
-    const model = composerModel.trim()
-    const reasoningEffort = composerReasoningEffortRequestValue(composerReasoningEffort)
-    const sent = await sendMessage(prompt, mode === 'plan' ? 'plan' : 'agent', {
-      displayText: v,
-      ...(model ? { model } : {}),
-      ...(reasoningEffort ? { reasoningEffort } : {})
-    })
-    if (!sent) setInput(v)
-  }
-
-  const uploadSddImagesAsAttachments = async (
-    images: SddDraftImageReference[],
-    threadId: string,
-    workspace: string
-  ): Promise<{ images: SddDraftImageReference[]; attachmentIds: string[] }> => {
-    const provider = getProvider()
-    const attachmentCapabilities = runtimeInfo?.capabilities.attachments
-    if (!attachmentCapabilities || typeof provider.uploadAttachment !== 'function') {
-      throw new Error(t('composerAttachmentUnavailable'))
-    }
-    const attachmentIds: string[] = []
-    for (const image of images) {
-      const file = base64ImageToFile(image)
-      const prepared = await prepareImageAttachmentUpload(file, attachmentCapabilities)
-      const attachment = await provider.uploadAttachment({
-        name: fileNameFromPath(image.relativePath),
-        mimeType: prepared.mimeType,
-        dataBase64: prepared.dataBase64,
-        textFallback: prepared.textFallback,
-        threadId,
-        workspace
-      })
-      attachmentIds.push(attachment.id)
-    }
-    return { images: withAttachmentIds(images, attachmentIds), attachmentIds }
-  }
-
-  const handleSddNextStep = async (): Promise<void> => {
-    const snapshot = useSddDraftStore.getState()
-    const draft = snapshot.activeDraft
-    if (!draft) return
-    if (!snapshot.content.trim()) {
-      useSddDraftStore.getState().setOperationStatus('error', t('sddEmptyDraftError'))
-      return
-    }
-    if (busy) {
-      setError(t('composerQueuePlaceholder'))
-      return
-    }
-    if (runtimeConnection !== 'ready') {
-      setError(t('runtimeActionNeedsConnection'))
-      return
-    }
-    useSddDraftStore.getState().setOperationStatus('upgrading')
-    const saved = await saveActiveSddDraftToDisk()
-    if (!saved) {
-      useSddDraftStore.getState().setOperationStatus('error', useSddDraftStore.getState().error)
-      return
-    }
-
-    const threadId = await ensureSddAssistantThreadForDraft(draft)
-    if (!threadId) {
-      useSddDraftStore.getState().setOperationStatus('idle')
-      return
-    }
-
-    const collected = await collectSddDraftImages({
-      markdown: useSddDraftStore.getState().content,
-      draftRelativePath: draft.relativePath,
-      workspaceRoot: draft.workspaceRoot
-    })
-    if (collected.errors.length > 0) {
-      useSddDraftStore.getState().setOperationStatus('error', collected.errors.join('\n'))
-      return
-    }
-
-    const supportsImageAttachments =
-      collected.images.length > 0 &&
-      runtimeInfo?.capabilities.model.inputModalities.includes('image') === true &&
-      runtimeInfo.capabilities.attachments.available === true &&
-      typeof getProvider().uploadAttachment === 'function'
-
-    let imagesForPrompt = collected.images
-    let attachmentIds: string[] = []
-    let imageMode: 'attachments' | 'base64' | 'none' =
-      collected.images.length === 0 ? 'none' : 'base64'
-
-    if (supportsImageAttachments) {
-      try {
-        const uploaded = await uploadSddImagesAsAttachments(collected.images, threadId, draft.workspaceRoot)
-        imagesForPrompt = uploaded.images
-        attachmentIds = uploaded.attachmentIds
-        imageMode = 'attachments'
-      } catch (error) {
-        useSddDraftStore.getState().setOperationStatus(
-          'error',
-          error instanceof Error ? error.message : String(error)
-        )
-        return
-      }
-    }
-
-    const latestDraftContent = useSddDraftStore.getState().content
-    const planRelativePath = sddDraftPlanRelativePath(draft)
-    const planId = buildGuiPlanId(draft.workspaceRoot, planRelativePath)
-    const sourceRequest = sddDraftSourceRequest(latestDraftContent, draft.relativePath)
-    const assistantContext = sddAssistantContextFromBlocks(blocks)
-    const prompt = buildSddDraftToPlanPrompt({
-      draftMarkdown: latestDraftContent,
-      draftRelativePath: draft.relativePath,
-      planRelativePath,
-      assistantContext,
-      workspaceRoot: draft.workspaceRoot,
-      images: imagesForPrompt,
-      imageMode
-    })
-    sddUpgradeInFlightRef.current = true
-    sddUpgradeTargetRef.current = {
-      planId,
-      relativePath: planRelativePath,
-      workspaceRoot: draft.workspaceRoot
-    }
-    setMode('plan')
-    const sent = await sendPlanTurn(prompt, {
-      displayText: t('sddGeneratePlanAction'),
-      workspaceRoot: draft.workspaceRoot,
-      guiPlan: {
-        operation: 'draft',
-        workspaceRoot: draft.workspaceRoot,
-        relativePath: planRelativePath,
-        planId,
-        sourceRequest
-      },
-      ...(attachmentIds.length ? { attachmentIds } : {})
-    })
-    if (!sent) {
-      sddUpgradeInFlightRef.current = false
-      sddUpgradeTargetRef.current = null
-      useSddDraftStore.getState().setOperationStatus('idle')
-    }
-  }
-
   const readComposerFileContextEntries = async (
     references: ComposerFileReference[],
     workspace: string
@@ -1233,6 +872,12 @@ export function Workbench(): ReactElement {
     void handleSendAsync()
   }
 
+  const handleInterruptAndSend = (): void => {
+    interrupt()
+    // Send after interrupt settles UI state synchronously
+    window.setTimeout(() => handleSend(), 0)
+  }
+
   const handleSendAsync = async (): Promise<void> => {
     const v = input.trim()
     const attachments = route === 'chat' ? composerAttachments : []
@@ -1257,8 +902,12 @@ export function Workbench(): ReactElement {
     const prepareChatMessage = async (): Promise<{ text: string; displayText?: string } | null> => {
       if (fileReferences.length === 0) {
         return {
-          text: messageText,
-          ...(emptyDisplayText ? { displayText: emptyDisplayText } : {})
+          text: buildSelectedSkillPrompt(selectedComposerSkill, messageText),
+          ...(selectedComposerSkill && v
+            ? { displayText: v }
+            : emptyDisplayText
+              ? { displayText: emptyDisplayText }
+              : {})
         }
       }
       const workspace = normalizeWorkspaceRoot(
@@ -1272,7 +921,10 @@ export function Workbench(): ReactElement {
         const fileContext = await readComposerFileContextEntries(fileReferences, workspace)
         const displayText = v || emptyDisplayText
         return {
-          text: buildComposerFileContextPrompt(messageText, fileContext),
+          text: buildSelectedSkillPrompt(
+            selectedComposerSkill,
+            buildComposerFileContextPrompt(messageText, fileContext)
+          ),
           ...(displayText ? { displayText } : {})
         }
       } catch (error) {
@@ -1281,10 +933,6 @@ export function Workbench(): ReactElement {
       }
     }
 
-    if (activeSddDraft && rightPanelMode === 'sdd-ai') {
-      void sendSddAssistantPrompt(v)
-      return
-    }
     const planCommand = parseGuiPlanCommand(v)
     if (planCommand) {
       setInput('')
@@ -1295,6 +943,7 @@ export function Workbench(): ReactElement {
       const prepared = await prepareChatMessage()
       if (!prepared) return
       setInput('')
+      setSelectedComposerSkill(null)
       clearComposerAttachments()
       clearComposerFileReferences()
       void sendPlanTurn(prepared.text, {
@@ -1396,6 +1045,7 @@ export function Workbench(): ReactElement {
     const prepared = await prepareChatMessage()
     if (!prepared) return
     setInput('')
+    setSelectedComposerSkill(null)
     clearComposerAttachments()
     clearComposerFileReferences()
     void sendMessage(prepared.text, mode === 'plan' ? 'plan' : 'agent', {
@@ -1406,40 +1056,38 @@ export function Workbench(): ReactElement {
   }
 
   const openThread = (id: string): void => {
-    if (activeSddDraft) {
-      void saveActiveSddDraftToDisk()
-      useSddDraftStore.getState().clearActiveDraft()
-    }
     setConnectPhoneSidebarOpen(false)
+    setSelectedComposerSkill(null)
     setRoute('chat')
     void selectThread(id)
   }
 
   const startNewChat = (): void => {
-    if (activeSddDraft) {
-      void saveActiveSddDraftToDisk()
-      useSddDraftStore.getState().clearActiveDraft()
-    }
     setConnectPhoneSidebarOpen(false)
+    setSelectedComposerSkill(null)
     setRoute('chat')
     void createThread()
   }
 
   const startNewChatInWorkspace = (workspaceRoot: string): void => {
-    if (activeSddDraft) {
-      void saveActiveSddDraftToDisk()
-      useSddDraftStore.getState().clearActiveDraft()
-    }
     setConnectPhoneSidebarOpen(false)
+    setSelectedComposerSkill(null)
     setRoute('chat')
     void createThread({ workspaceRoot })
   }
 
+  const trySkillInNewConversation = (skill: ComposerSkillSelection): void => {
+    setConnectPhoneSidebarOpen(false)
+    setInput('')
+    clearComposerAttachments()
+    clearComposerFileReferences()
+    setMode('agent')
+    setSelectedComposerSkill(skill)
+    setRoute('chat')
+    void createThread({ forceNew: true })
+  }
+
   const selectNewConversationWorkspace = (nextWorkspaceRoot: string): void => {
-    if (activeSddDraft) {
-      void saveActiveSddDraftToDisk()
-      useSddDraftStore.getState().clearActiveDraft()
-    }
     setConnectPhoneSidebarOpen(false)
     setRoute('chat')
     void (async () => {
@@ -1451,10 +1099,6 @@ export function Workbench(): ReactElement {
   }
 
   const pickNewConversationWorkspace = (): void => {
-    if (activeSddDraft) {
-      void saveActiveSddDraftToDisk()
-      useSddDraftStore.getState().clearActiveDraft()
-    }
     setConnectPhoneSidebarOpen(false)
     setRoute('chat')
     void chooseWorkspace({ selectThreadAfter: false })
@@ -1473,11 +1117,6 @@ export function Workbench(): ReactElement {
 
   const openDataComplianceProject = (): void => {
     setConnectPhoneSidebarOpen(false)
-    if (activeSddDraft) {
-      void saveActiveSddDraftToDisk()
-      useSddDraftStore.getState().clearActiveDraft()
-      if (rightPanelMode === 'sdd-ai') setRightPanelMode(null)
-    }
     if (rightPanelMode !== null) setRightPanelMode(null)
     useChatStore.setState({
       route: 'dataCompliance',
@@ -1487,11 +1126,6 @@ export function Workbench(): ReactElement {
 
   const openDesensitizeProject = (): void => {
     setConnectPhoneSidebarOpen(false)
-    if (activeSddDraft) {
-      void saveActiveSddDraftToDisk()
-      useSddDraftStore.getState().clearActiveDraft()
-      if (rightPanelMode === 'sdd-ai') setRightPanelMode(null)
-    }
     if (rightPanelMode !== null) setRightPanelMode(null)
     useChatStore.setState({
       route: 'desensitize',
@@ -1525,17 +1159,18 @@ export function Workbench(): ReactElement {
     openKnowledgeBase()
   }
 
+  const openLearningIterationView = (): void => {
+    setConnectPhoneSidebarOpen(false)
+    if (rightPanelMode !== null) setRightPanelMode(null)
+    openLearningIteration()
+  }
+
   const toggleConnectPhone = (): void => {
-    if (activeSddDraft) {
-      void saveActiveSddDraftToDisk()
-      useSddDraftStore.getState().clearActiveDraft()
-      if (rightPanelMode === 'sdd-ai') setRightPanelMode(null)
-    }
     openClaw()
     setConnectPhoneSidebarOpen((open) => !open)
   }
 
-  const sidebarView: 'chat' | 'dataCompliance' | 'desensitize' | 'claw' | 'schedule' | 'documentWriting' | 'legalResearch' | 'knowledgeBase' =
+  const sidebarView: 'chat' | 'dataCompliance' | 'desensitize' | 'claw' | 'schedule' | 'documentWriting' | 'legalResearch' | 'knowledgeBase' | 'learningIteration' =
     route === 'claw' || (route === 'plugins' && pluginHostRoute === 'claw')
       ? 'claw'
       : route === 'schedule'
@@ -1546,6 +1181,8 @@ export function Workbench(): ReactElement {
             ? 'legalResearch'
             : route === 'knowledgeBase'
               ? 'knowledgeBase'
+              : route === 'learningIteration'
+                ? 'learningIteration'
               : route === 'dataCompliance'
                 ? 'dataCompliance'
                 : route === 'desensitize'
@@ -1595,39 +1232,7 @@ export function Workbench(): ReactElement {
         />
         <div className="h-full min-h-0 shrink-0" style={{ width: rightSidebarWidth }}>
           <Suspense fallback={<div className="h-full w-full bg-ds-sidebar" />}>
-            {rightPanelMode === 'sdd-ai' && activeSddDraft ? (
-              <SddAssistantPanel
-                draft={activeSddDraft}
-                input={input}
-                setInput={setInput}
-                mode={mode}
-                setMode={setMode}
-                busy={busy}
-                runtimeConnection={runtimeConnection}
-                activeThreadId={activeThreadId}
-                blocks={blocks}
-                liveReasoning={liveReasoning}
-                liveAssistant={liveAssistant}
-                composerModel={composerModel}
-                composerPickList={composerPickList}
-                composerModelGroups={composerModelGroups}
-                composerReasoningEffort={composerReasoningEffort}
-                setComposerModel={setComposerModel}
-                setComposerReasoningEffort={setComposerReasoningEffort}
-                queuedMessages={queuedMessages}
-                removeQueuedMessage={removeQueuedMessage}
-                onSend={handleSend}
-                onInterrupt={(options) => void interrupt(options)}
-                onRetryConnection={() => void probeRuntime('user')}
-                onOpenSettings={() => openSettings('agents')}
-                onNewConversation={() => {
-                  setInput('')
-                  void createSddAssistantThreadForDraft(activeSddDraft)
-                }}
-                onCollapse={closeRightPanel}
-                className="h-full max-h-full w-full"
-              />
-            ) : rightPanelMode === 'changes' ? (
+            {rightPanelMode === 'changes' ? (
               <ChangeInspector
                 blocks={blocks}
                 className="h-full max-h-full w-full flex-col"
@@ -1705,7 +1310,7 @@ export function Workbench(): ReactElement {
               onRestoreThread={(id) => archiveThread(id, false)}
               onNewChat={startNewChat}
               onNewChatInWorkspace={startNewChatInWorkspace}
-              onNewRequirement={() => void startNewSddRequirement()}
+              onLearningIterationOpen={openLearningIterationView}
               onOpenSettings={(section) => openSettings(section)}
               onOpenPlugins={openPluginsView}
               onToggleConnectPhone={toggleConnectPhone}
@@ -1761,9 +1366,16 @@ export function Workbench(): ReactElement {
               />
             </div>
             <Suspense fallback={<div className="h-full bg-ds-main" />}>
-              <PluginMarketplaceView />
+              <PluginMarketplaceView onTrySkill={trySkillInNewConversation} />
             </Suspense>
           </>
+        ) : route === 'learningIteration' ? (
+          <Suspense fallback={<div className="h-full bg-ds-main" />}>
+            <LearningIterationView
+              leftSidebarCollapsed={leftSidebarCollapsed}
+              onToggleLeftSidebar={toggleLeftSidebar}
+            />
+          </Suspense>
         ) : route === 'schedule' ? (
           <Suspense fallback={<div className="h-full bg-ds-main" />}>
             <ScheduleTasksView
@@ -1872,20 +1484,7 @@ export function Workbench(): ReactElement {
         {error && !(runtimeConnection !== 'ready' && !activeThreadId) ? renderRuntimeBanner(error, runtimeErrorDetail) : null}
 
         <div className="flex min-h-0 flex-1">
-          <div className={`flex min-h-0 min-w-0 flex-1 ${activeSddDraft ? '' : stageInsetClass}`}>
-          {activeSddDraft ? (
-            <SddDraftEditorView
-              leftSidebarCollapsed={leftSidebarCollapsed}
-              onToggleLeftSidebar={toggleLeftSidebar}
-              onNext={() => void handleSddNextStep()}
-              onClose={() => {
-                void saveActiveSddDraftToDisk()
-                useSddDraftStore.getState().clearActiveDraft()
-                if (rightPanelMode === 'sdd-ai') setRightPanelMode(null)
-              }}
-              nextDisabled={busy || runtimeConnection !== 'ready' || sddDraftOperationStatus === 'upgrading'}
-            />
-          ) : (
+          <div className={`flex min-h-0 min-w-0 flex-1 ${stageInsetClass}`}>
             <section className="ds-chat-stage ds-drag flex min-h-0 min-w-0 flex-1 flex-col">
             <header className="chat-topbar ds-topbar-surface relative z-10 mt-3 flex min-h-[46px] w-full shrink-0 items-stretch overflow-visible rounded-[24px]">
               <div className="chat-topbar-grid grid w-full min-w-0 items-start gap-2.5 px-3 py-2 sm:px-4 md:pl-5 md:pr-2">
@@ -1997,10 +1596,13 @@ export function Workbench(): ReactElement {
                 attachmentUploadEnabled={attachmentUploadEnabled}
                 attachmentUploadBusy={attachmentUploadBusy}
                 attachmentUploadError={attachmentUploadError}
-                fileReferenceEnabled={route === 'chat' && !activeSddDraft}
+                fileReferenceEnabled={route === 'chat'}
                 fileReferences={composerFileReferences}
                 webAccessAvailable={webAccessAvailable}
                 skillCommands={runtimeSkills}
+                selectedSkill={route === 'chat' ? selectedComposerSkill : null}
+                onSelectSkill={setSelectedComposerSkill}
+                onRemoveSelectedSkill={() => setSelectedComposerSkill(null)}
                 onPickAttachments={(files) => void handlePickAttachments(files)}
                 onPasteClipboardImage={(options) => void handlePasteClipboardImage(options)}
                 onRemoveAttachment={removeComposerAttachment}
@@ -2009,6 +1611,7 @@ export function Workbench(): ReactElement {
                 queuedMessages={queuedMessages}
                 onRemoveQueuedMessage={removeQueuedMessage}
                 onInterrupt={(options) => void interrupt(options)}
+                onInterruptAndSend={handleInterruptAndSend}
                 onPlanCommand={() => void handleGuiPlanCommand()}
                 onReviewCommand={(target) => void reviewActiveThread(target)}
                 onBtwCommand={(seedText) => {
@@ -2026,10 +1629,9 @@ export function Workbench(): ReactElement {
               />
             </div>
           </section>
-          )}
           </div>
 
-          {route === 'chat' && !activeSddDraft ? (
+          {route === 'chat' ? (
             <SideConversationPanel rightOffset={rightPanelVisible ? rightSidebarWidth + 24 : 24} />
           ) : null}
 

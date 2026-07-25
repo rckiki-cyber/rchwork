@@ -442,6 +442,21 @@ export type ScheduleRuntimeStatus = {
   powerSaveBlockerActive: boolean
 }
 
+export type LearningIterationCadence = 'daily'
+export type LearningIterationInitialBackfill = 'full'
+export type LearningIterationApplyPolicy = 'auto-with-rollback'
+
+export type LearningIterationSettingsV1 = {
+  enabled: boolean
+  cadence: LearningIterationCadence
+  idleMinutes: number
+  keepRunningInTray: boolean
+  initialBackfill: LearningIterationInitialBackfill
+  applyPolicy: LearningIterationApplyPolicy
+}
+
+export type LearningIterationSettingsPatchV1 = Partial<LearningIterationSettingsV1>
+
 export type GuiUpdateConfigV1 = {
   channel: GuiUpdateChannel
 }
@@ -461,11 +476,12 @@ export type AppSettingsV1 = {
   write: WriteSettingsV1
   claw: ClawSettingsV1
   schedule: ScheduleSettingsV1
+  learningIteration: LearningIterationSettingsV1
   guiUpdate: GuiUpdateConfigV1
 }
 
 export type AppSettingsPatch = Partial<
-  Omit<AppSettingsV1, 'provider' | 'agents' | 'log' | 'notifications' | 'appBehavior' | 'keyboardShortcuts' | 'write' | 'claw' | 'schedule' | 'guiUpdate'>
+  Omit<AppSettingsV1, 'provider' | 'agents' | 'log' | 'notifications' | 'appBehavior' | 'keyboardShortcuts' | 'write' | 'claw' | 'schedule' | 'learningIteration' | 'guiUpdate'>
 > & {
   provider?: ModelProviderSettingsPatchV1
   agents?: LegalworkSettingsEnvelopePatchV1
@@ -476,5 +492,6 @@ export type AppSettingsPatch = Partial<
   write?: WriteSettingsPatchV1
   claw?: ClawSettingsPatchV1
   schedule?: ScheduleSettingsPatchV1
+  learningIteration?: LearningIterationSettingsPatchV1
   guiUpdate?: Partial<GuiUpdateConfigV1>
 }

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { McpCapabilityConfig } from '../../contracts/capabilities.js'
 import type { ToolHostContext } from '../../ports/tool-host.js'
 import {
@@ -190,6 +193,59 @@ describe('buildMcpToolProviders', () => {
     })
 
     expect(seenTimeouts).toEqual([60_000])
+  })
+
+  it('uses Flint static rendering automatically and persists image artifacts', async () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'legalwork-flint-chart-'))
+    const png = Buffer.from('fake-png')
+    const client: McpClientLike = {
+      listTools: async () => ({
+        tools: [
+          {
+            name: 'create_chart_view',
+            inputSchema: { type: 'object' },
+            _meta: { ui: { resourceUri: 'ui://flint-chart/chart-view.html' } }
+          },
+          {
+            name: 'render_chart',
+            inputSchema: { type: 'object' }
+          }
+        ]
+      }),
+      callTool: async () => ({
+        content: [
+          { type: 'image', data: png.toString('base64'), mimeType: 'image/png' },
+          { type: 'text', text: 'vegalite · png · 400×300px' }
+        ]
+      }),
+      close: async () => undefined
+    }
+
+    try {
+      const built = await buildMcpToolProviders(mcpConfig('flint-chart'), {
+        clientFactory: async () => client
+      })
+      const tools = built.providers[0]?.tools ?? []
+      expect(tools.map((tool) => tool.name)).toEqual(['mcp_flint_chart_render_chart'])
+      expect(tools[0]?.policy).toBe('auto')
+
+      const rendered = await tools[0]!.execute(
+        {},
+        { ...toolContext('thread-flint'), workspace: tempRoot }
+      )
+      const output = rendered.output as {
+        file_path: string
+        artifacts: string[]
+        result: { content: Array<{ type: string; text: string }> }
+      }
+      expect(output.artifacts).toEqual([output.file_path])
+      expect(existsSync(output.file_path)).toBe(true)
+      expect(readFileSync(output.file_path)).toEqual(png)
+      expect(JSON.stringify(output.result)).not.toContain(png.toString('base64'))
+      expect(output.result.content[0]?.text).toContain(output.file_path)
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true })
+    }
   })
 
   it('rebuilds split OfficeCLI add arguments with the active task document', async () => {

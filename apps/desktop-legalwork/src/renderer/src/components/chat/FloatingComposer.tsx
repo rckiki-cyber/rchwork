@@ -81,6 +81,7 @@ import {
   type QueuedComposerMessage
 } from './FloatingComposerQueuedMessages'
 import { useComposerDraft } from './use-composer-draft'
+import type { ComposerSkillSelection } from './composer-skill-selection'
 
 export type { ComposerFileReference } from '../../lib/composer-file-references'
 
@@ -126,6 +127,9 @@ type Props = {
       promptPatterns?: string[]
     }
   }>
+  selectedSkill?: ComposerSkillSelection | null
+  onSelectSkill?: (skill: ComposerSkillSelection) => void
+  onRemoveSelectedSkill?: () => void
   onPickAttachments?: (files: File[]) => void
   onPasteClipboardImage?: (options?: { silentNoImage?: boolean }) => void | Promise<void>
   onRemoveAttachment?: (id: string) => void
@@ -133,6 +137,7 @@ type Props = {
   onRemoveFileReference?: (relativePath: string) => void
   onSend: () => void
   onInterrupt: (options?: { discard?: boolean }) => void
+  onInterruptAndSend?: () => void
   onPlanCommand?: () => void
   onReviewCommand?: (target: ReviewTarget) => void
   /**
@@ -570,6 +575,9 @@ export function FloatingComposer({
   fileReferenceEnabled = false,
   fileReferences = [],
   skillCommands = [],
+  selectedSkill = null,
+  onSelectSkill,
+  onRemoveSelectedSkill,
   onPickAttachments,
   onPasteClipboardImage,
   onRemoveAttachment,
@@ -577,6 +585,7 @@ export function FloatingComposer({
   onRemoveFileReference,
   onSend,
   onInterrupt,
+  onInterruptAndSend,
   onPlanCommand,
   onReviewCommand,
   onBtwCommand,
@@ -657,8 +666,18 @@ export function FloatingComposer({
   const stretchModelPicker =
     compact && modelPickerMode === 'combobox' && !showToolbarStartControls && !hideModelPicker
   const draft = useComposerDraft({ input, canCompose })
+  const focusComposer = draft.focusComposer
+  const selectedSkillId = selectedSkill?.id
   const slashQuery = getSlashQuery(input)
   const [composerCursor, setComposerCursor] = useState(() => input.length)
+  const [interruptChoice, setInterruptChoice] = useState<'queue' | 'guide'>('queue')
+  const prevBusyRef = useRef(busy)
+  useEffect(() => {
+    if (prevBusyRef.current && !busy) {
+      setInterruptChoice('queue')
+    }
+    prevBusyRef.current = busy
+  }, [busy])
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0)
   const [fileMentionSuggestions, setFileMentionSuggestions] = useState<ComposerFileReference[]>([])
   const [fileMentionLoading, setFileMentionLoading] = useState(false)
@@ -683,11 +702,13 @@ export function FloatingComposer({
             ? clawHasInboundConversation
               ? t('clawPlaceholder', { name: clawAgentName })
               : t('clawPlaceholderNeedsInbound')
-            : mode === 'plan'
-              ? t('composerPlanPlaceholder')
-              : hasActiveThread
-                ? t('placeholder')
-                : t('composerStartsThread')
+            : selectedSkill
+              ? t('composerSkillTaskPlaceholder', { name: selectedSkill.name })
+              : mode === 'plan'
+                ? t('composerPlanPlaceholder')
+                : hasActiveThread
+                  ? t('placeholder')
+                  : t('composerStartsThread')
   const footerHint = !runtimeReady
     ? t('composerOfflineHint')
     : !hasActiveThread && !effectiveWorkspaceRoot
@@ -906,6 +927,11 @@ export function FloatingComposer({
   }, [slashQuery])
 
   useEffect(() => {
+    if (!selectedSkillId) return
+    focusComposer()
+  }, [focusComposer, selectedSkillId])
+
+  useEffect(() => {
     setSelectedFileMentionIndex(0)
   }, [activeFileMentionKey])
 
@@ -995,7 +1021,18 @@ export function FloatingComposer({
     if (commandId.startsWith('skill:')) {
       const command = slashCommands.find((item) => item.id === commandId)
       if (command?.skillPrompt) {
-        setInput(command.skillPrompt)
+        const skillId = commandId.slice('skill:'.length)
+        const skill = skillCommands.find((item) => item.id === skillId)
+        if (skill && onSelectSkill) {
+          setInput('')
+          onSelectSkill({
+            id: skill.id,
+            name: skill.name,
+            ...(skill.description?.trim() ? { description: skill.description.trim() } : {})
+          })
+        } else {
+          setInput(command.skillPrompt)
+        }
         draft.focusComposer()
       }
       return
@@ -1644,6 +1681,38 @@ export function FloatingComposer({
           onDragOver={handleComposerDragOver}
           onDrop={handleComposerDrop}
         >
+          {selectedSkill ? (
+            <div className="ds-no-drag flex items-center px-1 pb-1">
+              <div
+                role="status"
+                className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-[12px] border border-ds-skill bg-ds-skill-soft px-2.5 py-1.5 text-ds-skill shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]"
+                title={`/skill:${selectedSkill.id}${selectedSkill.description ? ` · ${selectedSkill.description}` : ''}`}
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[8px] bg-ds-skill text-white shadow-sm">
+                  <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[9.5px] font-bold uppercase leading-3 tracking-[0.04em] opacity-75">
+                    {t('composerSkillSelectedLabel')}
+                  </span>
+                  <span className="block max-w-64 truncate text-[12.5px] font-semibold leading-4">
+                    {selectedSkill.name}
+                  </span>
+                </span>
+                {onRemoveSelectedSkill ? (
+                  <button
+                    type="button"
+                    onClick={onRemoveSelectedSkill}
+                    className="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-ds-skill opacity-75 transition hover:bg-ds-skill-soft hover:opacity-100"
+                    aria-label={t('composerRemoveSelectedSkill', { name: selectedSkill.name })}
+                    title={t('composerRemoveSelectedSkill', { name: selectedSkill.name })}
+                  >
+                    <X className="h-3.5 w-3.5" strokeWidth={2} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <textarea
             ref={draft.textareaRef}
             rows={1}
@@ -1835,16 +1904,43 @@ export function FloatingComposer({
                   <Square className="h-3.5 w-3.5 fill-current" strokeWidth={2.4} />
                 </button>
               ) : null}
-              <button
-                type="button"
-                disabled={primaryActionDisabled}
-                onClick={handlePrimaryAction}
-                className="ds-no-drag flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-white shadow-[0_10px_22px_rgba(15,23,42,0.22)] transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-ds-card disabled:text-ds-faint disabled:shadow-none dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 dark:disabled:bg-ds-card dark:disabled:text-ds-faint"
-                aria-label={primaryActionLabel}
-                title={primaryActionLabel}
-              >
-                <SendIcon className="h-4 w-4" />
-              </button>
+              {busy && input.trim() && onInterruptAndSend ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setInterruptChoice('queue'); onSend() }}
+                    className={`ds-no-drag flex h-10 shrink-0 items-center gap-1.5 rounded-l-[20px] px-4 text-[12px] font-semibold transition ${
+                      interruptChoice === 'queue'
+                        ? 'bg-zinc-950 text-white shadow-[0_10px_22px_rgba(15,23,42,0.22)] dark:bg-white dark:text-zinc-950'
+                        : 'border border-r-0 border-zinc-950/20 bg-transparent text-zinc-500 hover:bg-zinc-100 dark:border-white/30 dark:text-zinc-400 dark:hover:bg-white/10'
+                    }`}
+                  >
+                    {t('queueMessage')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setInterruptChoice('guide'); onInterruptAndSend() }}
+                    className={`ds-no-drag flex h-10 shrink-0 items-center gap-1.5 rounded-r-[20px] px-4 text-[12px] font-semibold transition ${
+                      interruptChoice === 'guide'
+                        ? 'bg-zinc-950 text-white shadow-[0_10px_22px_rgba(15,23,42,0.22)] dark:bg-white dark:text-zinc-950'
+                        : 'border border-l-0 border-zinc-950/20 bg-transparent text-zinc-500 hover:bg-zinc-100 dark:border-white/30 dark:text-zinc-400 dark:hover:bg-white/10'
+                    }`}
+                  >
+                    {t('composerInterruptAndSend')}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={primaryActionDisabled}
+                  onClick={handlePrimaryAction}
+                  className="ds-no-drag flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-white shadow-[0_10px_22px_rgba(15,23,42,0.22)] transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-ds-card disabled:text-ds-faint disabled:shadow-none dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 dark:disabled:bg-ds-card dark:disabled:text-ds-faint"
+                  aria-label={primaryActionLabel}
+                  title={primaryActionLabel}
+                >
+                  <SendIcon className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
         </div>

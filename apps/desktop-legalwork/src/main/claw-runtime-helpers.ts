@@ -192,18 +192,94 @@ function generatedFileFromToolResult(
   item: TurnItemJson,
   workspaceRoot: string
 ): ClawGeneratedFileV1 | null {
-  if (item.kind !== 'tool_result' || item.toolKind !== 'file_change' || item.isError === true) return null
+  if (item.kind !== 'tool_result' || item.isError === true) return null
+
+  // file_change items (write / edit tools) carry path+relative_path in their output
+  if (item.toolKind === 'file_change') {
+    const output = outputRecord(item.output)
+    if (!output) return null
+    const path = asString(output.path) || asString(output.absolute_path)
+    const relativePath = asString(output.relative_path)
+    const resolvedPath = path || (workspaceRoot && relativePath ? join(workspaceRoot, relativePath) : '')
+    if (!resolvedPath) return null
+    return {
+      path: resolvedPath,
+      ...(relativePath ? { relativePath } : {}),
+      fileName: basename(relativePath || resolvedPath)
+    }
+  }
+
+  // command_execution items (bash tool) may write files via shell redirection
+  if (item.toolKind === 'command_execution') {
+    return generatedFileFromCommandExecution(item, workspaceRoot)
+  }
+
+  return null
+}
+
+function generatedFileFromCommandExecution(
+  item: TurnItemJson,
+  workspaceRoot: string
+): ClawGeneratedFileV1 | null {
   const output = outputRecord(item.output)
   if (!output) return null
-  const path = asString(output.path) || asString(output.absolute_path)
-  const relativePath = asString(output.relative_path)
-  const resolvedPath = path || (workspaceRoot && relativePath ? join(workspaceRoot, relativePath) : '')
-  if (!resolvedPath) return null
-  return {
-    path: resolvedPath,
-    ...(relativePath ? { relativePath } : {}),
-    fileName: basename(relativePath || resolvedPath)
+
+  // Only extract from successful commands
+  const rawExitCode = output.exit_code
+  if (rawExitCode !== undefined && rawExitCode !== null) {
+    const exitCode = typeof rawExitCode === 'number' ? rawExitCode : Number(rawExitCode)
+    if (exitCode !== 0) return null
   }
+
+  const command = asString(output.command)
+  if (!command) return null
+
+  const cwd = asString(output.cwd) || workspaceRoot || ''
+  if (!cwd) return null
+
+  const filePath = extractFilePathFromCommand(command, cwd)
+  if (!filePath) return null
+
+  const relPath = workspaceRoot ? relative(workspaceRoot, filePath) : ''
+  const hasRelativePath = relPath && !relPath.startsWith('..') && !isAbsolute(relPath)
+
+  return {
+    path: filePath,
+    ...(hasRelativePath ? { relativePath: relPath } : {}),
+    fileName: basename(filePath)
+  }
+}
+
+function extractFilePathFromCommand(command: string, cwd: string): string | null {
+  const firstLine = command.split('\n')[0].trim()
+  if (!firstLine) return null
+
+  // Strip heredoc markers (<< EOF, <<'EOF', etc.) so they
+  // aren't mistaken for redirect targets
+  const cleaned = firstLine.replace(/<<\s*['"]?\w+['"]?\s*/g, '')
+
+  // Find the last > or >> redirect target that isn't
+  // a file descriptor or /dev/null
+  const redirectRe = />>?\s*(\S+)/g
+  let match
+  let lastTarget: string | null = null
+  while ((match = redirectRe.exec(cleaned)) !== null) {
+    const target = match[1]
+    if (target && !target.startsWith('&') && target !== '/dev/null' && !target.startsWith('/dev/')) {
+      lastTarget = target
+    }
+  }
+
+  if (lastTarget) return resolve(cwd, lastTarget)
+
+  // Fallback: check for cp / mv — last non-flag argument is the destination
+  const copyMoveMatch = firstLine.match(/^(?:cp|mv|install)\b/)
+  if (copyMoveMatch) {
+    const args = firstLine.split(/\s+/).slice(1).filter((a) => !a.startsWith('-'))
+    if (args.length >= 2) return resolve(cwd, args[args.length - 1])
+  }
+
+  return null
 }
 
 function threadItems(detail: ThreadDetailJson): TurnItemJson[] {

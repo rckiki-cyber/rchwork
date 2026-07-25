@@ -1871,8 +1871,7 @@ export class AgentLoop {
     if (!this.opts.memoryStore) return []
     const memories = await this.opts.memoryStore.retrieve({
       query: input.prompt,
-      workspace: input.workspace,
-      limit: 8
+      workspace: input.workspace
     })
     this.opts.memoryStore.setLastInjected(memories.map((memory) => memory.id))
     return memories

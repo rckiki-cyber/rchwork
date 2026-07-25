@@ -35,6 +35,7 @@ import type {
 import { useChatStore } from '../store/chat-store'
 import { NoticeView, TabButton, type MarketplaceNotice } from './PluginMarketplaceParts'
 import { AssistantMarkdown } from './chat/AssistantMarkdown'
+import type { ComposerSkillSelection } from './chat/composer-skill-selection'
 import {
   buildMcpMarketplaceOverlay,
   type McpMarketplaceOverlay,
@@ -253,6 +254,7 @@ function buildStdioMcpServer(
     trustScope?: 'workspace' | 'user'
     trustedWorkspaceRoots?: string[]
     env?: JsonRecord
+    timeoutMs?: number
   } = {}
 ): JsonRecord {
   const trustScope = options.trustScope ?? 'user'
@@ -270,7 +272,7 @@ function buildStdioMcpServer(
             : ['/path/to/workspace']
         }
       : {}),
-    timeoutMs: 30_000
+    timeoutMs: options.timeoutMs ?? 30_000
   }
 }
 
@@ -285,6 +287,24 @@ export function buildMcpConfig(
       [id]: buildStdioMcpServer(command, args, options)
     }
   }
+}
+
+export function buildFlintChartMcpConfig(): JsonRecord {
+  return buildMcpConfig(
+    'flint-chart',
+    'npx',
+    [
+      '--yes',
+      'flint-chart-mcp@0.3.0',
+      '--transport',
+      'stdio',
+      '--disable-file-reference'
+    ],
+    {
+      trustScope: 'user',
+      timeoutMs: 180_000
+    }
+  )
 }
 
 export function buildPkulawMcpConfig(token: string): JsonRecord {
@@ -858,6 +878,15 @@ const RECOMMENDED_ITEMS: MarketplaceItem[] = [
       )
   },
   {
+    id: 'flint-chart',
+    kind: 'mcp',
+    titleKey: 'pluginMcpFlintChartTitle',
+    descriptionKey: 'pluginMcpFlintChartDesc',
+    group: 'recommended',
+    category: 'data',
+    mcpConfig: () => buildFlintChartMcpConfig()
+  },
+  {
     id: 'pkulaw',
     kind: 'mcp',
     titleKey: 'pluginMcpPkulawTitle',
@@ -917,7 +946,11 @@ const RECOMMENDED_ITEMS: MarketplaceItem[] = [
   }
 ]
 
-export function PluginMarketplaceView(): ReactElement {
+export function PluginMarketplaceView({
+  onTrySkill
+}: {
+  onTrySkill?: (skill: ComposerSkillSelection) => void
+}): ReactElement {
   const { t } = useTranslation('common')
   const workspaceRoot = normalizeWorkspaceRoot(useChatStore((s) => s.workspaceRoot))
   const [activeKind, setActiveKind] = useState<PluginKind>('mcp')
@@ -1252,7 +1285,29 @@ export function PluginMarketplaceView(): ReactElement {
     try {
       if (item.kind === 'mcp') {
         if (!item.mcpConfig) return
+        let installedVersion = ''
+        if (item.id === 'flint-chart') {
+          if (typeof window.dsGui?.installOptionalMcpPackage !== 'function') {
+            setNotice({ tone: 'error', message: t('pluginMcpOptionalInstallerUnavailable') })
+            return
+          }
+          const installedPackage = await window.dsGui.installOptionalMcpPackage('flint-chart')
+          if (!installedPackage.ok) {
+            setNotice({
+              tone: 'error',
+              message: t('pluginMcpFlintInstallFailed', { message: installedPackage.message })
+            })
+            return
+          }
+          installedVersion = installedPackage.version
+        }
         await appendMcpConfig(item.id, item.mcpConfig(workspaceRoot))
+        if (installedVersion) {
+          setNotice({
+            tone: 'success',
+            message: t('pluginMcpFlintInstalled', { version: installedVersion })
+          })
+        }
         return
       }
 
@@ -1437,6 +1492,20 @@ export function PluginMarketplaceView(): ReactElement {
         message: error instanceof Error ? error.message : String(error)
       })
     }
+  }
+
+  const trySkill = (item: MarketplaceItem): void => {
+    if (!onTrySkill) {
+      void copySkillPrompt(item)
+      return
+    }
+    const description = itemDescription(item, t)
+    onTrySkill({
+      id: item.id,
+      name: itemTitle(item, t),
+      ...(description ? { description } : {})
+    })
+    closeSkillPreview()
   }
 
   const openSkillLocation = async (item: MarketplaceItem): Promise<void> => {
@@ -1723,7 +1792,8 @@ export function PluginMarketplaceView(): ReactElement {
           busy={busyId === storageKey(previewItem.kind, previewItem.id)}
           onClose={closeSkillPreview}
           onAdd={() => void addItem(previewItem)}
-          onTry={() => void copySkillPrompt(previewItem)}
+          onTry={() => trySkill(previewItem)}
+          onCopy={() => void copySkillPrompt(previewItem)}
           onOpenLocation={() => void openSkillLocation(previewItem)}
           t={t}
         />
@@ -2012,6 +2082,7 @@ function SkillPreviewDialog({
   onClose,
   onAdd,
   onTry,
+  onCopy,
   onOpenLocation,
   t
 }: {
@@ -2024,6 +2095,7 @@ function SkillPreviewDialog({
   onClose: () => void
   onAdd: () => void
   onTry: () => void
+  onCopy: () => void
   onOpenLocation: () => void
   t: (key: string, values?: Record<string, unknown>) => string
 }): ReactElement {
@@ -2152,7 +2224,7 @@ function SkillPreviewDialog({
             </button>
             <button
               type="button"
-              onClick={onTry}
+              onClick={onCopy}
               title={t('pluginSkillPreviewCopyCommand')}
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-ds-border bg-ds-card text-ds-muted shadow-sm transition hover:bg-ds-hover hover:text-ds-ink"
             >

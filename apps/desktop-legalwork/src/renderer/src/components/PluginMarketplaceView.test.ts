@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildFlintChartMcpConfig,
   buildPkulawMcpConfig,
   buildMcpConfig,
   customMcpConfigFragment,
@@ -41,6 +42,27 @@ const mcpLabels = {
 }
 
 describe('PluginMarketplaceView MCP config helpers', () => {
+  it('builds Flint Chart as an optional pinned npx MCP without bundling it', () => {
+    const config = buildFlintChartMcpConfig() as {
+      servers: Record<string, Record<string, unknown>>
+    }
+
+    expect(config.servers['flint-chart']).toMatchObject({
+      enabled: true,
+      transport: 'stdio',
+      command: 'npx',
+      args: [
+        '--yes',
+        'flint-chart-mcp@0.3.0',
+        '--transport',
+        'stdio',
+        '--disable-file-reference'
+      ],
+      trustScope: 'user',
+      timeoutMs: 180000
+    })
+  })
+
   it('merges recommended MCP servers into JSON config without dropping existing fields', () => {
     const existing = JSON.stringify({
       timeouts: { read_timeout: 120 },

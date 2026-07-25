@@ -10,6 +10,7 @@ import {
   DEFAULT_WRITE_WORKSPACE_ROOT,
   defaultClawSettings,
   defaultLegalworkRuntimeSettings,
+  defaultLearningIterationSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
   getLegalworkRuntimeSettings,
@@ -19,6 +20,7 @@ import {
   defaultWriteSettings,
   mergeClawSettings,
   mergeScheduleSettings,
+  mergeLearningIterationSettings,
   mergeWriteSettings,
   normalizeAppBehaviorSettings,
   normalizeKeyboardShortcuts,
@@ -224,7 +226,8 @@ const defaultSettings = (): AppSettingsV1 => ({
   },
   write: defaultWriteSettings(),
   claw: defaultClawSettings(),
-  schedule: defaultScheduleSettings()
+  schedule: defaultScheduleSettings(),
+  learningIteration: defaultLearningIterationSettings()
 })
 
 function buildMergedSettings(parsed: Partial<AppSettingsV1>): AppSettingsV1 {
@@ -247,6 +250,10 @@ function buildMergedSettings(parsed: Partial<AppSettingsV1>): AppSettingsV1 {
     write: mergeWriteSettings(defaults.write, migrated.write),
     claw: mergeClawSettings(defaults.claw, migrated.claw),
     schedule: mergeScheduleSettings(defaults.schedule, migrated.schedule),
+    learningIteration: mergeLearningIterationSettings(
+      defaults.learningIteration,
+      migrated.learningIteration
+    ),
     guiUpdate: { ...defaults.guiUpdate, ...migrated.guiUpdate }
   }
 }
@@ -433,6 +440,10 @@ export class JsonSettingsStore {
       write: mergeWriteSettings(cur.write, partial.write),
       claw: mergeClawSettings(cur.claw, partial.claw),
       schedule: mergeScheduleSettings(cur.schedule, partial.schedule),
+      learningIteration: mergeLearningIterationSettings(
+        cur.learningIteration,
+        partial.learningIteration
+      ),
       guiUpdate: { ...cur.guiUpdate, ...(partial.guiUpdate ?? {}) }
     })
     await this.save(next)

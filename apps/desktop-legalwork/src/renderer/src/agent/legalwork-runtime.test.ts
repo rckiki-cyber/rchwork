@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   defaultClawSettings,
   defaultKeyboardShortcuts,
+  defaultLearningIterationSettings,
   defaultLegalworkRuntimeSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
@@ -31,6 +32,7 @@ function settings(): AppSettingsV1 {
     write: defaultWriteSettings(),
     claw: defaultClawSettings(),
     schedule: defaultScheduleSettings(),
+    learningIteration: defaultLearningIterationSettings(),
     guiUpdate: { channel: 'stable' }
   }
 }
@@ -505,9 +507,9 @@ describe('LegalworkRuntimeProvider', () => {
     expect(runtimeRequest).toHaveBeenCalledWith('/v1/attachments/att_1', 'GET')
   })
 
-  it('lists, disables, and deletes memory records through Legalwork endpoints', async () => {
+  it('lists, creates, updates, trashes, and permanently deletes memory records through Legalwork endpoints', async () => {
     const runtimeRequest = vi.fn(async (path: string, method?: string, body?: string) => {
-      if (path === '/v1/memory?workspace=%2Ftmp%2Fworkspace&include_deleted=false') {
+      if (path === '/v1/memory?workspace=%2Ftmp%2Fworkspace&project=%2Ftmp%2Fworkspace&include_deleted=false') {
         return {
           ok: true,
           status: 200,
@@ -516,12 +518,38 @@ describe('LegalworkRuntimeProvider', () => {
               id: 'mem_1',
               content: 'Use pnpm',
               scope: 'workspace',
+              category: 'preference',
+              recallPolicy: 'always',
+              captureSource: 'manual',
               workspace: '/tmp/workspace',
               tags: ['tooling'],
               confidence: 0.9,
               createdAt: 't0',
               updatedAt: 't0'
             }]
+          })
+        }
+      }
+      if (path === '/v1/memory' && method === 'POST') {
+        expect(JSON.parse(body ?? '')).toMatchObject({
+          content: 'Use Chinese',
+          category: 'preference',
+          captureSource: 'manual'
+        })
+        return {
+          ok: true,
+          status: 201,
+          body: JSON.stringify({
+            memory: {
+              id: 'mem_2',
+              content: 'Use Chinese',
+              scope: 'user',
+              category: 'preference',
+              recallPolicy: 'always',
+              captureSource: 'manual',
+              createdAt: 't0',
+              updatedAt: 't0'
+            }
           })
         }
       }
@@ -558,12 +586,25 @@ describe('LegalworkRuntimeProvider', () => {
           })
         }
       }
+      if (path === '/v1/memory/mem_1?permanent=true' && method === 'DELETE') {
+        return {
+          ok: true,
+          status: 200,
+          body: JSON.stringify({ id: 'mem_1', purged: true })
+        }
+      }
       return { ok: true, status: 200, body: '{}' }
     })
     installDsGui({ runtimeRequest })
     const provider = new LegalworkRuntimeProvider()
 
     await expect(provider.listMemories({ workspace: '/tmp/workspace', includeDeleted: false })).resolves.toHaveLength(1)
+    await expect(provider.createMemory({
+      content: 'Use Chinese',
+      scope: 'user',
+      category: 'preference',
+      recallPolicy: 'always'
+    })).resolves.toMatchObject({ id: 'mem_2' })
     await expect(provider.updateMemory('mem_1', { disabled: true })).resolves.toMatchObject({
       id: 'mem_1',
       disabledAt: 't1'
@@ -572,6 +613,7 @@ describe('LegalworkRuntimeProvider', () => {
       id: 'mem_1',
       deletedAt: 't2'
     })
+    await expect(provider.purgeMemory('mem_1')).resolves.toBeUndefined()
   })
 
   it('calls Legalwork fork and user-input compatibility endpoints', async () => {

@@ -500,6 +500,46 @@ describe('FloatingComposer capability controls', () => {
     expect(html).toContain('/skill:openspec-apply-change')
   })
 
+  it('renders a selected Skill as a distinct composer control instead of plain text', () => {
+    useChatStore.setState({
+      activeThreadId: 'thr_skill',
+      activeThreadGoal: null,
+      route: 'chat',
+      workspaceRoot: '/workspace/legalwork',
+      threads: []
+    })
+
+    const html = renderToStaticMarkup(
+      createElement(FloatingComposer, {
+        input: '',
+        setInput: () => undefined,
+        mode: 'agent',
+        setMode: () => undefined,
+        busy: false,
+        runtimeReady: true,
+        hasActiveThread: true,
+        composerModel: '',
+        composerPickList: [],
+        onComposerModelChange: () => undefined,
+        queuedMessages: [],
+        onRemoveQueuedMessage: () => undefined,
+        onSend: () => undefined,
+        onInterrupt: () => undefined,
+        selectedSkill: {
+          id: 'contract-risk-review',
+          name: '合同风险审查',
+          description: '识别合同风险'
+        },
+        onRemoveSelectedSkill: () => undefined
+      })
+    )
+
+    expect(html).toContain('已选 Skill')
+    expect(html).toContain('合同风险审查')
+    expect(html).toContain('bg-ds-skill-soft')
+    expect(html).not.toContain('value="/skill:contract-risk-review')
+  })
+
   it('enables local Claw input when a WeChat channel is already mapped to a local thread', () => {
     useChatStore.setState({
       activeThreadId: 'thr_weixin',

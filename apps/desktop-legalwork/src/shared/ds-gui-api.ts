@@ -173,6 +173,77 @@ export type SkillListResult =
   | { ok: false; message: string }
 export type LegalworkConfigFileResult = { path: string; content: string; exists: boolean }
 export type LegalworkConfigSaveResult = { ok: true; path: string }
+export type OptionalMcpInstallResult =
+  | { ok: true; packageId: 'flint-chart'; version: string }
+  | { ok: false; message: string }
+export type LearningIterationStatus =
+  | 'disabled'
+  | 'idle'
+  | 'waiting'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'rolled_back'
+
+export type LearningIterationCounts = {
+  sources: number
+  threads: number
+  knowledgeFiles: number
+  memoriesCreated: number
+  memoriesUpdated: number
+  memoriesDisabled: number
+  skillsCreated: number
+  skillsUpdated: number
+  rejected: number
+}
+
+export type LearningIterationRecordSummary = {
+  id: string
+  title: string
+  displayName: string
+  status: LearningIterationStatus
+  startedAt: string
+  finishedAt: string
+  reportPath: string
+  canRollback: boolean
+  rolledBackAt?: string
+  error?: string
+  counts: LearningIterationCounts
+}
+
+export type LearningIterationRecordDetail = {
+  summary: LearningIterationRecordSummary
+  reportMarkdown: string
+}
+
+export type LearningIterationRuntimeStatus = {
+  status: LearningIterationStatus
+  enabled: boolean
+  eligibleToday: boolean
+  queued: boolean
+  running: boolean
+  message: string
+  lastSuccessfulAt: string
+  lastCheckedAt: string
+  nextEligibleAt: string
+  baselineComplete: boolean
+  baselineProgress: number
+  pendingSourceCount: number
+  activeRunId?: string
+  latest?: LearningIterationRecordSummary
+}
+
+export type LearningIterationActionResult =
+  | { ok: true; message: string; record?: LearningIterationRecordSummary }
+  | { ok: false; message: string }
+
+export type LearningIterationListResult =
+  | { ok: true; records: LearningIterationRecordSummary[] }
+  | { ok: false; message: string }
+
+export type LearningIterationDetailResult =
+  | { ok: true; detail: LearningIterationRecordDetail }
+  | { ok: false; message: string }
 export type TurnCompleteNotificationPayload = {
   threadId?: string
   title: string
@@ -265,6 +336,12 @@ export type DsGuiApi = {
   runClawTask: (taskId: string) => Promise<ClawRunResult>
   getScheduleStatus: () => Promise<ScheduleRuntimeStatus>
   runScheduleTask: (taskId: string) => Promise<ScheduleRunResult>
+  getLearningIterationStatus: () => Promise<LearningIterationRuntimeStatus>
+  listLearningIterations: () => Promise<LearningIterationListResult>
+  getLearningIteration: (id: string) => Promise<LearningIterationDetailResult>
+  queueLearningIteration: () => Promise<LearningIterationActionResult>
+  cancelLearningIteration: () => Promise<LearningIterationActionResult>
+  rollbackLearningIteration: (id: string) => Promise<LearningIterationActionResult>
   startClawImInstallQr: (
     provider: 'feishu' | 'weixin',
     options?: { isLark?: boolean }
@@ -281,6 +358,7 @@ export type DsGuiApi = {
   openSkillRoot: (rootPath: string) => Promise<PathOpenResult>
   getDeepseekConfigFile: () => Promise<LegalworkConfigFileResult>
   setDeepseekConfigFile: (content: string) => Promise<LegalworkConfigSaveResult>
+  installOptionalMcpPackage: (packageId: 'flint-chart') => Promise<OptionalMcpInstallResult>
   openDeepseekConfigDir: () => Promise<PathOpenResult>
   getGitBranches: (workspaceRoot: string) => Promise<GitBranchesResult>
   switchGitBranch: (workspaceRoot: string, branch: string) => Promise<GitBranchesResult>

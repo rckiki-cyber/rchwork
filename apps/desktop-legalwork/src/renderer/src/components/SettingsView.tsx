@@ -44,10 +44,11 @@ import {
   ClawSettingsSection,
   GeneralSettingsSection,
   GuiUpdateSettingsSection,
-  KeyboardShortcutsSettingsSection
+  KeyboardShortcutsSettingsSection,
+  MemorySettingsSection
 } from './settings-sections'
 
-type SettingsCategory = 'general' | 'agents' | 'claw' | 'shortcuts' | 'guiUpdate'
+type SettingsCategory = 'general' | 'agents' | 'memory' | 'claw' | 'shortcuts' | 'guiUpdate'
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 type SettingsPatch = AppSettingsPatch
 type SkillRootOption = {
@@ -508,6 +509,10 @@ export function SettingsView(): ReactElement {
         setRoute('plugins')
         return
       }
+      if (settingsReturnRoute === 'learningIteration') {
+        setRoute('learningIteration')
+        return
+      }
       await openCode()
     })()
   }
@@ -678,6 +683,7 @@ export function SettingsView(): ReactElement {
     refreshLegalworkDiagnostics,
     disableMemoryRecord,
     deleteMemoryRecord,
+    openMemorySettings: () => setCategory('memory'),
     pickClawWorkspace,
     resetClawWorkspaceToDefault,
     clawWorkspacePickerError,
@@ -731,6 +737,9 @@ export function SettingsView(): ReactElement {
 
           {category === 'general' ? <GeneralSettingsSection ctx={settingsSectionContext} /> : null}
           {category === 'agents' ? <AgentsSettingsSection ctx={settingsSectionContext} /> : null}
+          {category === 'memory' ? (
+            <MemorySettingsSection workspace={normalizeWorkspaceRoot(formWorkspaceRoot)} />
+          ) : null}
           {category === 'shortcuts' ? <KeyboardShortcutsSettingsSection ctx={settingsSectionContext} /> : null}
           {category === 'claw' ? <ClawSettingsSection ctx={settingsSectionContext} /> : null}
           {category === 'guiUpdate' ? <GuiUpdateSettingsSection ctx={settingsSectionContext} /> : null}

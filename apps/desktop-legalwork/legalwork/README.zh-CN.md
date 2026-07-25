@@ -241,7 +241,7 @@ Legalwork 默认使用混合存储：`threads/{threadId}/messages.jsonl` 与 `ev
 - `capabilities.web` 暴露 `web_fetch` 与/或 `web_search`。内置 provider 负责 HTTP(S) 抓取；搜索功能依赖 provider 实现，未配置时会变为不可用。
 - `capabilities.skills` 扫描 `roots` 下的 `skill.json`，并在 `legacySkillMd` 为 `true` 时兼容 `SKILL.md`。
 - `capabilities.attachments` 将图片二进制从线程日志剥离，允许回合记录引用 `attachmentIds`。视觉模型直接接收图片部分，纯文本模型走受限文本 fallback。
-- `capabilities.memory` 在数据目录下持久化跨会话记忆，按作用域检索并注入上下文；也会公开 `memory_create`、`memory_update`、`memory_delete` 工具。
+- `capabilities.memory` 在数据目录下持久化跨会话记忆，按作用域检索并注入上下文；同时公开 `memory_search`、`memory_create`、`memory_update`、`memory_delete`。高置信的用户背景、偏好、工作习惯和长期项目可自动保存；兴趣、案件/客户事实、低置信候选和账号标识必须先确认；密码、Token、API Key 和验证码始终拒绝入库。
 - `capabilities.subagents` 通过 `maxParallel` 与 `maxChildRuns` 限制委派任务并发。
 
 在渲染端使用 `GET /v1/runtime/info` 获取运行时能力清单，使用
@@ -297,11 +297,12 @@ HTTP 服务在 `/v1/*` 提供以下路由：
 | GET | `/v1/attachments/diagnostics` | 附件存储状态 |
 | GET | `/v1/attachments/{id}` | 获取附件元数据 |
 | GET | `/v1/attachments/{id}/content?thread_id=...&workspace=...` | 授权后返回附件字节（base64） |
-| GET | `/v1/memory?workspace=...&include_deleted=false` | 查询作用域内记忆 |
+| GET | `/v1/memory?workspace=...&query=...&category=...&scope=...&state=...&limit=...&offset=...` | 筛选记忆并返回 `memories` 与 `total` |
 | POST | `/v1/memory` | 创建记忆 |
 | GET | `/v1/memory/diagnostics` | 记忆存储状态 |
-| PATCH | `/v1/memory/{id}` | 更新、禁用或重标记记忆 |
+| PATCH | `/v1/memory/{id}` | 编辑、启用/禁用、调整召回方式或从回收站恢复 |
 | DELETE | `/v1/memory/{id}` | 删除（打墓碑）记忆 |
+| DELETE | `/v1/memory/{id}?permanent=true` | 永久清除已进入回收站的记忆 |
 | GET | `/v1/usage` | 累计 token / 缓存命中 / 回合计数 |
 
 SSE 使用 `id: <seq>`、`event: <kind>` 与 `data:`。新连接可通过 `since_seq` 获取历史事件。
@@ -329,8 +330,7 @@ SSE 使用 `id: <seq>`、`event: <kind>` 与 `data:`。新连接可通过 `since
 3. 重启 Legalwork 或刷新诊断。
 4. 当 `/v1/runtime/tools` 报告 `lastError` 时再决定是否保留旧兼容行为。
 
-历史线程中的 `pinnedConstraints` 不会自动转到长期记忆；它们仍属于该线程的压缩历史。
-如需跨线程长期记忆，请用 GUI Memory 面板创建 `memory_create` 工具记录。
+历史线程中的 `pinnedConstraints` 仍属于该线程的压缩历史。高置信、稳定的用户背景、偏好、工作习惯和长期项目可以按自动捕获策略成为跨线程记忆；用户明确说“记住……”时直接保存，不确定或敏感候选必须先确认。可在“设置 → 记忆”中搜索、编辑、禁用、恢复或永久删除。旧记录读取时默认补齐 `other`、`relevant`、`legacy`，不会批量重写原数据。
 
 ## 故障排查
 

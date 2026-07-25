@@ -3,6 +3,7 @@ import {
   BUILTIN_MODEL_PROVIDER_PRESETS,
   computeLegalworkRuntimeCredentialPatch,
   defaultClawSettings,
+  defaultLearningIterationSettings,
   defaultLegalworkRuntimeSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
@@ -46,6 +47,7 @@ function settings(): AppSettingsV1 {
     write: defaultWriteSettings(),
     claw: defaultClawSettings(),
     schedule: defaultScheduleSettings(),
+    learningIteration: defaultLearningIterationSettings(),
     guiUpdate: { channel: 'stable' }
   }
 }

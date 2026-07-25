@@ -168,7 +168,7 @@ export function GeneralSettingsSection({ ctx }: { ctx: Record<string, any> }): R
                       >
                         {BUILTIN_MODEL_PROVIDER_PRESETS.map((preset) => (
                           <option key={preset.id} value={preset.id}>
-                            {preset.name} · {preset.region === 'cn' ? t('modelProviderRegionCn') : t('modelProviderRegionGlobal')}
+                            {preset.name}
                           </option>
                         ))}
                       </select>
@@ -340,6 +340,51 @@ export function GeneralSettingsSection({ ctx }: { ctx: Record<string, any> }): R
                         </p>
                       ) : null}
                     </div>
+                  }
+                />
+              </SettingsCard>
+
+              <SettingsCard title={t('learningIterationSettingsTitle')} className="mt-6">
+                <SettingRow
+                  title={t('learningIterationEnabled')}
+                  description={t('learningIterationEnabledDesc')}
+                  control={
+                    <Toggle
+                      checked={form.learningIteration.enabled}
+                      onChange={(v) => update({ learningIteration: { enabled: v } })}
+                    />
+                  }
+                />
+                <SettingRow
+                  title={t('learningIterationIdleWindow')}
+                  description={t('learningIterationIdleWindowDesc')}
+                  control={
+                    <select
+                      className={selectControlClass}
+                      value={form.learningIteration.idleMinutes}
+                      disabled={!form.learningIteration.enabled}
+                      onChange={(event) =>
+                        update({ learningIteration: { idleMinutes: Number(event.target.value) } })
+                      }
+                    >
+                      <option value={5}>5 {t('minutes')}</option>
+                      <option value={15}>15 {t('minutes')}</option>
+                      <option value={30}>30 {t('minutes')}</option>
+                      <option value={60}>60 {t('minutes')}</option>
+                    </select>
+                  }
+                />
+                <SettingRow
+                  title={t('learningIterationTray')}
+                  description={t('learningIterationTrayDesc')}
+                  control={
+                    <Toggle
+                      checked={form.learningIteration.keepRunningInTray}
+                      disabled={!form.learningIteration.enabled}
+                      onChange={(v) =>
+                        update({ learningIteration: { keepRunningInTray: v } })
+                      }
+                    />
                   }
                 />
               </SettingsCard>

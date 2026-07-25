@@ -313,7 +313,7 @@ const extractDocxTextFromBuffer = async (buffer: ArrayBuffer): Promise<string> =
   return result.value
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
-    .replace(/\u0000/g, '')
+    .split('\u0000').join('')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }

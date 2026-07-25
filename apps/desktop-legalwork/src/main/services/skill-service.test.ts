@@ -6,6 +6,7 @@ import {
   defaultClawSettings,
   defaultKeyboardShortcuts,
   defaultLegalworkRuntimeSettings,
+  defaultLearningIterationSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
   defaultWriteSettings,
@@ -194,6 +195,7 @@ describe('skill-service', () => {
       write: defaultWriteSettings(),
       claw: defaultClawSettings(),
       schedule: defaultScheduleSettings(),
+      learningIteration: defaultLearningIterationSettings(),
       guiUpdate: { channel: 'stable' }
     }
   }

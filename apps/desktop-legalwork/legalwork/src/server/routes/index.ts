@@ -164,7 +164,7 @@ export function buildRouter(runtime: ServerRuntime): Router {
   })
   router.add('DELETE', '/v1/memory/:id', async (request, ctx) => {
     if (!authorize(request, runtime)) return ERRORS.unauthorized()
-    return deleteMemory(runtime.memoryStore, ctx.params.id)
+    return deleteMemory(runtime.memoryStore, ctx.params.id, request)
   })
   router.add('POST', '/v1/knowledge/sync', async (request) => {
     if (!authorize(request, runtime)) return ERRORS.unauthorized()

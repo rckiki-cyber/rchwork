@@ -3,9 +3,9 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   BookOpen,
+  BrainCircuit,
   Clock3,
   Database,
-  FileQuestion,
   FileText,
   LayoutGrid,
   LoaderCircle,
@@ -42,11 +42,12 @@ import { LegalResearchSidebar } from '../legal-research/LegalResearchSidebar'
 import type { ResearchRecord } from '../legal-research/useLegalResearch'
 import { KnowledgeBaseChatSidebar } from '../knowledge-base/KnowledgeBaseChatSidebar'
 import { DocumentWritingSidebarContent } from '../document-writing/DocumentWritingSidebarContent'
+import { LearningIterationSidebar } from '../learning-iteration/LearningIterationSidebar'
 
 type Props = {
   threads: NormalizedThread[]
   activeThreadId: string | null
-  activeView: 'chat' | 'dataCompliance' | 'desensitize' | 'claw' | 'schedule' | 'documentWriting' | 'legalResearch' | 'knowledgeBase'
+  activeView: 'chat' | 'dataCompliance' | 'desensitize' | 'claw' | 'schedule' | 'documentWriting' | 'legalResearch' | 'knowledgeBase' | 'learningIteration'
   dataComplianceSection: DataComplianceSection
   desensitizeSection: DesensitizeSection
   connectPhoneSidebarOpen: boolean
@@ -69,7 +70,7 @@ type Props = {
   onRestoreThread: (id: string) => Promise<void>
   onNewChat: () => void
   onNewChatInWorkspace: (workspaceRoot: string) => void
-  onNewRequirement: () => void
+  onLearningIterationOpen: () => void
   onOpenSettings: (section?: SettingsRouteSection) => void
   onOpenPlugins: () => void
   onToggleConnectPhone: () => void
@@ -117,7 +118,7 @@ export function Sidebar({
   onRestoreThread,
   onNewChat,
   onNewChatInWorkspace,
-  onNewRequirement,
+  onLearningIterationOpen,
   onOpenSettings,
   onOpenPlugins,
   onToggleConnectPhone,
@@ -187,7 +188,7 @@ export function Sidebar({
     >
       <div className="ds-no-drag flex flex-col px-1">
         <WorkspaceModeTabs
-          activeView={activeView === 'knowledgeBase' ? 'chat' : activeView}
+          activeView={activeView === 'knowledgeBase' || activeView === 'learningIteration' ? 'chat' : activeView}
           onCodeOpen={onCodeOpen}
           onDesensitizeOpen={onDesensitizeOpen}
           onDataComplianceOpen={onDataComplianceOpen}
@@ -204,11 +205,9 @@ export function Sidebar({
               variant="accent"
             />
             <SidebarCommandRow
-              icon={<FileQuestion className="h-4 w-4" strokeWidth={1.9} />}
-              label={t('sddNewRequirement')}
-              onClick={runtimeReady ? onNewRequirement : undefined}
-              disabled={!runtimeReady}
-              disabledHint={t('runtimeActionNeedsConnection')}
+              icon={<BrainCircuit className="h-4 w-4" strokeWidth={1.8} />}
+              label={t('learningIteration')}
+              onClick={onLearningIterationOpen}
               variant="accent"
             />
             {showAgentStartingHint ? (
@@ -263,6 +262,8 @@ export function Sidebar({
           onDisconnect={(channelId) => deleteClawChannel(channelId)}
           onOpenSettings={() => onOpenSettings('claw')}
         />
+      ) : activeView === 'learningIteration' ? (
+        <LearningIterationSidebar />
       ) : activeView === 'claw' ? (
         <ClawSidebarContent
           channels={clawChannels}

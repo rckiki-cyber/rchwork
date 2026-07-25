@@ -645,10 +645,22 @@ export class LegalworkRuntimeProvider implements AgentProvider {
     )
   }
 
-  async listMemories(options: { workspace?: string; includeDeleted?: boolean } = {}): Promise<CoreMemoryRecordJson[]> {
+  async listMemories(options: {
+    workspace?: string
+    includeDeleted?: boolean
+    query?: string
+    scope?: CoreMemoryRecordJson['scope']
+    category?: CoreMemoryRecordJson['category']
+    state?: 'active' | 'disabled' | 'deleted'
+  } = {}): Promise<CoreMemoryRecordJson[]> {
     const query = buildQuery({
       workspace: options.workspace,
-      include_deleted: options.includeDeleted
+      project: options.workspace,
+      include_deleted: options.includeDeleted,
+      query: options.query,
+      scope: options.scope,
+      category: options.category,
+      state: options.state
     })
     const response = await rendererRuntimeClient.runtimeRequest(`${LEGALWORK_MEMORY_PATH}${query}`, 'GET')
     if (!response.ok) {
@@ -660,9 +672,47 @@ export class LegalworkRuntimeProvider implements AgentProvider {
     ).memories ?? []
   }
 
+  async createMemory(input: {
+    content: string
+    scope: CoreMemoryRecordJson['scope']
+    category: CoreMemoryRecordJson['category']
+    recallPolicy: CoreMemoryRecordJson['recallPolicy']
+    workspace?: string
+    project?: string
+    tags?: string[]
+    confidence?: number
+  }): Promise<CoreMemoryRecordJson> {
+    const response = await rendererRuntimeClient.runtimeRequest(
+      LEGALWORK_MEMORY_PATH,
+      'POST',
+      JSON.stringify({
+        ...input,
+        captureSource: 'manual'
+      })
+    )
+    if (!response.ok) {
+      throw runtimeErrorToError(readRuntimeError(response.body, 'failed to create memory'))
+    }
+    return readRuntimeJson<{ memory: CoreMemoryRecordJson }>(
+      response.body,
+      'runtime returned an invalid memory response'
+    ).memory
+  }
+
   async updateMemory(
     memoryId: string,
-    patch: { content?: string; tags?: string[]; confidence?: number; disabled?: boolean }
+    patch: {
+      content?: string
+      scope?: CoreMemoryRecordJson['scope']
+      category?: CoreMemoryRecordJson['category']
+      recallPolicy?: CoreMemoryRecordJson['recallPolicy']
+      workspace?: string
+      project?: string
+      tags?: string[]
+      confidence?: number
+      disabled?: boolean
+      restore?: true
+    }
   ): Promise<CoreMemoryRecordJson> {
     const response = await rendererRuntimeClient.runtimeRequest(
       legalworkMemoryRecordPath(memoryId),
@@ -676,6 +726,16 @@ export class LegalworkRuntimeProvider implements AgentProvider {
       response.body,
       'runtime returned an invalid memory response'
     ).memory
+  }
+
+  async purgeMemory(memoryId: string): Promise<void> {
+    const response = await rendererRuntimeClient.runtimeRequest(
+      `${legalworkMemoryRecordPath(memoryId)}?permanent=true`,
+      'DELETE'
+    )
+    if (!response.ok) {
+      throw runtimeErrorToError(readRuntimeError(response.body, 'failed to permanently delete memory'))
+    }
   }
 
   async deleteMemory(memoryId: string): Promise<CoreMemoryRecordJson> {

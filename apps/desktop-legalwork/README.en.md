@@ -36,13 +36,6 @@ The goal is to make an AI-powered legal assistant that works on real case files,
 <p align="center"><em>Feishu / Lark / WeChat connection demo.</em></p>
 
 <p align="center">
-  <a href="src/asset/img/sdd.mp4">
-    <img src="src/asset/img/sdd.gif" width="680" alt="Requirement drafting and planning demo">
-  </a>
-</p>
-<p align="center"><em>Requirement drafting and planning demo.</em></p>
-
-<p align="center">
   <a href="src/asset/img/web.mp4">
     <img src="src/asset/img/web.gif" width="680" alt="Web tools demo">
   </a>
@@ -72,15 +65,15 @@ The result: Legalwork is built for real project work with long tasks, long sessi
 - Graphical Skill and MCP management so users can extend the agent without hand-editing every config file.
 - Connect phone automation with Feishu / Lark / WeChat integration, dedicated IM agents, local webhook / relay support, and scheduled tasks.
 - A dedicated Write workbench with writing spaces, a Markdown file tree, live editing/preview, inline completion, and selection-based inline agent actions.
-- New requirement drafts, plans, thread todos, long-running goals, and code review so tasks can move from idea to execution to review.
+- Learning iterations, plans, thread todos, long-running goals, and code review so long-lived interactions become auditable, reversible memory and workflows.
 - Pre-built macOS, Windows, and Linux installers; source builds remain available.
 
 ## Highlights
 
 - **Desktop chat workbench**: multi-session chat with streamed replies, reasoning, tool calls, approval requests, and file changes in one place.
 - **Project workspaces**: choose a local directory for each task, organize sessions by workspace, preview files, open files in your editor, and pick Git branches.
-- **New requirements**: draft background, goals, and acceptance criteria; ask Requirement AI to clarify missing questions or research options; then generate an implementation plan.
-- **Plans and todos**: `/plan` and New requirement both create editable plan files, while the right-side Plan panel syncs thread todos for trackable execution.
+- **Learning iteration**: while the app is idle, incrementally learn from conversations, memory, knowledge, and Skill outcomes; validated changes are applied with reports and rollback.
+- **Plans and todos**: `/plan` creates editable plan files, while the right-side Plan panel syncs thread todos for trackable execution.
 - **Goals**: `/goal` sets a long-running objective for the current thread, with pause, resume, clear, and complete states so the agent can keep working toward the same outcome.
 - **Code review**: `/review` can inspect current uncommitted changes, a base branch diff, a commit, or custom review instructions, with findings shown as review cards.
 - **Side conversations and thread control**: `/btw` opens a context-inheriting side conversation; threads also support compact, fork, archive, and restore flows.
@@ -198,7 +191,7 @@ The development workbench for real codebases: bind a local project directory, re
 
 - Organize multiple agent sessions by workspace, with streamed reasoning, tool calls, and file changes in one view.
 - Inline diffs, a change-review panel, and permission modes from read-only to full access.
-- New requirement drafts, `/plan`, the right-side Plan panel, thread todos, and `/goal` help complex work move from clarification to planning to execution.
+- Learning iterations, `/plan`, the right-side Plan panel, thread todos, and `/goal` help complex work improve, plan, and execute over time.
 - `/review`, `/btw`, thread compaction, thread forking, archive, and restore support longer-lived project conversations.
 - Quick-start cards for common tasks such as project mapping, bug fixing, implementation planning, and UI polish.
 

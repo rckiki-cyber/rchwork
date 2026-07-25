@@ -1202,8 +1202,8 @@ ${question.trim()}
         />
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <div className={`flex min-h-0 min-w-[420px] flex-1 flex-col px-8 py-5 transition-all ${preview && !chatOpen ? 'pr-4' : ''}`}>
+      <div className="flex min-h-0 flex-1 overflow-x-auto">
+        <div className={`flex min-h-0 flex-1 flex-col px-8 py-5 transition-all ${chatOpen ? 'min-w-0' : 'min-w-[420px]'} ${preview && !chatOpen ? 'pr-4' : ''}`}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-0.5 text-[13px] text-[var(--ds-muted)]">
               <button

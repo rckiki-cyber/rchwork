@@ -559,6 +559,15 @@ const scheduleSettingsPatchSchema = z.object({
   tasks: z.array(scheduledTaskPatchSchema).max(512).optional()
 }).strict()
 
+const learningIterationSettingsPatchSchema = z.object({
+  enabled: z.boolean().optional(),
+  cadence: z.literal('daily').optional(),
+  idleMinutes: z.number().int().min(5).max(240).optional(),
+  keepRunningInTray: z.boolean().optional(),
+  initialBackfill: z.literal('full').optional(),
+  applyPolicy: z.literal('auto-with-rollback').optional()
+}).strict()
+
 function stripLegacySettingsPatchKeys(payload: unknown): unknown {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return payload
   const source = payload as Record<string, unknown>
@@ -597,6 +606,7 @@ const settingsPatchObjectSchema = z.object({
   write: writeSettingsPatchSchema.optional(),
   claw: clawSettingsPatchSchema.optional(),
   schedule: scheduleSettingsPatchSchema.optional(),
+  learningIteration: learningIterationSettingsPatchSchema.optional(),
   guiUpdate: z.object({
     channel: z.enum(GUI_UPDATE_CHANNELS).optional()
   }).strict().optional()

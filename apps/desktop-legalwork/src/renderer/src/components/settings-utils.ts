@@ -9,6 +9,7 @@ import {
   mergeClawSettings,
   mergeModelProviderSettings,
   mergeScheduleSettings,
+  mergeLearningIterationSettings,
   mergeWriteSettings,
   normalizeAppBehaviorSettings,
   normalizeClawSettings,
@@ -16,6 +17,7 @@ import {
   normalizeKeyboardShortcuts,
   normalizeModelProviderSettings,
   normalizeScheduleSettings,
+  normalizeLearningIterationSettings,
   normalizeWriteSettings,
   type AppSettingsPatch,
   type AppSettingsV1
@@ -75,6 +77,10 @@ export function mergeSettings(current: AppSettingsV1, patch: SettingsPatch): App
     write: mergeWriteSettings(safeCurrent.write, patch.write),
     claw: mergeClawSettings(safeCurrent.claw, patch.claw),
     schedule: mergeScheduleSettings(safeCurrent.schedule, patch.schedule),
+    learningIteration: mergeLearningIterationSettings(
+      safeCurrent.learningIteration,
+      patch.learningIteration
+    ),
     guiUpdate: {
       ...safeCurrent.guiUpdate,
       ...(patch.guiUpdate ?? {})
@@ -112,6 +118,7 @@ export function coerceRendererSettings(settings: AppSettingsV1): AppSettingsV1 {
     write: normalizeWriteSettings(raw.write),
     claw: normalizeClawSettings(raw.claw),
     schedule: normalizeScheduleSettings(raw.schedule),
+    learningIteration: normalizeLearningIterationSettings(raw.learningIteration),
     guiUpdate: {
       channel: normalizeGuiUpdateChannel(raw.guiUpdate?.channel ?? DEFAULT_GUI_UPDATE_CHANNEL)
     }

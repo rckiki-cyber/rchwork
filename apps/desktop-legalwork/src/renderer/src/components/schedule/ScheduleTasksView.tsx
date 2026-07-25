@@ -448,7 +448,6 @@ export function ScheduleTasksView({
                 variant="default"
                 size="md"
                 onClick={openCreateDialog}
-                className="bg-ds-userbubble text-ds-userbubbleFg font-semibold hover:opacity-90"
               >
                 <Plus className="h-4 w-4" strokeWidth={2} />
                 {t('scheduleNewTask')}

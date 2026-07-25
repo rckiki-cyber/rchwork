@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { createHash } from 'node:crypto'
-import { delimiter } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { delimiter, join } from 'node:path'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -103,6 +104,7 @@ type McpServerBuildOutcome = {
 const MCP_STARTUP_TIMEOUT_MS = 30_000
 const STDIO_STARTUP_TIMEOUT_MS = 60_000
 const COMMON_EXEC_PATHS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']
+const FLINT_CHART_SERVER_IDS = new Set(['flint-chart', 'flint_chart'])
 
 export async function buildMcpToolProviders(
   config: McpCapabilityConfig | undefined,
@@ -348,7 +350,7 @@ function createMcpLocalTool(
     name: normalizeMcpToolName(state.serverId, descriptor.name),
     description: descriptor.description ?? `MCP tool ${descriptor.name} from ${state.serverId}`,
     inputSchema: normalizeMcpInputSchema(state.serverId, descriptor),
-    policy: policyFromAnnotations(descriptor.annotations),
+    policy: policyForMcpTool(state.serverId, descriptor),
     shouldAdvertise: (context: ToolHostContext) => isMcpServerTrusted(state.server, context.workspace),
     execute: async (args, context) => {
       if (!isMcpServerTrusted(state.server, context.workspace)) {
@@ -381,11 +383,23 @@ function createMcpLocalTool(
           normalized.arguments.command
         )
       }
+      const hostedResult = await normalizeMcpResultForHost(
+        state.serverId,
+        descriptor.name,
+        result,
+        context.workspace
+      )
       return {
         output: {
           serverId: state.serverId,
           toolName: descriptor.name,
-          result
+          result: hostedResult.result,
+          ...(hostedResult.artifacts.length > 0
+            ? {
+                file_path: hostedResult.artifacts[0],
+                artifacts: hostedResult.artifacts
+              }
+            : {})
         },
         isError: typeof result === 'object' && result !== null && (result as { isError?: boolean }).isError === true
       }
@@ -613,12 +627,13 @@ function createMcpSearchCatalogRecord(
     },
     descriptor,
     normalizedName: normalizeMcpToolName(state.serverId, descriptor.name),
-    policy: policyFromAnnotations(descriptor.annotations)
+    policy: policyForMcpTool(state.serverId, descriptor)
   }
 }
 
 async function refreshMcpConnectionCatalog(state: McpConnectionState): Promise<McpToolDescriptor[]> {
-  const listed = await listAllMcpTools(state.client, state.server.timeoutMs)
+  const listed = (await listAllMcpTools(state.client, state.server.timeoutMs))
+    .filter((tool) => !isUnsupportedFlintMcpAppTool(state.serverId, tool))
   const nextFingerprint = catalogFingerprint(listed.map((tool) => tool.name))
   state.catalogDrift = Boolean(state.catalogFingerprint && state.catalogFingerprint !== nextFingerprint)
   state.catalogFingerprint = nextFingerprint
@@ -649,6 +664,123 @@ async function reconnectMcpConnection(state: McpConnectionState): Promise<McpCli
   state.lastConnectedAt = state.nowIso()
   state.lastError = undefined
   return client
+}
+
+function isFlintChartServer(serverId: string): boolean {
+  return FLINT_CHART_SERVER_IDS.has(serverId.toLowerCase())
+}
+
+function isUnsupportedFlintMcpAppTool(
+  serverId: string,
+  descriptor: McpToolDescriptor
+): boolean {
+  return isFlintChartServer(serverId) && descriptor.name === 'create_chart_view'
+}
+
+function policyForMcpTool(
+  serverId: string,
+  descriptor: McpToolDescriptor
+): LocalTool['policy'] {
+  if (
+    isFlintChartServer(serverId) &&
+    descriptor.annotations?.destructiveHint !== true &&
+    descriptor.annotations?.openWorldHint !== true
+  ) {
+    return 'auto'
+  }
+  return policyFromAnnotations(descriptor.annotations)
+}
+
+type HostedMcpResult = {
+  result: unknown
+  artifacts: string[]
+}
+
+async function normalizeMcpResultForHost(
+  serverId: string,
+  toolName: string,
+  result: unknown,
+  workspace: string
+): Promise<HostedMcpResult> {
+  if (!isFlintChartServer(serverId) || toolName !== 'render_chart') {
+    return { result, artifacts: [] }
+  }
+  if (
+    !result ||
+    typeof result !== 'object' ||
+    !Array.isArray((result as { content?: unknown }).content)
+  ) {
+    return { result, artifacts: [] }
+  }
+
+  const outputDir = workspace.trim()
+    ? join(workspace, '.legalwork', 'flint-charts')
+    : ''
+  const content = (result as { content: unknown[] }).content
+  const artifacts: string[] = []
+  const normalizedContent: unknown[] = []
+
+  for (const item of content) {
+    const record = item && typeof item === 'object' && !Array.isArray(item)
+      ? item as Record<string, unknown>
+      : null
+    const imageData = record?.type === 'image' && typeof record.data === 'string'
+      ? record.data
+      : null
+    const mimeType = typeof record?.mimeType === 'string' ? record.mimeType : 'image/png'
+    const svgText = record?.type === 'text' &&
+      typeof record.text === 'string' &&
+      record.text.trimStart().startsWith('<svg')
+      ? record.text
+      : null
+
+    if (!imageData && !svgText) {
+      normalizedContent.push(item)
+      continue
+    }
+    if (!outputDir) {
+      normalizedContent.push({
+        type: 'text',
+        text: 'Chart rendered, but no workspace was available to save the artifact.'
+      })
+      continue
+    }
+
+    try {
+      await mkdir(outputDir, { recursive: true })
+      const extension = svgText
+        ? 'svg'
+        : mimeType === 'image/jpeg'
+          ? 'jpg'
+          : mimeType === 'image/webp'
+            ? 'webp'
+            : 'png'
+      const artifactPath = join(outputDir, `flint-chart-${randomUUID()}.${extension}`)
+      if (svgText) {
+        await writeFile(artifactPath, svgText, 'utf8')
+      } else {
+        await writeFile(artifactPath, Buffer.from(imageData ?? '', 'base64'))
+      }
+      artifacts.push(artifactPath)
+      normalizedContent.push({
+        type: 'text',
+        text: `Chart artifact saved to ${artifactPath}`
+      })
+    } catch (error) {
+      normalizedContent.push({
+        type: 'text',
+        text: `Chart rendered, but the artifact could not be saved: ${errorMessage(error)}`
+      })
+    }
+  }
+
+  return {
+    result: {
+      ...(result as Record<string, unknown>),
+      content: normalizedContent
+    },
+    artifacts
+  }
 }
 
 function shouldUseMcpSearch(config: NonNullable<McpCapabilityConfig['search']>, toolCount: number): boolean {

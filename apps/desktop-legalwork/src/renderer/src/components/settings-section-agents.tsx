@@ -356,6 +356,7 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
     refreshLegalworkDiagnostics,
     disableMemoryRecord,
     deleteMemoryRecord,
+    openMemorySettings,
     pickClawWorkspace,
     resetClawWorkspaceToDefault,
     clawWorkspacePickerError,
@@ -1384,49 +1385,26 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                     description={t('legalworkMemoryRecordsDesc')}
                     wideControl
                     control={
-                      <div className="flex flex-col gap-2">
-                        {memoryRecords.length === 0 ? (
-                          <div className="rounded-xl border border-ds-border-muted bg-ds-main/40 px-3 py-3 text-[13px] text-ds-faint">
-                            {t('legalworkMemoryEmpty')}
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ds-border-muted bg-ds-main/40 px-3 py-3">
+                        <div>
+                          <div className="text-[14px] font-semibold text-ds-ink">
+                            {t('legalworkMemoryActiveCount', {
+                              count: toolDiagnostics?.memory?.activeCount ?? memoryRecords.filter((memory: any) => !memory.disabledAt).length
+                            })}
                           </div>
-                        ) : (
-                          memoryRecords.slice(0, 8).map((memory: any) => (
-                            <div key={memory.id} className="rounded-xl border border-ds-border-muted bg-ds-main/40 px-3 py-2">
-                              <div className="flex min-w-0 items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div className="truncate text-[13px] font-semibold text-ds-ink">{memory.content}</div>
-                                  <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-ds-faint">
-                                    <span className="font-mono">{memory.scope}</span>
-                                    <span className="font-mono">{memory.id}</span>
-                                    {memory.disabledAt ? <span>{t('legalworkMemoryDisabled')}</span> : null}
-                                    {memory.tags?.length ? <span>{compactList(memory.tags, '')}</span> : null}
-                                  </div>
-                                </div>
-                                <div className="flex shrink-0 items-center gap-1">
-                                  <button
-                                    type="button"
-                                    disabled={Boolean(memory.disabledAt)}
-                                    onClick={() => void disableMemoryRecord(memory.id)}
-                                    className="rounded-lg p-1.5 text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink disabled:cursor-not-allowed disabled:opacity-45"
-                                    aria-label={t('legalworkMemoryDisable')}
-                                    title={t('legalworkMemoryDisable')}
-                                  >
-                                    <Ban className="h-3.5 w-3.5" strokeWidth={1.8} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => void deleteMemoryRecord(memory.id)}
-                                    className="rounded-lg p-1.5 text-ds-muted transition hover:bg-red-500/10 hover:text-red-600"
-                                    aria-label={t('legalworkMemoryDelete')}
-                                    title={t('legalworkMemoryDelete')}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ))
-                        )}
+                          <div className="mt-1 text-[12px] text-ds-muted">
+                            {t('legalworkMemoryTrashCount', {
+                              count: toolDiagnostics?.memory?.tombstoneCount ?? 0
+                            })}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={openMemorySettings}
+                          className="inline-flex min-h-8 items-center rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[13px] font-medium text-ds-ink shadow-sm transition hover:bg-ds-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                        >
+                          {t('legalworkMemoryManage')}
+                        </button>
                       </div>
                     }
                   />

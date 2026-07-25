@@ -84,6 +84,7 @@ export type AppRoute =
   | 'documentWriting'
   | 'legalResearch'
   | 'knowledgeBase'
+  | 'learningIteration'
 export type PluginHostRoute = 'chat' | 'claw'
 
 /**
@@ -180,6 +181,7 @@ export type ChatState = {
   openDocumentWriting: () => void
   openLegalResearch: () => void
   openKnowledgeBase: () => void
+  openLearningIteration: () => void
   refreshClawChannels: () => Promise<void>
   addClawChannel: (
     provider: ClawImProvider,

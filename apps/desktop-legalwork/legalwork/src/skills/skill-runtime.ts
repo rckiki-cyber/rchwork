@@ -643,7 +643,7 @@ function tokenizeForSkillMatch(value: string): Set<string> {
   const normalized = value
     .toLowerCase()
     .normalize('NFKC')
-    .replace(/[\/_-]+/g, ' ')
+    .replace(/[/_-]+/g, ' ')
   const out = new Set<string>()
   for (const match of normalized.matchAll(/[\p{L}\p{N}]+/gu)) {
     const token = match[0] ?? ''

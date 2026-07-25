@@ -7,6 +7,7 @@ import {
   defaultClawSettings,
   defaultKeyboardShortcuts,
   defaultLegalworkRuntimeSettings,
+  defaultLearningIterationSettings,
   defaultModelProviderSettings,
   defaultScheduleSettings,
   defaultWriteSettings,
@@ -122,6 +123,7 @@ describe('Legalwork single-agent regression', () => {
       write: defaultWriteSettings(),
       claw: defaultClawSettings(),
       schedule: defaultScheduleSettings(),
+      learningIteration: defaultLearningIterationSettings(),
       guiUpdate: { channel: 'stable' }
     }
 

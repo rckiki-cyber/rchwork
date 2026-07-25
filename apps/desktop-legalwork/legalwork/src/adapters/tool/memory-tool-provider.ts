@@ -1,5 +1,12 @@
 import type { CapabilityToolProvider } from './capability-registry.js'
 import { LocalToolHost } from './local-tool-host.js'
+import {
+  MemoryCaptureSource,
+  MemoryCategory,
+  MemoryRecallPolicy,
+  MemoryScope
+} from '../../contracts/memory.js'
+import { MemoryPolicyError } from '../../memory/memory-policy.js'
 import type { MemoryStore } from '../../memory/memory-store.js'
 
 export function buildMemoryToolProviders(store: MemoryStore | undefined): CapabilityToolProvider[] {
@@ -11,34 +18,102 @@ export function buildMemoryToolProviders(store: MemoryStore | undefined): Capabi
     available: true,
     tools: [
       LocalToolHost.defineTool({
+        name: 'memory_search',
+        description: 'Search active long-term memories before creating, updating, or forgetting one.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string' },
+            scope: { type: 'string', enum: MemoryScope.options },
+            category: { type: 'string', enum: MemoryCategory.options },
+            include_deleted: { type: 'boolean' },
+            limit: { type: 'number', minimum: 1, maximum: 50 }
+          },
+          required: ['query'],
+          additionalProperties: false
+        },
+        policy: 'auto',
+        execute: async (args, context) => {
+          const query = stringArg(args.query)
+          if (!query) return toolError('query is required')
+          const scope = MemoryScope.safeParse(args.scope)
+          const category = MemoryCategory.safeParse(args.category)
+          const limit = numberArg(args.limit, 10)
+          const result = await store.listPage({
+            workspace: context.workspace || undefined,
+            project: undefined,
+            query,
+            scope: scope.success ? scope.data : undefined,
+            category: category.success ? category.data : undefined,
+            includeDeleted: args.include_deleted === true,
+            limit: Math.min(50, Math.max(1, Math.floor(limit)))
+          })
+          return { output: result }
+        }
+      }),
+      LocalToolHost.defineTool({
         name: 'memory_create',
-        description: 'Create a long-term memory after explicit user approval.',
+        description: 'Create or deduplicate a long-term memory. Automatic captures are policy-checked and may require confirmation.',
         inputSchema: {
           type: 'object',
           properties: {
             content: { type: 'string' },
-            scope: { type: 'string', enum: ['user', 'workspace', 'project'] },
+            scope: { type: 'string', enum: MemoryScope.options },
+            category: { type: 'string', enum: MemoryCategory.options },
+            recall_policy: { type: 'string', enum: MemoryRecallPolicy.options },
+            capture_source: {
+              type: 'string',
+              enum: MemoryCaptureSource.exclude(['legacy']).options
+            },
+            confidence: { type: 'number', minimum: 0, maximum: 1 },
             workspace: { type: 'string' },
             tags: { type: 'array', items: { type: 'string' } }
           },
           required: ['content'],
           additionalProperties: false
         },
-        policy: 'on-request',
+        policy: 'auto',
         execute: async (args, context) => {
-          const content = typeof args.content === 'string' ? args.content.trim() : ''
-          if (!content) return { output: { error: 'content is required' }, isError: true }
-          return {
-            output: {
-              memory: await store.create({
-                content,
-                scope: args.scope === 'user' || args.scope === 'project' ? args.scope : 'workspace',
-                workspace: typeof args.workspace === 'string' ? args.workspace : context.workspace,
-                sourceThreadId: context.threadId,
-                sourceTurnId: context.turnId,
-                tags: Array.isArray(args.tags) ? args.tags.filter((tag): tag is string => typeof tag === 'string') : []
-              })
+          const content = stringArg(args.content)
+          if (!content) return toolError('content is required')
+          const scope = enumArg(MemoryScope, args.scope, 'workspace')
+          const category = enumArg(MemoryCategory, args.category, 'other')
+          const recallPolicy = enumArg(MemoryRecallPolicy, args.recall_policy, 'relevant')
+          const captureSource = enumArg(
+            MemoryCaptureSource.exclude(['legacy']),
+            args.capture_source,
+            'automatic'
+          )
+          try {
+            return {
+              output: {
+                memory: await store.create({
+                  content,
+                  scope,
+                  category,
+                  recallPolicy,
+                  captureSource,
+                  confidence: numberArg(args.confidence, captureSource === 'automatic' ? 0.8 : 1),
+                  workspace: stringArg(args.workspace) || context.workspace || undefined,
+                  project: scope === 'project' ? context.workspace || undefined : undefined,
+                  sourceThreadId: context.threadId,
+                  sourceTurnId: context.turnId,
+                  tags: stringArrayArg(args.tags)
+                })
+              }
             }
+          } catch (error) {
+            if (error instanceof MemoryPolicyError) {
+              return {
+                output: {
+                  error: error.message,
+                  code: error.code,
+                  confirmationRequired: error.code === 'confirmation_required'
+                },
+                isError: true
+              }
+            }
+            throw error
           }
         }
       }),
@@ -50,19 +125,41 @@ export function buildMemoryToolProviders(store: MemoryStore | undefined): Capabi
           properties: {
             id: { type: 'string' },
             content: { type: 'string' },
-            disabled: { type: 'boolean' }
+            scope: { type: 'string', enum: MemoryScope.options },
+            category: { type: 'string', enum: MemoryCategory.options },
+            recall_policy: { type: 'string', enum: MemoryRecallPolicy.options },
+            tags: { type: 'array', items: { type: 'string' } },
+            confidence: { type: 'number', minimum: 0, maximum: 1 },
+            disabled: { type: 'boolean' },
+            restore: { type: 'boolean' }
           },
           required: ['id'],
           additionalProperties: false
         },
         policy: 'on-request',
-        execute: async (args) => {
-          if (typeof args.id !== 'string') return { output: { error: 'id is required' }, isError: true }
+        execute: async (args, context) => {
+          const id = stringArg(args.id)
+          if (!id) return toolError('id is required')
+          const scope = MemoryScope.safeParse(args.scope)
+          const category = MemoryCategory.safeParse(args.category)
+          const recallPolicy = MemoryRecallPolicy.safeParse(args.recall_policy)
           return {
             output: {
-              memory: await store.update(args.id, {
-                ...(typeof args.content === 'string' ? { content: args.content } : {}),
-                ...(typeof args.disabled === 'boolean' ? { disabled: args.disabled } : {})
+              memory: await store.update(id, {
+                ...(stringArg(args.content) ? { content: stringArg(args.content) } : {}),
+                ...(scope.success ? { scope: scope.data } : {}),
+                ...(category.success ? { category: category.data } : {}),
+                ...(recallPolicy.success ? { recallPolicy: recallPolicy.data } : {}),
+                ...(scope.success && scope.data !== 'user'
+                  ? {
+                      workspace: context.workspace || undefined,
+                      project: scope.data === 'project' ? context.workspace || undefined : undefined
+                    }
+                  : {}),
+                ...(Array.isArray(args.tags) ? { tags: stringArrayArg(args.tags) } : {}),
+                ...(typeof args.confidence === 'number' ? { confidence: args.confidence } : {}),
+                ...(typeof args.disabled === 'boolean' ? { disabled: args.disabled } : {}),
+                ...(args.restore === true ? { restore: true } : {})
               })
             }
           }
@@ -85,4 +182,31 @@ export function buildMemoryToolProviders(store: MemoryStore | undefined): Capabi
       })
     ]
   }]
+}
+
+function stringArg(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function stringArrayArg(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map(stringArg).filter(Boolean)
+    : []
+}
+
+function numberArg(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function enumArg<T extends string>(
+  schema: { safeParse(value: unknown): { success: true; data: T } | { success: false } },
+  value: unknown,
+  fallback: T
+): T {
+  const parsed = schema.safeParse(value)
+  return parsed.success ? parsed.data : fallback
+}
+
+function toolError(message: string) {
+  return { output: { error: message }, isError: true as const }
 }

@@ -23,7 +23,6 @@ import {
   threadSnapshotLooksRunning,
   upsertUserBlock
 } from './chat-store-runtime-helpers'
-import { isSddAssistantThread } from '../sdd/sdd-thread-registry'
 import {
   armBusyWatchdog as armBusyWatchdogImpl,
   clearBusyWatchdog,
@@ -330,8 +329,7 @@ export function isCodeThread(
     thread.archived !== true &&
     !isInternalTemporaryWorkspace(thread.workspace) &&
     !isClawWorkspacePath(thread.workspace) &&
-    !isClawThread(thread, clawChannels) &&
-    !isSddAssistantThread(thread)
+    !isClawThread(thread, clawChannels)
 }
 
 export function latestThread(threads: NormalizedThread[]): NormalizedThread | null {

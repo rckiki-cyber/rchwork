@@ -71,3 +71,11 @@ __pycache__/
 *$py.class
 *.so
 .Python
+
+# Research data (large binary files, not part of app)
+research/
+memory/
+MEMORY.md
+
+# Local skill drafts
+skills/legalwork-learning-iteration/

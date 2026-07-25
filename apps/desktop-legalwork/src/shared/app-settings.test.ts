@@ -11,6 +11,7 @@ import {
   buildClawRuntimePrompt,
   defaultClawSettings,
   defaultKeyboardShortcuts,
+  defaultLearningIterationSettings,
   defaultModelProviderSettings,
   mergeLegalworkRuntimeSettings,
   mergeScheduleSettings,
@@ -48,6 +49,7 @@ function settings(): AppSettingsV1 {
     write: defaultWriteSettings(),
     claw: defaultClawSettings(),
     schedule: defaultScheduleSettings(),
+    learningIteration: defaultLearningIterationSettings(),
     guiUpdate: { channel: 'stable' }
   }
 }

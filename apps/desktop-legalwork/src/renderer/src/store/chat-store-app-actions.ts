@@ -32,6 +32,7 @@ export function createAppActions(options: CreateAppActionsOptions): Pick<
   | 'openDocumentWriting'
   | 'openLegalResearch'
   | 'openKnowledgeBase'
+  | 'openLearningIteration'
   | 'openInitialSetup'
   | 'closeInitialSetup'
   | 'selectInspectorItem'
@@ -165,6 +166,10 @@ export function createAppActions(options: CreateAppActionsOptions): Pick<
 
     openKnowledgeBase: () => {
       set({ route: 'knowledgeBase' })
+    },
+
+    openLearningIteration: () => {
+      set({ route: 'learningIteration' })
     },
 
     openInitialSetup: (mode: InitialSetupMode = 'required') =>

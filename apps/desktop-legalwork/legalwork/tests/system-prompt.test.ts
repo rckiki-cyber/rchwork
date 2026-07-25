@@ -18,4 +18,13 @@ describe('LEGALWORK_SYSTEM_PROMPT', () => {
     expect(LEGALWORK_SYSTEM_PROMPT).toContain('use SimSun (宋体) as the default font for all text')
     expect(LEGALWORK_SYSTEM_PROMPT).toContain('user explicitly requests another font')
   })
+
+  it('defines automatic, confirmed, secret, update, and forget memory behavior', () => {
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('confidence >= 0.8')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('memory_search')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('capture_source="confirmed"')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('Matter facts, client information, interests')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('Never store passwords, API keys')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('forget or change a memory')
+  })
 })

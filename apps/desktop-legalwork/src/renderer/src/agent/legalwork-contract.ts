@@ -73,6 +73,9 @@ export type CoreMemoryRecordJson = {
   id: string
   content: string
   scope: 'user' | 'workspace' | 'project'
+  category: 'profile' | 'preference' | 'workflow' | 'project' | 'interest' | 'matter' | 'other'
+  recallPolicy: 'always' | 'relevant'
+  captureSource: 'automatic' | 'explicit' | 'confirmed' | 'manual' | 'legacy'
   workspace?: string
   project?: string
   sourceThreadId?: string
@@ -425,6 +428,7 @@ export type CoreAttachmentContentResponseJson = {
 
 export type CoreMemoryListResponseJson = {
   memories: CoreMemoryRecordJson[]
+  total: number
 }
 
 export type CoreResumeSessionResponseJson = {

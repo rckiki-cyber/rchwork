@@ -1,7 +1,7 @@
 import type { Dispatch, ReactElement, SetStateAction } from 'react'
-import { Bot, ChevronLeft, Globe, Keyboard, RefreshCw, Settings, Smartphone } from 'lucide-react'
+import { Bot, Brain, ChevronLeft, Globe, Keyboard, RefreshCw, Settings, Smartphone } from 'lucide-react'
 
-type SettingsCategory = 'general' | 'agents' | 'claw' | 'shortcuts' | 'guiUpdate'
+type SettingsCategory = 'general' | 'agents' | 'memory' | 'claw' | 'shortcuts' | 'guiUpdate'
 
 export function SettingsSidebar({
   category,
@@ -42,6 +42,10 @@ export function SettingsSidebar({
         <button type="button" className={catCls('agents')} onClick={() => setCategory('agents')}>
           <Bot className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />
           {t('agents')}
+        </button>
+        <button type="button" className={catCls('memory')} onClick={() => setCategory('memory')}>
+          <Brain className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />
+          {t('memory')}
         </button>
         <button type="button" className={catCls('shortcuts')} onClick={() => setCategory('shortcuts')}>
           <Keyboard className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />

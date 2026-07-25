@@ -30,6 +30,11 @@ import type {
   TurnCompleteNotificationPayload,
   UpstreamModelsResult,
   EndpointModelsResult,
+  OptionalMcpInstallResult,
+  LearningIterationActionResult,
+  LearningIterationDetailResult,
+  LearningIterationListResult,
+  LearningIterationRuntimeStatus,
   WorkspacePickResult
 } from '../../shared/ds-gui-api'
 import type { GuiUpdateDownloadResult, GuiUpdateInfo, GuiUpdateInstallResult, GuiUpdateState } from '../../shared/gui-update'
@@ -82,6 +87,7 @@ import {
 import type { JsonSettingsStore } from '../settings-store'
 import type { ClawRuntime } from '../claw-runtime'
 import type { ScheduleRuntime } from '../schedule-runtime'
+import type { LearningIterationRuntime } from '../learning-iteration-runtime'
 import {
   getRuntimeBaseUrlForSettings,
   runtimeAuthHeaders
@@ -160,6 +166,7 @@ type RegisterAppIpcHandlersOptions = {
   ) => Promise<EndpointModelsResult>
   getClawRuntime: () => ClawRuntime | null
   getScheduleRuntime: () => ScheduleRuntime | null
+  getLearningIterationRuntime?: () => LearningIterationRuntime | null
   startFeishuInstallQrcode: (isLark: boolean) => Promise<ClawImInstallQrResult>
   pollFeishuInstall: (deviceCode: string) => Promise<ClawImInstallPollResult>
   startWeixinInstallQrcode: (weixinBridgeUrl?: string) => Promise<ClawImInstallQrResult>
@@ -271,6 +278,7 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     fetchEndpointModels,
     getClawRuntime,
     getScheduleRuntime,
+    getLearningIterationRuntime = () => null,
     startFeishuInstallQrcode,
     pollFeishuInstall,
     startWeixinInstallQrcode,
@@ -936,6 +944,69 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     }
   )
 
+  ipcMain.handle(
+    'learning-iteration:status',
+    async (): Promise<LearningIterationRuntimeStatus> =>
+      getLearningIterationRuntime()?.status() ?? {
+        status: 'disabled',
+        enabled: false,
+        eligibleToday: false,
+        queued: false,
+        running: false,
+        message: '学习迭代运行时尚未初始化。',
+        lastSuccessfulAt: '',
+        lastCheckedAt: '',
+        nextEligibleAt: '',
+        baselineComplete: false,
+        baselineProgress: 0,
+        pendingSourceCount: 0
+      }
+  )
+  ipcMain.handle(
+    'learning-iteration:list',
+    async (): Promise<LearningIterationListResult> =>
+      getLearningIterationRuntime()?.list() ?? {
+        ok: false,
+        message: '学习迭代运行时尚未初始化。'
+      }
+  )
+  ipcMain.handle(
+    'learning-iteration:get',
+    async (_, id: unknown): Promise<LearningIterationDetailResult> => {
+      const normalizedId = parseIpcPayload('learning-iteration:get', streamIdSchema, id)
+      return getLearningIterationRuntime()?.get(normalizedId) ?? {
+        ok: false,
+        message: '学习迭代运行时尚未初始化。'
+      }
+    }
+  )
+  ipcMain.handle(
+    'learning-iteration:queue',
+    async (): Promise<LearningIterationActionResult> =>
+      getLearningIterationRuntime()?.queue() ?? {
+        ok: false,
+        message: '学习迭代运行时尚未初始化。'
+      }
+  )
+  ipcMain.handle(
+    'learning-iteration:cancel',
+    async (): Promise<LearningIterationActionResult> =>
+      getLearningIterationRuntime()?.cancel() ?? {
+        ok: false,
+        message: '学习迭代运行时尚未初始化。'
+      }
+  )
+  ipcMain.handle(
+    'learning-iteration:rollback',
+    async (_, id: unknown): Promise<LearningIterationActionResult> => {
+      const normalizedId = parseIpcPayload('learning-iteration:rollback', streamIdSchema, id)
+      return getLearningIterationRuntime()?.rollback(normalizedId) ?? {
+        ok: false,
+        message: '学习迭代运行时尚未初始化。'
+      }
+    }
+  )
+
   ipcMain.handle('schedule:task:run', async (_, taskId: unknown): Promise<ScheduleRunResult> => {
     const normalizedTaskId = parseIpcPayload('schedule:task:run', streamIdSchema, taskId)
     const scheduleRuntime = getScheduleRuntime()
@@ -1167,6 +1238,35 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     return { ok: true as const, path }
   })
 
+  ipcMain.handle(
+    'mcp:install-optional-package',
+    async (_, packageId: unknown): Promise<OptionalMcpInstallResult> => {
+      const validatedPackageId = parseIpcPayload(
+        'mcp:install-optional-package',
+        z.literal('flint-chart'),
+        packageId
+      )
+      const executable = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+      const result = await runCommand(
+        executable,
+        ['--yes', 'flint-chart-mcp@0.3.0', '--version'],
+        { timeout: 10 * 60_000, env: process.env }
+      )
+      if (result.exitCode !== 0) {
+        const detail = result.stderr || result.stdout || `exit code ${result.exitCode ?? 'unknown'}`
+        return {
+          ok: false,
+          message: detail.slice(-2_000)
+        }
+      }
+      return {
+        ok: true,
+        packageId: validatedPackageId,
+        version: result.stdout.trim() || '0.3.0'
+      }
+    }
+  )
+
   ipcMain.handle('deepseek:config:open-dir', async () => {
     try {
       const path = resolveLegalworkConfigPath()
@@ -1360,9 +1460,14 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         font: 'SimSun',
         fontSize: 24
       })
-      const buffer = Buffer.from(
-        docx instanceof ArrayBuffer ? new Uint8Array(docx) : Buffer.from(await docx.arrayBuffer())
-      )
+      let buffer: Buffer
+      if (Buffer.isBuffer(docx)) {
+        buffer = docx
+      } else if (docx instanceof ArrayBuffer) {
+        buffer = Buffer.from(new Uint8Array(docx))
+      } else {
+        buffer = Buffer.from(await (docx as Blob).arrayBuffer())
+      }
       await writeFile(targetPath, buffer)
       return { ok: true, path: targetPath }
     } catch (error) {

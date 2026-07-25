@@ -451,12 +451,41 @@ export interface AgentProvider {
     attachmentId: string,
     options?: { threadId?: string; workspace?: string }
   ): Promise<CoreAttachmentContentResponseJson>
-  listMemories?(options?: { workspace?: string; includeDeleted?: boolean }): Promise<CoreMemoryRecordJson[]>
+  listMemories?(options?: {
+    workspace?: string
+    includeDeleted?: boolean
+    query?: string
+    scope?: CoreMemoryRecordJson['scope']
+    category?: CoreMemoryRecordJson['category']
+    state?: 'active' | 'disabled' | 'deleted'
+  }): Promise<CoreMemoryRecordJson[]>
+  createMemory?(input: {
+    content: string
+    scope: CoreMemoryRecordJson['scope']
+    category: CoreMemoryRecordJson['category']
+    recallPolicy: CoreMemoryRecordJson['recallPolicy']
+    workspace?: string
+    project?: string
+    tags?: string[]
+    confidence?: number
+  }): Promise<CoreMemoryRecordJson>
   updateMemory?(
     memoryId: string,
-    patch: { content?: string; tags?: string[]; confidence?: number; disabled?: boolean }
+    patch: {
+      content?: string
+      scope?: CoreMemoryRecordJson['scope']
+      category?: CoreMemoryRecordJson['category']
+      recallPolicy?: CoreMemoryRecordJson['recallPolicy']
+      workspace?: string
+      project?: string
+      tags?: string[]
+      confidence?: number
+      disabled?: boolean
+      restore?: true
+    }
   ): Promise<CoreMemoryRecordJson>
   deleteMemory?(memoryId: string): Promise<CoreMemoryRecordJson>
+  purgeMemory?(memoryId: string): Promise<void>
   steerUserMessage?(threadId: string, turnId: string, text: string): Promise<void>
   interruptTurn(threadId: string, turnId: string, options?: { discard?: boolean }): Promise<void>
   renameThread(threadId: string, title: string): Promise<void>
