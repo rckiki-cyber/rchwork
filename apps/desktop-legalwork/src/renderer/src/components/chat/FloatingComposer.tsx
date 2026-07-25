@@ -1906,7 +1906,9 @@ export function FloatingComposer({
                   <Square className="h-3.5 w-3.5 fill-current" strokeWidth={2.4} />
                 </button>
               ) : null}
-              {(busy || hasActiveWork) && input.trim() && onInterruptAndSend ? (
+              {/* Show guide/queue buttons when input has content: they revert to
+                  normal send when there is nothing to interrupt/queue. */}
+              {input.trim() && onInterruptAndSend ? (
                 <>
                   <button
                     type="button"
