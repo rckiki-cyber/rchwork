@@ -26,7 +26,7 @@ export const KnowledgeMeta = z.object({
   /** Version string for tracking updates */
   version: z.string().default('1.0.0'),
   /** Pyramid knowledge layer (L1-L5). Undefined for legacy documents. */
-  layer: z.enum(['principle', 'architecture', 'standard', 'implementation', 'experience']).optional()
+  layer: KnowledgeLayer.optional()
 }).strict()
 export type KnowledgeMeta = z.infer<typeof KnowledgeMeta>
 

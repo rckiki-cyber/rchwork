@@ -276,7 +276,9 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
           const query = typeof args.query === 'string' ? args.query.trim() : ''
           if (!query) return { output: { error: 'query is required' }, isError: true }
           const excludeExpired = args.excludeExpired !== false
-          const layer = typeof args.layer === 'string' ? args.layer as any : undefined
+          const layer = ['principle', 'architecture', 'standard', 'implementation', 'experience'].includes(args.layer as string)
+            ? args.layer as KnowledgeLayer
+            : undefined
 
           // Dynamic import to avoid circular dependency
           const { KnowledgeRetrievalPipeline } = await import('../../knowledge/knowledge-retrieval-pipeline.js')

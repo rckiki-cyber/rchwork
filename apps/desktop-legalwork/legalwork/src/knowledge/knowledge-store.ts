@@ -368,7 +368,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
         const category = inferCategory(filePath, relPath, content)
         const keywords = extractKeywords(`${relPath}\n${content}`, 16)
         const tags = inferTags(filePath, relPath, content, category, keywords)
-        const layer = inferLayerFromMeta(relPath, category, tags, extname(filePath).toLowerCase(), content.slice(0, 2000))
+        const layer = inferLayerFromMeta(relPath, category, tags, ext, content.slice(0, 2000))
         const document: KnowledgeDocument = {
           id: documentId,
           title: titleFromPath(filePath),
@@ -378,7 +378,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
           category,
           tags,
           keywords,
-          extension: extname(filePath).toLowerCase(),
+          extension: ext,
           sizeBytes: info.size,
           updatedAt: info.mtime.toISOString(),
           layer

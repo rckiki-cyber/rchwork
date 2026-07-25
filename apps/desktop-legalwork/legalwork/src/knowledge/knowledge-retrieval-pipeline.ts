@@ -4,7 +4,7 @@ import type { KnowledgeStore } from '../knowledge/knowledge-store.js'
 import type { KnowledgeContextRecord, KnowledgeRetrievalResult, KnowledgeLayer } from '../contracts/knowledge-retrieval.js'
 import { KnowledgeMeta, DEFAULT_KNOWLEDGE_META } from '../contracts/knowledge-retrieval.js'
 import { fieldsFromKnowledgeMeta, formatGbt7714, buildBibliography } from './citation-engine.js'
-import { route, LAYER_LABEL, LAYER_DESC } from './knowledge-pyramid-router.js'
+import { route, LAYER_LABEL } from './knowledge-pyramid-router.js'
 
 const MAX_CONTEXT_CHARS = 8_000
 const MAX_SOURCES = 12

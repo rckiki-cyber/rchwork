@@ -1273,10 +1273,10 @@ export class DeepseekCompatModelClient implements ModelClient {
     const promptTokens = anthropicUsage
       ? reportedPromptTokens + cacheRead + cacheCreation
       : reportedPromptTokens
-    const cacheHit = hasNativeCache ? nativeHit : (cachedTokens > 0 ? cachedTokens : cacheRead)
-    const cacheMiss = hasNativeCache ? nativeMiss : Math.max(promptTokens - cacheHit, 0)
+    const cacheHit = Math.max(0, hasNativeCache ? nativeHit : (cachedTokens > 0 ? cachedTokens : cacheRead))
+    const cacheMiss = Math.max(0, hasNativeCache ? nativeMiss : Math.max(promptTokens - cacheHit, 0))
     const cacheTotal = cacheHit + cacheMiss
-    const cacheHitRate = cacheTotal === 0 ? null : cacheHit / cacheTotal
+    const cacheHitRate = cacheTotal === 0 ? null : Math.min(1, cacheHit / cacheTotal)
     const totalTokens = anthropicUsage
       ? promptTokens + completionTokens
       : Number(usage.total_tokens ?? promptTokens + completionTokens) || 0

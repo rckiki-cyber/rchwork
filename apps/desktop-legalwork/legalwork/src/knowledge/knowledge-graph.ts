@@ -100,7 +100,6 @@ export function getRelatedDocuments(
         visited.add(neighborId)
         const sourceDoc = documents.get(current.docId)
         const targetDoc = documents.get(neighborId)
-        const relDoc = documents.get(neighborId)
         const dir = edgeDirection(edge, sourceDoc?.layer, targetDoc?.layer)
 
         results.push({
@@ -120,63 +119,82 @@ export function getRelatedDocuments(
 
 /**
  * Build edge index from document list using heuristic rules.
+ * Optimized with layer bucketing to avoid O(n²) on all documents.
  * Edges are inferred from:
- * - Shared keywords between documents
  * - Layer adjacency (L1-L2-L3-L4-L5 chain)
- * - Path-based relationships (same source root / folder)
+ * - Same-layer documents by keyword overlap
  */
 export function buildEdgeIndex(
   documents: KnowledgeDocument[]
 ): KnowledgeEdge[] {
   const edges: KnowledgeEdge[] = []
-  const docMap = new Map(documents.map((d) => [d.id, d]))
   const seen = new Set<string>()
   let edgeCounter = 0
 
   const layers: KnowledgeLayer[] = ['principle', 'architecture', 'standard', 'implementation', 'experience']
 
+  // Group documents by layer, skip unlayered docs
+  const byLayer = new Map<KnowledgeLayer, KnowledgeDocument[]>()
   for (const doc of documents) {
     if (!doc.layer) continue
-    const docLayerIdx = layers.indexOf(doc.layer)
+    const bucket = byLayer.get(doc.layer)
+    if (bucket) bucket.push(doc)
+    else byLayer.set(doc.layer, [doc])
+  }
 
-    // Layer adjacency: link to documents in adjacent layers
-    for (const other of documents) {
-      if (other.id === doc.id || !other.layer) continue
-      const otherIdx = layers.indexOf(other.layer)
-      const absDiff = Math.abs(docLayerIdx - otherIdx)
+  // Layer adjacency: compare only documents in adjacent layers
+  // This reduces comparisons from O(n²) to O(k * a * b) where a,b are adjacent-layer sizes
+  for (let idx = 0; idx < layers.length; idx++) {
+    const currentLayer = layers[idx]
+    const currentDocs = byLayer.get(currentLayer)
+    if (!currentDocs) continue
 
-      // Build edge key to deduplicate
-      const edgeKey = doc.id < other.id ? `${doc.id}->${other.id}` : `${other.id}->${doc.id}`
-      if (seen.has(edgeKey)) continue
-
-      const relation = inferEdgeRelation(doc.layer, other.layer)
-      if (relation) {
-        seen.add(edgeKey)
-        edgeCounter++
-        edges.push({
-          id: `edge_${edgeCounter}`,
-          sourceId: doc.id,
-          targetId: other.id,
-          relation,
-          weight: absDiff === 0 ? 0.8 : absDiff === 1 ? 0.6 : 0.3
-        })
-        continue
+    // Compare with next layer down
+    if (idx < layers.length - 1) {
+      const nextLayer = layers[idx + 1]
+      const nextDocs = byLayer.get(nextLayer)
+      if (nextDocs) {
+        for (const doc of currentDocs) {
+          for (const other of nextDocs) {
+            const edgeKey = `${doc.id}->${other.id}`
+            if (seen.has(edgeKey)) continue
+            seen.add(edgeKey)
+            edgeCounter++
+            edges.push({
+              id: `edge_${edgeCounter}`,
+              sourceId: doc.id,
+              targetId: other.id,
+              relation: inferDownstreamRelation(currentLayer),
+              weight: 0.6
+            })
+          }
+        }
       }
+    }
 
-      // High keyword overlap -> cross_ref
-      const docKeywords = new Set(doc.keywords ?? [])
-      const otherKeywords = new Set(other.keywords ?? [])
-      const overlap = [...docKeywords].filter((k) => otherKeywords.has(k)).length
-      if (overlap >= 3) {
-        seen.add(edgeKey)
-        edgeCounter++
-        edges.push({
-          id: `edge_${edgeCounter}`,
-          sourceId: doc.id,
-          targetId: other.id,
-          relation: 'cross_ref',
-          weight: Math.min(1, overlap / 10)
-        })
+    // Same-layer keyword overlap
+    if (currentDocs.length > 1) {
+      for (let i = 0; i < currentDocs.length; i++) {
+        const doc = currentDocs[i]
+        const docKeywords = new Set(doc.keywords ?? [])
+        for (let j = i + 1; j < currentDocs.length; j++) {
+          const other = currentDocs[j]
+          const otherKeywords = new Set(other.keywords ?? [])
+          const overlap = [...docKeywords].filter((k) => otherKeywords.has(k)).length
+          if (overlap >= 3) {
+            const edgeKey = `${doc.id}->${other.id}`
+            if (seen.has(edgeKey)) continue
+            seen.add(edgeKey)
+            edgeCounter++
+            edges.push({
+              id: `edge_${edgeCounter}`,
+              sourceId: doc.id,
+              targetId: other.id,
+              relation: 'cross_ref',
+              weight: Math.min(1, overlap / 10)
+            })
+          }
+        }
       }
     }
   }
@@ -185,32 +203,16 @@ export function buildEdgeIndex(
 }
 
 /**
- * Infer the edge relation type between two layers.
+ * Infer the edge relation type when a higher layer constrains a lower layer.
  */
-function inferEdgeRelation(
-  sourceLayer: KnowledgeLayer,
-  targetLayer: KnowledgeLayer
-): KnowledgeEdgeRelation | null {
-  const layers: KnowledgeLayer[] = ['principle', 'architecture', 'standard', 'implementation', 'experience']
-  const sourceIdx = layers.indexOf(sourceLayer)
-  const targetIdx = layers.indexOf(targetLayer)
-
-  if (targetIdx === sourceIdx + 1) {
-    // Upstream constrains downstream
-    if (sourceLayer === 'principle') return 'governs'
-    if (sourceLayer === 'architecture') return 'constrains'
-    if (sourceLayer === 'standard') return 'implements'
-    if (sourceLayer === 'implementation') return 'validates'
-    return 'cross_ref'
+function inferDownstreamRelation(sourceLayer: KnowledgeLayer): KnowledgeEdgeRelation {
+  switch (sourceLayer) {
+    case 'principle': return 'governs'       // L1→L2
+    case 'architecture': return 'constrains'  // L2→L3
+    case 'standard': return 'implements'      // L3→L4
+    case 'implementation': return 'validates' // L4→L5
+    default: return 'cross_ref'
   }
-  if (targetIdx === sourceIdx - 1) {
-    if (targetLayer === 'architecture' || targetLayer === 'standard') return 'defines'
-    if (targetLayer === 'implementation') return 'implements'
-    if (targetLayer === 'experience') return 'validates'
-    return 'feedback'
-  }
-
-  return null
 }
 
 /**

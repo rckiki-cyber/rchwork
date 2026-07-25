@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { basename, isAbsolute, join } from 'node:path'
+import { basename, isAbsolute, join, resolve } from 'node:path'
 import type { NormalizedMessage } from '@larksuiteoapi/node-sdk'
 import type {
   AppSettingsV1,
