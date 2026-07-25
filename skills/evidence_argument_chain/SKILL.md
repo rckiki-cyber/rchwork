@@ -1,7 +1,7 @@
 ---
 id: evidence-argument-chain
 
-name: evidence-argument-chain
+name: 证据论证链
 description: |
   当需要将案件中的多项证据与法律论证主张进行系统性对应挂钩时触发此技能。
   典型触发场景包括：准备诉讼文书（起诉状、答辩状、代理词）时需要构建完整的证据-主张对应关系；

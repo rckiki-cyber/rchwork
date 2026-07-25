@@ -1,7 +1,7 @@
 ---
 id: legal-risk-assessment
 
-name: legal-risk-assessment
+name: 法律风险评估
 description: |
   从许可资质、监管法规遵循及历史处罚记录四个维度评估企业面临的监管处罚风险。
 ---

@@ -1,6 +1,6 @@
 ---
 id: document-drafting
-name: document_drafting
+name: 文书起草
 description: 法律文书起草：起草各类法律文书，涵盖起诉状、答辩状、代理词、法律意见书、合同、律师函等
 ---
 

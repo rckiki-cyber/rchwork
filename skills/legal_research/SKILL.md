@@ -1,6 +1,6 @@
 ---
 id: legal-research
-name: legal_research
+name: 法律研究
 description: 法律研究：进行系统性法律检索、法规分析、类案研究和综合法律分析，输出结构化研究报告
 ---
 

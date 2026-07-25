@@ -1,6 +1,6 @@
 ---
 id: due-diligence
-name: due_diligence
+name: 尽职调查
 description: 尽职调查：对目标企业或项目进行法律尽职调查，识别法律风险和合规问题
 ---
 

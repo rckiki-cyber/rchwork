@@ -1,6 +1,6 @@
 ---
 id: team-knowledge-sharing
-name: team_knowledge_sharing
+name: 团队知识分享
 description: 团队知识共享：知识整理表格、一问一答式沉淀、团队内共享机制
 ---
 

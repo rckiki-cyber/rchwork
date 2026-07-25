@@ -1,6 +1,6 @@
 ---
 id: case-notebook
-name: case_notebook
+name: 案件备忘录
 description: 办案手记：案件核心工作底稿的全流程生成与管理，整合案件事实、法律问题、待办事项和庭前准备
 ---
 

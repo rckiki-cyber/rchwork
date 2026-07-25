@@ -1,7 +1,7 @@
 ---
 id: legal-thesis-ideation
 
-name: legal-thesis-ideation
+name: 法学论文选题
 description: 法学论文一体化工作流（构思+引文管理）。用于法学论文选题、研究问题定义、开题大纲生成，同时支持文献检索、DOI转BibTeX、去重校验和参考文献库构建。用户提到“法学论文/开题/文献综述/选题/研究问题/引文管理/参考文献/BibTeX/DOI/文献去重”时使用。
 ---
 

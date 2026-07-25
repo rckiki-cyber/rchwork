@@ -1,7 +1,7 @@
 ---
 id: dispute-and-performance-risk
 
-name: dispute-and-performance-risk
+name: 争议与履约风险
 description: |
   当用户提交合同文本、交易安排、商业协议或法律关系描述，需要评估其中可能产生法律纠纷或违约风险时触发此技能。
   典型触发场景包括但不限于：

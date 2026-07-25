@@ -1,6 +1,6 @@
 ---
 id: legal-professional-growth
-name: legal_professional_growth
+name: 法律职业成长
 description: 律师成长进阶：经验转化、知识沉淀、复盘反思与AI时代法律人发展路径
 ---
 

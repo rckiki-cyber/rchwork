@@ -1,7 +1,7 @@
 ---
 id: administrative-value-judgment
 
-name: administrative-value-judgment
+name: 行政价值判断
 description: 辅助中国大陆行政机关法律工作人员，根据一段行政案情，按行政法基本原则进行价值判断、利益衡量，并形成倾向性裁量结论。
 ---
 

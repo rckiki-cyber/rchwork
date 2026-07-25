@@ -1,6 +1,6 @@
 ---
 id: client-communication
-name: client_communication
+name: 客户沟通
 description: 客户沟通：律师与客户之间的专业沟通管理，包括案情沟通、进展报告、咨询回复和关系维护
 ---
 

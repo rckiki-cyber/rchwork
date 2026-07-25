@@ -1,7 +1,7 @@
 ---
 id: argument-chain-construction
 
-name: argument-chain-construction
+name: 论证链构建
 description: |
   当AI智能体需要将法律推理结果组织为完整、自洽、有说服力的论证结构时触发此技能。
   典型触发场景包括但不限于：

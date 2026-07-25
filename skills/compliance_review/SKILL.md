@@ -1,6 +1,6 @@
 ---
 id: compliance-review
-name: compliance_review
+name: 合规审查
 description: 合规审查：对企业经营行为、合同条款、数据合规、劳动用工等事项进行法律合规分析
 ---
 

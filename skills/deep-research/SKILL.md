@@ -1,5 +1,5 @@
 ---
-name: deep-research
+name: 深度研究
 description: 深度网络调研。将研究问题拆解为子主题，多源搜索、阅读、筛选，最后生成带引用的结构化研究报告。基于 GPT Researcher 方法论，零额外依赖。
 trigger_commands:
   - /deep-research

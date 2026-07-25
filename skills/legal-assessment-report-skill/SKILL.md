@@ -1,7 +1,7 @@
 ---
 id: legal-assessment-report-skill
 
-name: legal-assessment-report-skill
+name: 法律评估报告
 description: 基于用户现有案件材料生成法律评估报告、案件评估报告、诉讼可行性分析或风险评估意见；当用户需要梳理案件事实、识别争点、评估起诉路径、提示证据缺口或形成正式法律分析文稿时触发。
 ---
 

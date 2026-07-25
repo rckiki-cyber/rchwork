@@ -1,7 +1,7 @@
 ---
 id: presidio-data-compliance
 
-name: presidio-data-compliance
+name: 数据合规脱敏
 version: "0.1.0"
 description: >
   Use Microsoft Presidio for data-compliance engineering: detect PII/PHI and other sensitive

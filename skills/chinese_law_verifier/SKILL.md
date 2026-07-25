@@ -1,7 +1,7 @@
 ---
 id: chinese-law-verifier
 
-name: chinese-law-verifier
+name: 中国法核验
 description: 用于验证和精准检索中国大陆现行法律法规原文，在输出中包含中国大陆法律法规时，应利用本技能进行核验，避免生成幻觉条文。
 ---
 

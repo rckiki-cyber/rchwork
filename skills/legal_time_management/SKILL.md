@@ -1,6 +1,6 @@
 ---
 id: legal-time-management
-name: legal_time_management
+name: 法律时间管理
 description: 律师时间管理：多案件并行时间规划、倒排工期与效率提升方法
 ---
 

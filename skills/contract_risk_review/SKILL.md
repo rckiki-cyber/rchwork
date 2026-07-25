@@ -1,6 +1,6 @@
 ---
 id: contract-risk-review
-name: contract_risk_review
+name: 合同风险审查
 description: 合同风险审查：对合同文本进行系统性法律风险识别、评估和修改建议输出
 ---
 

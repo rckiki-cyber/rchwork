@@ -1,6 +1,6 @@
 ---
 id: litigation-prep
-name: litigation-prep
+name: 诉讼准备
 description: 公司诉讼案件指导专家：面向中国公司、股权、合同、合伙、劳动等纠纷的诉讼准备 Skill，提供案由识别、请求权基础分析、构成要件事实拆解、证据清单与诉讼路径建议。
 model: opus
 ---

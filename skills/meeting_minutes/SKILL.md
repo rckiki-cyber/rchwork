@@ -1,6 +1,6 @@
 ---
 id: meeting-minutes
-name: meeting_minutes
+name: 会议纪要
 description: 会议记录：法律会议/案件讨论会的结构化记录与待办追踪
 ---
 

@@ -1,6 +1,6 @@
 ---
 id: case-management
-name: case_management
+name: 案件管理
 description: "案件管理：对诉讼和仲裁案件进行全流程管理，涵盖案件档案管理、进度跟踪、期限监控和团队协作"
 ---
 

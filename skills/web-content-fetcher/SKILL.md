@@ -1,5 +1,5 @@
 ---
-name: web-content-fetcher
+name: 网页内容提取
 description: >
   网页正文内容提取。支持 Jina Reader / Scrapling+html2text / web_fetch 三级降级策略，
   自动返回干净的 Markdown 格式正文，保留标题、链接、图片 URL、列表结构。

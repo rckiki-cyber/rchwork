@@ -1,7 +1,7 @@
 ---
 id: legal-paper-anti-ai-traces
 
-name: legal-paper-anti-ai-traces
+name: 论文去AI痕迹
 description: >
   用于论文、综述、研究报告、开题报告、分析说明、章节草稿等正式文本的“去 AI 痕迹”写作 skill。
   当用户要求写较正式、较像论文或报告的文本，或要求降低 AI 味、避免被识别为 AI 生成、增强问题意识与论证密度时触发。

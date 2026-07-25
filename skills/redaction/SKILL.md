@@ -1,6 +1,6 @@
 ---
 id: redaction
-name: redaction
+name: 脱敏处理
 description: 脱敏处理：对文件进行敏感信息识别、分类和脱敏处理，支持多种脱敏策略、输出格式和脱敏后代词反向还原
 version: 0.3.0
 ---

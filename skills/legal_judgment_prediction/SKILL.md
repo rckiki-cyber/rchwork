@@ -1,7 +1,7 @@
 ---
 id: legal-judgment-prediction
 
-name: legal-judgment-prediction
+name: 裁判预测
 description: 根据案件事实描述，综合调用8个原子能力，预测罪名、适用法条、刑期及量刑情节，输出结构化预测报告及置信度评估。
 ---
 

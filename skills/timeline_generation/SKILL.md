@@ -1,6 +1,6 @@
 ---
 id: timeline-generation
-name: timeline_generation
+name: 时间线生成
 description: 案件时间线生成：从案件材料中抽取事件时间节点，生成结构化可视化时间线
 ---
 

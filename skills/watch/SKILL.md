@@ -1,5 +1,5 @@
 ---
-name: watch
+name: 视频分析
 description: 视频分析与内容提取。处理 YouTube/TikTok/X/Instagram 等链接和本地视频文件（mp4/mov/mkv/webm），提取字幕/音频转录，生成带时间戳的视频内容分析报告。
 trigger_commands:
   - /watch

@@ -1,6 +1,6 @@
 ---
 id: fact-extraction
-name: fact_extraction
+name: 事实提取
 description: 案件事实抽取：从案件材料中系统性地抽取、分类、结构化关键法律事实
 ---
 

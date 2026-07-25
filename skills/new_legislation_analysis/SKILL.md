@@ -1,6 +1,6 @@
 ---
 id: new-legislation-analysis
-name: new_legislation_analysis
+name: 新法分析
 description: 新法分析：新法出台后的分析文章撰写与业务影响评估
 ---
 

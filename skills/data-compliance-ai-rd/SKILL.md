@@ -1,7 +1,7 @@
 ---
 id: data-compliance-ai-rd
 
-name: data-compliance-ai-rd
+name: 数据合规AI研发
 description: 围绕固定项目“数据合规AI项目 / 数据合规与AI应用探讨”做研发推进、范围收缩、知识库设计、工作流原型、验证标准、会议结论沉淀与 IMA 笔记同步。用户一旦在聊这个项目的 MVP、法规库、隐私政策审查、数据出境、任务分工、技术路线、验证指标、会议补充或新想法时，就应使用本 skill。
 ---
 

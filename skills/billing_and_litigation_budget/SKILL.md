@@ -1,7 +1,7 @@
 ---
 id: billing-and-litigation-budget
 
-name: billing-and-litigation-budget
+name: 收费与诉讼预算
 description: |
   当用户需要统计、管理律师工时、专家费用、调查费用，控制诉讼成本、向客户出具工时单或费用单时使用此技能。
   典型触发场景包括但不限于：

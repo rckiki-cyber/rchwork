@@ -1,7 +1,7 @@
 ---
 id: evidence-evaluation
 
-name: evidence-evaluation
+name: 证据评估
 description: |
   当需要对案件中的证据材料进行真实性、合法性、关联性（证据"三性"）及证明力评估时触发此技能。
   典型触发场景包括但不限于：

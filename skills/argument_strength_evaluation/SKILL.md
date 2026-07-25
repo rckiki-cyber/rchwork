@@ -1,7 +1,7 @@
 ---
 id: argument-strength-evaluation
 
-name: argument-strength-evaluation
+name: 论证强度评估
 description: |
   当AI智能体完成一段法律推理或论证后，需要对该推理结论进行自我评估，判断论证的整体强度与置信度，识别并标注推理链条中的薄弱环节。
   触发条件包括但不限于：

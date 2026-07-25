@@ -1,7 +1,7 @@
 ---
 id: creator-rights-assistant
 
-name: "creator-rights-assistant"
+name: 创作者权益助手
 slug: creator-rights-assistant
 version: 1.0
 description: >-

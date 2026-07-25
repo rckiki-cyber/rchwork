@@ -1,6 +1,6 @@
 ---
 id: evidence-catalog
-name: evidence-catalog
+name: 证据目录
 description: 证据目录生成：对案件证据材料进行系统化整理、分类、编号，生成标准化证据目录
 ---
 

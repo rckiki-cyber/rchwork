@@ -1,7 +1,7 @@
 ---
 id: dispute-issue-identification
 
-name: dispute-issue-identification
+name: 争议焦点识别
 description: |
   争议焦点识别是指在法律要素提取之后，从法律事实中提取争议焦点，进一步将案件关系转化为法律关系问题。
   能够排除无争议事项，能够有效围绕当事人争议的事实、证据和法律适用等焦点问题进行后续分析。

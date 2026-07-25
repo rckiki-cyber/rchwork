@@ -1,7 +1,7 @@
 ---
 id: legal-norm-validity-check
 
-name: legal-norm-validity-check
+name: 规范效力审查
 description: |
   当AI智能体在法律推理过程中检索到具体法律条文后，需要对该法条进行效力验证时触发此技能。
   触发条件包括但不限于：

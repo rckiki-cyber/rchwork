@@ -1,5 +1,5 @@
 ---
-name: skill-creator
+name: 技能创建
 description: Create or update AgentSkills. Use when designing, structuring, or packaging skills with scripts, references, and assets.
 ---
 

@@ -1,6 +1,6 @@
 ---
 id: ocr-extraction
-name: ocr-extraction
+name: OCR提取
 description: OCR 文字提取：对扫描件、图片、无文字层的 PDF 进行 OCR，提取可编辑文本
 version: 0.1.0
 ---

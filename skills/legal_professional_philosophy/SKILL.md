@@ -1,6 +1,6 @@
 ---
 id: legal-professional-philosophy
-name: legal_professional_philosophy
+name: 法律职业理念
 description: 律师职业理念：以终为始、共情之心、综合智慧、全程担当的执业哲学
 ---
 

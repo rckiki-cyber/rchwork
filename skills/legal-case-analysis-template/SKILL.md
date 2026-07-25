@@ -1,7 +1,7 @@
 ---
 id: legal-case-analysis-template
 
-name: legal-case-analysis-template
+name: 案例分析模板
 description: 围绕单一法律问题进行“可引用的案例论证”写作。用于用户要求：论证某法律争点、援引案例支持观点、输出可直接用于论文/代理意见/法律备忘录的结构化分析。重点是论证链与案例引用，不以统计表为核心。
 ---
 

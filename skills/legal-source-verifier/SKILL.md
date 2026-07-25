@@ -1,7 +1,7 @@
 ---
 id: legal-source-verifier
 
-name: legal-source-verifier
+name: 法律来源核验
 description: "Verify citations, statute links, attachments, and source authenticity in user-provided legal documents, rubrics, answers, and review materials. Use when a document contains links, article citations, attachment references, legal database citations, or source claims that must be checked for: (1) accessibility, (2) whether the link is official, (3) whether the linked statute/article content actually matches the claim, (4) whether referenced attachments or codex excerpts really contain the cited content, and (5) whether data sources are missing, suspicious, or 挂羊头卖狗肉."
 ---
 

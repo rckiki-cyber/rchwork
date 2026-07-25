@@ -1,7 +1,7 @@
 ---
 id: wps-case-file-organizer
 
-name: "wps-case-file-organizer"
+name: 案件卷宗整理
 description: Intelligently organize all WPS cloud files by analyzing file content. Opens and reads files to understand their topics, then creates topic-specific folders and organizes files automatically. Works with all file types including legal cases, work documents, and personal files.
 model: opus
 ---
