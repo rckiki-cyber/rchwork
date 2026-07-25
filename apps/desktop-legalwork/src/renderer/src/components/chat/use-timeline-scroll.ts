@@ -132,7 +132,7 @@ export function useTimelineScroll({
     scrollFrameRef.current = window.requestAnimationFrame(() => {
       scrollFrameRef.current = null
       endRef.current?.scrollIntoView({
-        behavior: live || liveReasoning ? 'auto' : 'smooth',
+        behavior: 'auto',
         block: 'end'
       })
     })
