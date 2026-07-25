@@ -847,7 +847,7 @@ export class LearningIterationRuntime {
     const create = await this.request(settings, '/v1/threads', 'POST', JSON.stringify({
       workspace: runDir,
       model: runtime.model,
-      mode: 'agent',
+      mode: 'plan',
       relation: 'side',
       title: `${LEARNING_THREAD_TITLE_PREFIX} ${basename(runDir)}`,
       approvalPolicy: 'never',
@@ -864,7 +864,7 @@ export class LearningIterationRuntime {
       'POST',
       JSON.stringify({
         prompt,
-        mode: 'agent',
+        mode: 'plan',
         model: runtime.model,
         reasoningEffort: 'high',
         approvalPolicy: 'never'

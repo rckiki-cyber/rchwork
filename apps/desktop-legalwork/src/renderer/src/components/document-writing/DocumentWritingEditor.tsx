@@ -122,7 +122,7 @@ export function DocumentWritingEditor({
   const [exporting, setExporting] = useState(false)
 
   const handleExportWord = useCallback(async (): Promise<void> => {
-    if (!generatedContent || typeof window.dsGui?.exportLegalResearchToWord !== 'function') return
+    if (!generatedContent || !template || typeof window.dsGui?.exportLegalResearchToWord !== 'function') return
     setExporting(true)
     try {
       const html = generatedContent
@@ -190,7 +190,7 @@ export function DocumentWritingEditor({
     } finally {
       setExporting(false)
     }
-  }, [generatedContent, template.name])
+  }, [generatedContent, template?.name])
 
   const hasRequiredFields = useMemo(
     () => template?.fields.some((f) => f.required) ?? false,
