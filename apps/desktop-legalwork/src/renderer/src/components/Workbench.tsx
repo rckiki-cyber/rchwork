@@ -17,6 +17,7 @@ import { getProvider } from '../agent/registry'
 import { rendererRuntimeClient } from '../agent/runtime-client'
 import { useChatStore } from '../store/chat-store'
 import { isClawThread, isKnowledgeThread, isLegalResearchThread } from '../store/chat-store-helpers'
+import { hasPendingRuntimeWork } from '../store/chat-store-runtime-helpers'
 import {
   extractLatestTurnAutoOpenDevPreviewUrls,
   extractLatestTurnDevPreviewUrls
@@ -451,6 +452,7 @@ export function Workbench(): ReactElement {
     (block) => block.kind === 'user_input' && block.status === 'pending'
   )
   const hasMessages = timelineBlocks.length > 0 || !!timelineLiveAssistant.trim() || !!timelineLiveReasoning.trim()
+  const hasActiveWork = busy || timelineBlocks.some(hasPendingRuntimeWork)
   const devPreviewBlocks = useMemo<ChatBlock[]>(() => {
     const liveText = timelineLiveAssistant.trim()
     if (!liveText) return timelineBlocks
@@ -1565,6 +1567,7 @@ export function Workbench(): ReactElement {
                 mode={mode}
                 setMode={setMode}
                 busy={busy}
+                hasActiveWork={hasActiveWork}
                 runtimeReady={runtimeConnection === 'ready'}
                 hasActiveThread={Boolean(activeThreadId)}
                 composerModel={

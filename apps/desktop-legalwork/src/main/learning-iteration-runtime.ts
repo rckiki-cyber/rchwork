@@ -224,6 +224,7 @@ export class LearningIterationRuntime {
   private running = false
   private cancelRequested = false
   private manualQueue = false
+  private forceRun = false
   private activeRunId = ''
   private activeLearningThreadId = ''
   private message = ''
@@ -335,6 +336,7 @@ export class LearningIterationRuntime {
     this.queued = true
     this.cancelRequested = false
     this.manualQueue = true
+    this.forceRun = true
     this.message = '正在准备学习'
     void this.tick()
     return { ok: true, message: this.message }
@@ -418,28 +420,24 @@ export class LearningIterationRuntime {
     if (this.running) return
     const settings = await this.deps.store.load()
     if (!settings.learningIteration.enabled) {
+      this.forceRun = false
       this.manualQueue = false
       return
     }
     const state = await this.readState(settings)
     const today = localDay(this.now())
     const automaticEligible = state.lastLocalDay !== today
-    const manualSkip = this.manualQueue
-    if (!automaticEligible) {
-      if (!manualSkip) {
-        if (this.queued) {
-          this.queued = false
-          this.message = '今日已有成功记录，请在下一个自然日再检查'
-        }
-        this.manualQueue = false
-        return
+    if (!automaticEligible && !this.forceRun) {
+      if (this.queued) {
+        this.queued = false
+        this.message = '今日已有成功记录，请在下一个自然日再检查'
       }
-      // Manual trigger: allow running even if daily quota was met
-    }
-    if (!manualSkip && state.lastRetryAt && !retryIsDue(state, this.now())) {
       return
     }
-    if (!manualSkip && await this.isBusy(settings)) {
+    if (!this.forceRun && state.lastRetryAt && !retryIsDue(state, this.now())) {
+      return
+    }
+    if (!this.forceRun && await this.isBusy(settings)) {
       if (this.queued) this.message = '正在等待所有任务结束并达到空闲条件'
       return
     }
@@ -453,6 +451,12 @@ export class LearningIterationRuntime {
       await this.run(settings, state)
     } catch (error) {
       if (error instanceof LearningPausedError) {
+        if (this.forceRun) {
+          // Manual trigger: retry immediately instead of pausing
+          this.message = '正在重试学习'
+          void this.tick()
+          return
+        }
         await this.writeState(settings, {
           ...state,
           lastCheckedAt: this.now().toISOString(),
@@ -492,6 +496,7 @@ export class LearningIterationRuntime {
       })
     } finally {
       this.running = false
+      this.forceRun = false
       this.activeRunId = ''
       this.activeLearningThreadId = ''
     }
