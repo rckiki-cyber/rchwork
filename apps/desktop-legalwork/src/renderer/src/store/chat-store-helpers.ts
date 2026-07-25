@@ -207,7 +207,7 @@ export function optimisticUserModelLabel(
   threadModel: string | undefined
 ): string | undefined {
   const composer = composerModel.trim()
-  if (composer) return composer.toLowerCase() === 'auto' ? 'auto' : composer
+  if (composer && composer.toLowerCase() !== 'auto') return composer
   const model = threadModel?.trim()
   return model || undefined
 }
