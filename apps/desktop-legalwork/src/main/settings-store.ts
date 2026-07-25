@@ -65,7 +65,7 @@ export function expandHomePath(raw: string | null | undefined): string {
 
 function normalizeWorkspaceRoot(raw: string | null | undefined): string {
   const expanded = expandHomePath(raw)
-  if (!expanded) return DEFAULT_WORKSPACE_ROOT
+  if (!expanded) return ''
   return LEGACY_DEFAULT_WORKSPACE_ROOTS.includes(expanded as typeof LEGACY_DEFAULT_WORKSPACE_ROOTS[number])
     ? DEFAULT_WORKSPACE_ROOT
     : expanded

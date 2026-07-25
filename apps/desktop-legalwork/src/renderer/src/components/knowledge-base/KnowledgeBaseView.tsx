@@ -1532,7 +1532,7 @@ ${question.trim()}
 
         {/* AI Chat sidebar */}
         {chatOpen ? (
-          <aside className="ds-no-drag flex h-full w-[min(42vw,520px)] min-w-[360px] max-w-[520px] flex-col border-l border-ds-border bg-ds-card">
+          <aside className="ds-no-drag flex h-full w-[min(35vw,580px)] min-w-[300px] max-w-[580px] flex-col border-l border-ds-border bg-ds-card">
             <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ds-border px-4">
               <div className="flex min-w-0 items-center gap-2">
                 <Sparkles className="h-4 w-4 text-[var(--ds-accent)]" strokeWidth={1.8} />
