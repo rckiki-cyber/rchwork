@@ -628,8 +628,6 @@
   "pluginMcpContext7Desc": "为编码任务拉取最新库文档。",
   "pluginMcpFlintChartTitle": "Flint Chart",
   "pluginMcpFlintChartDesc": "按需下载 Microsoft Flint 图表 MCP（约 160 MiB 开发态依赖），生成并校验 Vega-Lite、ECharts、Chart.js 图表；不占用 LegalWork 安装包体积。",
-  "pluginMcpGptrTitle": "GPT Researcher",
-  "pluginMcpGptrDesc": "深度网络调研工具。自动搜索和分析多源信息，生成带引用的研究报告。需要 Python 3.11+、OpenAI API Key 和 Tavily API Key。依赖较大（约 3.9GB），仅按需安装。",
   "pluginMcpOptionalInstallerUnavailable": "当前版本无法安装可选 MCP，请更新 LegalWork 后重试。",
   "pluginMcpFlintInstallFailed": "Flint Chart MCP 安装失败。请确认系统已安装 Node.js/npm 后重试。{{message}}",
   "pluginMcpFlintInstalled": "Flint Chart MCP v{{version}} 已安装并启用；运行时将自动连接。",

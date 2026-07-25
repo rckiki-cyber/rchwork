@@ -628,8 +628,6 @@
   "pluginMcpContext7Desc": "Fetch current library documentation for coding tasks.",
   "pluginMcpFlintChartTitle": "Flint Chart",
   "pluginMcpFlintChartDesc": "Download Microsoft Flint Chart MCP on demand (about 160 MiB of development dependencies) to create and validate Vega-Lite, ECharts, and Chart.js charts without increasing the LegalWork installer size.",
-  "pluginMcpGptrTitle": "GPT Researcher",
-  "pluginMcpGptrDesc": "Deep web research tool. Automatically searches and analyzes multiple sources to generate cited research reports. Requires Python 3.11+, OpenAI API Key, and Tavily API Key. Large dependency (~3.9GB), install on demand only.",
   "pluginMcpOptionalInstallerUnavailable": "Optional MCP installation is unavailable in this version. Update LegalWork and try again.",
   "pluginMcpFlintInstallFailed": "Flint Chart MCP installation failed. Make sure Node.js/npm is installed, then try again. {{message}}",
   "pluginMcpFlintInstalled": "Flint Chart MCP v{{version}} is installed and enabled. The runtime will connect automatically.",
