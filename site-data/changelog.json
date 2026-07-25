@@ -1,28 +1,76 @@
 {
-  "generated_at": "2026-07-25T05:02:25.624Z",
+  "generated_at": "2026-07-25T08:55:42.375Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
       "tag_name": "v0.3.3",
       "name": "LegalWork 0.3.3",
-      "published_at": "2026-07-25T08:29:00Z",
+      "published_at": "2026-07-25T08:55:27Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.3",
       "prerelease": false,
-      "summary": "本次更新包括：金字塔知识库、引用优化、学习迭代增强。",
+      "summary": "本次更新包括：修复优化。",
       "highlights": [
-        "金字塔知识库：5 层结构、层级路由器、图谱边关系、层级感知检索，知识管理更精细。",
-        "引用格式优化：GB/T 7714 引文引擎、引用验证器、反幻觉提示、技能联动，生成引用更准确。",
-        "学习迭代增强：手动触发跳过空闲等待、强制执行与引导按钮、去除价格显示，体验更可控。",
-        "deep-research skill：零依赖实现，基于 GPT Researcher 方法论，支持多源深度调研。",
-        "视频分析 skill 上线：适配 DeepSeek 无视觉场景，通过文字/Whisper 实现视频推理分析。",
-        "Word 导出按钮：AI 生成文档可一键导出为 DOCX，内嵌 SimSun 字体，排版更规范。",
-        "Agent 能力增强：新增 thread_list/thread_read 工具访问对话历史、SEND_FILE 标记经飞书发送文件。",
-        "修复 onClearWorkspace 始终可调用、日志审计若干问题。"
+        "LegalWork 0.3.3 已上线，安装后即可使用这一版的新能力与体验优化。"
       ],
       "categories": [
-        "知识库",
-        "Agent 运行",
-        "插件技能",
+        "修复优化"
+      ],
+      "assets": [
+        {
+          "name": "legalwork-0.3.3-mac-arm64.dmg",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.3/legalwork-0.3.3-mac-arm64.dmg",
+          "download_count": 0,
+          "size": 215741913
+        },
+        {
+          "name": "legalwork-0.3.3-mac-x64.dmg",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.3/legalwork-0.3.3-mac-x64.dmg",
+          "download_count": 0,
+          "size": 222996220
+        },
+        {
+          "name": "legalwork-0.3.3-win-x64.exe",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.3/legalwork-0.3.3-win-x64.exe",
+          "download_count": 0,
+          "size": 167820711
+        },
+        {
+          "name": "legalwork-0.3.3-mac-arm64.zip",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.3/legalwork-0.3.3-mac-arm64.zip",
+          "download_count": 0,
+          "size": 220109648
+        },
+        {
+          "name": "legalwork-0.3.3-mac-x64.zip",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.3/legalwork-0.3.3-mac-x64.zip",
+          "download_count": 0,
+          "size": 227495294
+        },
+        {
+          "name": "legalwork-0.3.3-win-ia32.exe",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.3/legalwork-0.3.3-win-ia32.exe",
+          "download_count": 0,
+          "size": 162067980
+        },
+        {
+          "name": "legalwork-0.3.3-linux-x86_64.AppImage",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.3/legalwork-0.3.3-linux-x86_64.AppImage",
+          "download_count": 0,
+          "size": 220404553
+        }
+      ]
+    },
+    {
+      "tag_name": "v0.3.2",
+      "name": "LegalWork 0.3.2",
+      "published_at": "2026-07-25T05:02:10Z",
+      "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.2",
+      "prerelease": false,
+      "summary": "本次更新包括：修复优化。",
+      "highlights": [
+        "LegalWork 0.3.2 已上线，安装后即可使用这一版的新能力与体验优化。"
+      ],
+      "categories": [
         "修复优化"
       ],
       "assets": [
@@ -47,7 +95,7 @@
         {
           "name": "legalwork-0.3.2-mac-arm64.zip",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.2/legalwork-0.3.2-mac-arm64.zip",
-          "download_count": 0,
+          "download_count": 1,
           "size": 220078375
         },
         {
