@@ -3,6 +3,33 @@
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
+      "tag_name": "v0.3.4",
+      "name": "LegalWork 0.3.4",
+      "published_at": "2026-07-25T11:00:00Z",
+      "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.4",
+      "prerelease": false,
+      "summary": "PDF 预览闪屏修复、知识库 AI 对话跟随主模型、引导/排队按钮在工作时的排队消息中可用、聊天滚动卡顿修复、学习迭代稳定性修复等 9 项修复。",
+      "highlights": [
+        "📄 PDF 预览闪屏修复：ResizeObserver 改用 ref 不触发重渲染，消除「正在渲染 PDF」闪烁循环。",
+        "🤖 知识库 AI 对话模型跟随主 agent：不再硬编码过时的 deepseek-chat，改用 composerModel 当前选择。",
+        "🧊 引导/排队按钮：排队消息右侧新增引导按钮，点击打断当前任务并立即发送该消息。",
+        "🪟 知识库 AI 侧边栏宽度自适应：最大宽度从 520px 提到 580px，最小从 360px 降到 300px。",
+        "📜 聊天滚动卡顿修复：发送新消息后平滑滚动被 AI 输出打断导致闪回，改为 auto 滚动。",
+        "📁 不使用项目无效修复：clearWorkspace 清空路径不再被 normalize 回退到 ~/Desktop。",
+        "🎓 学习迭代稳定性修复：isBusy() 不再中断飞行中的 LLM 线程浪费 token，forceRun 死循环重试移除。",
+        "🔖 消息模型标签修正：composerModel 设为 auto 时不再显示 auto 文字，改为显示线程实际模型。",
+        "📝 文书写作页面崩溃修复：handleExportWord useCallback 依赖数组中 template.name 在 template 为 null 时炸了。"
+      ],
+      "categories": [
+        "Agent 运行",
+        "知识库",
+        "对话体验",
+        "PDF 预览",
+        "修复优化"
+      ],
+      "assets": []
+    },
+    {
       "tag_name": "v0.3.3",
       "name": "LegalWork 0.3.3",
       "published_at": "2026-07-25T08:55:27Z",
