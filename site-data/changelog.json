@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-26T14:26:47.635Z",
+  "generated_at": "2026-07-26T14:27:33.210Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
@@ -8,12 +8,16 @@
       "published_at": "2026-07-26T14:26:31Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.5",
       "prerelease": false,
-      "summary": "本次更新包括：修复优化。",
+      "summary": "本次更新包括：对话体验。",
       "highlights": [
-        "LegalWork 0.3.5 已上线，安装后即可使用这一版的新能力与体验优化。"
+        "使用体验更新：🍎 字体排版",
+        "使用体验更新：全局字体替换为苹果系统字体体系：SF Pro / PingFang SC / SF Mono",
+        "使用体验更新：中文显示「苹方」，英文/数字接近 SF Pro，编辑器等宽字体用 SF Mono",
+        "使用体验更新：对话正文从 13px 统一提升至 17px，行距 1.7，阅读更舒适",
+        "使用体验更新：侧边栏保持 14px 不变"
       ],
       "categories": [
-        "修复优化"
+        "对话体验"
       ],
       "assets": [
         {
