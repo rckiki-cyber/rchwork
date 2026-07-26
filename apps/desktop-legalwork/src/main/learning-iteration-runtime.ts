@@ -1279,7 +1279,9 @@ function parseLearningModelResult(text: string): LearningModelResult {
   return {
     title: typeof parsed.title === 'string' ? parsed.title : '学习迭代报告',
     summary: typeof parsed.summary === 'string' ? parsed.summary : '',
-    reportMarkdown: typeof parsed.reportMarkdown === 'string' ? parsed.reportMarkdown : '',
+    reportMarkdown: typeof parsed.reportMarkdown === 'string'
+      ? parsed.reportMarkdown.replace(/\\n/g, '\n')
+      : '',
     memories: Array.isArray(parsed.memories) ? parsed.memories : [],
     skills: Array.isArray(parsed.skills) ? parsed.skills : [],
     rejected: Array.isArray(parsed.rejected) ? parsed.rejected : []
