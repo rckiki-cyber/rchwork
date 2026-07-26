@@ -1,3 +1,5 @@
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type {
   ThreadMode,
   ThreadRecord,
@@ -19,6 +21,15 @@ import {
  * services and stores can stay free of date-string formatting.
  */
 export type ThreadEntity = ThreadRecord
+
+export function expandThreadWorkspace(raw: string): string {
+  const value = raw.trim()
+  if (value === '~') return homedir()
+  if (value.startsWith('~/') || value.startsWith('~\\')) {
+    return join(homedir(), value.slice(2))
+  }
+  return value
+}
 
 export function createThreadRecord(input: {
   id: string
@@ -46,7 +57,7 @@ export function createThreadRecord(input: {
   return {
     id: input.id,
     title: input.title,
-    workspace: input.workspace,
+    workspace: expandThreadWorkspace(input.workspace),
     model: input.model,
     mode: input.mode ?? 'agent',
     status: input.status ?? 'idle',
