@@ -1,61 +1,128 @@
 {
-  "generated_at": "2026-07-25T11:49:25.000Z",
+  "generated_at": "2026-07-26T14:26:47.635Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
       "tag_name": "v0.3.5",
       "name": "LegalWork 0.3.5",
-      "published_at": "2026-07-26T19:00:00Z",
+      "published_at": "2026-07-26T14:26:31Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.5",
       "prerelease": false,
-      "summary": "苹果系统字体、对话字号增大、知识库侧边栏自适应、不使用项目修复、知库 AI 对话侧边栏响应式、学习迭代和脱敏导出等多项修复。",
+      "summary": "本次更新包括：修复优化。",
       "highlights": [
-        "🍎 苹果系统字体：全局字体替换为 SF Pro / PingFang SC / SF Mono 体系，中文显示苹方，英文/数字接近 SF Pro，编辑器使用 SF Mono。",
-        "📏 对话字号增大：正文从 13px 统一提升至 17px，行距 1.7，侧边栏保持 14px 不变。",
-        "🪟 知识库 AI 对话侧边栏响应式：侧边栏宽度随窗口缩放自动适配，PDF 文件预览页的 AI 对话面板同样自适应。",
-        "📁 不使用项目修复：彻底修复「不使用项目」无效的问题，现在会正确显示「无项目」标记。",
-        "🧑‍⚖️ 知识库 AI 引用可点击跳转：AI 回复中的 [来源 N] 变为可点击链接，点击直接跳转到对应知识库文件。",
-        "📄 PDF 文字选中：PDF 预览页面现在支持鼠标拖拽选中文字。",
-        "🎓 学习迭代稳定可用：超时延长至 4 小时，不再因用户忙碌误杀线程，报告中的 \\n 乱码已修复。",
-        "✅ 脱敏 Word 导出修复：文本类型素材选择 docx 格式时，现在输出真正的 Word 文档而非 .md 文件。",
-        "🖇️ 引导消息：排队消息右侧新增「引导」按钮，点击打断当前任务并立即发送。",
-        "🧊 聊天滚动卡顿修复：smooth scroll 被 AI 输出打断导致闪回，改为 auto 滚动。"
+        "LegalWork 0.3.5 已上线，安装后即可使用这一版的新能力与体验优化。"
       ],
       "categories": [
-        "字体排版",
-        "知识库",
-        "对话体验",
-        "PDF 预览",
         "修复优化"
       ],
-      "assets": []
+      "assets": [
+        {
+          "name": "legalwork-0.3.5-mac-arm64.dmg",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.5/legalwork-0.3.5-mac-arm64.dmg",
+          "download_count": 0,
+          "size": 215757606
+        },
+        {
+          "name": "legalwork-0.3.5-mac-x64.dmg",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.5/legalwork-0.3.5-mac-x64.dmg",
+          "download_count": 0,
+          "size": 223000078
+        },
+        {
+          "name": "legalwork-0.3.5-win-x64.exe",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.5/legalwork-0.3.5-win-x64.exe",
+          "download_count": 0,
+          "size": 167827183
+        },
+        {
+          "name": "legalwork-0.3.5-mac-arm64.zip",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.5/legalwork-0.3.5-mac-arm64.zip",
+          "download_count": 0,
+          "size": 220115115
+        },
+        {
+          "name": "legalwork-0.3.5-mac-x64.zip",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.5/legalwork-0.3.5-mac-x64.zip",
+          "download_count": 0,
+          "size": 227500751
+        },
+        {
+          "name": "legalwork-0.3.5-win-ia32.exe",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.5/legalwork-0.3.5-win-ia32.exe",
+          "download_count": 0,
+          "size": 162074336
+        },
+        {
+          "name": "legalwork-0.3.5-linux-x86_64.AppImage",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.5/legalwork-0.3.5-linux-x86_64.AppImage",
+          "download_count": 0,
+          "size": 220400427
+        }
+      ]
     },
     {
       "tag_name": "v0.3.4",
       "name": "LegalWork 0.3.4",
-      "published_at": "2026-07-25T11:00:00Z",
+      "published_at": "2026-07-25T11:45:55Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.4",
       "prerelease": false,
-      "summary": "PDF 预览闪屏修复、知识库 AI 对话跟随主模型、引导/排队按钮在工作时的排队消息中可用、聊天滚动卡顿修复、学习迭代稳定性修复等 9 项修复。",
+      "summary": "本次更新包括：法规知识库、对话体验、修复优化。",
       "highlights": [
-        "📄 PDF 预览闪屏修复：ResizeObserver 改用 ref 不触发重渲染，消除「正在渲染 PDF」闪烁循环。",
-        "🤖 知识库 AI 对话模型跟随主 agent：不再硬编码过时的 deepseek-chat，改用 composerModel 当前选择。",
-        "🧊 引导/排队按钮：排队消息右侧新增引导按钮，点击打断当前任务并立即发送该消息。",
-        "🪟 知识库 AI 侧边栏宽度自适应：最大宽度从 520px 提到 580px，最小从 360px 降到 300px。",
-        "📜 聊天滚动卡顿修复：发送新消息后平滑滚动被 AI 输出打断导致闪回，改为 auto 滚动。",
-        "📁 不使用项目无效修复：clearWorkspace 清空路径不再被 normalize 回退到 ~/Desktop。",
-        "🎓 学习迭代稳定性修复：isBusy() 不再中断飞行中的 LLM 线程浪费 token，forceRun 死循环重试移除。",
-        "🔖 消息模型标签修正：composerModel 设为 auto 时不再显示 auto 文字，改为显示线程实际模型。",
-        "📝 文书写作页面崩溃修复：handleExportWord useCallback 依赖数组中 template.name 在 template 为 null 时炸了。"
+        "使用体验更新：📄 PDF 预览",
+        "修复了使用中的稳定性问题：修复 PDF 预览闪屏问题：ResizeObserver 改用 ref 不触发重渲染，消除「正在渲染 PDF」闪烁循环。",
+        "使用体验更新：🤖 知识库 AI 对话",
+        "使用体验更新：模型跟随主 Agent 当前选择，不再硬编码过时的 deepseek-chat。",
+        "使用体验更新：AI 侧边栏宽度自适应：最大宽度 520px → 580px，最小宽度 360px → 300px。"
       ],
       "categories": [
-        "Agent 运行",
-        "知识库",
+        "法规知识库",
         "对话体验",
-        "PDF 预览",
         "修复优化"
       ],
-      "assets": []
+      "assets": [
+        {
+          "name": "legalwork-0.3.4-mac-arm64.dmg",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.4/legalwork-0.3.4-mac-arm64.dmg",
+          "download_count": 4,
+          "size": 215737484
+        },
+        {
+          "name": "legalwork-0.3.4-mac-x64.dmg",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.4/legalwork-0.3.4-mac-x64.dmg",
+          "download_count": 0,
+          "size": 222992576
+        },
+        {
+          "name": "legalwork-0.3.4-win-x64.exe",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.4/legalwork-0.3.4-win-x64.exe",
+          "download_count": 7,
+          "size": 167818475
+        },
+        {
+          "name": "legalwork-0.3.4-mac-arm64.zip",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.4/legalwork-0.3.4-mac-arm64.zip",
+          "download_count": 1,
+          "size": 220108892
+        },
+        {
+          "name": "legalwork-0.3.4-mac-x64.zip",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.4/legalwork-0.3.4-mac-x64.zip",
+          "download_count": 0,
+          "size": 227494541
+        },
+        {
+          "name": "legalwork-0.3.4-win-ia32.exe",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.4/legalwork-0.3.4-win-ia32.exe",
+          "download_count": 0,
+          "size": 162065550
+        },
+        {
+          "name": "legalwork-0.3.4-linux-x86_64.AppImage",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.4/legalwork-0.3.4-linux-x86_64.AppImage",
+          "download_count": 1,
+          "size": 220396618
+        }
+      ]
     },
     {
       "tag_name": "v0.3.3",
@@ -63,21 +130,11 @@
       "published_at": "2026-07-25T08:55:27Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.3",
       "prerelease": false,
-      "summary": "金字塔知识库、引用优化、deep-research skill、学习迭代增强、多项 Agent 能力扩展。",
+      "summary": "本次更新包括：修复优化。",
       "highlights": [
-        "🏛️ 金字塔知识库：5 层结构（原则/架构/标准/实施/经验）、层级路由器、图谱边关系、层级感知检索，知识管理更精细。",
-        "📖 引用格式优化：GB/T 7714 引文引擎、引用验证器、反幻觉提示、技能联动，生成引用更准确。",
-        "🔬 deep-research skill：零依赖实现，基于 GPT Researcher 方法论，支持多源深度调研。",
-        "🎓 学习迭代增强：手动触发跳过空闲等待、强制执行与引导按钮、去除价格显示，体验更可控。",
-        "📹 视频分析 skill 上线：适配 DeepSeek 无视觉场景，通过文字/Whisper 实现视频推理分析。",
-        "📝 Word 导出按钮：AI 生成文档可一键导出为 DOCX，内嵌 SimSun 字体，排版更规范。",
-        "🧩 Agent 能力增强：新增 thread_list/thread_read 工具访问对话历史、SEND_FILE 标记经飞书发送文件。",
-        "🐛 修复 onClearWorkspace 始终可调用、日志审计若干问题。"
+        "LegalWork 0.3.3 已上线，安装后即可使用这一版的新能力与体验优化。"
       ],
       "categories": [
-        "知识库",
-        "Agent 运行",
-        "插件技能",
         "修复优化"
       ],
       "assets": [
@@ -96,13 +153,13 @@
         {
           "name": "legalwork-0.3.3-win-x64.exe",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.3/legalwork-0.3.3-win-x64.exe",
-          "download_count": 0,
+          "download_count": 1,
           "size": 167820711
         },
         {
           "name": "legalwork-0.3.3-mac-arm64.zip",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.3/legalwork-0.3.3-mac-arm64.zip",
-          "download_count": 0,
+          "download_count": 1,
           "size": 220109648
         },
         {
@@ -131,21 +188,11 @@
       "published_at": "2026-07-25T05:02:10Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.2",
       "prerelease": false,
-      "summary": "Agent 长期记忆、学习迭代、Flint Chart 图表 MCP、排队/引导发送、大量 Bug 修复。",
+      "summary": "本次更新包括：修复优化。",
       "highlights": [
-        "🧠 Agent 长期记忆：Agent 可自动记忆用户偏好、工作流程和项目上下文。基于文件的持久化存储，支持 user/workspace/project 三级隔离、7 种分类与置信度评分、always/relevant 双召回策略、密钥/敏感信息安全策略。提供独立记忆管理面板。",
-        "📚 学习迭代：后台自动从会话、知识库和 Skill 使用中提炼可复用的记忆与 Skill。支持每日自动检查、空闲窗口调度、AI 分析提取、双源证据验证、全维度 Skill 压力测试、一键回滚全部变更。",
-        "📊 Flint Chart 图表 MCP：按需下载 Microsoft Flint 图表 MCP，支持 Vega-Lite / ECharts / Chart.js 图表生成与校验。",
-        "✉️ 排队/引导发送：任务执行中发送新消息时，可选择「排队」加入队列等待，或「引导」立即中断当前任务直接输入。",
-        "🎨 UI/UX 改进：设置新增独立「记忆」管理页；模型选择器去除「国产模型/国外模型」标签；Toggle 开关关闭状态增加边框和背景色；知识库 AI 对话侧边栏在小窗口下不再被裁切。",
-        "⚡ 架构精简：全面移除 SDD 需求草稿模块（删除约 1500 行代码），Workbench 大幅精简。",
-        "🐛 Bug 修复：统一秘密检测函数消除跨模块不一致；always 记忆设置上限防止挤占相关召回；手动排队跳过重试退避；Bearer token 检测修复；导出 Word 修复 Buffer 兼容性。"
+        "LegalWork 0.3.2 已上线，安装后即可使用这一版的新能力与体验优化。"
       ],
       "categories": [
-        "Agent 记忆",
-        "学习迭代",
-        "插件市场",
-        "对话体验",
         "修复优化"
       ],
       "assets": [
