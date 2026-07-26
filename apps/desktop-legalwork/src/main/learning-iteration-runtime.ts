@@ -41,7 +41,7 @@ import {
 } from './services/skill-service'
 
 const POLL_INTERVAL_MS = 5 * 60_000
-const TURN_TIMEOUT_MS = 60 * 60_000
+const TURN_TIMEOUT_MS = 4 * 60 * 60_000
 const MAX_SOURCE_CHARS = 200_000
 const MAX_THREADS = 50
 const MAX_KNOWLEDGE_FILES = 25
