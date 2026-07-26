@@ -1224,6 +1224,30 @@
             flex-wrap: wrap;
             gap: 0.35rem;
         }
+        .release-detail {
+            font-size: 0.82rem;
+            line-height: 1.6;
+            color: var(--text-muted);
+        }
+        .release-detail li { margin-bottom: 0.3rem; }
+        .release-item { cursor: pointer; }
+        .release-show-all {
+            display: inline-flex;
+            margin-top: 1rem;
+            padding: 0.5rem 1.2rem;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .release-show-all:hover {
+            background: var(--bg-alt);
+            color: var(--text);
+        }
+        .release-item.release-expanded .release-detail { display: block !important; }
         .release-tag {
             font-size: 0.72rem;
             color: var(--accent);
@@ -3359,25 +3383,38 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
                 timeline.innerHTML = '<div class="release-empty">暂未读取到历史版本。发布新的 GitHub Release 后，这里会自动同步。</div>';
                 return;
             }
-            timeline.innerHTML = releases.slice(0, 7).map(release => {
+            const items = releases.map((release, ri) => {
                 const view = summarizeRelease(release);
-                const tags = view.tags.map(tag => `<span class="release-tag">${escapeHtml(tag)}</span>`).join('');
-                return `
-                    <article class="release-item">
-                        <div class="release-dot">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
-                        </div>
-                        <div>
-                            <div class="release-item-head">
-                                <h4>${escapeHtml(getReleaseDisplayName(release))}</h4>
-                                <time>${formatReleaseDate(release.published_at)}</time>
-                            </div>
-                            <p>${escapeHtml(view.highlights[0] || view.summary)}</p>
-                            <div class="release-tags">${tags}</div>
-                        </div>
-                    </article>
-                `;
+                const tags = view.tags.map(tag => '<span class="release-tag">' + escapeHtml(tag) + '</span>').join('');
+                const details = (view.highlights || []).slice(1).map(h => '<li>' + escapeHtml(h) + '</li>').join('');
+                return '<article class="release-item" onclick="this.classList.toggle(\'release-expanded\')">' +
+                    '<div class="release-dot"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>' +
+                    '<div>' +
+                    '<div class="release-item-head"><h4>' + escapeHtml(getReleaseDisplayName(release)) + '</h4><time>' + formatReleaseDate(release.published_at) + '</time></div>' +
+                    '<p>' + escapeHtml(view.highlights[0] || view.summary) + '</p>' +
+                    '<div class="release-tags">' + tags + '</div>' +
+                    (details ? '<ul class="release-detail" style="display:none;margin-top:8px;padding-left:18px;list-style:disc">' + details + '</ul>' : '') +
+                    '</div></article>';
             }).join('');
+            var total = releases.length;
+            timeline.innerHTML = items + (total > 7 ? '<button class="release-show-all" onclick="toggleAllReleases(this)">展开全部 ' + total + ' 个版本</button>' : '');
+            var allArticles = timeline.querySelectorAll('.release-item');
+            if (allArticles.length > 7) {
+                for (var i = 7; i < allArticles.length; i++) allArticles[i].style.display = 'none';
+            }
+        }
+
+        function toggleAllReleases(btn) {
+            var timeline = document.getElementById('releaseTimeline');
+            var articles = timeline.querySelectorAll('.release-item');
+            var hidden = articles[0] && articles[0].style.display === 'none';
+            if (hidden || btn.textContent.indexOf('收起') < 0) {
+                for (var i = 0; i < articles.length; i++) articles[i].style.display = '';
+                btn.textContent = '收起';
+            } else {
+                for (var i = 7; i < articles.length; i++) articles[i].style.display = 'none';
+                btn.textContent = '展开全部 ' + articles.length + ' 个版本';
+            }
         }
 
         async function renderChangelogFromSources() {
