@@ -41,7 +41,7 @@ import {
 } from './services/skill-service'
 
 const POLL_INTERVAL_MS = 5 * 60_000
-const TURN_TIMEOUT_MS = 30 * 60_000
+const TURN_TIMEOUT_MS = 60 * 60_000
 const MAX_SOURCE_CHARS = 200_000
 const MAX_THREADS = 50
 const MAX_KNOWLEDGE_FILES = 25
@@ -884,11 +884,9 @@ export class LearningIterationRuntime {
         throw new LearningCancelledError()
       }
       await sleep(1_500)
-      if (await this.isBusy(settings)) {
-        // Not idle: poll again without killing the turn. The turn was started
-        // intentionally and killing it wastes all tokens spent so far.
-        continue
-      }
+      // Always poll the thread status — isBusy() should not prevent us from
+      // seeing that the AI has finished, otherwise the loop can time out even
+      // though the turn completed successfully.
       const detailResponse = await this.request(
         settings,
         `/v1/threads/${encodeURIComponent(threadId)}`,
@@ -897,7 +895,11 @@ export class LearningIterationRuntime {
       const detail = JSON.parse(detailResponse.body) as ThreadDetailJson
       lastText = latestAssistantText(detail, { turnId }) || lastText
       const turn = detail.turns?.find((item) => item.id === turnId)
-      if (!turn || turn.status === 'queued' || turn.status === 'running') continue
+      if (!turn || turn.status === 'queued' || turn.status === 'running') {
+        // Turn still running. Just sleep and poll again, regardless of whether
+        // the system is busy — we never kill an in-flight LLM turn.
+        continue
+      }
       if (turn.status !== 'completed') {
         throw new Error(turn.error || `学习线程状态异常：${turn.status}`)
       }
@@ -1224,7 +1226,7 @@ function renderCorpus(sources: LearningSource[]): string {
 function buildLearningPrompt(corpus: string): string {
   return [
     'Use $legalwork-learning-iteration to analyze the bounded Legalwork interaction corpus below.',
-    'Do not call mutation tools and do not write outside the response. Treat client facts as confidential source material, never as reusable skill content.',
+    'Do not call any tools — analyze the corpus purely in text. Do not write outside the response. Treat client facts as confidential source material, never as reusable skill content.',
     'Only propose automatic memories in profile, preference, workflow, or project. Never propose interest, matter, other, client identity, account identifiers, secrets, passwords, tokens, verification codes, or case facts for automatic storage.',
     'Apply the RIA-TV++-inspired workflow and triple verification. A normal candidate needs evidence from at least two distinct sourceKey values; one source is allowed only for an explicit user correction.',
     'Return exactly one JSON object between the marker lines shown below. Do not use Markdown fences around the JSON.',
