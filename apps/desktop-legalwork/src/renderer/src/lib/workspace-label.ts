@@ -1,4 +1,5 @@
 import i18n from '../i18n'
+import { isNoProjectWorkspaceRoot } from '@shared/workspace-context'
 
 const DEFAULT_WORKSPACE_PATH_SUFFIX = '/.legalwork/default_workspace'
 const LEGACY_DEFAULT_WORKSPACE_PATH_SUFFIX = '/.deepseekgui/default_workspace'
@@ -21,6 +22,7 @@ function isDefaultWorkspacePath(path: string): boolean {
 export function workspaceLabelFromPath(path: string): string {
   const p = path?.trim() ?? ''
   if (!p) return i18n.t('common:workingDirectory')
+  if (isNoProjectWorkspaceRoot(p)) return i18n.t('common:newConversationProjectNone')
   if (isDefaultWorkspacePath(p)) return DEFAULT_WORKSPACE_LABEL
   const normalized = p.replace(/[/\\]+$/, '')
   const parts = normalized.split(/[/\\]/)
