@@ -1,0 +1,241 @@
+:root {
+  --font-apple-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-apple-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-apple-mono: 'SF Mono', ui-monospace, 'Cascadia Mono', 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
+
+  --type-caption: 12px;
+  --type-label: 13px;
+  --type-secondary: 14px;
+  --type-body: 16px;
+  --type-title-3: 18px;
+  --type-title-2: 22px;
+  --type-title-1: 28px;
+
+  --leading-caption: 1.35;
+  --leading-label: 1.4;
+  --leading-secondary: 1.5;
+  --leading-body: 1.72;
+  --leading-title: 1.22;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+}
+
+html {
+  font-family: var(--font-apple-ui);
+  font-size: 16px;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body,
+button,
+input,
+textarea,
+select,
+option {
+  font-family: var(--font-apple-ui);
+}
+
+body {
+  font-size: var(--type-body);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-body);
+  letter-spacing: -0.006em;
+}
+
+button,
+input,
+textarea,
+select {
+  font-size: inherit;
+  letter-spacing: inherit;
+}
+
+button,
+[role='button'],
+label,
+summary {
+  font-weight: var(--weight-medium);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.ds-display-type {
+  font-family: var(--font-apple-display);
+  color: var(--ds-text);
+  letter-spacing: -0.018em;
+}
+
+h1 {
+  font-size: var(--type-title-1);
+  font-weight: var(--weight-bold);
+  line-height: 1.16;
+}
+
+h2 {
+  font-size: var(--type-title-2);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-title);
+}
+
+h3 {
+  font-size: var(--type-title-3);
+  font-weight: var(--weight-semibold);
+  line-height: 1.3;
+}
+
+small,
+.ds-caption {
+  font-size: var(--type-caption);
+  line-height: var(--leading-caption);
+}
+
+.ds-label {
+  font-size: var(--type-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-label);
+}
+
+.ds-secondary-text,
+.text-sm {
+  font-size: var(--type-secondary);
+  line-height: var(--leading-secondary);
+}
+
+.ds-sidebar,
+[data-sidebar],
+nav {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.ds-sidebar button,
+.ds-sidebar [role='button'],
+[data-sidebar] button,
+[data-sidebar] [role='button'],
+nav button,
+nav [role='button'] {
+  font-weight: var(--weight-medium);
+}
+
+.ds-chat-answer,
+.ds-user-message-bubble {
+  font-family: var(--font-apple-ui);
+  font-size: var(--type-body);
+  line-height: 1.7;
+  letter-spacing: -0.006em;
+}
+
+.ds-user-message-bubble {
+  font-weight: var(--weight-regular);
+}
+
+.write-markdown-preview,
+.cm-write-live-preview .cm-content {
+  font-family: var(--font-apple-ui);
+  font-size: var(--type-body);
+  line-height: 1.76;
+  letter-spacing: -0.006em;
+}
+
+.write-markdown-preview {
+  width: min(100%, 860px);
+}
+
+.write-markdown-preview h1,
+.write-markdown-preview h2,
+.write-markdown-preview h3,
+.write-markdown-preview h4,
+.write-markdown-preview h5,
+.write-markdown-preview h6 {
+  font-family: var(--font-apple-display);
+  letter-spacing: -0.018em;
+}
+
+.write-markdown-preview h1 {
+  font-size: 30px;
+  font-weight: var(--weight-bold);
+  line-height: 1.16;
+}
+
+.write-markdown-preview h2 {
+  font-size: 24px;
+  font-weight: var(--weight-semibold);
+  line-height: 1.22;
+}
+
+.write-markdown-preview h3 {
+  font-size: 20px;
+  font-weight: var(--weight-semibold);
+  line-height: 1.3;
+}
+
+.write-markdown-preview h4,
+.write-markdown-preview h5,
+.write-markdown-preview h6 {
+  font-size: 17px;
+  font-weight: var(--weight-semibold);
+  line-height: 1.35;
+}
+
+.write-markdown-preview p,
+.write-markdown-preview ul,
+.write-markdown-preview ol,
+.write-markdown-preview blockquote,
+.write-markdown-preview table {
+  margin-bottom: 1.05em;
+}
+
+code,
+pre,
+kbd,
+samp,
+.cm-editor .cm-content,
+.cm-editor .cm-gutters {
+  font-family: var(--font-apple-mono);
+}
+
+.write-markdown-preview code {
+  font-size: 0.9em;
+}
+
+.write-markdown-preview pre code {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+input::placeholder,
+textarea::placeholder {
+  font-weight: var(--weight-regular);
+}
+
+strong,
+b {
+  font-weight: var(--weight-semibold);
+}
+
+@media (max-width: 720px) {
+  :root {
+    --type-body: 15px;
+    --type-title-1: 26px;
+    --type-title-2: 21px;
+    --type-title-3: 18px;
+  }
+
+  .write-markdown-preview h1 {
+    font-size: 27px;
+  }
+
+  .write-markdown-preview h2 {
+    font-size: 22px;
+  }
+}
