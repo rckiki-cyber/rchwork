@@ -1,3 +1,8 @@
+import {
+  isNoProjectWorkspaceRoot,
+  NO_PROJECT_WORKSPACE_ROOT
+} from '@shared/workspace-context'
+
 function normalizePathForMatch(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 }
@@ -5,6 +10,7 @@ function normalizePathForMatch(path: string): string {
 export function workspaceRootIdentityKey(path?: string): string {
   const trimmed = path?.trim() ?? ''
   if (!trimmed) return ''
+  if (isNoProjectWorkspaceRoot(trimmed)) return NO_PROJECT_WORKSPACE_ROOT
   const normalized = normalizePathForMatch(trimmed)
   if (
     normalized === '~/.deepseekgui/default_workspace'
@@ -55,6 +61,7 @@ export function isInternalDeepSeekGuiWorkspace(path?: string): boolean {
 export function normalizeWorkspaceRoot(path?: string): string {
   const trimmed = path?.trim() ?? ''
   if (!trimmed) return ''
+  if (isNoProjectWorkspaceRoot(trimmed)) return NO_PROJECT_WORKSPACE_ROOT
   if (isInternalTemporaryWorkspace(trimmed)) return ''
   return trimmed
 }
