@@ -1027,7 +1027,10 @@ app.whenReady().then(async () => {
       queueRuntimeMcpConfigApply(settings)
     },
     showTurnCompleteNotification,
-    getAppVersion: () => app.getVersion(),
+    getAppVersion: () => {
+      const v = app.getVersion()
+      return !app.isPackaged ? `${v}-beta` : v
+    },
     readGuiUpdateState,
     loadGuiUpdaterModule,
     resolveLogDirectory,

@@ -9,6 +9,7 @@ import { openWorkspacePathInEditor } from '../../lib/open-workspace-path'
 import { previewWorkspaceFile } from '../../lib/workspace-file-preview'
 import { useChatStore } from '../../store/chat-store'
 import { StreamdownCode } from './StreamdownCode'
+import { getKnowledgeSourcePath, getKnowledgeOpenFileHandler } from '../knowledge-base/source-map-store'
 
 /**
  * Tuned for faster, cleaner single-line streaming:
@@ -67,6 +68,18 @@ function StreamdownLink({
       : null
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>): void => {
+    // source:// links — knowledge base citation [来源 N] click navigation
+    if (href?.startsWith('source://')) {
+      event.preventDefault()
+      const ref = href.replace('source://', '')
+      const path = getKnowledgeSourcePath(ref)
+      if (path) {
+        const handler = getKnowledgeOpenFileHandler()
+        if (handler) handler(path)
+      }
+      return
+    }
+
     if (resolvedFileTarget) {
       event.preventDefault()
       previewWorkspaceFile({ ...resolvedFileTarget, workspaceRoot })

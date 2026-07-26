@@ -36,6 +36,7 @@ import {
   knowledgeChatHistoryFromBlocks
 } from './knowledge-chat-history'
 import { extractPdfTextFromBase64, PdfJsPreview } from './PdfJsPreview'
+import { setKnowledgeSourceMap, setKnowledgeOpenFileHandler } from './source-map-store'
 
 // ── Helpers (copied from KnowledgeBaseView to keep this file self-contained) ──
 
@@ -543,6 +544,15 @@ export function KnowledgeBaseFileView({
         sources: [],
         latencyMs: 0
       }))
+
+      // Save source-to-path mapping so [来源 N] links can navigate to the file.
+      const sourceMapping: Record<number, { path: string; title: string }> = {}
+      for (let i = 0; i < Math.min(retrieval.sources.length, 8); i += 1) {
+        const s = retrieval.sources[i]
+        sourceMapping[i + 1] = { path: s.path, title: s.title }
+      }
+      setKnowledgeSourceMap(sourceMapping)
+
       const currentFileText = currentFileTextForPrompt(fileContent)
       const currentFileContext = currentFileText
         ? `## 当前打开文件的正文（优先依据）\n${currentFileText}`
@@ -673,6 +683,13 @@ ${question.trim()}
       // Step 6: Poll for completion (poll the specific turn, not the whole thread)
       // after SSE closes so final persisted text can fill any missed early deltas.
       const assistantMsg = await pollTurnCompletion(threadId, turnId)
+
+      // Convert [来源 N] references to clickable source://N markdown links
+      const markedUp = (assistantMsg || streamedAssistant).replace(
+        /\[来源\s*(\d+)\]/g,
+        (_match, n) => `[来源 ${n}](source://${n})`
+      )
+
       const finalReasoning = streamedReasoning.trim()
       if (finalReasoning) {
         setMessages((prev) => [...prev, {
@@ -686,7 +703,7 @@ ${question.trim()}
       setMessages((prev) => [...prev, {
         id: `ai_${Date.now()}`,
         role: 'assistant',
-        content: assistantMsg || streamedAssistant || '（AI 未返回任何内容）',
+        content: markedUp || '（AI 未返回任何内容）',
         timestamp: Date.now()
       }])
       setLiveReasoning('')

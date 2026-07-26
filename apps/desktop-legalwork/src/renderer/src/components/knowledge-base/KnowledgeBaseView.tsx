@@ -52,6 +52,10 @@ import {
   knowledgeChatHistoryFromBlocks
 } from './knowledge-chat-history'
 import { PdfJsPreview } from './PdfJsPreview'
+import {
+  setKnowledgeSourceMap,
+  setKnowledgeOpenFileHandler
+} from './source-map-store'
 type TreeNode = KnowledgeTreeNode
 
 type FileViewBoundaryProps = {
@@ -174,6 +178,18 @@ function joinKnowledgePath(base: string, child: string): string {
     .map((part) => part.trim())
     .filter(Boolean)
   return parts.join('/')
+}
+
+/** Recursively search a knowledge tree for a node matching `path`. */
+function findNodeByPath(nodes: TreeNode[], path: string): TreeNode | null {
+  for (const node of nodes) {
+    if (node.path === path) return node
+    if (node.children) {
+      const found = findNodeByPath(node.children, path)
+      if (found) return found
+    }
+  }
+  return null
 }
 
 function fileRelativePath(file: KnowledgeUploadFile): string {
@@ -824,6 +840,15 @@ export function KnowledgeBaseView({
     clearSelection()
   }, [currentPath, query, clearSelection])
 
+  // Register a handler so clicking [来源 N] in AI chat navigates to the file.
+  useEffect(() => {
+    setKnowledgeOpenFileHandler((path: string) => {
+      const node = findNodeByPath(tree, path)
+      if (node) openFileView(node)
+    })
+    return () => setKnowledgeOpenFileHandler(null)
+  }, [tree, openFileView])
+
   // ── AI Chat handlers ──
 
   const pollKnowledgeChat = useCallback(async (threadId: string, maxPolls = 120): Promise<string> => {
@@ -878,6 +903,15 @@ export function KnowledgeBaseView({
       const retrieval = await requestJson<KnowledgeRetrievalResult>(
         `${LEGALWORK_KNOWLEDGE_RETRIEVE_PATH}?q=${encodeURIComponent(question.trim())}&max_chars=9000&exclude_expired=true`
       )
+
+      // Save source-to-path mapping so [来源 N] links can navigate to the file.
+      const sourceMapping: Record<number, { path: string; title: string }> = {}
+      for (let i = 0; i < Math.min(retrieval.sources.length, 8); i += 1) {
+        const s = retrieval.sources[i]
+        sourceMapping[i + 1] = { path: s.path, title: s.title }
+      }
+      setKnowledgeSourceMap(sourceMapping)
+
       const context = retrieval.contextText || '（未检索到相关知识库内容）'
       const citations = retrieval.sources.length
         ? retrieval.sources
@@ -926,10 +960,16 @@ ${question.trim()}
       // Poll for completion
       const assistantMsg = await pollKnowledgeChat(threadId)
 
+      // Convert [来源 N] references to clickable source://N markdown links
+      const markedUp = assistantMsg.replace(
+        /\[来源\s*(\d+)\]/g,
+        (_match, n) => `[来源 ${n}](source://${n})`
+      )
+
       setChatMessages((prev) => [...prev, {
         id: `ai_${Date.now()}`,
         role: 'assistant',
-        content: assistantMsg,
+        content: markedUp,
         timestamp: Date.now()
       }])
       onChatThreadsChange?.()

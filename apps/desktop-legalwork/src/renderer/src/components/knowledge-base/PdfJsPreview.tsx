@@ -9,11 +9,19 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 const PDF_RENDER_TIMEOUT_MS = 20000
 const PDFJS_ASSET_BASE_URL = new URL('pdfjs/', window.location.href).toString()
 
+type PdfTextItem = {
+  str: string
+  left: number
+  top: number
+  fontSize: number
+}
+
 type PdfRenderedPage = {
   pageNumber: number
   width: number
   height: number
   dataUrl: string
+  textItems: PdfTextItem[]
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
@@ -161,11 +169,32 @@ export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
             `第 ${pageNumber} 页渲染超时`
           )
           if (cancelled) break
+
+          // Extract text content for the selection layer
+          const textContent = await withTimeout(
+            page.getTextContent(),
+            PDF_RENDER_TIMEOUT_MS,
+            `第 ${pageNumber} 页文字解析超时`
+          )
+          const unscaledHeight = baseViewport.height
+          const textItems: PdfTextItem[] = textContent.items.map((item: any) => {
+            const pdfX = item.transform[4] ?? 0
+            const pdfY = item.transform[5] ?? 0
+            const fontSize = item.height ?? 0
+            return {
+              str: item.str ?? '',
+              left: scale * pdfX,
+              top: scale * (unscaledHeight - pdfY),
+              fontSize: scale * fontSize
+            }
+          })
+
           const renderedPage: PdfRenderedPage = {
             pageNumber,
             width: viewport.width,
             height: viewport.height,
-            dataUrl: canvas.toDataURL('image/png')
+            dataUrl: canvas.toDataURL('image/png'),
+            textItems
           }
           renderedPages.push(renderedPage)
           setPages((prev) => [...prev, renderedPage])
@@ -202,13 +231,43 @@ export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
       {pages.length > 0 ? (
         <div className="flex flex-col items-center gap-4 p-4">
           {pages.map((page) => (
-            <figure key={page.pageNumber} className="w-full">
+            <figure key={page.pageNumber} className="w-full" style={{ position: 'relative' }}>
               <img
                 src={page.dataUrl}
                 alt={`${fileName} 第 ${page.pageNumber} 页`}
                 className="mx-auto max-w-full rounded-[4px] bg-white shadow-sm"
-                style={{ width: page.width, minHeight: page.height }}
+                style={{ width: page.width, minHeight: page.height, display: 'block' }}
               />
+              {/* Invisible text layer for text selection */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: page.width,
+                  height: page.height,
+                  pointerEvents: 'none'
+                }}
+              >
+                {page.textItems.map((item, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      position: 'absolute',
+                      left: item.left,
+                      top: item.top,
+                      fontSize: item.fontSize,
+                      lineHeight: item.fontSize,
+                      whiteSpace: 'pre',
+                      color: 'transparent',
+                      userSelect: 'text',
+                      pointerEvents: 'auto',
+                      cursor: 'text'
+                    }}
+                  >
+                    {item.str}
+                  </span>
+                ))}
+              </div>
               <figcaption className="mt-2 text-center text-[11px] text-[var(--ds-muted)]">
                 第 {page.pageNumber} 页
               </figcaption>
