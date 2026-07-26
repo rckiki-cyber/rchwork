@@ -60,6 +60,27 @@
   background: var(--ds-card-ghost, transparent);
 }
 
+/* The panel title duplicated the toolbar label and wrapped into two lines. */
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > aside
+  > div:first-child
+  > div:first-child
+  > span {
+  display: none;
+}
+
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > aside
+  > div:first-child
+  > div:last-child {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
 .ds-no-drag
   > header
   + div:has(> [role='separator'][aria-orientation='vertical'])
