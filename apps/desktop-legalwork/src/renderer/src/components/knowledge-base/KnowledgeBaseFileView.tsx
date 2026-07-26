@@ -691,19 +691,16 @@ ${question.trim()}
       )
 
       const finalReasoning = streamedReasoning.trim()
-      if (finalReasoning) {
-        setMessages((prev) => [...prev, {
-          id: `reasoning_${Date.now()}`,
-          role: 'reasoning',
-          content: streamedReasoning,
-          timestamp: Date.now()
-        }])
-      }
+      const finalContent = markedUp || '（AI 未返回任何内容）'
+      // Merge reasoning and assistant into one message, with reasoning in a collapsible section
+      const mergedContent = finalReasoning
+        ? `<details style="margin-bottom:8px;font-size:0.85em"><summary style="cursor:pointer;user-select:none;color:var(--ds-muted)"><span style="opacity:0.5">💭</span> 思考过程</summary>\n\n${finalReasoning}\n\n</details>\n\n${finalContent}`
+        : finalContent
 
       setMessages((prev) => [...prev, {
         id: `ai_${Date.now()}`,
         role: 'assistant',
-        content: markedUp || '（AI 未返回任何内容）',
+        content: mergedContent,
         timestamp: Date.now()
       }])
       setLiveReasoning('')

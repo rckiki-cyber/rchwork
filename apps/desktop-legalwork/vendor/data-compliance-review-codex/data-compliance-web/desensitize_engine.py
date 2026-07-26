@@ -1057,8 +1057,13 @@ def process_desensitization(
         subject_mappings.extend(text_subjects)
         base_name = (document_name or Path(input_name).stem).rstrip('_').strip()
         output_stem = _safe_output_stem(f'{base_name}_脱敏')
-        output_file = work_dir / f'{output_stem}.md'
-        output_file.write_text(redacted, encoding='utf-8')
+        if output_format == 'docx':
+            output_file = work_dir / f'{output_stem}.docx'
+            _write_docx_from_text(redacted, output_file)
+        else:
+            ext = 'md' if output_format == 'md' else 'txt'
+            output_file = work_dir / f'{output_stem}.{ext}'
+            output_file.write_text(redacted, encoding='utf-8')
         input_type = 'text'
     elif suffix in DOC_EXTENSIONS:
         output_file, doc_findings, doc_subjects = process_docx(input_path, work_dir, engine, warnings, output_format=output_format)

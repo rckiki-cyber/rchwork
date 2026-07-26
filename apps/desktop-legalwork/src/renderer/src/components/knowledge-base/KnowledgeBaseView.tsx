@@ -869,11 +869,17 @@ export function KnowledgeBaseView({
       }>(`/v1/threads/${threadId}`)
       const lastTurn = threadData.turns?.at(-1)
       if (lastTurn?.status === 'completed') {
+        const reasoningItems = lastTurn.items
+          ?.filter((item) => (item.kind === 'reasoning_text' || item.kind === 'assistant_reasoning') && item.text)
+          .map((item) => item.text ?? '')
+          .join('\n\n') || ''
         const textItems = lastTurn.items
           ?.filter((item) => item.kind === 'assistant_text' && item.text)
           .map((item) => item.text ?? '')
           .join('\n\n') || '（AI 未返回任何内容）'
-        return textItems
+        return reasoningItems
+          ? `<details style="margin-bottom:8px;font-size:0.85em"><summary style="cursor:pointer;user-select:none;color:var(--ds-muted)"><span style="opacity:0.5">💭</span> 思考过程</summary>\n\n${reasoningItems}\n\n</details>\n\n${textItems}`
+          : textItems
       }
       if (lastTurn?.status === 'failed') {
         throw new Error(lastTurn.error || 'AI 响应失败')
