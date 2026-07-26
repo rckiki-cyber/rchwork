@@ -3,6 +3,34 @@
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
+      "tag_name": "v0.3.5",
+      "name": "LegalWork 0.3.5",
+      "published_at": "2026-07-26T19:00:00Z",
+      "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.5",
+      "prerelease": false,
+      "summary": "苹果系统字体、对话字号增大、知识库侧边栏自适应、不使用项目修复、知库 AI 对话侧边栏响应式、学习迭代和脱敏导出等多项修复。",
+      "highlights": [
+        "🍎 苹果系统字体：全局字体替换为 SF Pro / PingFang SC / SF Mono 体系，中文显示苹方，英文/数字接近 SF Pro，编辑器使用 SF Mono。",
+        "📏 对话字号增大：正文从 13px 统一提升至 17px，行距 1.7，侧边栏保持 14px 不变。",
+        "🪟 知识库 AI 对话侧边栏响应式：侧边栏宽度随窗口缩放自动适配，PDF 文件预览页的 AI 对话面板同样自适应。",
+        "📁 不使用项目修复：彻底修复「不使用项目」无效的问题，现在会正确显示「无项目」标记。",
+        "🧑‍⚖️ 知识库 AI 引用可点击跳转：AI 回复中的 [来源 N] 变为可点击链接，点击直接跳转到对应知识库文件。",
+        "📄 PDF 文字选中：PDF 预览页面现在支持鼠标拖拽选中文字。",
+        "🎓 学习迭代稳定可用：超时延长至 4 小时，不再因用户忙碌误杀线程，报告中的 \\n 乱码已修复。",
+        "✅ 脱敏 Word 导出修复：文本类型素材选择 docx 格式时，现在输出真正的 Word 文档而非 .md 文件。",
+        "🖇️ 引导消息：排队消息右侧新增「引导」按钮，点击打断当前任务并立即发送。",
+        "🧊 聊天滚动卡顿修复：smooth scroll 被 AI 输出打断导致闪回，改为 auto 滚动。"
+      ],
+      "categories": [
+        "字体排版",
+        "知识库",
+        "对话体验",
+        "PDF 预览",
+        "修复优化"
+      ],
+      "assets": []
+    },
+    {
       "tag_name": "v0.3.4",
       "name": "LegalWork 0.3.4",
       "published_at": "2026-07-25T11:00:00Z",
