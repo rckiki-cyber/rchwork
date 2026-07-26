@@ -125,7 +125,7 @@ function SideMessageBubble({ block }: { block: ChatBlock }): ReactElement | null
   if (block.kind === 'assistant') {
     const streaming = block.id === 'live-assistant'
     return (
-      <div className="ds-markdown ds-chat-answer min-w-0 max-w-full text-[13px] leading-5 text-ds-ink">
+      <div className="ds-markdown ds-chat-answer min-w-0 max-w-full leading-5 text-ds-ink">
         {streaming ? (
           <span>{block.text}</span>
         ) : (

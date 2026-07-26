@@ -687,7 +687,7 @@ function UserInputBubble({
     <div
       ref={bubbleRef}
       aria-live={pending ? 'assertive' : 'polite'}
-      className={`scroll-mt-4 rounded-[22px] border px-4 py-4 text-[13px] leading-6 shadow-[0_12px_30px_rgba(86,103,136,0.04)] ${
+      className={`scroll-mt-4 rounded-[22px] border px-4 py-4 leading-6 shadow-[0_12px_30px_rgba(86,103,136,0.04)] ${
         block.status === 'error'
           ? 'border-red-300/80 bg-red-500/10 dark:border-red-800/60 dark:bg-red-950/35'
           : 'border-accent/35 bg-[linear-gradient(180deg,rgba(79,124,255,0.07),rgba(79,124,255,0.11))] text-ds-ink'
@@ -892,7 +892,7 @@ export function MessageBubble({ block, nested = false }: { block: ChatBlock; nes
             : t('approvalPending')
     return (
       <div
-        className={`rounded-[22px] border px-4 py-4 text-[13px] leading-6 shadow-[0_12px_30px_rgba(86,103,136,0.04)] ${
+        className={`rounded-[22px] border px-4 py-4 leading-6 shadow-[0_12px_30px_rgba(86,103,136,0.04)] ${
           block.status === 'error'
             ? 'border-red-300/80 bg-red-500/10 dark:border-red-800/60 dark:bg-red-950/35'
             : 'border-accent/35 bg-[linear-gradient(180deg,rgba(79,124,255,0.08),rgba(79,124,255,0.12))] text-ds-ink'

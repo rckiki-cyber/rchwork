@@ -1538,7 +1538,7 @@ ${question.trim()}
                 <AssistantMarkdown
                   text={preview.content}
                   streaming={false}
-                  className="ds-markdown ds-chat-answer break-words px-5 py-4 text-[13px] leading-6 text-[var(--ds-ink)]"
+                  className="ds-markdown ds-chat-answer break-words px-5 py-4 leading-6 text-[var(--ds-ink)]"
                 />
               ) : previewType(preview.node) === 'document' ? (
                 <pre className="whitespace-pre-wrap p-5 font-sans text-[13px] leading-[22px] text-[var(--ds-ink)]">
@@ -1655,7 +1655,7 @@ ${question.trim()}
                         <AssistantMarkdown
                           text={msg.content}
                           streaming={false}
-                          className="ds-markdown ds-chat-answer break-words text-[13px] leading-relaxed"
+                          className="ds-markdown ds-chat-answer break-words leading-relaxed"
                         />
                       ) : (
                         <div className="whitespace-pre-wrap break-words">{msg.content}</div>
