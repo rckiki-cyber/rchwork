@@ -597,11 +597,11 @@ ${question.trim()}
         setActiveChatThreadId(threadId)
       }
 
-      // Step 5: Start a turn and capture the turnId for precise polling
+      // Step 5: Start a turn with the runtime's configured model
       const turnResponse = await requestJson<{ turnId: string }>(
         legalworkThreadTurnsPath(threadId),
         'POST',
-        { prompt }
+        { prompt, model: effectiveModel }
       )
       const turnId = turnResponse.turnId
 

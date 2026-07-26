@@ -31,7 +31,6 @@ import {
 } from 'lucide-react'
 import { SendIcon } from '../icons/SendIcon'
 import { getProvider } from '../../agent/registry'
-import { useChatStore } from '../../store/chat-store'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
 import {
   LEGALWORK_KNOWLEDGE_CLASSIFY_PATH,
@@ -902,16 +901,8 @@ ${question.trim()}
 
       // Reuse the active knowledge-chat thread if one exists; otherwise create a side thread.
       const workspace = await getWorkspaceRoot()
-      const storeModel = useChatStore.getState().composerModel
-      let threadModel = storeModel || ''
-      if (!threadModel) {
-        try {
-          const settings = await window.dsGui.getSettings()
-          threadModel = settings?.agents?.legalwork?.model || 'deepseek-v4-flash'
-        } catch {
-          threadModel = 'deepseek-v4-flash'
-        }
-      }
+      const settings = await window.dsGui.getSettings()
+      const threadModel = settings?.agents?.legalwork?.model || 'deepseek-v4-flash'
       let threadId = activeChatThreadId
       if (!threadId) {
         const threadResult = await requestJson<{ id: string }>(
@@ -929,8 +920,8 @@ ${question.trim()}
         setActiveChatThreadId(threadId)
       }
 
-      // Start a turn
-      await requestJson(`/v1/threads/${threadId}/turns`, 'POST', { prompt })
+      // Start a turn with the runtime's configured model
+      await requestJson(`/v1/threads/${threadId}/turns`, 'POST', { prompt, model: threadModel })
 
       // Poll for completion
       const assistantMsg = await pollKnowledgeChat(threadId)
