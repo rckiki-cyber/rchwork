@@ -3418,11 +3418,18 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
         }
 
         async function renderChangelogFromSources() {
-            let releases = Array.isArray(allReleases) && allReleases.length ? allReleases : [];
-            if (!releases.length) releases = await loadStaticChangelog();
-            renderReleaseInsights(releases);
-            renderLatestRelease(releases[0]);
-            renderReleaseTimeline(releases);
+            // Use static changelog.json for the timeline (all versions with
+            // proper highlights/summary). GitHub API data is used only for
+            // the latest release card (download links, body text, counts).
+            var timelineReleases = await loadStaticChangelog();
+            if (!timelineReleases.length) {
+                timelineReleases = Array.isArray(allReleases) && allReleases.length ? allReleases : [];
+            }
+            // Latest card still uses GitHub API data (download links etc.)
+            var latestRelease = Array.isArray(allReleases) && allReleases.length ? allReleases[0] : timelineReleases[0];
+            renderReleaseInsights(timelineReleases);
+            renderLatestRelease(latestRelease);
+            renderReleaseTimeline(timelineReleases);
         }
 
         function updateDownloadUI() {
