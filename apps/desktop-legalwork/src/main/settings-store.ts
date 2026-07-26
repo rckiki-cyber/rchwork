@@ -164,7 +164,7 @@ function serializeSettingsForDisk(settings: AppSettingsV1): string {
 const knownDirs = new Set<string>()
 
 async function ensureDirExists(dir: string): Promise<void> {
-  if (knownDirs.has(dir)) return
+  if (!dir || knownDirs.has(dir)) return
   await mkdir(dir, { recursive: true })
   knownDirs.add(dir)
 }
@@ -392,7 +392,9 @@ export class JsonSettingsStore {
         mergeLegalworkRuntimeSettings(runtime, { apiKey: activeKey })
       )
     }
-    await ensureWorkspaceRootExists(normalized.workspaceRoot)
+    if (normalized.workspaceRoot) {
+      await ensureWorkspaceRootExists(normalized.workspaceRoot)
+    }
     await ensureWriteWorkspaceRootsExist(normalized)
     await ensureClawChannelWorkspaceRootsExist(normalized)
     this.cache = normalized
@@ -404,7 +406,9 @@ export class JsonSettingsStore {
 
   async save(data: AppSettingsV1): Promise<void> {
     const normalized = normalizeStoredSettings(data)
-    await ensureWorkspaceRootExists(normalized.workspaceRoot)
+    if (normalized.workspaceRoot) {
+      await ensureWorkspaceRootExists(normalized.workspaceRoot)
+    }
     if (normalized.write.workspaces.length > 0 || normalized.claw.channels.length > 0) {
       await ensureWriteWorkspaceRootsExist(normalized)
       await ensureClawChannelWorkspaceRootsExist(normalized)
