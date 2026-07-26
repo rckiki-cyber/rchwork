@@ -506,6 +506,8 @@ export function KnowledgeBaseView({
 
   // ── AI Chat state ──
   const [chatOpen, setChatOpen] = useState(false)
+  const [chatSidebarWidth, setChatSidebarWidth] = useState(420)
+  const chatSidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatSending, setChatSending] = useState(false)
@@ -900,7 +902,16 @@ ${question.trim()}
 
       // Reuse the active knowledge-chat thread if one exists; otherwise create a side thread.
       const workspace = await getWorkspaceRoot()
-      const threadModel = useChatStore.getState().composerModel
+      const storeModel = useChatStore.getState().composerModel
+      let threadModel = storeModel || ''
+      if (!threadModel) {
+        try {
+          const settings = await window.dsGui.getSettings()
+          threadModel = settings?.agents?.legalwork?.model || 'deepseek-v4-flash'
+        } catch {
+          threadModel = 'deepseek-v4-flash'
+        }
+      }
       let threadId = activeChatThreadId
       if (!threadId) {
         const threadResult = await requestJson<{ id: string }>(
@@ -1204,8 +1215,8 @@ ${question.trim()}
         />
       </header>
 
-      <div className="flex min-h-0 flex-1 overflow-x-auto">
-        <div className={`flex min-h-0 flex-1 flex-col px-8 py-5 transition-all ${chatOpen ? 'min-w-0' : 'min-w-[420px]'} ${preview && !chatOpen ? 'pr-4' : ''}`}>
+      <div className="flex min-h-0 flex-1">
+        <div className={`flex min-h-0 flex-1 flex-col overflow-x-auto px-8 py-5 transition-all ${chatOpen ? 'min-w-0' : 'min-w-[420px]'} ${preview && !chatOpen ? 'pr-4' : ''}`}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-0.5 text-[13px] text-[var(--ds-muted)]">
               <button
@@ -1534,7 +1545,31 @@ ${question.trim()}
 
         {/* AI Chat sidebar */}
         {chatOpen ? (
-          <aside className="ds-no-drag flex h-full w-[min(35vw,580px)] min-w-[300px] max-w-[580px] flex-col border-l border-ds-border bg-ds-card">
+          <aside
+            className="ds-no-drag relative flex h-full flex-col border-l border-ds-border bg-ds-card"
+            style={{ width: chatSidebarWidth, minWidth: 300, maxWidth: 800 }}
+          >
+            {/* Drag handle */}
+            <div
+              className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize bg-transparent transition hover:bg-[var(--ds-accent)] active:bg-[var(--ds-accent)]"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                chatSidebarDragRef.current = { startX: e.clientX, startWidth: chatSidebarWidth }
+                const onMove = (ev: MouseEvent): void => {
+                  if (!chatSidebarDragRef.current) return
+                  const dx = chatSidebarDragRef.current.startX - ev.clientX
+                  const next = Math.max(300, Math.min(800, chatSidebarDragRef.current.startWidth + dx))
+                  setChatSidebarWidth(next)
+                }
+                const onUp = (): void => {
+                  chatSidebarDragRef.current = null
+                  window.removeEventListener('mousemove', onMove)
+                  window.removeEventListener('mouseup', onUp)
+                }
+                window.addEventListener('mousemove', onMove)
+                window.addEventListener('mouseup', onUp)
+              }}
+            />
             <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ds-border px-4">
               <div className="flex min-w-0 items-center gap-2">
                 <Sparkles className="h-4 w-4 text-[var(--ds-accent)]" strokeWidth={1.8} />
