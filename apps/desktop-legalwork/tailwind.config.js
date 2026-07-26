@@ -9,40 +9,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: [
-          '-apple-system',
-          'BlinkMacSystemFont',
-          "'SF Pro Text'",
-          "'PingFang SC'",
-          "'Hiragino Sans GB'",
-          "'Microsoft YaHei UI'",
-          "'Segoe UI'",
-          "'Helvetica Neue'",
-          'Arial',
-          'sans-serif'
-        ],
-        display: [
-          "'SF Pro Display'",
-          '-apple-system',
-          'BlinkMacSystemFont',
-          "'PingFang SC'",
-          "'Hiragino Sans GB'",
-          "'Microsoft YaHei UI'",
-          "'Segoe UI'",
-          "'Helvetica Neue'",
-          'Arial',
-          'sans-serif'
-        ],
-        mono: [
-          "'SF Mono'",
-          'ui-monospace',
-          "'Cascadia Mono'",
-          "'JetBrains Mono'",
-          "'IBM Plex Mono'",
-          'Menlo',
-          'Consolas',
-          'monospace'
-        ]
+        sans: ['var(--font-ui)'],
+        display: ['var(--font-display)'],
+        mono: ['var(--font-mono)']
       },
       fontSize: {
         caption: ['12px', { lineHeight: '1.35' }],
