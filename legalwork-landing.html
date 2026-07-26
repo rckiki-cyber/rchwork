@@ -3296,21 +3296,28 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
         }
 
         function summarizeRelease(release) {
-            const override = cumulativeReleaseOverrides[release?.tag_name];
+            var override = cumulativeReleaseOverrides[release && release.tag_name];
             if (override) {
-                return {
-                    highlights: override.highlights,
-                    tags: override.tags,
-                    summary: override.summary
-                };
+                return { highlights: override.highlights, tags: override.tags, summary: override.summary };
             }
-            const highlights = extractReleaseHighlights(release);
-            const tags = getReleaseTags(highlights);
-            const focus = tags.slice(0, 3).join('、');
-            const summary = focus && focus !== '版本发布'
-                ? `本次更新包括：${focus}。`
-                : '本次发布带来功能和稳定性改进，安装最新版后即可体验。';
-            return { highlights, tags, summary };
+            // Static changelog.json provides pre-formatted highlights (array).
+            // GitHub API releases provide a body (markdown string).
+            var highlights;
+            var tags;
+            var summary;
+            if (release && Array.isArray(release.highlights) && release.highlights.length) {
+                highlights = release.highlights;
+                summary = release.summary || '本次更新包括：修复优化。';
+            } else {
+                highlights = extractReleaseHighlights(release);
+                tags = getReleaseTags(highlights);
+                var focus = tags.slice(0, 3).join('、');
+                summary = focus && focus !== '版本发布'
+                    ? '本次更新包括：' + focus + '。'
+                    : '本次发布带来功能和稳定性改进，安装最新版后即可体验。';
+            }
+            if (!tags) tags = getReleaseTags(highlights);
+            return { highlights: highlights, tags: tags, summary: summary };
         }
 
         async function loadStaticChangelog() {
