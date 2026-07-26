@@ -4,10 +4,7 @@ import { Check, ChevronDown, Folder, FolderPlus, FolderX, Search } from 'lucide-
 import type { NormalizedThread } from '../../agent/types'
 import { workspaceLabelFromPath } from '../../lib/workspace-label'
 import { normalizeWorkspaceRoot, workspaceRootIdentityKey } from '../../lib/workspace-path'
-import {
-  isNoProjectWorkspaceRoot,
-  NO_PROJECT_WORKSPACE_ROOT
-} from '@shared/workspace-context'
+import { isNoProjectWorkspaceRoot } from '@shared/workspace-context'
 import { buildSidebarWorkspaceGroups } from './SidebarProjectsSection'
 
 type Props = {
@@ -37,6 +34,7 @@ export function NewConversationProjectPicker({
   runtimeReady,
   onSelectWorkspace,
   onPickWorkspace,
+  onClearWorkspace,
   t
 }: Props): ReactElement {
   const [open, setOpen] = useState(false)
@@ -107,7 +105,7 @@ export function NewConversationProjectPicker({
 
   const clearWorkspace = (): void => {
     setOpen(false)
-    onSelectWorkspace(NO_PROJECT_WORKSPACE_ROOT)
+    onClearWorkspace()
   }
 
   return (
