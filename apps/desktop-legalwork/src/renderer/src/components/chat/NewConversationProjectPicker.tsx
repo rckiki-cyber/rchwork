@@ -4,6 +4,7 @@ import { Check, ChevronDown, Folder, FolderPlus, FolderX, Search } from 'lucide-
 import type { NormalizedThread } from '../../agent/types'
 import { workspaceLabelFromPath } from '../../lib/workspace-label'
 import { normalizeWorkspaceRoot, workspaceRootIdentityKey } from '../../lib/workspace-path'
+import { isNoProjectWorkspaceRoot } from '@shared/workspace-context'
 import { buildSidebarWorkspaceGroups } from './SidebarProjectsSection'
 
 type Props = {
@@ -42,6 +43,7 @@ export function NewConversationProjectPicker({
   const menuRef = useRef<HTMLDivElement | null>(null)
   const selectedWorkspace = normalizeWorkspaceRoot(workspaceRoot)
   const selectedWorkspaceKey = workspaceRootIdentityKey(selectedWorkspace)
+  const noProjectSelected = isNoProjectWorkspaceRoot(selectedWorkspace)
 
   const groups = useMemo(() => {
     return buildSidebarWorkspaceGroups({
@@ -50,7 +52,7 @@ export function NewConversationProjectPicker({
       showArchived: false,
       workspaceRoot,
       workspaceRoots
-    })
+    }).filter(([workspacePath]) => !isNoProjectWorkspaceRoot(workspacePath))
   }, [query, threads, workspaceRoot, workspaceRoots])
 
   useEffect(() => {
@@ -185,12 +187,16 @@ export function NewConversationProjectPicker({
             </button>
             <button
               type="button"
-              role="menuitem"
+              role="menuitemradio"
+              aria-checked={noProjectSelected}
               onClick={clearWorkspace}
               className="flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left text-[14px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink focus:bg-ds-hover focus-visible:bg-ds-hover focus-visible:outline-none"
             >
               <FolderX className="h-4 w-4 shrink-0 text-ds-faint" strokeWidth={1.75} />
               <span className="min-w-0 flex-1 truncate">{t('newConversationProjectNone')}</span>
+              {noProjectSelected ? (
+                <Check className="h-4 w-4 shrink-0 text-ds-muted" strokeWidth={2} />
+              ) : null}
             </button>
           </div>
         </div>
