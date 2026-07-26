@@ -11,19 +11,47 @@ export default {
       fontFamily: {
         sans: [
           '-apple-system',
+          'BlinkMacSystemFont',
           "'SF Pro Text'",
-          "'SF Pro Display'",
           "'PingFang SC'",
+          "'Hiragino Sans GB'",
+          "'Microsoft YaHei UI'",
+          "'Segoe UI'",
           "'Helvetica Neue'",
           'Arial',
-          'sans-serif',
+          'sans-serif'
+        ],
+        display: [
+          "'SF Pro Display'",
+          '-apple-system',
+          'BlinkMacSystemFont',
+          "'PingFang SC'",
+          "'Hiragino Sans GB'",
+          "'Microsoft YaHei UI'",
+          "'Segoe UI'",
+          "'Helvetica Neue'",
+          'Arial',
+          'sans-serif'
         ],
         mono: [
           "'SF Mono'",
+          'ui-monospace',
+          "'Cascadia Mono'",
           "'JetBrains Mono'",
           "'IBM Plex Mono'",
-          'monospace',
-        ],
+          'Menlo',
+          'Consolas',
+          'monospace'
+        ]
+      },
+      fontSize: {
+        caption: ['12px', { lineHeight: '1.35' }],
+        label: ['13px', { lineHeight: '1.4' }],
+        secondary: ['14px', { lineHeight: '1.5' }],
+        body: ['16px', { lineHeight: '1.72' }],
+        'title-3': ['18px', { lineHeight: '1.3' }],
+        'title-2': ['22px', { lineHeight: '1.22' }],
+        'title-1': ['28px', { lineHeight: '1.16' }]
       },
       colors: {
         accent: {
