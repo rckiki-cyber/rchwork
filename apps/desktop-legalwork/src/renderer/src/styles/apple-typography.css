@@ -1,7 +1,7 @@
 :root {
-  --font-apple-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-  --font-apple-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-  --font-apple-mono: 'SF Mono', ui-monospace, 'Cascadia Mono', 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, Menlo, Monaco, monospace;
 
   --type-caption: 12px;
   --type-label: 13px;
@@ -23,10 +23,39 @@
   --weight-bold: 700;
 }
 
+:root[data-platform='darwin'] {
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, Menlo, Monaco, monospace;
+}
+
+:root[data-platform='win32'] {
+  --font-ui: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', Arial, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', Arial, sans-serif;
+  --font-mono: 'Cascadia Code', 'Cascadia Mono', Consolas, 'JetBrains Mono', monospace;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+}
+
+:root[data-platform='linux'] {
+  --font-ui: 'Noto Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', Ubuntu, Cantarell, sans-serif;
+  --font-display: 'Noto Sans', 'Noto Sans CJK SC', 'Source Han Sans SC', Ubuntu, Cantarell, sans-serif;
+  --font-mono: 'Noto Sans Mono', 'JetBrains Mono', 'DejaVu Sans Mono', monospace;
+}
+
 html {
-  font-family: var(--font-apple-ui);
+  font-family: var(--font-ui);
   font-size: 16px;
   text-rendering: optimizeLegibility;
+}
+
+:root[data-platform='darwin'] {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-platform='win32'] {
+  text-rendering: geometricPrecision;
 }
 
 body,
@@ -35,7 +64,7 @@ input,
 textarea,
 select,
 option {
-  font-family: var(--font-apple-ui);
+  font-family: var(--font-ui);
 }
 
 body {
@@ -43,6 +72,10 @@ body {
   font-weight: var(--weight-regular);
   line-height: var(--leading-body);
   letter-spacing: -0.006em;
+}
+
+:root[data-platform='win32'] body {
+  letter-spacing: 0;
 }
 
 button,
@@ -67,9 +100,19 @@ h4,
 h5,
 h6,
 .ds-display-type {
-  font-family: var(--font-apple-display);
+  font-family: var(--font-display);
   color: var(--ds-text);
   letter-spacing: -0.018em;
+}
+
+:root[data-platform='win32'] h1,
+:root[data-platform='win32'] h2,
+:root[data-platform='win32'] h3,
+:root[data-platform='win32'] h4,
+:root[data-platform='win32'] h5,
+:root[data-platform='win32'] h6,
+:root[data-platform='win32'] .ds-display-type {
+  letter-spacing: -0.01em;
 }
 
 h1 {
@@ -126,10 +169,15 @@ nav [role='button'] {
 
 .ds-chat-answer,
 .ds-user-message-bubble {
-  font-family: var(--font-apple-ui);
+  font-family: var(--font-ui);
   font-size: var(--type-body);
   line-height: 1.7;
   letter-spacing: -0.006em;
+}
+
+:root[data-platform='win32'] .ds-chat-answer,
+:root[data-platform='win32'] .ds-user-message-bubble {
+  letter-spacing: 0;
 }
 
 .ds-user-message-bubble {
@@ -138,10 +186,15 @@ nav [role='button'] {
 
 .write-markdown-preview,
 .cm-write-live-preview .cm-content {
-  font-family: var(--font-apple-ui);
+  font-family: var(--font-ui);
   font-size: var(--type-body);
   line-height: 1.76;
   letter-spacing: -0.006em;
+}
+
+:root[data-platform='win32'] .write-markdown-preview,
+:root[data-platform='win32'] .cm-write-live-preview .cm-content {
+  letter-spacing: 0;
 }
 
 .write-markdown-preview {
@@ -154,8 +207,17 @@ nav [role='button'] {
 .write-markdown-preview h4,
 .write-markdown-preview h5,
 .write-markdown-preview h6 {
-  font-family: var(--font-apple-display);
+  font-family: var(--font-display);
   letter-spacing: -0.018em;
+}
+
+:root[data-platform='win32'] .write-markdown-preview h1,
+:root[data-platform='win32'] .write-markdown-preview h2,
+:root[data-platform='win32'] .write-markdown-preview h3,
+:root[data-platform='win32'] .write-markdown-preview h4,
+:root[data-platform='win32'] .write-markdown-preview h5,
+:root[data-platform='win32'] .write-markdown-preview h6 {
+  letter-spacing: -0.01em;
 }
 
 .write-markdown-preview h1 {
@@ -198,7 +260,7 @@ kbd,
 samp,
 .cm-editor .cm-content,
 .cm-editor .cm-gutters {
-  font-family: var(--font-apple-mono);
+  font-family: var(--font-mono);
 }
 
 .write-markdown-preview code {
