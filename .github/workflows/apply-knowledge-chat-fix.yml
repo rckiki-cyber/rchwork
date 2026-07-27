@@ -27,11 +27,30 @@ jobs:
           ref: fix/knowledge-chat-notebooklm
           fetch-depth: 0
 
+      - name: Normalize migration string literals
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.legalwork-patches/apply_knowledge_chat_fix.py')
+          text = path.read_text(encoding='utf-8')
+          markers = (
+              '  const pollKnowledgeChat = useCallback',
+              '  const sendKnowledgeChatMessage = useCallback',
+              '      // Convert [来源 N] references',
+              '      const encodedScope = encodeURIComponent(sourceScope)',
+          )
+          for marker in markers:
+              text = text.replace(f'    """{marker}', f'    r"""{marker}')
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Apply source migration
         id: migrate
         shell: bash
         run: |
           set +e
+          rm -f .legalwork-patches/run-output.txt
           python3 .legalwork-patches/apply_knowledge_chat_fix.py > .legalwork-patches/run-output.txt 2>&1
           status=$?
           cat .legalwork-patches/run-output.txt
