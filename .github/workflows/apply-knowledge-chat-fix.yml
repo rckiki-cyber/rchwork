@@ -7,6 +7,10 @@ on:
     paths:
       - .legalwork-patches/apply_knowledge_chat_fix.py
       - .github/workflows/apply-knowledge-chat-fix.yml
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
