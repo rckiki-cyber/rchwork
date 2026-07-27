@@ -32,9 +32,9 @@ jobs:
         shell: bash
         run: |
           set +e
-          python3 .legalwork-patches/apply_knowledge_chat_fix.py > .legalwork-patches/run.log 2>&1
+          python3 .legalwork-patches/apply_knowledge_chat_fix.py > .legalwork-patches/run-output.txt 2>&1
           status=$?
-          cat .legalwork-patches/run.log
+          cat .legalwork-patches/run-output.txt
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
@@ -43,7 +43,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .legalwork-patches/run.log
+          git add -f .legalwork-patches/run-output.txt
           git commit -m "chore: capture knowledge chat migration failure"
           git push origin HEAD:fix/knowledge-chat-notebooklm
           exit 1
@@ -60,7 +60,7 @@ jobs:
         if: steps.migrate.outputs.status == '0'
         run: |
           rm -f .legalwork-patches/apply_knowledge_chat_fix.py
-          rm -f .legalwork-patches/run.log
+          rm -f .legalwork-patches/run-output.txt
           rmdir .legalwork-patches 2>/dev/null || true
           rm -f .github/workflows/apply-knowledge-chat-fix.yml
 
