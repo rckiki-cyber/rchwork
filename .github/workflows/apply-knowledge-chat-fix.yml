@@ -28,21 +28,44 @@ jobs:
           fetch-depth: 0
 
       - name: Apply source migration
-        run: python3 .legalwork-patches/apply_knowledge_chat_fix.py
+        id: migrate
+        shell: bash
+        run: |
+          set +e
+          python3 .legalwork-patches/apply_knowledge_chat_fix.py > .legalwork-patches/run.log 2>&1
+          status=$?
+          cat .legalwork-patches/run.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Persist migration diagnostics
+        if: steps.migrate.outputs.status != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .legalwork-patches/run.log
+          git commit -m "chore: capture knowledge chat migration failure"
+          git push origin HEAD:fix/knowledge-chat-notebooklm
+          exit 1
 
       - name: Install desktop dependencies
+        if: steps.migrate.outputs.status == '0'
         run: npm ci --prefix apps/desktop-legalwork --ignore-scripts
 
       - name: Typecheck desktop app
+        if: steps.migrate.outputs.status == '0'
         run: npm --prefix apps/desktop-legalwork run typecheck
 
       - name: Remove one-shot migration files
+        if: steps.migrate.outputs.status == '0'
         run: |
           rm -f .legalwork-patches/apply_knowledge_chat_fix.py
+          rm -f .legalwork-patches/run.log
           rmdir .legalwork-patches 2>/dev/null || true
           rm -f .github/workflows/apply-knowledge-chat-fix.yml
 
       - name: Commit generated source changes
+        if: steps.migrate.outputs.status == '0'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
