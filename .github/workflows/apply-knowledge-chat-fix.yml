@@ -1,0 +1,47 @@
+name: Apply knowledge chat fix
+
+on:
+  push:
+    branches:
+      - fix/knowledge-chat-notebooklm
+    paths:
+      - .legalwork-patches/apply_knowledge_chat_fix.py
+      - .github/workflows/apply-knowledge-chat-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/knowledge-chat-notebooklm
+          fetch-depth: 0
+
+      - name: Apply source migration
+        run: python3 .legalwork-patches/apply_knowledge_chat_fix.py
+
+      - name: Install desktop dependencies
+        run: npm ci --prefix apps/desktop-legalwork --ignore-scripts
+
+      - name: Typecheck desktop app
+        run: npm --prefix apps/desktop-legalwork run typecheck
+
+      - name: Remove one-shot migration files
+        run: |
+          rm -f .legalwork-patches/apply_knowledge_chat_fix.py
+          rmdir .legalwork-patches 2>/dev/null || true
+          rm -f .github/workflows/apply-knowledge-chat-fix.yml
+
+      - name: Commit generated source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(knowledge): stream reasoning and add scoped citations"
+          git push origin HEAD:fix/knowledge-chat-notebooklm
