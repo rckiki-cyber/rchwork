@@ -9,7 +9,11 @@ import { openWorkspacePathInEditor } from '../../lib/open-workspace-path'
 import { previewWorkspaceFile } from '../../lib/workspace-file-preview'
 import { useChatStore } from '../../store/chat-store'
 import { StreamdownCode } from './StreamdownCode'
-import { getKnowledgeSourcePath, getKnowledgeOpenFileHandler } from '../knowledge-base/source-map-store'
+import {
+  getKnowledgeSourceEntry,
+  getKnowledgeSourcePath,
+  getKnowledgeOpenFileHandler
+} from '../knowledge-base/source-map-store'
 
 /**
  * Tuned for faster, cleaner single-line streaming:
@@ -51,6 +55,9 @@ function StreamdownLink({
   const workspaceRoot = useChatStore((s) => s.workspaceRoot)
   const fileTarget = parseFileReferenceHref(href)
   const validation = useValidatedFileReference(fileTarget, workspaceRoot)
+  const isKnowledgeSource = Boolean(href?.startsWith('source://'))
+  const knowledgeSourceRef = isKnowledgeSource ? href?.replace('source://', '') ?? '' : ''
+  const knowledgeSource = isKnowledgeSource ? getKnowledgeSourceEntry(knowledgeSourceRef) : undefined
   const isExternal = href ? /^(https?:|mailto:)/i.test(href) : false
   const cleanClassName = className?.replace(/\bds-file-reference-link\b/g, '').trim()
 
@@ -68,11 +75,9 @@ function StreamdownLink({
       : null
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>): void => {
-    // source:// links — knowledge base citation [来源 N] click navigation
-    if (href?.startsWith('source://')) {
+    if (isKnowledgeSource) {
       event.preventDefault()
-      const ref = href.replace('source://', '')
-      const path = getKnowledgeSourcePath(ref)
+      const path = getKnowledgeSourcePath(knowledgeSourceRef)
       if (path) {
         const handler = getKnowledgeOpenFileHandler()
         if (handler) handler(path)
@@ -103,6 +108,22 @@ function StreamdownLink({
         })?.catch(() => undefined)
       }
     })
+  }
+
+  if (isKnowledgeSource) {
+    return (
+      <sup className="mx-0.5 inline-flex align-super text-[0.72em] leading-none">
+        <a
+          href={href}
+          title={knowledgeSource?.title || title || '打开引用来源'}
+          aria-label={knowledgeSource?.title ? `打开来源：${knowledgeSource.title}` : '打开引用来源'}
+          className="inline-flex min-w-[1.35em] items-center justify-center rounded-full border border-[color:var(--ds-accent)]/35 bg-[color:var(--ds-accent)]/10 px-1 py-0.5 font-semibold text-[var(--ds-accent)] no-underline transition hover:bg-[color:var(--ds-accent)]/20"
+          onClick={handleClick}
+        >
+          {children}
+        </a>
+      </sup>
+    )
   }
 
   return (
