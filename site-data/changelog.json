@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-29T14:42:36.908Z",
+  "generated_at": "2026-07-29T14:44:41.032Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
@@ -8,12 +8,16 @@
       "published_at": "2026-07-29T14:42:20Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.6",
       "prerelease": false,
-      "summary": "本次更新包括：修复优化。",
+      "summary": "本次更新包括：对话体验。",
       "highlights": [
-        "LegalWork 0.3.6 已上线，安装后即可使用这一版的新能力与体验优化。"
+        "使用体验更新：🆕 0.3.6 功能更新",
+        "使用体验更新：上下文压缩工具（Agent 自主调用）",
+        "新增可用能力： compress_context 工具：Agent 可在对话变长时主动压缩历史上下文，减少 token 消耗。参数支持 keep_recent（保留最近几条）和 mode（普通/激进/强制），返回节省的 token 数和预估费用。",
+        "使用体验更新：模型辅助摘要始终开启：自动压实和手动压缩均走模型生成摘要，提升压缩质量。",
+        "使用体验更新：北大法宝 MCP 兜底凭证"
       ],
       "categories": [
-        "修复优化"
+        "对话体验"
       ],
       "assets": [
         {
