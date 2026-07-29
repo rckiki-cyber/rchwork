@@ -95,12 +95,29 @@
 }
 
 .ds-markdown a {
+  border-radius: 4px;
   color: var(--ds-accent);
+  cursor: pointer;
+  font-weight: 500;
   text-decoration: none;
+  text-underline-offset: 3px;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .ds-markdown a:hover {
+  background: var(--ds-accent-soft);
   text-decoration: underline;
+}
+
+.ds-markdown a:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 2px;
+}
+
+.ds-markdown a:active {
+  background: color-mix(in srgb, var(--ds-accent) 20%, transparent);
 }
 
 .ds-markdown .ds-file-reference-link {

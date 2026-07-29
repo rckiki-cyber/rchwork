@@ -97,6 +97,27 @@ describe('knowledgeChatHistoryFromBlocks', () => {
     })
   })
 
+  it('attaches a stored reasoning block to its assistant answer', () => {
+    const blocks: ChatBlock[] = [
+      {
+        kind: 'reasoning',
+        id: 'reasoning-1',
+        text: '先读取当前文件，再提取关键信息。'
+      },
+      {
+        kind: 'assistant',
+        id: 'assistant-1',
+        text: '## 结论\n\n这是最终回答。'
+      }
+    ]
+
+    expect(knowledgeChatHistoryFromBlocks(blocks).messages[0]).toMatchObject({
+      role: 'assistant',
+      reasoning: '先读取当前文件，再提取关键信息。',
+      content: '## 结论\n\n这是最终回答。'
+    })
+  })
+
   it('finds the linked file by path and falls back to a unique file name for old chats', () => {
     const nodes = [{
       name: '案件',

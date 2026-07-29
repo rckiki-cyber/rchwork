@@ -259,7 +259,7 @@ const mcpSearchModeSchema = z.enum(['direct', 'search', 'auto'])
 const legalworkStorageBackendSchema = z.enum(['hybrid', 'file'])
 const legalworkCompactionSummaryModeSchema = z.enum(['heuristic', 'model'])
 const clawRunModeSchema = z.enum(['agent', 'plan'])
-const clawImProviderSchema = z.enum(['feishu', 'weixin'])
+const clawImProviderSchema = z.enum(['feishu', 'weixin', 'qq', 'dingtalk', 'wecom'])
 const clawScheduleKindSchema = z.enum(['manual', 'interval', 'daily', 'at'])
 const clawTaskStatusSchema = z.enum(['idle', 'running', 'success', 'error'])
 const clawModelSchema = z.union([z.enum(CLAW_MODEL_IDS), trimmedString(128)])
@@ -435,6 +435,26 @@ const clawImPlatformCredentialPatchSchema = z.union([
     kind: z.literal('weixin'),
     accountId: z.string().max(512).optional(),
     sessionKey: z.string().max(MAX_BODY_BYTES).optional(),
+    createdAt: z.string().max(128).optional()
+  }).strict(),
+  z.object({
+    kind: z.literal('qq'),
+    appId: z.string().max(512).optional(),
+    appSecret: z.string().max(MAX_BODY_BYTES).optional(),
+    markdownTemplateId: z.string().max(512).optional(),
+    markdownTemplateKey: z.string().max(128).optional(),
+    createdAt: z.string().max(128).optional()
+  }).strict(),
+  z.object({
+    kind: z.literal('dingtalk'),
+    clientId: z.string().max(512).optional(),
+    clientSecret: z.string().max(MAX_BODY_BYTES).optional(),
+    createdAt: z.string().max(128).optional()
+  }).strict(),
+  z.object({
+    kind: z.literal('wecom'),
+    botId: z.string().max(512).optional(),
+    secret: z.string().max(MAX_BODY_BYTES).optional(),
     createdAt: z.string().max(128).optional()
   }).strict()
 ])

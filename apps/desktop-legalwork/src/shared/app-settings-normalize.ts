@@ -1,5 +1,6 @@
 import {
   DEFAULT_GUI_UPDATE_CHANNEL,
+  DEFAULT_UI_FONT_SCALE,
   normalizeGuiUpdateChannel,
   type AppBehaviorConfigV1,
   type AppSettingsV1,
@@ -53,7 +54,7 @@ export function normalizeAppSettings(settings: AppSettingsV1): AppSettingsV1 {
       maybeSettings.uiFontScale === 'medium' ||
       maybeSettings.uiFontScale === 'large'
         ? maybeSettings.uiFontScale
-        : 'small',
+        : DEFAULT_UI_FONT_SCALE,
     provider: normalizeModelProviderSettings(maybeSettings.provider),
     agents: legalworkSettingsEnvelope(mergeLegalworkRuntimeSettings(defaultLegalworkRuntimeSettings(), {
       ...runtime,

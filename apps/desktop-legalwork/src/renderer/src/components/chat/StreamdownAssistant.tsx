@@ -42,6 +42,16 @@ const components = {
 
 type StreamdownLinkProps = ComponentPropsWithRef<'a'> & { node?: unknown }
 
+export function isExternalMarkdownHref(href: string | undefined): boolean {
+  if (!href) return false
+  try {
+    const protocol = new URL(href).protocol.toLowerCase()
+    return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:'
+  } catch {
+    return false
+  }
+}
+
 function StreamdownLink({
   href,
   children,
@@ -51,7 +61,7 @@ function StreamdownLink({
   const workspaceRoot = useChatStore((s) => s.workspaceRoot)
   const fileTarget = parseFileReferenceHref(href)
   const validation = useValidatedFileReference(fileTarget, workspaceRoot)
-  const isExternal = href ? /^(https?:|mailto:)/i.test(href) : false
+  const isExternal = isExternalMarkdownHref(href)
   const cleanClassName = className?.replace(/\bds-file-reference-link\b/g, '').trim()
 
   if (fileTarget && validation.status !== 'valid') {
@@ -111,10 +121,12 @@ function StreamdownLink({
       title={title}
       className={[
         resolvedFileTarget ? 'ds-file-reference-link' : '',
+        isExternal ? 'ds-external-link' : '',
         cleanClassName
       ]
         .filter(Boolean)
         .join(' ')}
+      rel={isExternal ? 'noopener noreferrer' : undefined}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
     >

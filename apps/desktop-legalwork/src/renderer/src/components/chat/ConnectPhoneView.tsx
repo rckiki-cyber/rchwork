@@ -6,6 +6,7 @@ import {
   Battery,
   CheckCircle2,
   ChevronLeft,
+  ExternalLink,
   Image as ImageIcon,
   Loader2,
   LogOut,
@@ -37,6 +38,7 @@ import {
 } from './SidebarClawDialogHelpers'
 import { ClawProviderLogo } from './SidebarClaw'
 import { SidebarTitlebarToggleButton } from '../sidebar/SidebarPrimitives'
+import { AstryxSegmentedControl } from '../astryx/AstryxSegmentedControl'
 
 type AddClawPhoneChannel = (
   provider: ClawImProvider,
@@ -69,7 +71,38 @@ type WeixinInstallRequest = {
 
 type ConnectPhoneInstallRequest = FeishuInstallRequest | WeixinInstallRequest
 
-const CONNECT_PHONE_TARGETS: readonly ClawInstallTarget[] = ['feishu', 'lark', 'weixin']
+const CONNECT_PHONE_TARGETS: readonly ClawInstallTarget[] = [
+  'feishu',
+  'lark',
+  'weixin',
+  'qq',
+  'dingtalk',
+  'wecom'
+]
+
+type RegionalInstallTarget = Extract<ClawInstallTarget, 'qq' | 'dingtalk' | 'wecom'>
+
+const REGIONAL_SETUP: Record<RegionalInstallTarget, {
+  url: string
+  firstKey: string
+  secondKey: string
+}> = {
+  qq: {
+    url: 'https://q.qq.com/qqbot/',
+    firstKey: 'connectPhoneQqAppId',
+    secondKey: 'connectPhoneQqAppSecret'
+  },
+  dingtalk: {
+    url: 'https://open-dev.dingtalk.com/',
+    firstKey: 'connectPhoneDingTalkClientId',
+    secondKey: 'connectPhoneDingTalkClientSecret'
+  },
+  wecom: {
+    url: 'https://work.weixin.qq.com/wework_admin/frame#apps',
+    firstKey: 'connectPhoneWeComBotId',
+    secondKey: 'connectPhoneWeComSecret'
+  }
+}
 
 const INITIAL_QR_STATE: ClawInstallQrState = {
   status: 'idle',
@@ -81,7 +114,182 @@ const INITIAL_QR_STATE: ClawInstallQrState = {
 }
 
 export function connectPhoneProviderForTarget(target: ClawInstallTarget): ClawImProvider {
-  return target === 'weixin' ? 'weixin' : 'feishu'
+  if (target === 'weixin' || target === 'qq' || target === 'dingtalk' || target === 'wecom') {
+    return target
+  }
+  return 'feishu'
+}
+
+export function isRegionalInstallTarget(target: ClawInstallTarget): target is RegionalInstallTarget {
+  return target === 'qq' || target === 'dingtalk' || target === 'wecom'
+}
+
+export function createRegionalConnectPhoneCredential(
+  target: RegionalInstallTarget,
+  firstValue: string,
+  secondValue: string,
+  qqMarkdown?: {
+    templateId?: string
+    templateKey?: string
+  },
+  createdAt: string = new Date().toISOString()
+): ClawImPlatformCredentialV1 {
+  if (target === 'qq') {
+    const markdownTemplateId = qqMarkdown?.templateId?.trim() ?? ''
+    return {
+      kind: 'qq',
+      appId: firstValue.trim(),
+      appSecret: secondValue.trim(),
+      ...(markdownTemplateId
+        ? {
+            markdownTemplateId,
+            markdownTemplateKey: qqMarkdown?.templateKey?.trim() || 'content'
+          }
+        : {}),
+      createdAt
+    }
+  }
+  if (target === 'dingtalk') {
+    return {
+      kind: 'dingtalk',
+      clientId: firstValue.trim(),
+      clientSecret: secondValue.trim(),
+      createdAt
+    }
+  }
+  return { kind: 'wecom', botId: firstValue.trim(), secret: secondValue.trim(), createdAt }
+}
+
+function RegionalProviderSetup({
+  target,
+  disabled,
+  compact = false,
+  onConnect
+}: {
+  target: RegionalInstallTarget
+  disabled: boolean
+  compact?: boolean
+  onConnect: (credential: ClawImPlatformCredentialV1) => Promise<void>
+}): ReactElement {
+  const { t } = useTranslation('common')
+  const [firstValue, setFirstValue] = useState('')
+  const [secondValue, setSecondValue] = useState('')
+  const [qqMarkdownTemplateId, setQqMarkdownTemplateId] = useState('')
+  const [qqMarkdownTemplateKey, setQqMarkdownTemplateKey] = useState('content')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const setup = REGIONAL_SETUP[target]
+  const provider = connectPhoneProviderForTarget(target)
+  const submit = async (): Promise<void> => {
+    if (disabled || submitting) return
+    if (!firstValue.trim() || !secondValue.trim()) {
+      setError(t('connectPhoneCredentialRequired'))
+      return
+    }
+    setError('')
+    setSubmitting(true)
+    try {
+      await onConnect(createRegionalConnectPhoneCredential(
+        target,
+        firstValue,
+        secondValue,
+        target === 'qq'
+          ? {
+              templateId: qqMarkdownTemplateId,
+              templateKey: qqMarkdownTemplateKey
+            }
+          : undefined
+      ))
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : String(submitError))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  return (
+    <div className={`mx-auto w-full rounded-[14px] border border-ds-border bg-ds-card text-left shadow-sm ${
+      compact ? 'p-3' : 'max-w-[420px] p-5'
+    }`}>
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-ds-main">
+          <ClawProviderLogo provider={provider} className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13.5px] font-semibold text-ds-ink">
+            {t('connectPhoneRegionalSetupTitle', { provider: clawInstallTargetLabel(t, target) })}
+          </span>
+          <span className="mt-0.5 block text-[11.5px] leading-4 text-ds-faint">
+            {t('connectPhoneRegionalSetupDesc')}
+          </span>
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={() => void window.dsGui?.openExternal?.(setup.url)}
+        className="mt-3 inline-flex min-h-[32px] w-full items-center justify-center gap-1.5 rounded-[8px] border border-ds-border bg-ds-main/55 px-3 text-[12px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
+      >
+        <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.8} />
+        {t('connectPhoneOpenPlatform')}
+      </button>
+      <div className="mt-3 grid gap-2">
+        <input
+          value={firstValue}
+          onChange={(event) => setFirstValue(event.target.value)}
+          placeholder={t(setup.firstKey)}
+          autoComplete="off"
+          disabled={disabled || submitting}
+          className="h-9 w-full rounded-[8px] border border-ds-border bg-ds-main px-3 text-[12.5px] text-ds-ink outline-none transition placeholder:text-ds-faint focus:border-accent"
+        />
+        <input
+          value={secondValue}
+          onChange={(event) => setSecondValue(event.target.value)}
+          placeholder={t(setup.secondKey)}
+          type="password"
+          autoComplete="new-password"
+          disabled={disabled || submitting}
+          className="h-9 w-full rounded-[8px] border border-ds-border bg-ds-main px-3 text-[12.5px] text-ds-ink outline-none transition placeholder:text-ds-faint focus:border-accent"
+        />
+        {target === 'qq' ? (
+          <>
+            <input
+              value={qqMarkdownTemplateId}
+              onChange={(event) => setQqMarkdownTemplateId(event.target.value)}
+              placeholder={t('connectPhoneQqMarkdownTemplateId')}
+              autoComplete="off"
+              disabled={disabled || submitting}
+              className="h-9 w-full rounded-[8px] border border-ds-border bg-ds-main px-3 text-[12.5px] text-ds-ink outline-none transition placeholder:text-ds-faint focus:border-accent"
+            />
+            {qqMarkdownTemplateId.trim() ? (
+              <input
+                value={qqMarkdownTemplateKey}
+                onChange={(event) => setQqMarkdownTemplateKey(event.target.value)}
+                placeholder={t('connectPhoneQqMarkdownTemplateKey')}
+                autoComplete="off"
+                disabled={disabled || submitting}
+                className="h-9 w-full rounded-[8px] border border-ds-border bg-ds-main px-3 text-[12.5px] text-ds-ink outline-none transition placeholder:text-ds-faint focus:border-accent"
+              />
+            ) : null}
+            <div className="text-[10.5px] leading-4 text-ds-faint">
+              {t('connectPhoneQqMarkdownTemplateHint')}
+            </div>
+          </>
+        ) : null}
+      </div>
+      {error ? <div className="mt-2 text-[11.5px] leading-4 text-red-600 dark:text-red-300">{error}</div> : null}
+      <button
+        type="button"
+        onClick={() => void submit()}
+        disabled={disabled || submitting}
+        className="mt-3 inline-flex min-h-[34px] w-full items-center justify-center gap-1.5 rounded-[8px] bg-[#222323] px-3 text-[12.5px] font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-55 dark:bg-white dark:text-black"
+      >
+        {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+        {submitting ? t('connectPhoneBinding') : t('connectPhoneSaveAndConnect')}
+      </button>
+      <div className="mt-2 text-[10.5px] leading-4 text-ds-faint">
+        {t('connectPhoneCredentialSecurity')}
+      </div>
+    </div>
+  )
 }
 
 export function hasEnabledClawPhoneChannel(
@@ -184,6 +392,7 @@ export function ConnectPhoneView({
   const installAttemptRef = useRef(0)
   const targetProvider = connectPhoneProviderForTarget(target)
   const hasExistingChannel = hasClawPhoneChannel(channels, targetProvider)
+  const regionalTarget = isRegionalInstallTarget(target) ? target : null
 
   const clearInstallTimers = (): void => {
     if (installPollTimerRef.current) {
@@ -250,6 +459,17 @@ export function ConnectPhoneView({
     } finally {
       setSaving(false)
     }
+  }
+
+  const connectRegionalChannel = async (
+    credential: ClawImPlatformCredentialV1
+  ): Promise<void> => {
+    await onAddProvider(
+      credential.kind,
+      createConnectPhoneAgentProfile(),
+      credential,
+      createConnectPhoneChannelOptions(credential.kind)
+    )
   }
 
   const startOfficialInstallQr = async (): Promise<void> => {
@@ -418,29 +638,42 @@ export function ConnectPhoneView({
               {t('connectPhoneSubtitle')}
             </p>
 
-            <div className="mt-7 inline-flex rounded-full bg-[#f0f1ef] p-1 shadow-inner dark:bg-white/[0.08]">
-              {CONNECT_PHONE_TARGETS.map((item) => {
-                const active = target === item
-                const provider = connectPhoneProviderForTarget(item)
-                return (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setTarget(item)}
-                    className={`inline-flex h-8 min-w-[92px] items-center justify-center gap-1.5 rounded-full px-4 text-[13px] font-semibold transition ${
-                      active
-                        ? 'bg-white text-ds-ink shadow-sm dark:bg-white/[0.14] dark:text-white'
-                        : 'text-[#727985] hover:text-ds-ink dark:hover:text-white'
-                    }`}
-                    aria-pressed={active}
-                  >
-                    <ClawProviderLogo provider={provider} className="h-4 w-4" />
-                    {clawInstallTargetLabel(t, item)}
-                  </button>
+            <AstryxSegmentedControl
+              value={target}
+              items={CONNECT_PHONE_TARGETS.map((item) => ({
+                value: item,
+                label: clawInstallTargetLabel(t, item),
+                icon: (
+                  <ClawProviderLogo
+                    provider={connectPhoneProviderForTarget(item)}
+                    className="h-4 w-4"
+                  />
                 )
-              })}
-            </div>
+              }))}
+              onChange={setTarget}
+              ariaLabel={t('connectPhoneTitle')}
+              className="mx-auto mt-7 grid max-w-[430px] grid-cols-3 gap-1 rounded-[16px] bg-[#f0f1ef] p-1 shadow-inner dark:bg-white/[0.08]"
+              buttonClassName="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-[11px] px-2 text-[12.5px] font-semibold"
+              indicatorClassName="rounded-[11px] bg-white shadow-sm dark:bg-white/[0.14]"
+              activeClassName="text-ds-ink dark:text-white"
+              inactiveClassName="text-[#727985] hover:text-ds-ink dark:hover:text-white"
+            />
 
+            {regionalTarget ? (
+              <div className="mt-7">
+                <RegionalProviderSetup
+                  target={regionalTarget}
+                  disabled={hasExistingChannel}
+                  onConnect={connectRegionalChannel}
+                />
+                {hasDisabledChannels ? (
+                  <div className="mt-2 text-[12px] text-ds-faint">
+                    {t('connectPhoneDisabledConnectionHint')}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <>
             <div className="mx-auto mt-9 flex h-[226px] w-[226px] flex-col items-center justify-center rounded-[14px] border border-[#ececea] bg-white p-3 shadow-[0_18px_38px_rgba(32,37,43,0.05)]">
               {installQr.status === 'idle' ? (
                 <div className="grid justify-items-center gap-4">
@@ -524,6 +757,8 @@ export function ConnectPhoneView({
                 <div className="mt-1">{t('connectPhoneDisabledConnectionHint')}</div>
               ) : null}
             </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -625,6 +860,7 @@ export function ConnectPhoneSidebarPanel({
   const targetProvider = connectPhoneProviderForTarget(target)
   const connectedChannel = channels.find((channel) => channel.provider === targetProvider) ?? null
   const hasExistingChannel = Boolean(connectedChannel)
+  const regionalTarget = isRegionalInstallTarget(target) ? target : null
   const displayUserCode = targetProvider === 'weixin'
     ? ''
     : formatConnectPhoneUserCode(installQr.userCode, installQr.deviceCode)
@@ -699,6 +935,20 @@ export function ConnectPhoneSidebarPanel({
     } finally {
       setSaving(false)
     }
+  }
+
+  const connectRegionalChannel = async (
+    credential: ClawImPlatformCredentialV1
+  ): Promise<void> => {
+    await onAddProvider(
+      credential.kind,
+      createConnectPhoneAgentProfile(),
+      credential,
+      {
+        ...createConnectPhoneChannelOptions(credential.kind),
+        preserveRoute: true
+      }
+    )
   }
 
   const startOfficialInstallQr = async (): Promise<void> => {
@@ -864,28 +1114,26 @@ export function ConnectPhoneSidebarPanel({
           <ClawProviderLogo provider={targetProvider} className="h-4 w-4" />
           <span>{t('claw')}</span>
         </div>
-        <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl border border-ds-border bg-ds-card p-1">
-          {CONNECT_PHONE_TARGETS.map((item) => {
-            const active = target === item
-            const provider = connectPhoneProviderForTarget(item)
-            return (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setTarget(item)}
-                className={`inline-flex min-h-[28px] items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold transition ${
-                  active
-                    ? 'bg-accent/12 text-accent'
-                    : 'text-ds-faint hover:bg-ds-hover hover:text-ds-ink'
-                }`}
-                aria-pressed={active}
-              >
-                <ClawProviderLogo provider={provider} className="h-3.5 w-3.5" />
-                {clawInstallTargetLabel(t, item)}
-              </button>
+        <AstryxSegmentedControl
+          value={target}
+          items={CONNECT_PHONE_TARGETS.map((item) => ({
+            value: item,
+            label: clawInstallTargetLabel(t, item),
+            icon: (
+              <ClawProviderLogo
+                provider={connectPhoneProviderForTarget(item)}
+                className="h-3.5 w-3.5"
+              />
             )
-          })}
-        </div>
+          }))}
+          onChange={setTarget}
+          ariaLabel={t('connectPhoneTitle')}
+          className="mt-3 grid grid-cols-3 gap-1 rounded-xl border border-ds-border bg-ds-card p-1"
+          buttonClassName="inline-flex min-h-[28px] items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold"
+          indicatorClassName="rounded-lg bg-accent/12"
+          activeClassName="text-accent"
+          inactiveClassName="text-ds-faint hover:text-ds-ink"
+        />
       </div>
 
       {connectedChannel ? (
@@ -933,6 +1181,15 @@ export function ConnectPhoneSidebarPanel({
               {disconnectError}
             </div>
           ) : null}
+        </div>
+      ) : regionalTarget ? (
+        <div className="mx-1">
+          <RegionalProviderSetup
+            target={regionalTarget}
+            disabled={false}
+            compact
+            onConnect={connectRegionalChannel}
+          />
         </div>
       ) : (
         <div className="mx-1 flex flex-col items-center rounded-[12px] border border-ds-border bg-ds-card px-3 py-4 shadow-sm">

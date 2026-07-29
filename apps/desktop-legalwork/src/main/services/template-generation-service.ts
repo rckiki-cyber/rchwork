@@ -19,11 +19,12 @@ import type {
   TemplateGenerateWithMaterialsRequest,
   TemplateGenerateWithMaterialsResult
 } from '../../shared/user-templates'
+import { legalDocumentFormatInstruction } from '../../shared/legal-document-format'
 
 const TIMEOUT_MS = 90_000
 const MAX_TOKENS = 8_192
 
-function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequest): {
+export function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequest): {
   systemPrompt: string
   userPrompt: string
 } {
@@ -48,11 +49,15 @@ function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequest): {
   const instructionsText = request.instructions
     ? `\n\n用户特别要求：\n${request.instructions}`
     : ''
+  const formatInstruction = legalDocumentFormatInstruction(
+    request.template.id,
+    request.template.name
+  )
 
   const systemPrompt = `你是一名资深法律文书撰写专家。你的任务是根据用户选择的模板、填写的信息以及提供的参考材料，生成一份格式规范、内容严谨、说理充分的法律文书。
 
-要求：
-1. 严格遵循中国法律文书的格式规范和用语习惯
+通用要求：
+1. 严格遵循下方“本类文书格式卡”，不能把所有文书套成通用报告
 2. 文书结构完整，逻辑清晰，事实陈述准确
 3. 法律引用准确，说理充分
 4. 按照用户选择的模板类型生成相应的文书内容
@@ -62,8 +67,15 @@ function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequest): {
 8. 用户已填写字段的内容优先级高于参考材料；参考材料与填写字段冲突时，以用户填写字段为准，并在相应位置用【待核实：冲突信息】提示
 9. 对材料或字段均未提供的信息，不得编造；确需保留的必要信息用【待核实：字段名】标注
 10. 直接输出 Markdown 正文，不要包裹代码块，不要输出说明文字
+11. Markdown 只是存储语法：不得使用网页文章式横线、彩色提示框、引用块、装饰性粗体或随意项目符号
+12. 标题下不要重复一遍标题；文末不得添加“AI 生成”“仅供参考”等非文书内容
+13. 除文种确实要求逐项列明的请求、条款、附件外，禁止把连续叙事机械拆成 1、2、3、4 的有序列表
+14. 一级到四级层次必须遵循“一、”“（一）”“1.”“（1）”或该文种专用的章—条编号；同一层级不得混用
 
-生成完整的法律文书，包含标题、当事人信息、案由、诉讼请求/申请事项、事实与理由、此致、落款等必要部分。`
+本类文书格式卡：
+${formatInstruction}
+
+仅生成该文种实际需要的组成部分。不得因为通用习惯强加“当事人信息、诉讼请求、事实与理由、此致”等不属于该文种的栏目。`
 
   let userPrompt = `请根据以下信息生成一份${request.template.name}。
 

@@ -22,7 +22,11 @@ export function LegalResearchSidebar({
 }: LegalResearchSidebarProps): ReactElement {
   const { t } = useTranslation('common')
   return (
-    <div className="ds-no-drag flex h-full min-h-0 flex-col">
+    <div
+      data-sidebar-hover-root
+      className="ds-no-drag relative flex h-full min-h-0 flex-col overflow-hidden"
+    >
+      <span aria-hidden data-sidebar-hover-indicator />
       <div className="border-b border-[var(--ds-sidebar-divider)] px-4 py-3">
         <h3 className="text-[13px] font-medium text-[var(--ds-ink)]">{t('legalResearchHistory')}</h3>
         <p className="mt-0.5 text-[11px] text-[var(--ds-faint)]">
@@ -42,8 +46,10 @@ export function LegalResearchSidebar({
             <button
               key={record.id}
               type="button"
+              data-sidebar-hover-target
+              data-sidebar-active={activeRecordId === record.id ? 'true' : undefined}
               onClick={() => onSelectRecord(record.id)}
-              className={`group relative w-full rounded-[8px] px-3 py-2 text-left text-[13px] transition-colors ${
+              className={`group relative w-full rounded-[12px] px-3 py-2 text-left text-[13px] transition-colors ${
                 activeRecordId === record.id
                   ? 'bg-[var(--ds-sidebar-row-active)] text-[var(--ds-ink)]'
                   : 'text-[var(--ds-ink)] hover:bg-[var(--ds-sidebar-row-hover)]'
@@ -82,8 +88,9 @@ export function LegalResearchSidebar({
         <div className="border-t border-[var(--ds-sidebar-divider)] p-2">
           <button
             type="button"
+            data-sidebar-hover-target
             onClick={onClearHistory}
-            className="w-full rounded-[8px] px-3 py-1.5 text-left text-[11px] text-[var(--ds-faint)] transition-colors hover:bg-[var(--ds-sidebar-row-hover)] hover:text-[var(--ds-ink)]"
+            className="w-full rounded-[12px] px-3 py-1.5 text-left text-[11px] text-[var(--ds-faint)] transition-colors hover:bg-[var(--ds-sidebar-row-hover)] hover:text-[var(--ds-ink)]"
           >
             {t('legalResearchClearHistory')}
           </button>

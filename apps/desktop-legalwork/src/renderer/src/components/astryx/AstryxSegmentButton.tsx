@@ -21,10 +21,12 @@ export function AstryxSegmentButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-pressed={selected}
+      data-state={selected ? 'selected' : 'unselected'}
       className={cn(
-        'h-9 min-w-0 rounded-xl border px-2.5 text-[12.5px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-45',
+        'h-9 min-w-0 rounded-xl border px-2.5 text-[12.5px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-ds-card disabled:cursor-not-allowed disabled:opacity-45',
         selected
-          ? 'border-ds-border-strong bg-ds-ink text-white shadow-sm'
+          ? 'border-accent bg-accent text-white shadow-[0_6px_16px_rgba(0,136,255,0.22)] hover:brightness-110'
           : 'border-ds-border bg-ds-main/55 text-ds-muted hover:bg-ds-hover hover:text-ds-ink',
         className
       )}

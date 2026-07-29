@@ -6,7 +6,6 @@ import {
   AudioLines,
   CheckCircle2,
   Download,
-  Eye,
   File,
   FileArchive,
   FileCode2,
@@ -31,6 +30,8 @@ import type {
 } from '@shared/ds-gui-api'
 import { useChatStore } from '../../store/chat-store'
 import { formatWorkspacePickerError } from '../../lib/format-workspace-picker-error'
+import { AstryxSegmentedControl } from '../astryx/AstryxSegmentedControl'
+import { SidebarCommandRow } from '../sidebar/SidebarPrimitives'
 
 export type DataComplianceSection = 'review' | 'desensitize' | 'history' | 'results'
 export type DesensitizeSection = 'material' | 'history'
@@ -1194,19 +1195,13 @@ export function DataComplianceSidebarNav({
         {items.map((item) => {
           const active = activeSection === item.section
           return (
-            <button
+            <SidebarCommandRow
               key={item.section}
-              type="button"
+              icon={item.icon}
+              label={item.label}
+              active={active}
               onClick={() => onSectionChange(item.section)}
-              className={`flex w-full items-center gap-2 rounded-[10px] px-2.5 py-2 text-left transition ${
-                active
-                  ? 'bg-[var(--ds-accent-soft)] text-[var(--ds-accent)] shadow-[inset_0_0_0_1px_rgba(0,136,255,0.14)] text-[13px] font-semibold'
-                  : 'text-ds-muted hover:bg-ds-hover hover:text-ds-ink text-[13px] font-medium'
-              }`}
-            >
-              <span className="shrink-0">{item.icon}</span>
-              <span className="truncate">{item.label}</span>
-            </button>
+            />
           )
         })}
       </div>
@@ -1235,19 +1230,13 @@ export function DesensitizeSidebarNav({
         {items.map((item) => {
           const active = activeSection === item.section
           return (
-            <button
+            <SidebarCommandRow
               key={item.section}
-              type="button"
+              icon={item.icon}
+              label={item.label}
+              active={active}
               onClick={() => onSectionChange(item.section)}
-              className={`flex w-full items-center gap-2 rounded-[10px] px-2.5 py-2 text-left transition ${
-                active
-                  ? 'bg-[var(--ds-accent-soft)] text-[var(--ds-accent)] shadow-[inset_0_0_0_1px_rgba(0,136,255,0.14)] text-[13px] font-semibold'
-                  : 'text-ds-muted hover:bg-ds-hover hover:text-ds-ink text-[13px] font-medium'
-              }`}
-            >
-              <span className="shrink-0">{item.icon}</span>
-              <span className="truncate">{item.label}</span>
-            </button>
+            />
           )
         })}
       </div>
@@ -1744,22 +1733,28 @@ export function DataCompliancePanel({
           <p className="mt-1 text-[12.5px] text-ds-muted">支持批量文件或文本输入，提交后自动追踪结果。</p>
         </div>
         {mode === 'review' ? (
-          <div className="flex rounded-[10px] border border-ds-border-muted bg-ds-subtle p-1">
-            {(['document', 'code'] as const).map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setReviewType(type)}
-                className={`rounded-[8px] px-3 py-1.5 text-[12px] font-medium transition ${
-                  reviewType === type
-                    ? 'bg-ds-card text-[var(--ds-accent)] shadow-sm'
-                    : 'text-ds-muted hover:text-ds-ink'
-                }`}
-              >
-                {type === 'document' ? '文档审查' : '代码审查'}
-              </button>
-            ))}
-          </div>
+          <AstryxSegmentedControl
+            value={reviewType}
+            items={[
+              {
+                value: 'document',
+                label: '文档审查',
+                icon: <FileText className="h-3.5 w-3.5" strokeWidth={1.8} />
+              },
+              {
+                value: 'code',
+                label: '代码审查',
+                icon: <FileCode2 className="h-3.5 w-3.5" strokeWidth={1.8} />
+              }
+            ]}
+            onChange={setReviewType}
+            ariaLabel="文档审查 / 代码审查"
+            className="flex rounded-[10px] border border-ds-border-muted bg-ds-subtle p-1"
+            buttonClassName="inline-flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[12px] font-medium"
+            indicatorClassName="rounded-[8px] bg-ds-card shadow-sm"
+            activeClassName="text-[var(--ds-accent)]"
+            inactiveClassName="text-ds-muted hover:text-ds-ink"
+          />
         ) : null}
       </div>
 
@@ -1947,13 +1942,7 @@ export function DataCompliancePanel({
       <div className="border-b border-ds-border-muted bg-ds-main/85 px-8 py-5 backdrop-blur">
         <div className="flex w-full items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[12px] font-semibold text-[var(--ds-accent)]">
-              {modeScope === 'desensitize'
-                ? <Eye className="h-4 w-4" strokeWidth={1.8} />
-                : <ShieldCheck className="h-4 w-4" strokeWidth={1.8} />}
-              {modeScope === 'desensitize' ? 'DESENSITIZE' : '数据合规'}
-            </div>
-            <h1 className="mt-2 text-[24px] font-semibold text-ds-ink">{meta.title}</h1>
+            <h1 className="text-[24px] font-semibold text-ds-ink">{meta.title}</h1>
             <p className="mt-1 text-[13.5px] text-ds-muted">{meta.kicker}</p>
           </div>
           <button

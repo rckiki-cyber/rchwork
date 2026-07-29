@@ -81,6 +81,25 @@ type StoreActionContext = {
 
 let bootPromise: Promise<void> | null = null
 let clawChannelActivityUnsubscribe: (() => void) | null = null
+let runtimeProbeSequence = 0
+export const RUNTIME_PROBE_BUDGET_MS = 5_000
+const RUNTIME_RETRY_DELAY_MS = 2_000
+
+export async function withinRuntimeProbeBudget<T>(operation: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(i18n.t('common:runtimeConnectionTimeout')))
+        }, RUNTIME_PROBE_BUDGET_MS)
+      })
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
 
 export function createNavigationActions(
   { set, get, sseAbortRef }: StoreActionContext
@@ -126,20 +145,25 @@ export function createNavigationActions(
 
   probeRuntime: async (mode = 'user') => {
     const prev = get().runtimeConnection
-    if (mode === 'user') set({ runtimeConnection: 'checking' })
+    const sequence = ++runtimeProbeSequence
+    if (mode === 'user' || prev !== 'ready') {
+      set({ runtimeConnection: 'checking', error: null, runtimeErrorDetail: null })
+    }
     try {
-      if (typeof window.dsGui === 'undefined') {
-        throw new Error(
-          'Preload bridge missing (window.dsGui). Restart the app or check BrowserWindow preload path.'
-        )
-      }
-      const settings = mode === 'user'
-        ? await rendererRuntimeClient.reconnectRuntime()
-        : await rendererRuntimeClient.getSettings({ forceRefresh: true })
-      const p = getProvider()
-      if (mode !== 'user') {
-        await p.connect()
-      }
+      await withinRuntimeProbeBudget((async () => {
+        if (typeof window.dsGui === 'undefined') {
+          throw new Error(
+            'Preload bridge missing (window.dsGui). Restart the app or check BrowserWindow preload path.'
+          )
+        }
+        if (mode === 'user') {
+          await rendererRuntimeClient.reconnectRuntime()
+        } else {
+          await rendererRuntimeClient.getSettings({ forceRefresh: true })
+          await getProvider().connect()
+        }
+      })())
+      if (sequence !== runtimeProbeSequence) return
       set({ runtimeConnection: 'ready', error: null, runtimeErrorDetail: null })
       void get().loadComposerModels()
       if (prev !== 'ready' || mode === 'user') {
@@ -150,29 +174,21 @@ export function createNavigationActions(
         }
       }
     } catch (e) {
+      if (sequence !== runtimeProbeSequence) return
       const msg = formatRuntimeError(e)
       const detail = runtimeErrorDetail(e)
       const needsSettings = shouldOpenSettingsForError(e)
-      if (mode === 'user') {
-        stopTurnCompletionPoll()
-        set({
-          runtimeConnection: 'offline',
-          error: msg,
-          runtimeErrorDetail: detail,
-          ...(needsSettings
-            ? { route: 'settings' as const, settingsSection: 'agents' as const }
-            : {})
-        })
-      } else if (prev === 'ready') {
-        stopTurnCompletionPoll()
-        set({
-          runtimeConnection: 'offline',
-          error: msg,
-          runtimeErrorDetail: detail,
-          ...(needsSettings
-            ? { route: 'settings' as const, settingsSection: 'agents' as const }
-            : {})
-        })
+      stopTurnCompletionPoll()
+      set({
+        runtimeConnection: 'offline',
+        error: msg,
+        runtimeErrorDetail: detail,
+        ...(needsSettings
+          ? { route: 'settings' as const, settingsSection: 'agents' as const }
+          : {})
+      })
+      if (!needsSettings) {
+        scheduleStartupRuntimeProbe(get, RUNTIME_RETRY_DELAY_MS)
       }
     }
   },

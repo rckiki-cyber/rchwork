@@ -18,6 +18,7 @@ describe('JsonSettingsStore', () => {
     const loaded = await store.load()
 
     expect(loaded.guiUpdate.channel).toBe(DEFAULT_GUI_UPDATE_CHANNEL)
+    expect(loaded.uiFontScale).toBe('medium')
     expect(loaded.workspaceRoot).toBe(join(homedir(), 'Desktop'))
     expect(loaded.agents.legalwork.approvalPolicy).toBe(DEFAULT_APPROVAL_POLICY)
     expect(loaded.appBehavior).toEqual({

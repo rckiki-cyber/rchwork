@@ -112,6 +112,7 @@ export type SkillRuntimeOptions = {
   activeLimit?: number
   instructionBudgetBytes?: number
   onRootsChanged?: (roots: string[]) => Promise<void> | void
+  deferDiscovery?: boolean
 }
 
 export type SkillRuntimeChangeListener = (roots: string[]) => Promise<void> | void
@@ -124,7 +125,7 @@ export class SkillRuntime {
 
   private constructor(
     private config: SkillsCapabilityConfig,
-    private readonly options: Required<SkillRuntimeOptions>,
+    private readonly options: Required<Omit<SkillRuntimeOptions, 'deferDiscovery'>>,
     loaded: { skills: LoadedSkill[]; validationErrors: Array<{ root: string; message: string }> }
   ) {
     this.skills = loaded.skills
@@ -141,10 +142,22 @@ export class SkillRuntime {
       instructionBudgetBytes: options.instructionBudgetBytes ?? DEFAULT_INSTRUCTION_BUDGET_BYTES,
       onRootsChanged: options.onRootsChanged ?? (() => undefined)
     }
-    const loaded = normalized.enabled
+    const loaded = normalized.enabled && !options.deferDiscovery
       ? await discoverSkills(normalized)
       : { skills: [], validationErrors: [] }
-    return new SkillRuntime(normalized, resolvedOptions, loaded)
+    const runtime = new SkillRuntime(normalized, resolvedOptions, loaded)
+    if (normalized.enabled && options.deferDiscovery) {
+      const timer = setTimeout(() => {
+        void runtime.refresh().catch((error: unknown) => {
+          runtime.validationErrors = [{
+            root: normalized.roots.join(', '),
+            message: error instanceof Error ? error.message : String(error)
+          }]
+        })
+      }, 250)
+      timer.unref?.()
+    }
+    return runtime
   }
 
   async refresh(): Promise<void> {

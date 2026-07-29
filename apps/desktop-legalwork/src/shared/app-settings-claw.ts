@@ -32,7 +32,13 @@ type LegacyClawImSettingsPatch = Partial<ClawImSettingsV1> & {
 }
 
 function defaultClawChannelLabel(provider: ClawImProvider): string {
-  return provider === 'weixin' ? 'weixin agent' : 'feishu agent'
+  switch (provider) {
+    case 'weixin': return 'weixin agent'
+    case 'qq': return 'QQ agent'
+    case 'dingtalk': return 'DingTalk agent'
+    case 'wecom': return 'WeCom agent'
+    default: return 'feishu agent'
+  }
 }
 
 function normalizeLegacyDefaultClawChannelName(provider: ClawImProvider, value: string): string {
@@ -41,6 +47,19 @@ function normalizeLegacyDefaultClawChannelName(provider: ClawImProvider, value: 
   if (provider === 'weixin') {
     return lower === 'weixin agent' || lower === 'wechat agent' || lower === 'wechat'
       ? 'weixin agent'
+      : trimmed
+  }
+  if (provider === 'qq') {
+    return lower === 'qq agent' || lower === 'qq bot' ? 'QQ agent' : trimmed
+  }
+  if (provider === 'dingtalk') {
+    return lower === 'dingtalk agent' || lower === 'dingtalk bot'
+      ? 'DingTalk agent'
+      : trimmed
+  }
+  if (provider === 'wecom') {
+    return lower === 'wecom agent' || lower === 'wecom bot' || lower === '企业微信'
+      ? 'WeCom agent'
       : trimmed
   }
   if (lower === 'feishu agent' || lower === 'feishu / lark') return 'feishu agent'
@@ -93,7 +112,10 @@ export function normalizeClawSettings(input: ClawSettingsPatchV1 | undefined): C
           raw.provider === undefined ||
           raw.provider === null ||
           raw.provider === 'feishu' ||
-          raw.provider === 'weixin'
+          raw.provider === 'weixin' ||
+          raw.provider === 'qq' ||
+          raw.provider === 'dingtalk' ||
+          raw.provider === 'wecom'
         )
       })
     : []

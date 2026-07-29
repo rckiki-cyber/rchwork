@@ -136,6 +136,7 @@ import {
   setHistoryBaseDir
 } from '../services/document-history-service'
 import { copyWriteDocumentAsRichText, exportWriteDocument } from '../services/write-export-service'
+import { legalDocumentMarkdownToDocx } from '../services/legal-document-export-service'
 import { importGuiSkillFromPath, listGuiSkills, readGuiSkillFile } from '../services/skill-service'
 
 type GuiUpdaterModule = typeof import('../gui-updater')
@@ -1429,9 +1430,17 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
   )
   ipcMain.handle('legal-research:export-word', async (_, payload: unknown) => {
     try {
-      const { html, defaultName } = parseIpcPayload(
+      const { html, markdown, templateId, templateName, defaultName } = parseIpcPayload(
         'legal-research:export-word',
-        z.object({ html: z.string(), defaultName: z.string().max(200) }).strict(),
+        z.object({
+          html: z.string().optional(),
+          markdown: z.string().optional(),
+          templateId: z.string().max(200).optional(),
+          templateName: z.string().max(200).optional(),
+          defaultName: z.string().max(200)
+        }).strict().refine((value) => Boolean(value.html || value.markdown), {
+          message: 'html or markdown is required'
+        }),
         payload
       )
       const result = await dialog.showSaveDialog({
@@ -1445,28 +1454,36 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       const targetPath = extname(result.filePath).toLowerCase() === '.docx'
         ? result.filePath
         : `${result.filePath}.docx`
-      const { createRequire } = await import('node:module')
-      const require = createRequire(import.meta.url)
-      const htmlToDocx = require('html-to-docx') as (
-        htmlString: string,
-        headerHtmlString?: string | null,
-        documentOptions?: Record<string, unknown> | null
-      ) => Promise<ArrayBuffer | Blob>
-      const docx = await htmlToDocx(html, null, {
-        title: defaultName,
-        creator: 'legalwork',
-        keywords: ['legal research', '法律调研'],
-        description: `法律调研报告：${defaultName}`,
-        font: 'SimSun',
-        fontSize: 24
-      })
       let buffer: Buffer
-      if (Buffer.isBuffer(docx)) {
-        buffer = docx
-      } else if (docx instanceof ArrayBuffer) {
-        buffer = Buffer.from(new Uint8Array(docx))
+      if (markdown) {
+        buffer = await legalDocumentMarkdownToDocx({
+          markdown,
+          templateId,
+          templateName: templateName || defaultName
+        })
       } else {
-        buffer = Buffer.from(await (docx as Blob).arrayBuffer())
+        const { createRequire } = await import('node:module')
+        const require = createRequire(import.meta.url)
+        const htmlToDocx = require('html-to-docx') as (
+          htmlString: string,
+          headerHtmlString?: string | null,
+          documentOptions?: Record<string, unknown> | null
+        ) => Promise<ArrayBuffer | Blob>
+        const docx = await htmlToDocx(html!, null, {
+          title: defaultName,
+          creator: 'legalwork',
+          keywords: ['legal research', '法律调研'],
+          description: `法律调研报告：${defaultName}`,
+          font: 'SimSun',
+          fontSize: 24
+        })
+        if (Buffer.isBuffer(docx)) {
+          buffer = docx
+        } else if (docx instanceof ArrayBuffer) {
+          buffer = Buffer.from(new Uint8Array(docx))
+        } else {
+          buffer = Buffer.from(await (docx as Blob).arrayBuffer())
+        }
       }
       await writeFile(targetPath, buffer)
       return { ok: true, path: targetPath }

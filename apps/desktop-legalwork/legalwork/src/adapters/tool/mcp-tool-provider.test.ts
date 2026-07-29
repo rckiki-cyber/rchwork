@@ -7,6 +7,7 @@ import type { ToolHostContext } from '../../ports/tool-host.js'
 import {
   buildMcpToolProviders,
   normalizeOfficeCliArguments,
+  pendingMcpToolProviders,
   type McpClientLike
 } from './mcp-tool-provider.js'
 
@@ -46,6 +47,22 @@ function mcpConfig(serverId = 'officecli'): McpCapabilityConfig {
   }
 }
 
+function pkulawConfig(authorization?: string): McpCapabilityConfig {
+  const config = mcpConfig('pkulaw-law-keyword')
+  config.servers['pkulaw-law-keyword'] = {
+    enabled: true,
+    transport: 'streamable-http',
+    url: 'https://apim-gateway.pkulaw.com/mcp-law',
+    headers: authorization ? { Authorization: authorization } : {},
+    env: {},
+    args: [],
+    trustScope: 'user',
+    trustedWorkspaceRoots: [],
+    timeoutMs: 30_000
+  }
+  return config
+}
+
 function toolContext(threadId = 'thread-officecli'): ToolHostContext {
   return {
     threadId,
@@ -58,6 +75,21 @@ function toolContext(threadId = 'thread-officecli'): ToolHostContext {
 }
 
 describe('buildMcpToolProviders', () => {
+  it('exposes configured servers as connecting without blocking runtime startup', () => {
+    const pending = pendingMcpToolProviders(mcpConfig('slow-server'))
+
+    expect(pending).toMatchObject({
+      connectedServers: 0,
+      toolCount: 0,
+      providers: [],
+      diagnostics: [{
+        id: 'slow-server',
+        status: 'connecting',
+        available: false
+      }]
+    })
+  })
+
   it('connects MCP servers in parallel during startup', async () => {
     let started = 0
     let releaseFirst: (() => void) | undefined
@@ -193,6 +225,114 @@ describe('buildMcpToolProviders', () => {
     })
 
     expect(seenTimeouts).toEqual([60_000])
+  })
+
+  it('uses the bundled PKULaw credential when no user credential is configured', async () => {
+    const seenAuthorization: string[] = []
+    const built = await buildMcpToolProviders(pkulawConfig(), {
+      resolvePkulawFallbackToken: () => 'fallback-credential-456',
+      clientFactory: async (_serverId, server) => {
+        seenAuthorization.push(server.headers.Authorization ?? '')
+        return {
+          ...fakeClient(),
+          listTools: async () => ({
+            tools: [{ name: 'get_law_list', inputSchema: { type: 'object' } }]
+          })
+        }
+      }
+    })
+
+    expect(seenAuthorization).toEqual(['Bearer fallback-credential-456'])
+    expect(built).toMatchObject({ connectedServers: 1, toolCount: 1 })
+    expect(JSON.stringify(built.diagnostics)).not.toContain('fallback-credential-456')
+  })
+
+  it('prefers the user PKULaw credential and falls back when startup authentication fails', async () => {
+    const seenAuthorization: string[] = []
+    const built = await buildMcpToolProviders(
+      pkulawConfig('Bearer user-credential-123'),
+      {
+        resolvePkulawFallbackToken: () => 'fallback-credential-456',
+        clientFactory: async (_serverId, server) => {
+          const authorization = server.headers.Authorization ?? ''
+          seenAuthorization.push(authorization)
+          return {
+            ...fakeClient(),
+            listTools: async () => {
+              if (authorization.includes('user-credential')) {
+                throw new Error(`Authorization: ${authorization}`)
+              }
+              return { tools: [{ name: 'get_law_list', inputSchema: { type: 'object' } }] }
+            }
+          }
+        }
+      }
+    )
+
+    expect(seenAuthorization).toEqual([
+      'Bearer user-credential-123',
+      'Bearer fallback-credential-456'
+    ])
+    expect(built).toMatchObject({ connectedServers: 1, toolCount: 1 })
+    expect(JSON.stringify(built.diagnostics)).not.toMatch(/user-credential|fallback-credential/)
+  })
+
+  it('does not send the bundled credential to non-PKULaw endpoints', async () => {
+    const seenAuthorization: string[] = []
+    const config = pkulawConfig()
+    config.servers['pkulaw-law-keyword']!.url = 'https://mcp.example.test/mcp-law'
+
+    await buildMcpToolProviders(config, {
+      resolvePkulawFallbackToken: () => 'fallback-credential-456',
+      clientFactory: async (_serverId, server) => {
+        seenAuthorization.push(server.headers.Authorization ?? '')
+        return fakeClient()
+      }
+    })
+
+    expect(seenAuthorization).toEqual([''])
+  })
+
+  it('switches to the bundled credential after a user credential fails during a tool call', async () => {
+    const seenAuthorization: string[] = []
+    const built = await buildMcpToolProviders(
+      pkulawConfig('Bearer user-credential-123'),
+      {
+        resolvePkulawFallbackToken: () => 'fallback-credential-456',
+        clientFactory: async (_serverId, server) => {
+          const authorization = server.headers.Authorization ?? ''
+          seenAuthorization.push(authorization)
+          return {
+            listTools: async () => ({
+              tools: [{ name: 'get_law_list', inputSchema: { type: 'object' } }]
+            }),
+            callTool: async () => {
+              if (authorization.includes('user-credential')) {
+                throw new Error(`Authorization: ${authorization}`)
+              }
+              return {
+                content: [{
+                  type: 'text',
+                  text: `connected with fallback-credential-456`
+                }]
+              }
+            },
+            close: async () => undefined
+          }
+        }
+      }
+    )
+    const tool = built.providers[0]?.tools[0]
+    if (!tool) throw new Error('PKULaw tool was not built')
+
+    const result = await tool.execute({}, toolContext('thread-pkulaw'))
+
+    expect(seenAuthorization).toEqual([
+      'Bearer user-credential-123',
+      'Bearer fallback-credential-456'
+    ])
+    expect(JSON.stringify(result)).not.toMatch(/user-credential|fallback-credential/)
+    expect(JSON.stringify(result)).toContain('<redacted>')
   })
 
   it('uses Flint static rendering automatically and persists image artifacts', async () => {

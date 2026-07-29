@@ -18,6 +18,7 @@ import {
 } from '../../hooks/use-model-usage'
 import { WhaleHeroStage } from './WhaleHeroStage'
 import type { ModelBrand } from '../../lib/model-brand'
+import { AstryxSegmentedControl } from '../astryx/AstryxSegmentedControl'
 
 type CalendarCell = DailyUsageBucket | null
 type CalendarWeek = {
@@ -849,45 +850,39 @@ export function InitialSessionUsageHeatmapView({
             {mode === 'populated' ? (
               <div className="mx-auto flex w-full max-w-[560px] min-w-0 flex-col gap-3">
                 <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="inline-flex w-fit max-w-full rounded-lg bg-ds-subtle p-1 text-[12.5px] font-medium text-ds-muted">
-                    <button
-                      type="button"
-                      className={`min-h-7 rounded-md px-3 transition ${
-                        activeTab === 'overview' ? 'bg-ds-card text-ds-ink shadow-sm dark:bg-white/10' : 'hover:text-ds-ink'
-                      }`}
-                      aria-pressed={activeTab === 'overview'}
-                      onClick={() => setActiveTab('overview')}
-                    >
-                      {t('usageHeatmapTabOverview')}
-                    </button>
-                    <button
-                      type="button"
-                      className={`min-h-7 rounded-md px-3 transition ${
-                        activeTab === 'models' ? 'bg-ds-card text-ds-ink shadow-sm dark:bg-white/10' : 'hover:text-ds-ink'
-                      }`}
-                      title={t('usageHeatmapTabModels')}
-                      aria-pressed={activeTab === 'models'}
-                      onClick={() => setActiveTab('models')}
-                    >
-                      {t('usageHeatmapTabModels')}
-                    </button>
-                  </div>
+                  <AstryxSegmentedControl
+                    value={activeTab}
+                    items={[
+                      { value: 'overview', label: t('usageHeatmapTabOverview') },
+                      {
+                        value: 'models',
+                        label: t('usageHeatmapTabModels'),
+                        title: t('usageHeatmapTabModels')
+                      }
+                    ]}
+                    onChange={setActiveTab}
+                    ariaLabel={t('usageHeatmapTitle')}
+                    className="inline-flex w-fit max-w-full rounded-lg bg-ds-subtle p-1 text-[12.5px] font-medium text-ds-muted"
+                    buttonClassName="min-h-7 rounded-md px-3"
+                    indicatorClassName="rounded-md bg-ds-card shadow-sm dark:bg-white/10"
+                    activeClassName="text-ds-ink"
+                    inactiveClassName="hover:text-ds-ink"
+                  />
                   <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
-                    <div className="flex min-w-0 items-center gap-1 self-start rounded-lg bg-ds-subtle p-1 text-[12px] font-medium text-ds-muted sm:self-auto">
-                      {USAGE_RANGE_KEYS.map((key) => (
-                        <button
-                          key={key}
-                          type="button"
-                          className={`min-h-7 rounded-md px-2.5 transition ${
-                            rangeKey === key ? 'bg-ds-card text-ds-ink shadow-sm dark:bg-white/10' : 'hover:text-ds-ink'
-                          }`}
-                          aria-pressed={rangeKey === key}
-                          onClick={() => onRangeChange?.(key)}
-                        >
-                          {t(`usageHeatmapRange.${key}`)}
-                        </button>
-                      ))}
-                    </div>
+                    <AstryxSegmentedControl
+                      value={rangeKey}
+                      items={USAGE_RANGE_KEYS.map((key) => ({
+                        value: key,
+                        label: t(`usageHeatmapRange.${key}`)
+                      }))}
+                      onChange={(next) => onRangeChange?.(next)}
+                      ariaLabel={t('usageHeatmapRangeLabel')}
+                      className="flex min-w-0 items-center gap-1 self-start rounded-lg bg-ds-subtle p-1 text-[12px] font-medium text-ds-muted sm:self-auto"
+                      buttonClassName="min-h-7 rounded-md px-2.5"
+                      indicatorClassName="rounded-md bg-ds-card shadow-sm dark:bg-white/10"
+                      activeClassName="text-ds-ink"
+                      inactiveClassName="hover:text-ds-ink"
+                    />
                     <UsageHeroToggle expanded onToggle={() => setCollapsed(true)} />
                   </div>
                 </div>

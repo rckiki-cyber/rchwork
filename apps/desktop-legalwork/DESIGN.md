@@ -201,6 +201,7 @@ motion:
   special:
     pulse: 1800      # ms, ease-in-out, infinite (logo / status dot)
     shiny_text: 2400 # ms, ease-in-out, infinite (streaming shimmer)
+    hover_preview: 220 # ms, material easing across buttons, rows, and icons
   transform:
     card_lift: "translateY(-1px)"
     button_press: "scale(0.985)"
@@ -208,6 +209,15 @@ motion:
     micro: "chip hover, menu item hover, focus ring swap"
     standard: "card hover, composer border on focus, topbar glass"
     deep: "modal open, route transition"
+
+knowledge_base:
+  pdf_preview:
+    selection: "Use the PDF.js TextLayer aligned to the rendered viewport for precise selectable text; do not approximate glyph positions manually."
+  ai_chat:
+    surface: "Global KB chat and file-specific chat share one compact Apple inspector chrome, empty state, message bubble, and composer language."
+    composer: "No persistent blue focus frame; liquid pointer light appears only while the mouse is inside the composer surface."
+  file_rows:
+    hover: "Folder and file rows use the shared spring hover plate, matching sidebar preview motion instead of per-row instant hover fills."
 
 # ---------- 7. Z-index ----------
 z_index:
@@ -607,6 +617,22 @@ Every screen in LegalWork follows the same macro-grammar:
 A new screen should fit into this grammar. If it can't, that is a
 signal the grammar needs to grow — and the change goes in this file
 first.
+
+#### Agent sidebar hierarchy
+
+The Agent workspace has a persistent two-level sidebar:
+
+1. The Work / Desensitize / Compliance switcher and Agent main functions stay
+   fixed at the top.
+2. Route-specific secondary content fills the remaining area below the main
+   functions.
+
+Learning iteration records, document templates and history, legal research
+history, knowledge-base conversations, and schedule context must never replace
+or hide the Agent main functions. Entering any of these routes keeps **Work**
+selected in the workspace switcher and highlights the matching main-function
+row. Only Desensitize, Compliance, and Connect phone switch the sidebar into a
+different top-level workspace mode.
 
 ### 3.10 Voice and copy
 
@@ -1367,6 +1393,140 @@ If any check fails, the change is not ready.
 - `docs/AGENTS.md` — agent runtime notes (constraints enforced
   on contributors).
 - `README.md` / `README.en.md` — product-level overview.
+
+---
+
+## 16. Knowledge Base visual direction
+
+The knowledge base is a productivity surface, not a marketing page or an admin
+dashboard. Its reference is macOS Finder: compact translucent toolbar, stable
+sidebar navigation, a quiet list surface, contextual selection controls, and an
+optional right inspector for preview or AI conversation.
+
+### Theme behavior
+
+- Always support `light`, `dark`, and `system`; never hard-code the knowledge
+  base to a dark appearance.
+- Light mode uses the existing cool-white canvas and soft blue-gray sidebar.
+- Dark mode uses layered graphite surfaces rather than pure black.
+- Blur is reserved for the fixed toolbar and inspector chrome. File rows and
+  badges remain crisp and mostly flat.
+
+### Knowledge file formats
+
+All document icons share one folded-page silhouette so they read as one family.
+The symbol inside the page changes by format; do not represent formats through
+color alone.
+
+The visible paper silhouette uses a strict 4:3 height-to-width ratio. Do not
+compress document icons into a narrow 2:1 ticket shape.
+
+| Format | Accent | Symbol |
+|---|---|---|
+| Folder | `#4f9cf7` | macOS-style tabbed folder |
+| PDF | `#ff5a52` | flowing PDF curve |
+| Word | `#3478f6` | document lines |
+| PowerPoint | `#f26a35` | pie chart |
+| Excel / CSV | `#28a45f` | worksheet grid |
+| TXT | `#7d8795` | plain text lines |
+| Markdown | `#8b5cf6` | M plus down arrow |
+| Audio | `#d855a6` | waveform |
+| Archive | `#b87922` | zipper |
+| Unknown | `#8a93a0` | generic document lines |
+
+Format badges reuse the matching accent at 11% background and 20% border
+strength. Keep labels compact, uppercase where appropriate, and never reuse a
+single red or green badge for unrelated formats.
+
+### Knowledge list behavior
+
+- Standard row height: 54px.
+- Checkboxes remain hidden until row hover, keyboard focus, or selection.
+- Selected rows use the system accent at 11% opacity.
+- Dividers are quieter than the enclosing surface border.
+- A single click opens a file in the current LegalWork interaction model;
+  double-click remains accepted for Finder familiarity.
+- AI actions belong in the right inspector and must keep the current file or
+  folder context visible.
+- The center list is the flexible region. When the AI inspector opens, it
+  shrinks or scrolls internally; the inspector must never be pushed beyond the
+  right edge of the window.
+- The AI inspector is capped responsively at 38% of the knowledge layout. On
+  narrower windows, hide the inner library sidebar before reducing the AI
+  inspector below its usable width.
+
+### Development preview target
+
+For LegalWork UI testing, update
+`/Users/xiangyang/Desktop/legalwork-dev.app`. Do not overwrite, package, or
+replace the formal `/Applications/legalwork.app` unless the user explicitly
+requests a production build.
+
+---
+
+## 17. Apple Liquid Glass application layer
+
+LegalWork uses an Apple-inspired material language as a restrained functional
+layer. This is a visual treatment only: it must not reorder features, move
+navigation, change panel dimensions, or alter established workflows.
+
+### Plane hierarchy
+
+1. **Content plane:** chat history, documents, knowledge lists, tables, editors,
+   forms, and previews remain crisp and mostly opaque.
+2. **Functional glass plane:** the main sidebar shell, top-right toolbar group,
+   floating composer, menus, and transient controls may use regular glass.
+3. **Overlay plane:** dialogs use a dense regular material or standard opaque
+   surface when text density makes transparency distracting.
+
+Never stack a glass card inside another glass card. The sidebar mode selector is
+an inset standard material with a simple filled selection, not a second blurred
+surface.
+
+### Material tokens
+
+- Light main canvas and raised work area: solid `#ffffff`; neutral sidebar:
+  `#f6f7f9`.
+- Dark canvas: `#101114`; raised canvas: `#17181c`.
+- Primary ink: `#1d1d1f` light / `#f5f5f7` dark.
+- Interactive accent: `#007aff` light / `#0a84ff` dark.
+- Regular blur: `12–16px`, saturation `135–140%`.
+- Control radius: `12px`; group radius: `22px`.
+- Motion curve: `cubic-bezier(0.2, 0.8, 0.2, 1)`.
+- Press response: `scale(0.94–0.96)` over `90ms`; spring return up to `420ms`.
+
+The persistent app background never uses blue or purple ambient gradients.
+Light mode stays white and dark mode stays neutral black-gray. System blue is
+reserved for semantic selection, focus, and primary actions; it is not
+decorative environment light.
+
+Each glass surface separates optics, tint, rim shine, and sharp content through
+pseudo-elements or sibling layers. Pointer lighting writes only CSS variables
+inside a single animation-frame loop; it must never trigger React renders.
+
+### Interaction and accessibility
+
+- Hover may lift a control by at most 1px and shift its local highlight.
+- Hover is a preview state: buttons, rows, and their icons use the same 220ms
+  material fade so moving between adjacent targets never snaps.
+- Sidebar rows use one shared preview plate per sidebar. The plate interpolates
+  its position and size between hovered rows; individual rows must not paint an
+  independent hover fill that appears or disappears in place. Geometry must be
+  converted from viewport pixels to the sidebar's layout pixels so every UI
+  zoom level keeps the plate directly under the pointer.
+- Pointer lighting follows the pointer with a short interpolated trail. It is
+  invisible until the pointer enters the reactive surface and fades out when
+  the pointer leaves; focus alone must not leave a spotlight behind.
+- The main chat composer does not gain a blue border or ring on click/focus.
+  Its neutral boundary remains stable while the text caret communicates focus.
+- Press feedback is immediate and limited to a 2% compression.
+- Keyboard focus uses a visible 2px system-blue ring outside clipped material.
+- `prefers-reduced-motion` disables transforms, pointer chasing, and decorative
+  animation.
+- `prefers-reduced-transparency` switches glass to the opaque fallback.
+- Forced-colors mode removes optics and preserves native boundaries.
+- The solid fallback must remain complete when `backdrop-filter` is unavailable.
+- Live text and icons stay outside the filtered optical layer.
 
 This file is the design source of truth. When the code and this
 file disagree, **this file is wrong** until you change both.

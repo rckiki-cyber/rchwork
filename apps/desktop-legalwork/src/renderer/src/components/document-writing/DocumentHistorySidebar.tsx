@@ -160,9 +160,10 @@ export function DocumentHistorySidebar({ onRestore, onRefreshSignal }: Props): R
               <button
                 key={s.id}
                 type="button"
+                data-sidebar-hover-target
                 onClick={() => void handleRestore(s)}
                 disabled={loadingRecordId === s.id || deletingId === s.id}
-                className="group relative flex w-full items-start gap-3 rounded-[8px] px-3 py-2.5 text-left transition hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)] disabled:opacity-60 dark:hover:bg-white/[0.055]"
+                className="group relative flex w-full items-start gap-3 rounded-[12px] px-3 py-2.5 text-left transition hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)] disabled:opacity-60 dark:hover:bg-white/[0.055]"
               >
                 <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[var(--ds-accent)]" strokeWidth={1.75} />
                 <div className="min-w-0 flex-1">

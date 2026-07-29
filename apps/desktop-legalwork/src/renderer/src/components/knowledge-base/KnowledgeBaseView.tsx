@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   AudioLines,
-  Bot,
   Check,
   CheckSquare,
   ChevronRight,
@@ -11,10 +10,7 @@ import {
   Eye,
   ExternalLink,
   File,
-  FileArchive,
   FileCode2,
-  FileSpreadsheet,
-  FileText,
   Folder,
   FolderPlus,
   Loader2,
@@ -29,7 +25,6 @@ import {
   Upload,
   X
 } from 'lucide-react'
-import { SendIcon } from '../icons/SendIcon'
 import { getProvider } from '../../agent/registry'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
 import {
@@ -56,6 +51,14 @@ import {
   setKnowledgeSourceMap,
   setKnowledgeOpenFileHandler
 } from './source-map-store'
+import { KnowledgeFileIcon, KnowledgeFileTypeBadge } from './KnowledgeFileIcon'
+import {
+  KnowledgeChatComposer,
+  KnowledgeChatEmptyState,
+  KnowledgeChatHeader,
+  KnowledgeChatMessage
+} from './KnowledgeChatUI'
+import { KnowledgeAssistantContent } from './KnowledgeReasoningBlock'
 type TreeNode = KnowledgeTreeNode
 
 type FileViewBoundaryProps = {
@@ -280,49 +283,6 @@ function fileTypeLabel(node: TreeNode): string {
   return ext.toUpperCase()
 }
 
-function fileTypeBadge(node: TreeNode): ReactElement {
-  const label = fileTypeLabel(node)
-  const colorMap: Record<string, string> = {
-    '文件夹': 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/20',
-    'WORD': 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/20',
-    'PPT': 'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/20',
-    'EXCEL': 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/20',
-    'PDF': 'bg-red-50 text-red-700 border-red-100 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/20',
-    '音频': 'bg-cyan-50 text-cyan-700 border-cyan-100 dark:bg-cyan-500/15 dark:text-cyan-400 dark:border-cyan-500/20',
-    '压缩包': 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-500/15 dark:text-slate-400 dark:border-slate-500/20',
-  }
-  const cls = colorMap[label] || 'bg-slate-50 text-slate-600 border-slate-100 dark:bg-slate-500/15 dark:text-slate-400 dark:border-slate-500/20'
-  return (
-    <span className={`inline-flex items-center rounded-[6px] border px-2 py-0.5 text-[11px] font-semibold ${cls}`}>
-      {label}
-    </span>
-  )
-}
-
-function iconForNode(node: TreeNode): ReactElement {
-  if (node.kind === 'folder') return <Folder className="h-5 w-5 text-emerald-400" strokeWidth={1.6} />
-  const ext = (node.extension || node.name.split('.').pop() || '').replace(/^\./, '').toLowerCase()
-  if (['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg'].includes(ext)) {
-    return <AudioLines className="h-5 w-5 text-cyan-400" strokeWidth={1.7} />
-  }
-  if (['doc', 'docx'].includes(ext)) {
-    return <FileText className="h-5 w-5 text-blue-400" strokeWidth={1.6} />
-  }
-  if (['pdf'].includes(ext)) {
-    return <FileText className="h-5 w-5 text-red-400" strokeWidth={1.6} />
-  }
-  if (['txt', 'md', 'markdown'].includes(ext)) {
-    return <FileText className="h-5 w-5 text-slate-400" strokeWidth={1.6} />
-  }
-  if (['xls', 'xlsx', 'csv'].includes(ext)) {
-    return <FileSpreadsheet className="h-5 w-5 text-emerald-400" strokeWidth={1.6} />
-  }
-  if (['zip', 'rar', '7z'].includes(ext)) {
-    return <FileArchive className="h-5 w-5 text-amber-400" strokeWidth={1.6} />
-  }
-  return <File className="h-5 w-5 text-slate-300" strokeWidth={1.6} />
-}
-
 function findFolder(nodes: TreeNode[], path: string): TreeNode | null {
   if (!path) return null
   for (const node of nodes) {
@@ -522,6 +482,8 @@ export function KnowledgeBaseView({
   // ── AI Chat state ──
   const [chatOpen, setChatOpen] = useState(false)
   const [chatSidebarWidth, setChatSidebarWidth] = useState(420)
+  const [knowledgeLayoutWidth, setKnowledgeLayoutWidth] = useState(0)
+  const knowledgeLayoutRef = useRef<HTMLDivElement>(null)
   const chatSidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
@@ -531,6 +493,16 @@ export function KnowledgeBaseView({
   const [chatContext, setChatContext] = useState<KnowledgeChatContext>({ kind: 'global' })
   const [chatContextThreadId, setChatContextThreadId] = useState<string | null>(null)
   const chatMessagesEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const element = knowledgeLayoutRef.current
+    if (!element) return
+    const updateWidth = (): void => setKnowledgeLayoutWidth(element.clientWidth)
+    updateWidth()
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
 
   // Load a selected knowledge-chat thread into the AI chat panel.
   useEffect(() => {
@@ -851,7 +823,10 @@ export function KnowledgeBaseView({
 
   // ── AI Chat handlers ──
 
-  const pollKnowledgeChat = useCallback(async (threadId: string, maxPolls = 120): Promise<string> => {
+  const pollKnowledgeChat = useCallback(async (
+    threadId: string,
+    maxPolls = 120
+  ): Promise<{ content: string; reasoning: string }> => {
     for (let i = 0; i < maxPolls; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1000))
       const threadData = await requestJson<{
@@ -877,9 +852,7 @@ export function KnowledgeBaseView({
           ?.filter((item) => item.kind === 'assistant_text' && item.text)
           .map((item) => item.text ?? '')
           .join('\n\n') || '（AI 未返回任何内容）'
-        return reasoningItems
-          ? `<details style="margin-bottom:8px;font-size:0.85em"><summary style="cursor:pointer;user-select:none;color:var(--ds-muted)"><span style="opacity:0.5">💭</span> 思考过程</summary>\n\n${reasoningItems}\n\n</details>\n\n${textItems}`
-          : textItems
+        return { content: textItems, reasoning: reasoningItems }
       }
       if (lastTurn?.status === 'failed') {
         throw new Error(lastTurn.error || 'AI 响应失败')
@@ -967,7 +940,7 @@ ${question.trim()}
       const assistantMsg = await pollKnowledgeChat(threadId)
 
       // Convert [来源 N] references to clickable source://N markdown links
-      const markedUp = assistantMsg.replace(
+      const markedUp = assistantMsg.content.replace(
         /\[来源\s*(\d+)\]/g,
         (_match, n) => `[来源 ${n}](source://${n})`
       )
@@ -976,6 +949,7 @@ ${question.trim()}
         id: `ai_${Date.now()}`,
         role: 'assistant',
         content: markedUp,
+        ...(assistantMsg.reasoning ? { reasoning: assistantMsg.reasoning } : {}),
         timestamp: Date.now()
       }])
       onChatThreadsChange?.()
@@ -1133,6 +1107,11 @@ ${question.trim()}
       .catch((err) => setError(err instanceof Error ? err.message : '拖拽上传失败'))
   }
 
+  const effectiveChatSidebarWidth = knowledgeLayoutWidth > 0
+    ? Math.max(300, Math.min(chatSidebarWidth, 560, Math.floor(knowledgeLayoutWidth * 0.38)))
+    : Math.min(chatSidebarWidth, 560)
+  const showLibrarySidebar = !chatOpen || knowledgeLayoutWidth === 0 || knowledgeLayoutWidth >= 1040
+
   if (viewingFile) {
     return (
       <KnowledgeFileViewErrorBoundary
@@ -1153,7 +1132,7 @@ ${question.trim()}
 
   return (
     <section
-      className="ds-no-drag flex h-full min-h-0 flex-col bg-[var(--ds-main)]"
+      className="ds-no-drag flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[var(--ds-main)]"
       onDragOver={(event) => {
         event.preventDefault()
         setDragActive(true)
@@ -1163,78 +1142,66 @@ ${question.trim()}
       }}
       onDrop={onDrop}
     >
-      <header className="shrink-0 border-b border-ds-border px-8 pb-5 pt-7">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wider text-[var(--ds-accent)]">
-              <Database className="h-4 w-4" strokeWidth={1.8} />
-              <span>Knowledge Base</span>
-            </div>
-            <h1 className="mt-3 text-[34px] font-bold leading-tight tracking-tight text-[var(--ds-ink)]">知识库</h1>
-            <p className="mt-2 text-[15px] text-[var(--ds-muted)]">按文件夹管理法律资料、论文、案例、录音与内部文档。</p>
-            <p className="mt-1 text-[13px] leading-5 text-[var(--ds-muted)]">知识库内容由agent执行任务时自动阅读引用，无需额外指令</p>
+      <header className="flex h-[74px] shrink-0 items-center justify-between gap-5 border-b border-ds-border bg-[color-mix(in_srgb,var(--ds-card-soft)_78%,transparent)] px-6 backdrop-blur-xl">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-[color-mix(in_srgb,var(--ds-accent)_13%,transparent)] text-[var(--ds-accent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--ds-accent)_16%,transparent)]">
+            <Database className="h-[19px] w-[19px]" strokeWidth={1.7} />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
+            <h1 className="truncate text-[20px] font-semibold tracking-[-0.02em] text-[var(--ds-ink)]">知识库</h1>
+            <p className="mt-0.5 truncate text-[12px] text-[var(--ds-muted)]">资料会在任务中被自动检索和引用</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <div className="mr-1 flex items-center rounded-[10px] border border-ds-border bg-[var(--ds-card-soft)] p-0.5 shadow-sm">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-[var(--ds-accent)] px-4 text-[13px] font-semibold text-white shadow-[0_1px_4px_rgba(0,136,255,0.25)] transition hover:opacity-90 hover:shadow-[0_2px_6px_rgba(0,136,255,0.35)]"
+              className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[var(--ds-accent)] px-3 text-[12.5px] font-semibold text-white shadow-[0_3px_10px_color-mix(in_srgb,var(--ds-accent)_22%,transparent)] transition duration-150 hover:brightness-105 active:scale-[0.985]"
             >
-              <Upload className="h-4 w-4" strokeWidth={1.9} />
-              <span>上传文件</span>
+              <Upload className="h-3.5 w-3.5" strokeWidth={1.9} />
+              <span>上传</span>
             </button>
             <button
               type="button"
               onClick={() => folderInputRef.current?.click()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-ds-border bg-ds-card px-3 text-[13px] font-medium text-[var(--ds-ink)] transition hover:bg-ds-hover"
+              className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--ds-muted)] transition duration-150 hover:bg-ds-hover hover:text-[var(--ds-ink)] active:scale-[0.97]"
               title="上传文件夹"
             >
               <FolderPlus className="h-3.5 w-3.5" strokeWidth={1.8} />
-              <span>文件夹</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => void startCreateFolder()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-ds-border bg-ds-card px-3 text-[13px] font-medium text-[var(--ds-ink)] transition hover:bg-ds-hover"
-              title="新建文件夹"
-            >
-              <FolderPlus className="h-3.5 w-3.5" strokeWidth={1.8} />
-              <span>新建</span>
-            </button>
-            <button
-              type="button"
-              disabled={classifying || visibleNodes.length === 0}
-              onClick={() => void classifyPaths([])}
-              className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-ds-border bg-ds-card px-3 text-[13px] font-medium text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)] disabled:opacity-50"
-              title="读取正文并调用模型分类当前列表"
-            >
-              <Sparkles className={`h-3.5 w-3.5 ${classifying ? 'animate-pulse' : ''}`} strokeWidth={1.8} />
-              <span>{classifying ? '整理中' : '智能分类'}</span>
-            </button>
-            <button
-              type="button"
-              disabled={syncing}
-              onClick={() => void syncIndex()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-ds-border bg-ds-card px-3 text-[13px] font-medium text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)] disabled:opacity-50"
-              title="同步索引"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} strokeWidth={1.8} />
-              <span>同步</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setChatOpen((prev) => !prev)}
-              className={`inline-flex h-9 items-center gap-1.5 rounded-[8px] border px-3 text-[13px] font-medium transition disabled:opacity-50 ${
-                chatOpen
-                  ? 'border-[var(--ds-accent)] bg-[var(--ds-accent)] text-white shadow-[0_1px_4px_rgba(0,136,255,0.25)]'
-                  : 'border-ds-border bg-ds-card text-[var(--ds-muted)] hover:bg-ds-hover hover:text-[var(--ds-ink)]'
-              }`}
-              title="AI 知识库对话"
-            >
-              <Sparkles className="h-3.5 w-3.5" strokeWidth={1.8} />
-              <span>AI 对话</span>
             </button>
           </div>
+          <div className="mx-0.5 h-5 w-px bg-[var(--ds-border)]" />
+          <button
+            type="button"
+            onClick={() => void startCreateFolder()}
+            className="flex h-9 w-9 items-center justify-center rounded-[9px] text-[var(--ds-muted)] transition duration-150 hover:bg-ds-hover hover:text-[var(--ds-ink)] active:scale-[0.97]"
+            title="新建文件夹"
+          >
+            <FolderPlus className="h-4 w-4" strokeWidth={1.8} />
+          </button>
+          <button
+            type="button"
+            disabled={syncing}
+            onClick={() => void syncIndex()}
+            className="flex h-9 w-9 items-center justify-center rounded-[9px] text-[var(--ds-muted)] transition duration-150 hover:bg-ds-hover hover:text-[var(--ds-ink)] active:scale-[0.97] disabled:opacity-50"
+            title="同步索引"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} strokeWidth={1.8} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setChatOpen((prev) => !prev)}
+            className={`ml-1 inline-flex h-9 items-center gap-1.5 rounded-[9px] border px-3 text-[12.5px] font-medium transition duration-150 active:scale-[0.985] ${
+              chatOpen
+                ? 'border-[var(--ds-accent)] bg-[var(--ds-accent)] text-white shadow-[0_3px_10px_color-mix(in_srgb,var(--ds-accent)_22%,transparent)]'
+                : 'border-ds-border bg-[var(--ds-card-soft)] text-[var(--ds-ink)] shadow-sm hover:bg-ds-hover'
+            }`}
+            title="AI 知识库对话"
+          >
+            <Sparkles className="h-3.5 w-3.5" strokeWidth={1.8} />
+            <span>AI 对话</span>
+          </button>
         </div>
         <input
           ref={fileInputRef}
@@ -1252,9 +1219,80 @@ ${question.trim()}
         />
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <div className={`flex min-h-0 flex-1 flex-col overflow-x-auto px-8 py-5 transition-all ${chatOpen ? 'min-w-0' : 'min-w-[420px]'} ${preview && !chatOpen ? 'pr-4' : ''}`}>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div ref={knowledgeLayoutRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        {showLibrarySidebar ? (
+        <aside
+          data-sidebar-hover-root
+          className="relative flex w-[218px] shrink-0 flex-col overflow-hidden border-r border-ds-border bg-[color-mix(in_srgb,var(--ds-sidebar-field-bg)_62%,transparent)] px-3 pb-3 pt-4"
+        >
+          <span aria-hidden data-sidebar-hover-indicator />
+          <div className="px-2 pb-2 text-[10.5px] font-semibold text-[var(--ds-faint)]">资料库</div>
+          <button
+            type="button"
+            data-sidebar-hover-target
+            data-sidebar-active={!currentPath ? 'true' : undefined}
+            onClick={() => {
+              setQuery('')
+              setCurrentPath('')
+            }}
+            className={`flex h-9 w-full items-center gap-2 rounded-[12px] px-2.5 text-left text-[12.5px] font-medium transition ${
+              !currentPath
+                ? 'bg-[color-mix(in_srgb,var(--ds-accent)_13%,transparent)] text-[var(--ds-accent)]'
+                : 'text-[var(--ds-ink)] hover:bg-ds-hover'
+            }`}
+          >
+            <Database className="h-4 w-4 shrink-0" strokeWidth={1.7} />
+            <span className="min-w-0 flex-1 truncate">全部文件</span>
+            <span className="text-[10.5px] font-normal tabular-nums text-[var(--ds-faint)]">{tree.length}</span>
+          </button>
+          <div className="mt-5 px-2 pb-2 text-[10.5px] font-semibold text-[var(--ds-faint)]">文件夹</div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {tree.filter((node) => node.kind === 'folder').map((node) => {
+              const active = currentPath === node.path || currentPath.startsWith(`${node.path}/`)
+              return (
+                <button
+                  key={node.path}
+                  type="button"
+                  data-sidebar-hover-target
+                  data-sidebar-active={active ? 'true' : undefined}
+                  onClick={() => {
+                    setQuery('')
+                    setCurrentPath(node.path)
+                  }}
+                  className={`group/folder flex min-h-9 w-full items-center gap-2 rounded-[12px] px-2.5 py-1.5 text-left text-[12.5px] transition ${
+                    active
+                      ? 'bg-[color-mix(in_srgb,var(--ds-accent)_13%,transparent)] font-medium text-[var(--ds-accent)]'
+                      : 'text-[var(--ds-ink)] hover:bg-ds-hover'
+                  }`}
+                  title={node.name}
+                >
+                  <KnowledgeFileIcon node={node} size={20} />
+                  <span className="min-w-0 flex-1 truncate">{node.name}</span>
+                </button>
+              )
+            })}
+            {!loading && tree.every((node) => node.kind !== 'folder') ? (
+              <div className="px-2.5 py-3 text-[11.5px] leading-5 text-[var(--ds-faint)]">还没有文件夹</div>
+            ) : null}
+          </div>
+          <div className="border-t border-ds-border pt-3">
+            <button
+              type="button"
+              data-sidebar-hover-target
+              disabled={classifying || visibleNodes.length === 0}
+              onClick={() => void classifyPaths([])}
+              className="flex h-9 w-full items-center gap-2 rounded-[12px] px-2.5 text-left text-[12.5px] font-medium text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)] disabled:opacity-50"
+              title="读取正文并调用模型分类当前列表"
+            >
+              <Sparkles className={`h-4 w-4 text-[var(--ds-accent)] ${classifying ? 'animate-pulse' : ''}`} strokeWidth={1.7} />
+              <span>{classifying ? '正在智能整理' : '智能整理当前列表'}</span>
+            </button>
+          </div>
+        </aside>
+        ) : null}
+
+        <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-5 py-4 transition-all ${preview && !chatOpen ? 'pr-4' : ''}`}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-0.5 text-[13px] text-[var(--ds-muted)]">
               <button
                 type="button"
@@ -1281,8 +1319,8 @@ ${question.trim()}
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索文件或文件夹"
-                className="h-9 w-full rounded-[10px] border border-ds-border bg-ds-card pl-9 pr-3 text-[13px] text-[var(--ds-ink)] outline-none transition focus:border-[var(--ds-accent)] focus:shadow-[0_0_0_3px_rgba(0,136,255,0.08)]"
+                placeholder="搜索"
+                className="h-9 w-full rounded-[10px] border border-ds-border bg-[var(--ds-card-soft)] pl-9 pr-3 text-[13px] text-[var(--ds-ink)] shadow-sm outline-none transition focus:border-[color-mix(in_srgb,var(--ds-accent)_48%,transparent)] focus:bg-[var(--ds-card-strong)] focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--ds-accent)_10%,transparent)]"
               />
             </div>
           </div>
@@ -1351,7 +1389,7 @@ ${question.trim()}
             </div>
           ) : null}
 
-          <div className="relative min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-[8px] border border-ds-border bg-ds-card">
+          <div className="relative min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-[12px] border border-ds-border bg-[var(--ds-card-soft)] shadow-[var(--ds-shadow-card-soft)]">
             {dragActive ? (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-[color-mix(in_srgb,var(--ds-accent)_12%,transparent)] backdrop-blur-[1px]">
                 <div className="rounded-[8px] border border-dashed border-[var(--ds-accent)] bg-ds-card px-8 py-6 text-center text-[14px] font-medium text-[var(--ds-ink)] shadow-lg">
@@ -1374,7 +1412,7 @@ ${question.trim()}
               </div>
             ) : null}
 
-            <div className="grid h-10 grid-cols-[44px_minmax(260px,1fr)_130px_130px_150px_54px] items-center border-b border-ds-border bg-[color-mix(in_srgb,var(--ds-sidebar-field-bg)_50%,transparent)] px-6 text-[12px] font-semibold uppercase tracking-wider text-[var(--ds-muted)]">
+            <div className="grid h-10 grid-cols-[40px_minmax(260px,1fr)_112px_112px_132px_54px] items-center border-b border-ds-border bg-[color-mix(in_srgb,var(--ds-sidebar-field-bg)_40%,transparent)] px-4 text-[11.5px] font-medium text-[var(--ds-muted)]">
               <div className="flex items-center">
                 <button
                   type="button"
@@ -1400,7 +1438,12 @@ ${question.trim()}
               <div />
             </div>
 
-            <div className="h-[calc(100%-40px)] overflow-y-auto">
+            <div
+              data-sidebar-hover-root
+              data-knowledge-row-hover-root
+              className="h-[calc(100%-40px)] overflow-y-auto"
+            >
+              <span aria-hidden="true" data-sidebar-hover-indicator />
               {loading && visibleNodes.length === 0 ? (
                 <div className="flex h-full items-center justify-center gap-2 text-[13px] text-[var(--ds-muted)]">
                   <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.8} />
@@ -1408,7 +1451,7 @@ ${question.trim()}
                 </div>
               ) : visibleNodes.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-[13px] text-[var(--ds-muted)]">
-                  <Folder className="h-10 w-10 text-emerald-200" strokeWidth={1.4} />
+                  <Folder className="h-10 w-10 text-[color-mix(in_srgb,var(--ds-accent)_45%,transparent)]" strokeWidth={1.4} />
                   <div>{query.trim() ? '没有匹配的文件' : '当前文件夹为空'}</div>
                   <div className="text-[12px]">可以上传文件、上传文件夹，或直接把文件拖到这里。</div>
                 </div>
@@ -1416,10 +1459,12 @@ ${question.trim()}
                 visibleNodes.map((node) => (
                   <div
                     key={node.path}
-                    className={`grid min-h-[52px] grid-cols-[44px_minmax(260px,1fr)_130px_130px_150px_54px] items-center px-6 text-[14px] transition-colors duration-150 group ${
+                    data-sidebar-hover-target
+                    data-sidebar-active={isNodeSelected(node) ? 'true' : undefined}
+                    className={`group grid min-h-[54px] grid-cols-[40px_minmax(260px,1fr)_112px_112px_132px_54px] items-center border-b border-[color-mix(in_srgb,var(--ds-border)_56%,transparent)] px-4 text-[13.5px] transition-colors duration-150 last:border-b-0 ${
                       isNodeSelected(node)
-                        ? 'bg-[color-mix(in_srgb,var(--ds-accent)_6%,transparent)]'
-                        : 'hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-bg)_60%,transparent)]'
+                        ? 'bg-[color-mix(in_srgb,var(--ds-accent)_11%,transparent)]'
+                        : ''
                     }`}
                     onDoubleClick={() => void openFileView(node)}
                     onContextMenu={(event) => handleRowContextMenu(event, node)}
@@ -1428,7 +1473,9 @@ ${question.trim()}
                       <button
                         type="button"
                         onClick={(event) => toggleSelectNode(node, event)}
-                        className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)]"
+                        className={`flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)] ${
+                          isNodeSelected(node) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+                        }`}
                       >
                         {isNodeSelected(node) ? (
                           <CheckSquare className="h-4 w-4 text-[var(--ds-accent)]" strokeWidth={1.8} />
@@ -1448,12 +1495,12 @@ ${question.trim()}
                       }}
                       className="flex min-w-0 items-center gap-3 text-left"
                     >
-                      <span className="shrink-0">{iconForNode(node)}</span>
-                      <span className="min-w-0 truncate font-medium text-[var(--ds-ink)]">{node.name}</span>
+                      <KnowledgeFileIcon node={node} size={27} />
+                      <span className="min-w-0 truncate font-medium tracking-[-0.005em] text-[var(--ds-ink)]">{node.name}</span>
                     </button>
-                    <div className="flex">{fileTypeBadge(node)}</div>
-                    <div className="text-[13px] text-[var(--ds-muted)] tabular-nums">{formatBytes(node.sizeBytes)}</div>
-                    <div className="text-[13px] text-[var(--ds-muted)]">{formatDate(node.updatedAt)}</div>
+                    <div className="flex"><KnowledgeFileTypeBadge node={node} /></div>
+                    <div className="text-[12.5px] text-[var(--ds-muted)] tabular-nums">{formatBytes(node.sizeBytes)}</div>
+                    <div className="text-[12.5px] text-[var(--ds-muted)]">{formatDate(node.updatedAt)}</div>
                     <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                       {node.kind === 'file' && previewType(node) !== 'unsupported' ? (
                         <button
@@ -1583,19 +1630,26 @@ ${question.trim()}
         {/* AI Chat sidebar */}
         {chatOpen ? (
           <aside
-            className="ds-no-drag relative flex h-full flex-col border-l border-ds-border bg-ds-card"
-            style={{ width: chatSidebarWidth, minWidth: 300, maxWidth: 800 }}
+            className="ds-no-drag relative flex h-full shrink-0 flex-col overflow-hidden border-l border-ds-border bg-ds-card"
+            style={{
+              width: effectiveChatSidebarWidth,
+              minWidth: effectiveChatSidebarWidth,
+              maxWidth: effectiveChatSidebarWidth
+            }}
           >
             {/* Drag handle */}
             <div
               className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize bg-transparent transition hover:bg-[var(--ds-accent)] active:bg-[var(--ds-accent)]"
               onMouseDown={(e) => {
                 e.preventDefault()
-                chatSidebarDragRef.current = { startX: e.clientX, startWidth: chatSidebarWidth }
+                chatSidebarDragRef.current = { startX: e.clientX, startWidth: effectiveChatSidebarWidth }
                 const onMove = (ev: MouseEvent): void => {
                   if (!chatSidebarDragRef.current) return
                   const dx = chatSidebarDragRef.current.startX - ev.clientX
-                  const next = Math.max(300, Math.min(800, chatSidebarDragRef.current.startWidth + dx))
+                  const responsiveMax = knowledgeLayoutWidth > 0
+                    ? Math.max(300, Math.min(680, Math.floor(knowledgeLayoutWidth * 0.48)))
+                    : 680
+                  const next = Math.max(300, Math.min(responsiveMax, chatSidebarDragRef.current.startWidth + dx))
                   setChatSidebarWidth(next)
                 }
                 const onUp = (): void => {
@@ -1607,16 +1661,11 @@ ${question.trim()}
                 window.addEventListener('mouseup', onUp)
               }}
             />
-            <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ds-border px-4">
-              <div className="flex min-w-0 items-center gap-2">
-                <Sparkles className="h-4 w-4 text-[var(--ds-accent)]" strokeWidth={1.8} />
-                <div className="min-w-0">
-                  <div className="text-[13px] font-medium text-[var(--ds-ink)]">知识库 AI 对话</div>
-                  <div className="truncate text-[11px] text-[var(--ds-muted)]">
-                    {chatContext.kind === 'file' ? `当前文件：${chatContext.fileName}` : '全局知识库'}
-                  </div>
-                </div>
-              </div>
+            <KnowledgeChatHeader
+              title="知识库 AI 对话"
+              contextLabel={chatContext.kind === 'file' ? `当前文件 · ${chatContext.fileName}` : '全局知识库'}
+              actions={(
+                <>
               {chatMessages.length > 0 ? (
                 <button
                   type="button"
@@ -1627,62 +1676,53 @@ ${question.trim()}
                   <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
                 </button>
               ) : null}
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setChatOpen(false)}
+                  className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)]"
+                  title="收起 AI 对话"
+                >
+                  <PanelRightClose className="h-3.5 w-3.5" strokeWidth={1.8} />
+                </button>
+                </>
+              )}
+            />
 
             {chatMessages.length === 0 && !chatSending ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-                <Bot className="h-10 w-10 text-[var(--ds-accent)] opacity-40" strokeWidth={1.4} />
-                <div className="text-[13px] font-medium text-[var(--ds-ink)]">知识库全局对话</div>
-                <p className="text-[12px] leading-relaxed text-[var(--ds-muted)]">
-                  基于整个知识库的内容进行 AI 对话。你可以询问法律条款、案例分析、文件总结等任何问题。
-                </p>
-              </div>
+              <KnowledgeChatEmptyState
+                visual={<Sparkles className="h-5 w-5 text-[var(--ds-accent)]" strokeWidth={1.7} />}
+                title={chatContext.kind === 'file' ? '关于此文件提问' : '与知识库对话'}
+                description={chatContext.kind === 'file'
+                  ? '基于当前文件内容进行对话，可询问关键信息、法律条款、风险分析或内容总结。'
+                  : '检索整个知识库后回答问题，可用于法律条款、案例分析、跨文件归纳与总结。'}
+                contextLabel={chatContext.kind === 'file' ? chatContext.fileName : '全部文件'}
+              />
             ) : (
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
                 {chatMessages.map((msg) => (
-                  <div
+                  <KnowledgeChatMessage
                     key={msg.id}
-                    className={`mb-4 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    role={msg.role}
+                    timestamp={msg.timestamp}
                   >
-                    <div
-                      className={`max-w-[85%] rounded-[12px] px-4 py-2.5 text-[13px] leading-relaxed ${
-                        msg.role === 'user'
-                          ? 'bg-[var(--ds-accent)] text-white'
-                          : 'border border-ds-border bg-[var(--ds-main)] text-[var(--ds-ink)]'
-                      }`}
-                    >
-                      {msg.role === 'assistant' ? (
-                        <AssistantMarkdown
-                          text={msg.content}
-                          streaming={false}
-                          className="ds-markdown ds-chat-answer break-words leading-relaxed"
-                        />
-                      ) : (
-                        <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-                      )}
-                      <div
-                        className={`mt-1 text-[10px] ${
-                          msg.role === 'user' ? 'text-white/60' : 'text-[var(--ds-muted)]'
-                        }`}
-                      >
-                        {new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </div>
-                    </div>
-                  </div>
+                    {msg.role === 'assistant' ? (
+                      <KnowledgeAssistantContent
+                        content={msg.content}
+                        reasoning={msg.reasoning}
+                      />
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                    )}
+                  </KnowledgeChatMessage>
                 ))}
 
                 {chatSending ? (
-                  <div className="mb-4 flex justify-start">
-                    <div className="max-w-[85%] rounded-[12px] border border-ds-border bg-[var(--ds-main)] px-4 py-3">
-                      <div className="flex items-center gap-2 text-[13px] text-[var(--ds-muted)]">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
-                        <span>AI 思考中...</span>
-                      </div>
+                  <KnowledgeChatMessage role="assistant">
+                    <div className="flex items-center gap-2 text-[var(--ds-muted)]">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
+                      <span>AI 思考中...</span>
                     </div>
-                  </div>
+                  </KnowledgeChatMessage>
                 ) : null}
 
                 {chatError ? (
@@ -1695,26 +1735,14 @@ ${question.trim()}
               </div>
             )}
 
-            <div className="shrink-0 border-t border-ds-border p-3">
-              <div className="flex items-center gap-2">
-                <input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={handleChatKeyDown}
-                  placeholder="输入关于知识库的问题..."
-                  disabled={chatSending}
-                  className="h-10 flex-1 rounded-[8px] border border-ds-border bg-[var(--ds-main)] px-3 text-[13px] text-[var(--ds-ink)] outline-none transition focus:border-[var(--ds-accent)] disabled:opacity-50"
-                />
-                <button
-                  type="button"
-                  onClick={() => void sendKnowledgeChatMessage(chatInput)}
-                  disabled={chatSending || !chatInput.trim()}
-                  className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[var(--ds-accent)] text-white transition hover:opacity-90 disabled:opacity-50"
-                >
-                  <SendIcon className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
+            <KnowledgeChatComposer
+              value={chatInput}
+              placeholder={chatContext.kind === 'file' ? '输入关于文件的问题...' : '输入关于知识库的问题...'}
+              disabled={chatSending}
+              onChange={setChatInput}
+              onKeyDown={handleChatKeyDown}
+              onSend={() => void sendKnowledgeChatMessage(chatInput)}
+            />
           </aside>
         ) : null}
       </div>

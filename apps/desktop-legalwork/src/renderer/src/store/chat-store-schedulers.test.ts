@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChatState, ChatStoreGet, ChatStoreSet } from './chat-store-types'
-import { stopTurnCompletionPoll, syncTurnCompletionPoll } from './chat-store-schedulers'
+import {
+  scheduleStartupRuntimeProbe,
+  stopTurnCompletionPoll,
+  syncTurnCompletionPoll
+} from './chat-store-schedulers'
 
 afterEach(() => {
   stopTurnCompletionPoll()
@@ -40,5 +44,21 @@ describe('syncTurnCompletionPoll', () => {
     await vi.advanceTimersByTimeAsync(2_500)
 
     expect(loadThreadState).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('scheduleStartupRuntimeProbe', () => {
+  it('uses the requested recovery delay and runs one probe', async () => {
+    vi.useFakeTimers()
+    const probeRuntime = vi.fn(async () => undefined)
+    const state = { probeRuntime } as unknown as ChatState
+
+    scheduleStartupRuntimeProbe(() => state, 2_000)
+    await vi.advanceTimersByTimeAsync(1_999)
+    expect(probeRuntime).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(probeRuntime).toHaveBeenCalledOnce()
+    expect(probeRuntime).toHaveBeenCalledWith('background')
   })
 })

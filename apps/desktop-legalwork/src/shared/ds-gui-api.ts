@@ -291,7 +291,10 @@ export type LegalResearchExportResult =
   | { ok: false; canceled: false; message: string }
 
 export type LegalResearchExportPayload = {
-  html: string
+  html?: string
+  markdown?: string
+  templateId?: string
+  templateName?: string
   defaultName: string
 }
 

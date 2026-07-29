@@ -6,6 +6,8 @@ import {
   mergeScheduleSettings,
   type ScheduleSettingsV1
 } from '@shared/app-settings'
+import { AstryxButton } from '../astryx/AstryxButton'
+import { AstryxToggle } from '../astryx/AstryxToggle'
 
 function splitLooseList(value: string): string[] {
   return value
@@ -78,17 +80,11 @@ export function ScheduleDefaultsDialog({
 
         <div className="mt-5 flex items-center justify-between gap-3 rounded-xl bg-ds-subtle px-3 py-2">
           <span className="text-[13px] text-ds-muted">{t('scheduleGlobalEnabled')}</span>
-          <label className="inline-flex items-center">
-            <input
-              type="checkbox"
-              checked={draft.enabled}
-              onChange={(event) => update({ enabled: event.target.checked })}
-              className="sr-only"
-            />
-            <span className={`relative h-5 w-9 rounded-full transition ${draft.enabled ? 'bg-ds-ink' : 'bg-ds-border-strong'}`}>
-              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${draft.enabled ? 'left-[18px]' : 'left-0.5'}`} />
-            </span>
-          </label>
+          <AstryxToggle
+            checked={draft.enabled}
+            onChange={(enabled) => update({ enabled })}
+            aria-label={t('scheduleGlobalEnabled')}
+          />
         </div>
 
         <div className="mt-4 grid gap-4">
@@ -148,20 +144,12 @@ export function ScheduleDefaultsDialog({
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-ds-border bg-ds-card px-4 py-2 text-[13px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
-          >
+          <AstryxButton variant="secondary" size="md" onClick={onClose}>
             {t('cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            className="rounded-xl bg-ds-userbubble px-4 py-2 text-[13px] font-semibold text-ds-userbubbleFg transition hover:opacity-90"
-          >
+          </AstryxButton>
+          <AstryxButton variant="default" size="md" onClick={() => void save()}>
             {t('confirm')}
-          </button>
+          </AstryxButton>
         </div>
       </div>
     </div>

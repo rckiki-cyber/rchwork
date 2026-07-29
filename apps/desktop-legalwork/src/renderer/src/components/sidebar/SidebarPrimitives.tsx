@@ -51,11 +51,14 @@ export function SidebarFrame({
 }: SidebarFrameProps): ReactElement {
   return (
     <aside
+      data-liquid-surface="sidebar"
+      data-sidebar-hover-root
       className={cx(
         'ds-drag ds-sidebar-shell relative flex h-full w-full shrink-0 flex-col overflow-hidden px-4 pb-3',
         className
       )}
     >
+      <span aria-hidden data-sidebar-hover-indicator />
       <div className="ds-sidebar-titlebar-spacer shrink-0 pb-2 pt-3">
         <div className="ds-sidebar-titlebar-row flex min-h-[24px] items-center justify-end">
           {onCollapse ? (
@@ -110,11 +113,13 @@ export function SidebarCommandRow({
   return (
     <button
       type="button"
+      data-sidebar-hover-target
+      data-sidebar-active={active ? 'true' : undefined}
       disabled={disabled}
       title={disabled ? disabledHint : undefined}
       onClick={onClick}
       className={cx(
-        'flex min-h-[34px] w-full items-center gap-2.5 rounded-[8px] px-3 py-1.5 transition',
+        'flex min-h-[34px] w-full items-center gap-2.5 rounded-[12px] px-3 py-1.5 transition',
         disabled
           ? 'cursor-not-allowed text-[#a8a8a8] opacity-55 text-[13px] font-normal'
           : active
@@ -315,8 +320,10 @@ export function SidebarTreeRow({
 
   return (
     <div
+      data-sidebar-hover-target
+      data-sidebar-active={active ? 'true' : undefined}
       className={cx(
-        'group relative flex w-full items-center overflow-hidden rounded-[8px] text-[14px] font-medium transition',
+        'group relative flex w-full items-center overflow-hidden rounded-[12px] text-[14px] font-medium transition',
         outlined
           ? 'bg-[var(--ds-sidebar-row-active)] text-[#1f1f1f] shadow-[inset_0_0_0_1px_var(--ds-sidebar-row-ring)] dark:text-white'
           : active

@@ -33,7 +33,8 @@ import type {
   CoreRuntimeToolDiagnosticsJson
 } from '../agent/legalwork-contract'
 import { useChatStore } from '../store/chat-store'
-import { NoticeView, TabButton, type MarketplaceNotice } from './PluginMarketplaceParts'
+import { NoticeView, type MarketplaceNotice } from './PluginMarketplaceParts'
+import { AstryxSegmentedControl } from './astryx/AstryxSegmentedControl'
 import { AssistantMarkdown } from './chat/AssistantMarkdown'
 import type { ComposerSkillSelection } from './chat/composer-skill-selection'
 import {
@@ -223,6 +224,14 @@ function hasAuthorizationHeader(config: JsonRecord | undefined): boolean {
   return Object.keys(headers).some((key) => key.toLowerCase() === 'authorization')
 }
 
+function authorizationToken(config: JsonRecord | undefined): string {
+  const headers = isJsonRecord(config?.headers) ? config.headers : {}
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === 'authorization')
+  if (!entry) return ''
+  const match = String(entry[1]).match(/^Bearer\s+(.+)$/i)
+  return match?.[1]?.trim() ?? ''
+}
+
 function authErrorLooksTokenRelated(entries: Array<{ config?: JsonRecord; diagnostic?: JsonRecord }>): boolean {
   return entries.some((entry) => {
     const details = { ...(entry.config ?? {}), ...(entry.diagnostic ?? {}) }
@@ -308,14 +317,14 @@ export function buildFlintChartMcpConfig(): JsonRecord {
 }
 
 export function buildPkulawMcpConfig(token: string): JsonRecord {
-  const authorization = `Bearer ${token.trim()}`
+  const normalizedToken = token.trim()
   const servers: JsonRecord = {}
   for (const { id, url } of PKULAW_MCP_ENDPOINTS) {
     servers[id] = {
       enabled: true,
       transport: 'streamable-http',
       url,
-      headers: { Authorization: authorization },
+      headers: normalizedToken ? { Authorization: `Bearer ${normalizedToken}` } : {},
       trustScope: 'user',
       timeoutMs: 30000
     }
@@ -705,10 +714,7 @@ function pkulawMarketplaceItem(
     connected > 0 ? 'connected' :
     disabled === entries.length ? 'disabled' :
     'configured'
-  const needsToken = entries.some((entry) => !hasAuthorizationHeader(entry.config)) ||
-    authErrorLooksTokenRelated(entries)
   const sourceLabel =
-    needsToken ? labels.tokenRequired :
     status === 'connected' ? labels.connected :
     status === 'error' ? labels.error :
     status === 'disabled' ? labels.disabled :
@@ -717,22 +723,20 @@ function pkulawMarketplaceItem(
     id: PKULAW_MCP_GROUP_ID,
     kind: 'mcp',
     title: labels.pkulawTitle,
-    description: needsToken
-      ? labels.tokenRequiredSummary
-      : labels.pkulawSummary({
-          total: entries.length,
-          connected,
-          tools,
-          errors: errorEntries.length,
-          disabled,
-          lastError
-        }),
+    description: labels.pkulawSummary({
+      total: entries.length,
+      connected,
+      tools,
+      errors: errorEntries.length,
+      disabled,
+      lastError
+    }),
     group: 'personal',
     category: 'legal',
-    configurable: needsToken,
-    needsToken,
+    configurable: true,
+    needsToken: entries.some((entry) => !hasAuthorizationHeader(entry.config)),
     sourceLabel,
-    statusTone: needsToken ? 'warning' : mcpStatusTone(status)
+    statusTone: mcpStatusTone(status)
   }
 }
 
@@ -795,7 +799,7 @@ function yuandianMarketplaceItem(
         }),
     group: 'personal',
     category: 'legal',
-    configurable: needsToken,
+    configurable: true,
     needsToken,
     sourceLabel,
     statusTone: needsToken ? 'warning' : mcpStatusTone(status)
@@ -1079,10 +1083,6 @@ export function PluginMarketplaceView({
     }
   }, [t])
 
-  useEffect(() => {
-    if (activeKind !== 'mcp') return
-    void refreshMcpRuntimeOverlay()
-  }, [activeKind, refreshMcpRuntimeOverlay])
 
   const refreshSkillList = useCallback(async (): Promise<void> => {
     if (typeof window.dsGui?.listSkills !== 'function') {
@@ -1275,8 +1275,40 @@ export function PluginMarketplaceView({
     setNotice({ tone: 'success', message: t('pluginMcpTokenUpdated', { path: result.path }) })
   }
 
+  useEffect(() => {
+    if (activeKind !== 'mcp') return
+    void refreshMcpRuntimeOverlay()
+  }, [activeKind, refreshMcpRuntimeOverlay])
+
+  const readTokenFromConfig = useCallback((url: string): string => {
+    if (!mcpConfigText) return ''
+    try {
+      const config = JSON.parse(mcpConfigText) as JsonRecord
+      const servers = isJsonRecord(config.mcpServers ?? config.servers) ? (config.mcpServers ?? config.servers) as JsonRecord : {}
+      for (const server of Object.values(servers)) {
+        const srv = server as JsonRecord
+        if (srv.url === url) {
+          const headers = isJsonRecord(srv.headers) ? srv.headers as JsonRecord : {}
+          const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === 'authorization')
+          if (entry) {
+            const match = String(entry[1]).match(/^Bearer\s+(.+)$/i)
+            if (match?.[1]) return match[1].trim()
+          }
+        }
+      }
+    } catch { /* ignore parse errors */ }
+    return ''
+  }, [mcpConfigText])
+
   const addItem = async (item: MarketplaceItem): Promise<void> => {
     if (item.configurable) {
+      if (item.id === PKULAW_MCP_GROUP_ID) {
+        const existing = readTokenFromConfig(PKULAW_MCP_ENDPOINTS[0].url)
+        setPkulawToken(existing)
+      } else if (item.id === YUANDIAN_MCP_GROUP_ID) {
+        const existing = readTokenFromConfig(YUANDIAN_MCP_ENDPOINTS[0].url)
+        setYuandianApiKey(existing)
+      }
       setConfiguringItemId(item.id)
       return
     }
@@ -1341,10 +1373,6 @@ export function PluginMarketplaceView({
 
   const addPkulaw = async (): Promise<void> => {
     const token = pkulawToken.trim()
-    if (!token) {
-      setNotice({ tone: 'error', message: t('pluginMcpPkulawTokenRequired') })
-      return
-    }
     setBusyId(storageKey('mcp', 'pkulaw'))
     setNotice(null)
     try {
@@ -1578,14 +1606,20 @@ export function PluginMarketplaceView({
     <div className="ds-no-drag h-full min-h-0 overflow-y-auto px-6 py-7 md:px-10 lg:px-14">
       <div className="mx-auto max-w-6xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex rounded-xl bg-ds-subtle p-1">
-            <TabButton active={activeKind === 'mcp'} onClick={() => setActiveKind('mcp')}>
-              {t('pluginTabMcp')}
-            </TabButton>
-            <TabButton active={activeKind === 'skill'} tone="skill" onClick={() => setActiveKind('skill')}>
-              {t('pluginTabSkill')}
-            </TabButton>
-          </div>
+            <AstryxSegmentedControl
+              value={activeKind}
+              items={[
+                { value: 'mcp', label: t('pluginTabMcp') },
+                { value: 'skill', label: t('pluginTabSkill') }
+              ]}
+              onChange={setActiveKind}
+              ariaLabel={`${t('pluginTabMcp')} / ${t('pluginTabSkill')}`}
+              className="flex flex-row rounded-xl bg-ds-subtle p-1"
+              buttonClassName="inline-flex min-h-[32px] min-w-fit flex-1 items-center justify-center gap-1.5 rounded-[10px] px-3 text-left text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:focus-visible:ring-white/20"
+              indicatorClassName="rounded-[10px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:bg-white/[0.12] dark:shadow-[0_1px_4px_rgba(0,0,0,0.2)]"
+              activeClassName="font-semibold text-[#1f2937] dark:text-white"
+              inactiveClassName="font-medium text-[#6b7280] hover:text-[#374151] dark:text-white/55 dark:hover:text-white/80"
+            />
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -1998,7 +2032,7 @@ function PluginSection({
                 {group.items.map((item) => {
                   const itemKey = storageKey(item.kind, item.id)
                   const installed = isInstalled(item)
-                  const needsConfiguration = installed && item.configurable && item.needsToken
+                  const needsConfiguration = installed && item.configurable && (item.needsToken || item.id === 'pkulaw' || item.id === 'yuandian')
                   const busy = busyId === itemKey
                   const configuring = configuringItemId === item.id
                   const previewable = item.kind === 'skill' && !!onPreview
@@ -2392,11 +2426,11 @@ function PkulawConfigPanel({
           <button
             type="button"
             onClick={onAdd}
-            disabled={busy || !token.trim()}
+            disabled={busy}
             className="inline-flex items-center gap-1.5 rounded-xl bg-ds-userbubble px-3 py-2 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Plus className="h-4 w-4" strokeWidth={2} />}
-            {t('pluginMcpPkulawAdd')}
+            {token.trim() ? t('pluginMcpPkulawUpdate') : t('pluginMcpPkulawAdd')}
           </button>
         </div>
       </div>
@@ -2474,7 +2508,7 @@ function YuandianConfigPanel({
             className="inline-flex items-center gap-1.5 rounded-xl bg-ds-userbubble px-3 py-2 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Plus className="h-4 w-4" strokeWidth={2} />}
-            {t('pluginMcpYuandianAdd')}
+            {apiKey.trim() ? t('pluginMcpPkulawUpdate') : t('pluginMcpYuandianAdd')}
           </button>
         </div>
       </div>

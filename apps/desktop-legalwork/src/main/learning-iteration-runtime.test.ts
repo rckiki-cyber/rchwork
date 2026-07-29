@@ -27,7 +27,12 @@ vi.mock('./services/skill-service', () => ({
   readGuiSkillFile: vi.fn()
 }))
 
-import { createLearningIterationRuntime } from './learning-iteration-runtime'
+import {
+  createLearningIterationRuntime,
+  extractLearningThreadText,
+  parseLearningModelResult,
+  repairLearningModelJson
+} from './learning-iteration-runtime'
 
 const tempRoots: string[] = []
 
@@ -183,6 +188,138 @@ describe('LearningIterationRuntime scheduling', () => {
       '/v1/knowledge/tree',
       expect.anything()
     )
+    runtime.stop()
+  })
+})
+
+describe('learning model result parsing', () => {
+  it('repairs unescaped double quotes inside long Markdown string values', () => {
+    const response = [
+      'BEGIN_LEARNING_RESULT',
+      '{',
+      '  "title": "法律多源调研工作流",',
+      '  "summary": "识别出稳定工作流",',
+      '  "reportMarkdown": "# 报告\\\\n\\\\n用户要求"多源调研"，并询问"这个论文讲了什么"。",',
+      '  "memories": [],',
+      '  "skills": [],',
+      '  "rejected": []',
+      '}',
+      'END_LEARNING_RESULT'
+    ].join('\n')
+
+    expect(parseLearningModelResult(response)).toMatchObject({
+      title: '法律多源调研工作流',
+      reportMarkdown: '# 报告\n\n用户要求"多源调研"，并询问"这个论文讲了什么"。'
+    })
+  })
+
+  it('repairs raw line breaks and invalid backslash escapes inside strings', () => {
+    const invalid = `{
+  "title": "测试",
+  "summary": "路径 C:\\legal\\quote
+第二行",
+  "reportMarkdown": "",
+  "memories": [],
+  "skills": [],
+  "rejected": []
+}`
+    const repaired = repairLearningModelJson(invalid)
+    const parsed = JSON.parse(repaired) as { summary: string }
+
+    expect(parsed.summary).toBe('路径 C:\\legal\\quote\n第二行')
+  })
+
+  it('does not alter already valid learning JSON', () => {
+    const valid = JSON.stringify({
+      title: '测试',
+      summary: '用户要求"多源调研"',
+      reportMarkdown: '# 报告\n\n内容',
+      memories: [],
+      skills: [],
+      rejected: []
+    })
+
+    expect(repairLearningModelJson(valid)).toBe(valid)
+    expect(parseLearningModelResult(valid).summary).toBe('用户要求"多源调研"')
+  })
+})
+
+describe('learning source hygiene', () => {
+  it('keeps the real knowledge-base question and excludes RAG context and assistant output', () => {
+    const detail = {
+      turns: [{
+        items: [
+          {
+            kind: 'user_message',
+            text: [
+              '你是一个专业的法律知识助手。',
+              '## RAG 检索上下文',
+              '【知识库检索结果】',
+              '[files › 实习简历]',
+              '这里是大量不应进入学习语料的检索内容',
+              '## 用户问题',
+              '知识库里有什么？',
+              '',
+              '请基于检索到的内容给出准确回答。'
+            ].join('\n')
+          },
+          {
+            kind: 'assistant_text',
+            text: '助手根据检索内容推断出的身份、偏好和履历不得作为用户证据。'
+          },
+          {
+            kind: 'user_message',
+            text: '在么'
+          }
+        ]
+      }]
+    }
+
+    expect(extractLearningThreadText(detail)).toBe('用户：知识库里有什么？')
+  })
+
+  it('does not let a stale learning thread block future iterations', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'legalwork-learning-stale-thread-'))
+    tempRoots.push(dataDir)
+    const appSettings = settings(dataDir)
+    const runtimeRequest = emptyRuntimeRequest()
+    runtimeRequest.mockImplementation(async (_settings: AppSettingsV1, path: string) => {
+      if (path === '/data-compliance/tasks') {
+        return { ok: true, status: 200, body: JSON.stringify({ items: [] }) }
+      }
+      if (path.startsWith('/v1/threads')) {
+        return {
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            threads: [{
+              id: 'thr_stale',
+              title: '[Learning iteration] stale-run',
+              status: 'running'
+            }]
+          })
+        }
+      }
+      if (path.startsWith('/v1/memory')) {
+        return { ok: true, status: 200, body: JSON.stringify({ memories: [] }) }
+      }
+      if (path === '/v1/knowledge/tree') {
+        return { ok: true, status: 200, body: JSON.stringify({ nodes: [] }) }
+      }
+      return { ok: false, status: 404, body: 'not found' }
+    })
+    const runtime = createLearningIterationRuntime({
+      store: { load: vi.fn(async () => appSettings) } as never,
+      runtimeRequest,
+      getSystemIdleSeconds: () => 60 * 60,
+      getExternalBusy: async () => false,
+      logError: vi.fn()
+    })
+
+    runtime.sync(appSettings)
+    await vi.waitFor(async () => {
+      expect((await runtime.status()).message).toBe('本周期没有可学习的新数据')
+    })
     runtime.stop()
   })
 })

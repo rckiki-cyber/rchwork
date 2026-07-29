@@ -10,7 +10,13 @@ import type {
 
 export type ClawImDialogMode = 'add' | 'edit'
 export type ClawConnectionMode = 'official-install-qr'
-export type ClawInstallTarget = 'feishu' | 'lark' | 'weixin'
+export type ClawInstallTarget =
+  | 'feishu'
+  | 'lark'
+  | 'weixin'
+  | 'qq'
+  | 'dingtalk'
+  | 'wecom'
 export type ClawAgentTab = 'identity' | 'personality' | 'userContext' | 'replyRules'
 export type ClawOfficialInstallProvider = 'feishu' | 'weixin'
 export type ClawDialogStep = 'defaults' | 'prompt' | 'connection'
@@ -235,11 +241,17 @@ export function clawInstallTargetLabel(
   target: ClawInstallTarget
 ): string {
   if (target === 'weixin') return t('clawAddImTargetWeixin')
+  if (target === 'qq') return t('clawAddImTargetQq')
+  if (target === 'dingtalk') return t('clawAddImTargetDingTalk')
+  if (target === 'wecom') return t('clawAddImTargetWeCom')
   return target === 'lark' ? t('clawAddImTargetLark') : t('clawAddImTargetFeishu')
 }
 
 export function clawDefaultAgentName(target: ClawInstallTarget): string {
   if (target === 'weixin') return 'weixin agent'
+  if (target === 'qq') return 'QQ agent'
+  if (target === 'dingtalk') return 'DingTalk agent'
+  if (target === 'wecom') return 'WeCom agent'
   return target === 'lark' ? 'lark agent' : 'feishu agent'
 }
 
@@ -257,6 +269,16 @@ export function clawDefaultChannelWorkspacePreview(
       ? sanitizeWorkspaceSegment(accountId, 'account')
       : '<account-id-or-channel-id>'
     return `${DEFAULT_CLAW_WORKSPACE_ROOT}/${provider}/weixin/${workspaceId}`
+  }
+  if (provider === 'qq' || provider === 'dingtalk' || provider === 'wecom') {
+    const credentialId = platformCredential?.kind === 'qq'
+      ? platformCredential.appId
+      : platformCredential?.kind === 'dingtalk'
+        ? platformCredential.clientId
+        : platformCredential?.kind === 'wecom'
+          ? platformCredential.botId
+          : provider
+    return `${DEFAULT_CLAW_WORKSPACE_ROOT}/${provider}/${sanitizeWorkspaceSegment(credentialId, provider)}`
   }
   const domain = sanitizeWorkspaceSegment(
     platformCredential?.kind === 'feishu' ? platformCredential.domain : target,

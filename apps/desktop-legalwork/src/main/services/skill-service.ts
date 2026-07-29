@@ -255,10 +255,10 @@ function isHiddenDirectory(name: string): boolean {
   return name.startsWith('.') && name !== '.codex' && name !== '.agents'
 }
 
-// macOS TCC 受保护位置：读取 ~/Pictures、~/Music、~/Movies 或系统媒体库包
-// （如 Photos Library.photoslibrary）会触发相册 / 媒体库权限弹窗。Skill 根目录
-// 不可能位于这些位置，扫描时直接跳过，避免首次启动弹出与功能无关的权限请求。
-const MACOS_PROTECTED_MEDIA_DIRS = new Set(['Pictures', 'Music', 'Movies'])
+// macOS TCC 受保护位置：读取 ~/Pictures、~/Music、~/Movies、~/Library/Photos
+// 或系统媒体库包（如 Photos Library.photoslibrary）会触发相册 / 媒体库权限
+// 弹窗。Skill 根目录不可能位于这些系统媒体位置，扫描时直接跳过。
+const MACOS_PROTECTED_MEDIA_DIRS = new Set(['Pictures', 'Music', 'Movies', 'Library'])
 const MACOS_LIBRARY_PACKAGE_EXTENSIONS = [
   '.photoslibrary',
   '.photolibrary',
@@ -273,6 +273,16 @@ export function shouldSkipSkillScanEntry(root: string, name: string): boolean {
   const lower = name.toLowerCase()
   if (MACOS_LIBRARY_PACKAGE_EXTENSIONS.some((ext) => lower.endsWith(ext))) return true
   return root === homedir() && MACOS_PROTECTED_MEDIA_DIRS.has(name)
+}
+
+export function computerWideSkillSearchRoots(userHome = homedir()): string[] {
+  // Do not crawl the whole home directory or TCC-protected Documents directory.
+  // Standard hidden skill roots are checked directly above, and users can still
+  // import a skill or choose any workspace explicitly.
+  return [
+    join(userHome, 'Projects'),
+    join(userHome, 'Workspace')
+  ]
 }
 
 async function discoverComputerWideSkillRoots(): Promise<string[]> {
@@ -292,12 +302,7 @@ async function discoverComputerWideSkillRoots(): Promise<string[]> {
       roots.push(path)
     }
   }
-  const scanRoots = [
-    userHome,
-    join(userHome, 'Documents'),
-    join(userHome, 'Projects'),
-    join(userHome, 'Workspace')
-  ]
+  const scanRoots = computerWideSkillSearchRoots(userHome)
   const discovered = (await Promise.all(
     scanRoots.map(async (root) => {
       if (!existsSync(root)) return []

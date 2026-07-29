@@ -63,6 +63,13 @@ import {
   type ThreadDetailJson,
   type ThreadRecordJson
 } from './claw-runtime-helpers'
+import {
+  createRegionalChannelBridge,
+  isRegionalChannel,
+  regionalChannelKey,
+  type RegionalChannelBridge,
+  type RegionalInboundMessage
+} from './claw-regional-runtime'
 
 const MAX_FEISHU_FILE_UPLOAD_BYTES = 50 * 1024 * 1024
 
@@ -147,6 +154,9 @@ export class ClawRuntime {
   private feishuChannels = new Map<string, LarkChannel>()
   private feishuChannelKeys = new Map<string, string>()
   private feishuSyncVersion = 0
+  private regionalChannels = new Map<string, RegionalChannelBridge>()
+  private regionalChannelKeys = new Map<string, string>()
+  private regionalSyncVersion = 0
 
   constructor(deps: ClawRuntimeDeps) {
     this.deps = deps
@@ -155,11 +165,13 @@ export class ClawRuntime {
   sync(settings: AppSettingsV1): void {
     this.syncWebhook(settings)
     void this.syncFeishuChannels(settings)
+    void this.syncRegionalChannels(settings)
   }
 
   stop(): void {
     this.closeWebhook()
     void this.closeAllFeishuChannels()
+    void this.closeAllRegionalChannels()
   }
 
   async status(): Promise<ClawRuntimeStatus> {
@@ -622,6 +634,140 @@ export class ClawRuntime {
       }
     })
     return result
+  }
+
+  private async handleRegionalInboundMessage(
+    channelId: string,
+    message: RegionalInboundMessage
+  ): Promise<void> {
+    const settings = await this.deps.store.load()
+    const channel = settings.claw.channels.find(
+      (item) => item.id === channelId && item.enabled && item.provider === message.provider
+    )
+    if (!channel || !settings.claw.enabled || !settings.claw.im.enabled) return
+    const remoteSession: ClawImRemoteSessionV1 = {
+      chatId: message.chatId,
+      messageId: message.messageId,
+      threadId: '',
+      senderId: message.senderId,
+      senderName: message.senderName,
+      updatedAt: new Date().toISOString()
+    }
+    const conversation = this.findChannelConversation(channel, {
+      chatId: remoteSession.chatId,
+      threadId: remoteSession.threadId
+    })
+    try {
+      const commandReply = await this.handleIncomingImCommand(settings, {
+        text: message.text,
+        channel,
+        conversation,
+        remoteSession
+      })
+      if (commandReply !== null) {
+        await message.reply(commandReply)
+        return
+      }
+      const taskCreation = await this.deps.createScheduledTaskFromText?.(message.text, {
+        workspaceRoot: this.resolveChannelWorkspaceRoot(settings, channel),
+        modelHint: channel.model || settings.claw.im.model,
+        mode: settings.claw.im.mode
+      }) ?? { kind: 'noop' as const }
+      if (taskCreation.kind === 'created') {
+        await message.reply(taskCreation.confirmationText)
+        return
+      }
+      if (taskCreation.kind === 'error') {
+        await message.reply(taskCreation.message)
+        return
+      }
+      const result = await this.processIncomingImPrompt(settings, {
+        prompt: message.text,
+        sender: message.senderName || message.senderId,
+        provider: message.provider,
+        channel,
+        conversation,
+        remoteSession
+      })
+      await message.reply(
+        result.ok
+          ? result.text?.trim() || result.message?.trim() || 'Completed.'
+          : result.message.trim() || 'Sorry, something went wrong while handling your message.'
+      )
+    } catch (error) {
+      this.deps.logError(`claw-${message.provider}`, 'Failed to handle inbound message.', {
+        message: errorMessage(error),
+        channelId,
+        chatId: message.chatId,
+        senderId: message.senderId
+      })
+      await message.reply('Sorry, I could not process your message right now.').catch(() => undefined)
+    }
+  }
+
+  private async syncRegionalChannels(settings: AppSettingsV1): Promise<void> {
+    const version = ++this.regionalSyncVersion
+    const targets = settings.claw.enabled && settings.claw.im.enabled
+      ? settings.claw.channels
+          .filter((channel) => channel.enabled)
+          .filter(isRegionalChannel)
+      : []
+    const targetIds = new Set(targets.map((channel) => channel.id))
+    await Promise.all(
+      [...this.regionalChannels.keys()]
+        .filter((channelId) => !targetIds.has(channelId))
+        .map((channelId) => this.closeRegionalChannel(channelId))
+    )
+    for (const target of targets) {
+      if (version !== this.regionalSyncVersion) return
+      const nextKey = regionalChannelKey(target)
+      if (
+        this.regionalChannels.has(target.id) &&
+        this.regionalChannelKeys.get(target.id) === nextKey
+      ) {
+        continue
+      }
+      await this.closeRegionalChannel(target.id)
+      if (version !== this.regionalSyncVersion) return
+      const bridge = createRegionalChannelBridge({
+        channel: target,
+        onMessage: (message) => this.handleRegionalInboundMessage(target.id, message),
+        onError: (message, context) => {
+          this.deps.logError(`claw-${target.provider}`, message, {
+            channelId: target.id,
+            ...context
+          })
+        }
+      })
+      this.regionalChannels.set(target.id, bridge)
+      this.regionalChannelKeys.set(target.id, nextKey)
+      try {
+        await bridge.start()
+      } catch (error) {
+        if (this.regionalChannels.get(target.id) === bridge) {
+          this.regionalChannels.delete(target.id)
+          this.regionalChannelKeys.delete(target.id)
+        }
+        await bridge.stop().catch(() => undefined)
+        this.deps.logError(`claw-${target.provider}`, 'Failed to start channel.', {
+          channelId: target.id,
+          message: errorMessage(error)
+        })
+      }
+    }
+  }
+
+  private async closeRegionalChannel(channelId: string): Promise<void> {
+    const bridge = this.regionalChannels.get(channelId)
+    this.regionalChannels.delete(channelId)
+    this.regionalChannelKeys.delete(channelId)
+    if (bridge) await bridge.stop().catch(() => undefined)
+  }
+
+  private async closeAllRegionalChannels(): Promise<void> {
+    this.regionalSyncVersion += 1
+    const ids = [...this.regionalChannels.keys()]
+    await Promise.all(ids.map((channelId) => this.closeRegionalChannel(channelId)))
   }
 
   private resolveFeishuChannels(settings: AppSettingsV1): FeishuClawChannel[] {

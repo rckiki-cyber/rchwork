@@ -11,7 +11,7 @@
       version: 1,
       locale: 'zh',
       theme: 'dark',
-      uiFontScale: 'small',
+      uiFontScale: 'medium',
       provider: {
         profiles: [],
         activeProfileId: '',

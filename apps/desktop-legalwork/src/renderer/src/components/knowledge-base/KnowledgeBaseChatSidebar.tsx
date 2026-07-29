@@ -64,8 +64,10 @@ export function KnowledgeBaseChatSidebar({
             <button
               key={thread.id}
               type="button"
+              data-sidebar-hover-target
+              data-sidebar-active={activeThreadId === thread.id ? 'true' : undefined}
               onClick={() => onSelectThread(thread.id)}
-              className={`group relative w-full rounded-[8px] px-3 py-2 text-left text-[13px] transition-colors ${
+              className={`group relative w-full rounded-[12px] px-3 py-2 text-left text-[13px] transition-colors ${
                 activeThreadId === thread.id
                   ? 'bg-[var(--ds-sidebar-row-active)] text-[var(--ds-ink)]'
                   : 'text-[var(--ds-ink)] hover:bg-[var(--ds-sidebar-row-hover)]'

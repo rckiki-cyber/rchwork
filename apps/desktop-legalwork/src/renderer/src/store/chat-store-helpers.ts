@@ -184,13 +184,13 @@ export function isClawThread(
   return clawThreadTitleLooksManaged(thread.title) || clawThreadIdsFromChannels(channels).has(thread.id)
 }
 
-const LEGAL_RESEARCH_TITLE_PREFIX = '法律调研:'
+const LEGAL_RESEARCH_TITLE_PREFIXES = ['法律调研:', '法律调研：']
 
 export function isLegalResearchThread(
   thread: Pick<NormalizedThread, 'title'>
 ): boolean {
   const trimmed = thread.title?.trim() ?? ''
-  return trimmed.startsWith(LEGAL_RESEARCH_TITLE_PREFIX)
+  return LEGAL_RESEARCH_TITLE_PREFIXES.some((prefix) => trimmed.startsWith(prefix))
 }
 
 const KNOWLEDGE_TITLE_PREFIXES = ['知识库全局对话', '知识库：']
@@ -240,6 +240,9 @@ export function hydrateBlockModelLabels(threadId: string, blocks: ChatBlock[]): 
 
 function defaultClawProviderLabel(provider: ClawImProvider): string {
   if (provider === 'weixin') return 'weixin agent'
+  if (provider === 'qq') return 'QQ agent'
+  if (provider === 'dingtalk') return 'DingTalk agent'
+  if (provider === 'wecom') return 'WeCom agent'
   return 'feishu agent'
 }
 

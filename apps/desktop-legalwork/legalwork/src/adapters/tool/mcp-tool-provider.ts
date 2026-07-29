@@ -10,7 +10,7 @@ import type {
   McpCapabilityConfig,
   McpServerConfig
 } from '../../contracts/capabilities.js'
-import { redactSecretText } from '../../config/secret-redaction.js'
+import { REDACTED_SECRET, redactSecretText } from '../../config/secret-redaction.js'
 import type { ToolHostContext } from '../../ports/tool-host.js'
 import type { CapabilityToolProvider } from './capability-registry.js'
 import { LocalToolHost, type LocalTool } from './local-tool-host.js'
@@ -21,6 +21,10 @@ import {
   type McpSearchCatalogState,
   type McpSearchRuntimeDiagnostic
 } from './mcp-tool-search.js'
+import {
+  createPkulawConnectionCandidates,
+  resolveBundledPkulawToken
+} from './pkulaw-fallback-auth.js'
 
 export type McpToolDescriptor = {
   name: string
@@ -59,7 +63,7 @@ export type McpServerDiagnostic = {
   transport: McpServerConfig['transport']
   trustScope: McpServerConfig['trustScope']
   available: boolean
-  status: 'disabled' | 'connected' | 'error'
+  status: 'disabled' | 'connecting' | 'connected' | 'error'
   toolCount: number
   catalogFingerprint?: string
   catalogDrift?: boolean
@@ -80,11 +84,14 @@ export type McpToolProviderOptions = {
   clientFactory?: (serverId: string, server: McpServerConfig) => Promise<McpClientLike>
   nowIso?: () => string
   startupTimeoutMs?: number
+  resolvePkulawFallbackToken?: () => string | undefined
 }
 
 type McpConnectionState = {
   serverId: string
   server: McpServerConfig
+  connectionCandidates: McpServerConfig[]
+  activeCandidateIndex: number
   client: McpClientLike
   clientFactory: (serverId: string, server: McpServerConfig) => Promise<McpClientLike>
   nowIso: () => string
@@ -105,6 +112,42 @@ const MCP_STARTUP_TIMEOUT_MS = 30_000
 const STDIO_STARTUP_TIMEOUT_MS = 60_000
 const COMMON_EXEC_PATHS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']
 const FLINT_CHART_SERVER_IDS = new Set(['flint-chart', 'flint_chart'])
+
+export function pendingMcpToolProviders(
+  config: McpCapabilityConfig | undefined
+): McpToolProviderBuildResult {
+  const searchConfig = config?.search ?? {
+    enabled: false,
+    mode: 'auto' as const,
+    autoThresholdToolCount: 24,
+    topKDefault: 5,
+    topKMax: 10,
+    minScore: 0.15,
+    bm25: { k1: 1.2, b: 0.75 }
+  }
+  const diagnostics = Object.entries(config?.servers ?? {}).map(([serverId, server]) => {
+    const effectivelyEnabled = server.enabled && (config?.enabled !== false)
+    return serverDiagnostic(
+      { serverId, server: { ...server, enabled: effectivelyEnabled } },
+      effectivelyEnabled ? 'connecting' : 'disabled',
+      0
+    )
+  })
+  return {
+    providers: [],
+    diagnostics,
+    search: mcpSearchDiagnostic({
+      config: searchConfig,
+      active: false,
+      indexedToolCount: 0,
+      advertisedToolCount: 0,
+      state: { records: [] }
+    }),
+    connectedServers: 0,
+    toolCount: 0,
+    close: async () => undefined
+  }
+}
 
 export async function buildMcpToolProviders(
   config: McpCapabilityConfig | undefined,
@@ -143,25 +186,25 @@ export async function buildMcpToolProviders(
       close: async () => undefined
     }
   }
+  const pkulawFallbackToken = (
+    options.resolvePkulawFallbackToken ?? resolveBundledPkulawToken
+  )()
 
-  const outcomes = await Promise.all(Object.entries(mcp.servers).map(async ([serverId, server]) => {
+  const outcomeResults = await Promise.allSettled(Object.entries(mcp.servers).map(async ([serverId, server]) => {
     if (!server.enabled) {
       return {
         diagnostic: serverDiagnostic({ serverId, server }, 'disabled', 0)
       } satisfies McpServerBuildOutcome
     }
     try {
-      const startupServer = serverWithStartupTimeout(server, startupTimeoutMs)
-      const client = await clientFactory(serverId, startupServer)
-      const state: McpConnectionState = {
+      const connectionCandidates = createPkulawConnectionCandidates(server, pkulawFallbackToken)
+      const { state, listed } = await connectMcpServer({
         serverId,
-        server,
-        client,
+        connectionCandidates,
         clientFactory,
         nowIso,
-        lastConnectedAt: nowIso()
-      }
-      const listed = await refreshMcpConnectionCatalog(state)
+        startupTimeoutMs
+      })
       const catalogRecords = listed.map((tool) => createMcpSearchCatalogRecord(state, tool))
       const tools = listed.map((tool) => createMcpLocalTool(state, tool))
       return {
@@ -178,10 +221,18 @@ export async function buildMcpToolProviders(
       } satisfies McpServerBuildOutcome
     } catch (error) {
       return {
-        diagnostic: serverDiagnostic({ serverId, server }, 'error', 0, errorMessage(error))
+        diagnostic: serverDiagnostic(
+          { serverId, server },
+          'error',
+          0,
+          redactMcpErrorMessage(error, [server])
+        )
       } satisfies McpServerBuildOutcome
     }
   }))
+  const outcomes = outcomeResults
+    .map((result) => (result.status === 'fulfilled' ? result.value : null))
+    .filter((outcome): outcome is NonNullable<typeof outcome> => outcome !== null)
 
   for (const outcome of outcomes) {
     diagnostics.push(outcome.diagnostic)
@@ -204,7 +255,7 @@ export async function buildMcpToolProviders(
           const records: McpSearchCatalogRecord[] = []
           const previousFingerprint = catalogState.catalogFingerprint
           for (const state of connected) {
-            const listed = await refreshMcpConnectionCatalog(state)
+            const listed = await refreshMcpConnectionCatalogWithFallback(state)
             records.push(...listed.map((tool) => createMcpSearchCatalogRecord(state, tool)))
           }
           catalogState.records = records
@@ -250,6 +301,42 @@ export function isMcpServerTrusted(server: McpServerConfig, workspace: string): 
   void server
   void workspace
   return true
+}
+
+async function connectMcpServer(input: {
+  serverId: string
+  connectionCandidates: McpServerConfig[]
+  clientFactory: (serverId: string, server: McpServerConfig) => Promise<McpClientLike>
+  nowIso: () => string
+  startupTimeoutMs: number
+}): Promise<{ state: McpConnectionState; listed: McpToolDescriptor[] }> {
+  let lastError: Error | undefined
+  for (let index = 0; index < input.connectionCandidates.length; index += 1) {
+    const server = input.connectionCandidates[index]!
+    let client: McpClientLike | undefined
+    try {
+      client = await input.clientFactory(
+        input.serverId,
+        serverWithStartupTimeout(server, input.startupTimeoutMs)
+      )
+      const state: McpConnectionState = {
+        serverId: input.serverId,
+        server,
+        connectionCandidates: input.connectionCandidates,
+        activeCandidateIndex: index,
+        client,
+        clientFactory: input.clientFactory,
+        nowIso: input.nowIso,
+        lastConnectedAt: input.nowIso()
+      }
+      const listed = await refreshMcpConnectionCatalog(state)
+      return { state, listed }
+    } catch (error) {
+      await client?.close().catch(() => undefined)
+      lastError = redactedMcpError(error, input.connectionCandidates)
+    }
+  }
+  throw lastError ?? new Error(`MCP server ${input.serverId} has no usable connection candidate`)
 }
 
 async function createSdkMcpClient(serverId: string, server: McpServerConfig): Promise<McpClientLike> {
@@ -641,6 +728,23 @@ async function refreshMcpConnectionCatalog(state: McpConnectionState): Promise<M
   return listed
 }
 
+async function refreshMcpConnectionCatalogWithFallback(
+  state: McpConnectionState
+): Promise<McpToolDescriptor[]> {
+  try {
+    return await refreshMcpConnectionCatalog(state)
+  } catch (error) {
+    state.lastError = redactMcpErrorMessage(error, state.connectionCandidates)
+    const client = await reconnectMcpConnection(state)
+    void client
+    try {
+      return await refreshMcpConnectionCatalog(state)
+    } catch (retryError) {
+      throw redactedMcpError(retryError, state.connectionCandidates)
+    }
+  }
+}
+
 async function callMcpToolWithReconnect(
   state: McpConnectionState,
   input: { name: string; arguments: Record<string, unknown> },
@@ -648,22 +752,66 @@ async function callMcpToolWithReconnect(
   timeout = state.server.timeoutMs
 ): Promise<unknown> {
   try {
-    return await state.client.callTool(input, { signal, timeout })
+    const result = await state.client.callTool(input, { signal, timeout })
+    if (mcpResultRequiresCredentialFallback(result) && hasNextConnectionCandidate(state)) {
+      const client = await reconnectMcpConnection(state)
+      const retried = await client.callTool(input, { signal, timeout })
+      return redactMcpPayload(retried, state.connectionCandidates)
+    }
+    return redactMcpPayload(result, state.connectionCandidates)
   } catch (error) {
-    state.lastError = redactSecretText(errorMessage(error))
+    state.lastError = redactMcpErrorMessage(error, state.connectionCandidates)
     if (signal?.aborted) throw error
-    const client = await reconnectMcpConnection(state)
-    return client.callTool(input, { signal, timeout })
+    try {
+      const client = await reconnectMcpConnection(state)
+      const result = await client.callTool(input, { signal, timeout })
+      return redactMcpPayload(result, state.connectionCandidates)
+    } catch (retryError) {
+      throw redactedMcpError(retryError, state.connectionCandidates)
+    }
   }
 }
 
 async function reconnectMcpConnection(state: McpConnectionState): Promise<McpClientLike> {
   await state.client.close().catch(() => undefined)
-  const client = await state.clientFactory(state.serverId, state.server)
-  state.client = client
-  state.lastConnectedAt = state.nowIso()
-  state.lastError = undefined
-  return client
+  const nextIndex = hasNextConnectionCandidate(state)
+    ? state.activeCandidateIndex + 1
+    : state.activeCandidateIndex
+  const indexes = [
+    ...Array.from(
+      { length: state.connectionCandidates.length - nextIndex },
+      (_, offset) => nextIndex + offset
+    ),
+    ...(nextIndex === state.activeCandidateIndex ? [] : [state.activeCandidateIndex])
+  ]
+  let lastError: unknown
+  for (const index of indexes) {
+    const server = state.connectionCandidates[index]!
+    try {
+      const client = await state.clientFactory(state.serverId, server)
+      state.server = server
+      state.activeCandidateIndex = index
+      state.client = client
+      state.lastConnectedAt = state.nowIso()
+      state.lastError = undefined
+      return client
+    } catch (error) {
+      lastError = error
+    }
+  }
+  // No viable candidate found; throw the last error or a clear fallback
+  if (lastError) throw redactedMcpError(lastError, state.connectionCandidates)
+  throw new Error(`MCP server ${state.serverId}: all connection candidates failed (${state.connectionCandidates.length} tried)`)
+}
+
+function hasNextConnectionCandidate(state: McpConnectionState): boolean {
+  return state.activeCandidateIndex + 1 < state.connectionCandidates.length
+}
+
+function mcpResultRequiresCredentialFallback(result: unknown): boolean {
+  if (!mcpResultIsError(result)) return false
+  return /\b(401|403|429)\b|unauthori[sz]ed|forbidden|invalid[^.\n]*(token|credential)|quota|鉴权|认证|令牌|权限|额度/i
+    .test(stringifyForSecretScan(result))
 }
 
 function isFlintChartServer(serverId: string): boolean {
@@ -831,6 +979,86 @@ function slug(value: string): string {
 
 function normalizePathForTrust(value: string): string {
   return value.replace(/\\/g, '/').replace(/\/+$/g, '')
+}
+
+function redactMcpPayload<T>(value: T, servers: McpServerConfig[]): T {
+  const secrets = mcpServerSecretValues(servers)
+  const visit = (input: unknown): unknown => {
+    if (typeof input === 'string') return redactKnownSecretText(input, secrets)
+    if (Array.isArray(input)) return input.map(visit)
+    if (!input || typeof input !== 'object') return input
+    return Object.fromEntries(
+      Object.entries(input).map(([key, child]) => [
+        key,
+        /authorization|token|secret|password|api[-_]?key/i.test(key)
+          ? REDACTED_SECRET
+          : visit(child)
+      ])
+    )
+  }
+  return visit(value) as T
+}
+
+function redactMcpErrorMessage(error: unknown, servers: McpServerConfig[]): string {
+  return redactKnownSecretText(errorMessage(error), mcpServerSecretValues(servers))
+}
+
+function redactedMcpError(error: unknown, servers: McpServerConfig[]): Error {
+  const safe = new Error(redactMcpErrorMessage(error, servers))
+  safe.name = error instanceof Error ? error.name : 'Error'
+  return safe
+}
+
+function redactKnownSecretText(value: string, secrets: string[]): string {
+  let redacted = value
+  for (const secret of secrets) {
+    if (secret.length >= 8) redacted = redacted.split(secret).join(REDACTED_SECRET)
+  }
+  return redactSecretText(redacted)
+}
+
+function mcpServerSecretValues(servers: McpServerConfig[]): string[] {
+  const values = new Set<string>()
+  for (const server of servers) {
+    // Extract from Authorization and other secret headers
+    for (const [key, value] of Object.entries(server.headers)) {
+      if (!/authorization|token|secret|password|api[-_]?key/i.test(key)) continue
+      const trimmed = value.trim()
+      if (!trimmed) continue
+      values.add(trimmed)
+      const bearer = trimmed.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
+      if (bearer) values.add(bearer)
+    }
+    // Extract embedded credentials from URL (user:password@host)
+    if (server.url) {
+      try {
+        const parsed = new URL(server.url)
+        if (parsed.password) values.add(parsed.password)
+        if (parsed.username) values.add(parsed.username)
+      } catch { /* ignore invalid URLs */ }
+    }
+    // Extract token-like values from env (secret-looking env values)
+    for (const [, value] of Object.entries(server.env)) {
+      const trimmed = value.trim()
+      if (!trimmed || trimmed.length < 16) continue
+      if (/^(?:sk-|pk-|Bearer\s+|eyJ)/i.test(trimmed)) values.add(trimmed)
+    }
+    // Extract token-like values from command args
+    for (const arg of server.args) {
+      const trimmed = arg.trim()
+      if (!trimmed || trimmed.length < 16) continue
+      if (/^(?:sk-|pk-|eyJ|[A-Za-z0-9_-]{20,})/.test(trimmed)) values.add(trimmed)
+    }
+  }
+  return [...values].sort((left, right) => right.length - left.length)
+}
+
+function stringifyForSecretScan(value: unknown): string {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
 }
 
 function errorMessage(error: unknown): string {

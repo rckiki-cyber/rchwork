@@ -1436,7 +1436,7 @@ export class AgentLoop {
       mode: plan.mode,
       keepRecent: plan.keepRecent
     })
-    if (result.replacedTokens > 0 && this.opts.contextCompaction?.summaryMode === 'model') {
+    if (result.replacedTokens > 0) {
       const modelSummary = await this.summarizeCompactionWithModel({
         threadId,
         turnId,

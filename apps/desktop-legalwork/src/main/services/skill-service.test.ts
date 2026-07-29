@@ -12,7 +12,12 @@ import {
   defaultWriteSettings,
   type AppSettingsV1
 } from '../../shared/app-settings'
-import { importGuiSkillFromPath, listGuiSkills, shouldSkipSkillScanEntry } from './skill-service'
+import {
+  computerWideSkillSearchRoots,
+  importGuiSkillFromPath,
+  listGuiSkills,
+  shouldSkipSkillScanEntry
+} from './skill-service'
 
 describe('skill-service', () => {
   let tempRoot = ''
@@ -168,6 +173,7 @@ describe('skill-service', () => {
     expect(shouldSkipSkillScanEntry(home, 'Pictures')).toBe(true)
     expect(shouldSkipSkillScanEntry(home, 'Music')).toBe(true)
     expect(shouldSkipSkillScanEntry(home, 'Movies')).toBe(true)
+    expect(shouldSkipSkillScanEntry(home, 'Library')).toBe(true)
     // 任意深度的系统媒体库包（读取包内文件会触发 kTCCServicePhotos 等授权）
     expect(shouldSkipSkillScanEntry(home, 'Photos Library.photoslibrary')).toBe(true)
     expect(shouldSkipSkillScanEntry('/some/nested/dir', 'Photos Library.photoslibrary')).toBe(true)
@@ -177,6 +183,20 @@ describe('skill-service', () => {
     expect(shouldSkipSkillScanEntry(home, 'Projects')).toBe(false)
     expect(shouldSkipSkillScanEntry(home, 'skills')).toBe(false)
     expect(shouldSkipSkillScanEntry('/some/nested/dir', 'my-skills')).toBe(false)
+  })
+
+  it('does not automatically crawl the home, Documents, or media directories', () => {
+    const home = '/Users/tester'
+    const roots = computerWideSkillSearchRoots(home)
+
+    expect(roots).toEqual([
+      join(home, 'Projects'),
+      join(home, 'Workspace')
+    ])
+    expect(roots).not.toContain(home)
+    expect(roots).not.toContain(join(home, 'Documents'))
+    expect(roots).not.toContain(join(home, 'Pictures'))
+    expect(roots).not.toContain(join(home, 'Library'))
   })
 
   function createSettings(workspaceRoot: string): AppSettingsV1 {

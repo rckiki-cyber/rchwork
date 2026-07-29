@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 import { DocumentKnowledgePanel } from './DocumentKnowledgePanel'
 import { DocumentWritingEditor } from './DocumentWritingEditor'
 import { useDocumentWriting } from './DocumentWritingContext'
+import { DocumentWritingWorkflowPanel } from './DocumentWritingWorkflowPanel'
 
 const KNOWLEDGE_PANEL_MIN_WIDTH = 360
 const KNOWLEDGE_PANEL_MAX_WIDTH = 640
@@ -53,6 +54,7 @@ export function DocumentWritingView(): ReactElement {
           generating={documentWriting.generating}
           error={documentWriting.error}
           onFieldChange={documentWriting.handleFieldChange}
+          onGeneratedContentChange={documentWriting.handleGeneratedContentChange}
           onGenerate={() => void documentWriting.handleGenerate()}
           onNewDocument={documentWriting.handleNewDocument}
           uploadedMaterials={documentWriting.uploadedMaterials}
@@ -79,6 +81,7 @@ export function DocumentWritingView(): ReactElement {
           </div>
         </>
       ) : null}
+      <DocumentWritingWorkflowPanel />
     </div>
   )
 }

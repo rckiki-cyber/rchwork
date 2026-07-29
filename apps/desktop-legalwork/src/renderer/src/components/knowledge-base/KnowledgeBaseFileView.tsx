@@ -5,7 +5,6 @@ import {
   AudioLines,
   ExternalLink,
   File,
-  FileCode2,
   Loader2,
   MessageSquare,
   PanelRightClose,
@@ -13,7 +12,6 @@ import {
   Wrench,
   X
 } from 'lucide-react'
-import { SendIcon } from '../icons/SendIcon'
 import {
   LEGALWORK_KNOWLEDGE_EXTRACT_TEXT_PATH,
   LEGALWORK_KNOWLEDGE_READ_FILE_PATH,
@@ -37,6 +35,14 @@ import {
 } from './knowledge-chat-history'
 import { extractPdfTextFromBase64, PdfJsPreview } from './PdfJsPreview'
 import { setKnowledgeSourceMap, setKnowledgeOpenFileHandler } from './source-map-store'
+import { KnowledgeFileIcon, KnowledgeFileTypeBadge } from './KnowledgeFileIcon'
+import {
+  KnowledgeChatComposer,
+  KnowledgeChatEmptyState,
+  KnowledgeChatHeader,
+  KnowledgeChatMessage
+} from './KnowledgeChatUI'
+import { KnowledgeAssistantContent } from './KnowledgeReasoningBlock'
 
 // ── Helpers (copied from KnowledgeBaseView to keep this file self-contained) ──
 
@@ -135,6 +141,7 @@ type ChatMessage = {
   id: string
   role: 'user' | 'assistant' | 'reasoning' | 'tool'
   content: string
+  reasoning?: string
   timestamp: number
   status?: string
 }
@@ -236,6 +243,7 @@ export function KnowledgeBaseFileView({
   const [runtimeModel, setRuntimeModel] = useState('')
   const [chatOpen, setChatOpen] = useState(true)
   const [chatWidth, setChatWidth] = useState(360)
+  const [splitWidth, setSplitWidth] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatAbortRef = useRef<AbortController | null>(null)
   const resizingChatRef = useRef(false)
@@ -245,16 +253,39 @@ export function KnowledgeBaseFileView({
   const MAX_CHAT_WIDTH = 520
   const MIN_PREVIEW_WIDTH = 720
 
+  useEffect(() => {
+    const container = splitContainerRef.current
+    if (!container) return
+
+    const updateWidth = (): void => setSplitWidth(container.clientWidth)
+    updateWidth()
+
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [])
+
+  const effectiveChatWidth = splitWidth > 0
+    ? Math.min(
+        splitWidth,
+        Math.max(
+          Math.min(280, splitWidth),
+          Math.min(chatWidth, MAX_CHAT_WIDTH, Math.floor(splitWidth * 0.38))
+        )
+      )
+    : Math.min(chatWidth, MAX_CHAT_WIDTH)
+
   const startChatResize = useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
     resizingChatRef.current = true
     const startX = event.clientX
-    const startWidth = chatWidth
+    const startWidth = effectiveChatWidth
     const onMove = (ev: PointerEvent): void => {
       if (!resizingChatRef.current) return
       const delta = startX - ev.clientX
       const containerWidth = splitContainerRef.current?.clientWidth ?? window.innerWidth
-      const maxWidthWithPreview = Math.max(MIN_CHAT_WIDTH, containerWidth - MIN_PREVIEW_WIDTH)
+      const responsivePreviewMin = Math.min(MIN_PREVIEW_WIDTH, Math.floor(containerWidth * 0.58))
+      const maxWidthWithPreview = Math.max(MIN_CHAT_WIDTH, containerWidth - responsivePreviewMin)
       const nextMax = Math.min(MAX_CHAT_WIDTH, maxWidthWithPreview)
       const next = Math.max(MIN_CHAT_WIDTH, Math.min(nextMax, startWidth + delta))
       setChatWidth(next)
@@ -266,7 +297,7 @@ export function KnowledgeBaseFileView({
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
-  }, [chatWidth])
+  }, [effectiveChatWidth])
 
   const toggleChat = useCallback((): void => {
     setChatOpen((prev) => !prev)
@@ -692,15 +723,12 @@ ${question.trim()}
 
       const finalReasoning = streamedReasoning.trim()
       const finalContent = markedUp || '（AI 未返回任何内容）'
-      // Merge reasoning and assistant into one message, with reasoning in a collapsible section
-      const mergedContent = finalReasoning
-        ? `<details style="margin-bottom:8px;font-size:0.85em"><summary style="cursor:pointer;user-select:none;color:var(--ds-muted)"><span style="opacity:0.5">💭</span> 思考过程</summary>\n\n${finalReasoning}\n\n</details>\n\n${finalContent}`
-        : finalContent
 
       setMessages((prev) => [...prev, {
         id: `ai_${Date.now()}`,
         role: 'assistant',
-        content: mergedContent,
+        content: finalContent,
+        ...(finalReasoning ? { reasoning: finalReasoning } : {}),
         timestamp: Date.now()
       }])
       setLiveReasoning('')
@@ -738,9 +766,9 @@ ${question.trim()}
   // ── Render ──
 
   return (
-    <div className="ds-no-drag flex h-full min-h-0 flex-col bg-[var(--ds-main)]">
+    <div className="ds-no-drag flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[var(--ds-main)]">
       {/* Header */}
-      <header className="flex shrink-0 items-center justify-between border-b border-ds-border px-6 py-3">
+      <header className="flex h-[66px] shrink-0 items-center justify-between border-b border-ds-border bg-[color-mix(in_srgb,var(--ds-card-soft)_78%,transparent)] px-5 backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
@@ -750,12 +778,13 @@ ${question.trim()}
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.8} />
           </button>
-          <FileCode2 className="h-5 w-5 text-[var(--ds-accent)]" strokeWidth={1.7} />
+          <KnowledgeFileIcon node={node} size={30} />
           <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-semibold text-[var(--ds-ink)]">{node.name}</h2>
-            <p className="text-[12px] text-[var(--ds-muted)]">
-              {fileTypeLabel(node)} · {formatBytes(node.sizeBytes)}
-            </p>
+            <h2 className="truncate text-[14px] font-semibold tracking-[-0.01em] text-[var(--ds-ink)]">{node.name}</h2>
+            <div className="mt-1 flex items-center gap-2 text-[11.5px] text-[var(--ds-muted)]">
+              <KnowledgeFileTypeBadge node={node} />
+              <span>{formatBytes(node.sizeBytes)}</span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -788,9 +817,9 @@ ${question.trim()}
       </header>
 
       {/* Content + Chat split */}
-      <div ref={splitContainerRef} className="flex min-h-0 flex-1">
+      <div ref={splitContainerRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* File Content Panel */}
-        <div className={`flex min-w-[min(720px,100%)] flex-1 flex-col ${chatOpen ? 'border-r border-ds-border' : ''}`}>
+        <div className={`flex min-w-0 flex-1 flex-col overflow-hidden ${chatOpen ? 'border-r border-ds-border' : ''}`}>
           {fileLoading ? (
             <div className="flex h-full items-center justify-center gap-2 text-[13px] text-[var(--ds-muted)]">
               <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.8} />
@@ -848,7 +877,7 @@ ${question.trim()}
                 </pre>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
-                  <File className="h-10 w-10 text-slate-300" strokeWidth={1.4} />
+                  <KnowledgeFileIcon node={node} size={48} />
                   <div className="text-[13px] font-medium text-[var(--ds-ink)]">
                     {fileTypeLabel(node)} 文件
                   </div>
@@ -884,15 +913,15 @@ ${question.trim()}
               onPointerDown={startChatResize}
             />
             <aside
-              className="flex h-full min-w-0 flex-col border-l border-ds-border bg-ds-card"
-              style={{ width: chatWidth }}
+              className="flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-ds-border bg-ds-card"
+              style={{ width: effectiveChatWidth }}
             >
-          <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-ds-border px-4 py-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <ModelBrandIcon brand={modelBrand} className="h-5 w-5" />
-              <span className="text-[13px] font-medium text-[var(--ds-ink)]">AI 对话</span>
-            </div>
-            <div className="flex min-w-0 shrink-0 items-center gap-1.5">
+          <KnowledgeChatHeader
+            title="知识库 AI 对话"
+            contextLabel={`当前文件 · ${node.name}`}
+            icon={<ModelBrandIcon brand={modelBrand} className="h-5 w-5" />}
+            actions={(
+              <>
               <FloatingComposerModelPicker
                 compact
                 mode="combobox"
@@ -912,116 +941,92 @@ ${question.trim()}
                   <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
                 </button>
               ) : null}
-            </div>
-          </div>
+              </>
+            )}
+          />
 
           {messages.length === 0 && !sending && !liveAssistant && !liveReasoning ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-              <AnimatedWorkLogo active brand={modelBrand} phase="lead" size="md" />
-              <div className="text-[13px] font-medium text-[var(--ds-ink)]">关于此文件提问</div>
-              <p className="text-[12px] leading-relaxed text-[var(--ds-muted)]">
-                基于当前文件内容进行 AI 对话。你可以询问文件中的关键信息、法律条款分析或内容总结。
-              </p>
-            </div>
+            <KnowledgeChatEmptyState
+              visual={<AnimatedWorkLogo active brand={modelBrand} phase="lead" size="sm" />}
+              title="关于此文件提问"
+              description="基于当前文件内容进行对话，可询问关键信息、法律条款、风险分析或内容总结。"
+              contextLabel={node.name}
+            />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               {messages.map((msg) => (
-                <div
+                <KnowledgeChatMessage
                   key={msg.id}
-                  className={`mb-4 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  {msg.role !== 'user' ? (
-                    <div className="mr-2 mt-1 shrink-0">
-                      {msg.role === 'tool' ? (
-                        <Wrench className="h-5 w-5 text-[var(--ds-muted)]" strokeWidth={1.7} />
-                      ) : (
-                        <ModelBrandIcon brand={modelBrand} className="h-5 w-5" />
-                      )}
-                    </div>
-                  ) : null}
-                  <div
-                    className={`max-w-[85%] rounded-[12px] px-4 py-2.5 text-[13px] leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-[var(--ds-accent)] text-white'
-                        : msg.role === 'reasoning'
-                          ? 'border border-ds-border bg-ds-card/70 text-[var(--ds-muted)]'
-                          : msg.role === 'tool'
-                            ? 'border border-ds-border bg-ds-card/70 text-[var(--ds-muted)]'
-                        : 'border border-ds-border bg-[var(--ds-main)] text-[var(--ds-ink)]'
-                    }`}
-                  >
-                    {msg.role === 'assistant' || msg.role === 'reasoning' ? (
-                      <AssistantMarkdown
-                        text={msg.content}
-                        streaming={false}
-                        className="ds-markdown ds-chat-answer break-words"
-                      />
-                    ) : msg.role === 'tool' ? (
-                      <div className="flex items-center gap-2">
-                        {msg.status === 'running' ? (
-                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" strokeWidth={1.8} />
-                        ) : null}
-                        <span className="min-w-0 flex-1 break-words">{msg.content}</span>
-                      </div>
+                  role={msg.role}
+                  timestamp={msg.timestamp}
+                  leading={msg.role !== 'user' ? (
+                    msg.role === 'tool' ? (
+                      <Wrench className="h-5 w-5 text-[var(--ds-muted)]" strokeWidth={1.7} />
                     ) : (
-                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-                    )}
-                    <div
-                      className={`mt-1 text-[10px] ${
-                        msg.role === 'user' ? 'text-white/60' : 'text-[var(--ds-muted)]'
-                      }`}
-                    >
-                      {new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
+                      <ModelBrandIcon brand={modelBrand} className="h-5 w-5" />
+                    )
+                  ) : undefined}
+                >
+                  {msg.role === 'assistant' ? (
+                    <KnowledgeAssistantContent
+                      content={msg.content}
+                      reasoning={msg.reasoning}
+                    />
+                  ) : msg.role === 'reasoning' ? (
+                    <AssistantMarkdown
+                      text={msg.content}
+                      streaming={false}
+                      className="ds-markdown ds-chat-answer break-words"
+                    />
+                  ) : msg.role === 'tool' ? (
+                    <div className="flex items-center gap-2">
+                      {msg.status === 'running' ? (
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" strokeWidth={1.8} />
+                      ) : null}
+                      <span className="min-w-0 flex-1 break-words">{msg.content}</span>
                     </div>
-                  </div>
-                </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                  )}
+                </KnowledgeChatMessage>
               ))}
 
               {liveReasoning ? (
-                <div className="mb-4 flex justify-start">
-                  <div className="mr-2 mt-1 shrink-0">
-                    <AnimatedWorkLogo active brand={modelBrand} phase="trail" size="sm" />
-                  </div>
-                  <div className="max-w-[85%] rounded-[12px] border border-ds-border bg-ds-card/70 px-4 py-2.5 text-[13px] leading-relaxed text-[var(--ds-muted)]">
-                    <AssistantMarkdown
-                      text={liveReasoning}
-                      streaming
-                      className="ds-markdown ds-chat-answer break-words"
-                    />
-                  </div>
-                </div>
+                <KnowledgeChatMessage
+                  role="reasoning"
+                  leading={<AnimatedWorkLogo active brand={modelBrand} phase="trail" size="sm" />}
+                >
+                  <AssistantMarkdown
+                    text={liveReasoning}
+                    streaming
+                    className="ds-markdown ds-chat-answer break-words"
+                  />
+                </KnowledgeChatMessage>
               ) : null}
 
               {liveAssistant ? (
-                <div className="mb-4 flex justify-start">
-                  <div className="mr-2 mt-1 shrink-0">
-                    <ModelBrandIcon brand={modelBrand} className="h-5 w-5" />
-                  </div>
-                  <div className="max-w-[85%] rounded-[12px] border border-ds-border bg-[var(--ds-main)] px-4 py-2.5 text-[13px] leading-relaxed text-[var(--ds-ink)]">
-                    <AssistantMarkdown
-                      text={liveAssistant}
-                      streaming
-                      className="ds-markdown ds-chat-answer break-words"
-                    />
-                  </div>
-                </div>
+                <KnowledgeChatMessage
+                  role="assistant"
+                  leading={<ModelBrandIcon brand={modelBrand} className="h-5 w-5" />}
+                >
+                  <AssistantMarkdown
+                    text={liveAssistant}
+                    streaming
+                    className="ds-markdown ds-chat-answer break-words"
+                  />
+                </KnowledgeChatMessage>
               ) : null}
 
               {sending ? (
-                <div className="mb-4 flex justify-start">
-                  <div className="mr-2 mt-1 shrink-0">
-                    <AnimatedWorkLogo active brand={modelBrand} phase="trail" size="sm" />
+                <KnowledgeChatMessage
+                  role="assistant"
+                  leading={<AnimatedWorkLogo active brand={modelBrand} phase="trail" size="sm" />}
+                >
+                  <div className="flex items-center gap-2 text-[var(--ds-muted)]">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
+                    <span>AI 思考中...</span>
                   </div>
-                  <div className="max-w-[85%] rounded-[12px] border border-ds-border bg-[var(--ds-main)] px-4 py-3">
-                    <div className="flex items-center gap-2 text-[13px] text-[var(--ds-muted)]">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
-                      <span>AI 思考中...</span>
-                    </div>
-                  </div>
-                </div>
+                </KnowledgeChatMessage>
               ) : null}
 
               {chatError ? (
@@ -1034,26 +1039,14 @@ ${question.trim()}
             </div>
           )}
 
-          <div className="shrink-0 border-t border-ds-border p-3">
-            <div className="flex items-center gap-2">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="输入关于文件的问题..."
-                disabled={sending}
-                className="h-10 flex-1 rounded-[8px] border border-ds-border bg-[var(--ds-main)] px-3 text-[13px] text-[var(--ds-ink)] outline-none transition focus:border-[var(--ds-accent)] disabled:opacity-50"
-              />
-              <button
-                type="button"
-                onClick={() => void sendMessage(input)}
-                disabled={sending || !input.trim()}
-                className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[var(--ds-accent)] text-white transition hover:opacity-90 disabled:opacity-50"
-              >
-                <SendIcon className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
+          <KnowledgeChatComposer
+            value={input}
+            placeholder="输入关于文件的问题..."
+            disabled={sending}
+            onChange={setInput}
+            onKeyDown={handleKeyDown}
+            onSend={() => void sendMessage(input)}
+          />
         </aside>
           </>
         ) : null}

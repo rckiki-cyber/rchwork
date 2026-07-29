@@ -2,6 +2,11 @@ import { stat } from 'node:fs/promises'
 import type { DataComplianceTaskService } from '../../services/data-compliance-task-service.js'
 import type { LocalTool } from './local-tool-host.js'
 import type { SkillRuntime } from '../../skills/skill-runtime.js'
+import type { ContextCompactor } from '../../loop/context-compactor.js'
+import type { ImmutablePrefix } from '../../cache/immutable-prefix.js'
+import type { SessionStore } from '../../ports/session-store.js'
+import type { RuntimeEventRecorder } from '../../services/runtime-event-recorder.js'
+import type { UsageService } from '../../services/usage-service.js'
 
 export type FsStats = NonNullable<Awaited<ReturnType<typeof stat>>>
 
@@ -105,6 +110,7 @@ export type BuiltinToolName =
   | 'refresh_skills'
   | 'install_skill'
   | 'request_document_preferences'
+  | 'compress_context'
 export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'read',
   'bash',
@@ -118,7 +124,8 @@ export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'load_skill',
   'refresh_skills',
   'install_skill',
-  'request_document_preferences'
+  'request_document_preferences',
+  'compress_context'
 ])
 export type ToolName = BuiltinToolName
 export const allToolNames: Set<ToolName> = allBuiltinToolNames
@@ -168,6 +175,14 @@ export type SkillToolsOptions = {
   skillRuntime?: SkillRuntime
 }
 
+export type CompressContextLocalToolOptions = {
+  compactor: ContextCompactor
+  prefix: ImmutablePrefix
+  sessionStore: SessionStore
+  events: RuntimeEventRecorder
+  usage: UsageService
+}
+
 export type BuiltinLocalToolsOptions = {
   read?: ReadLocalToolOptions
   bash?: BashLocalToolOptions
@@ -178,6 +193,7 @@ export type BuiltinLocalToolsOptions = {
   ls?: LsLocalToolOptions
   dataCompliance?: DataComplianceLocalToolOptions
   skillTools?: SkillToolsOptions
+  compressContext?: CompressContextLocalToolOptions
 }
 export type ToolsOptions = BuiltinLocalToolsOptions
 

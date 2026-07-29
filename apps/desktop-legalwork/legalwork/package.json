@@ -51,7 +51,7 @@
     "legalwork": "./dist/cli/serve-entry.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node ../scripts/generate-pkulaw-fallback.cjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",

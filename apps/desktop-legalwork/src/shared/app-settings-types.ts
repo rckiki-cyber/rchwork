@@ -9,13 +9,14 @@ export {
   type SandboxMode
 } from '../../legalwork/src/contracts/policy.js'
 export type UiFontScale = 'small' | 'medium' | 'large'
+export const DEFAULT_UI_FONT_SCALE: UiFontScale = 'medium'
 export type ScheduleRunMode = 'agent' | 'plan'
 export type ScheduleKind = 'manual' | 'interval' | 'daily' | 'at'
 export type ScheduleTaskStatus = 'idle' | 'running' | 'success' | 'error'
 export type ScheduleModel = string
 export type ScheduleReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'max'
 export type ClawRunMode = ScheduleRunMode
-export type ClawImProvider = 'feishu' | 'weixin'
+export type ClawImProvider = 'feishu' | 'weixin' | 'qq' | 'dingtalk' | 'wecom'
 export type ClawScheduleKind = ScheduleKind
 export type ClawTaskStatus = ScheduleTaskStatus
 export type ClawModel = ScheduleModel
@@ -315,9 +316,35 @@ export type ClawImWeixinPlatformCredentialV1 = {
   createdAt: string
 }
 
+export type ClawImQqPlatformCredentialV1 = {
+  kind: 'qq'
+  appId: string
+  appSecret: string
+  markdownTemplateId?: string
+  markdownTemplateKey?: string
+  createdAt: string
+}
+
+export type ClawImDingTalkPlatformCredentialV1 = {
+  kind: 'dingtalk'
+  clientId: string
+  clientSecret: string
+  createdAt: string
+}
+
+export type ClawImWeComPlatformCredentialV1 = {
+  kind: 'wecom'
+  botId: string
+  secret: string
+  createdAt: string
+}
+
 export type ClawImPlatformCredentialV1 =
   | ClawImFeishuPlatformCredentialV1
   | ClawImWeixinPlatformCredentialV1
+  | ClawImQqPlatformCredentialV1
+  | ClawImDingTalkPlatformCredentialV1
+  | ClawImWeComPlatformCredentialV1
 
 export type ClawImRemoteSessionV1 = {
   chatId: string

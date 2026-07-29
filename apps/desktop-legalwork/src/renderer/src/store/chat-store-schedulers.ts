@@ -30,14 +30,17 @@ type TurnCompletionPollOptions = {
   ) => void | Promise<void>
 }
 
-export function scheduleStartupRuntimeProbe(get: ChatStoreGet): void {
+export function scheduleStartupRuntimeProbe(
+  get: ChatStoreGet,
+  delayMs = STARTUP_RUNTIME_PROBE_DELAY_MS
+): void {
   if (startupRuntimeProbeTimer) {
     clearTimeout(startupRuntimeProbeTimer)
   }
   startupRuntimeProbeTimer = setTimeout(() => {
     startupRuntimeProbeTimer = null
     void get().probeRuntime('background')
-  }, STARTUP_RUNTIME_PROBE_DELAY_MS)
+  }, delayMs)
 }
 
 export function clearBusyWatchdog(): void {

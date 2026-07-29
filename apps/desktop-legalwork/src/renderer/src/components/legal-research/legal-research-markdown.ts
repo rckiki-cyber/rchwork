@@ -2,6 +2,13 @@ const FENCE_LINE_RE = /^\s*(```|~~~)/
 const BOX_DRAWING_RE = /[┌┐└┘├┤┬┴┼─│╭╮╰╯╠╣╦╩╬═║]/
 const DIAGRAM_CONTINUATION_RE = /[↓↑→←↔↕]|(?:\|.*\|)|(?:\s{2,}\|)/
 
+export function resolveLegalResearchMarkdown(record: {
+  summary: string
+  editedSummary?: string
+}): string {
+  return record.editedSummary ?? record.summary
+}
+
 function isMarkdownBoundary(line: string): boolean {
   return /^\s{0,3}(#{1,6}\s|[-*+]\s|\d+\.\s|>\s|```|~~~)/.test(line)
 }

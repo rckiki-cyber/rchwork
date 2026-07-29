@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SkillRuntime } from './skill-runtime'
 
 describe('SkillRuntime', () => {
@@ -49,6 +49,33 @@ describe('SkillRuntime', () => {
       name: 'ecvc-identify-spa-issues-scenario-01',
       legacy: true
     }))
+  })
+
+  it('loads deferred skill discovery in the background', async () => {
+    const skillDir = join(tempRoot, 'background-skill')
+    await mkdir(skillDir, { recursive: true })
+    await writeFile(join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: background-skill',
+      'description: Loaded after the core runtime is already available.',
+      '---',
+      '',
+      '# Background skill'
+    ].join('\n'), 'utf8')
+
+    const runtime = await SkillRuntime.create({
+      enabled: true,
+      roots: [tempRoot],
+      legacySkillMd: true
+    }, {
+      deferDiscovery: true
+    })
+
+    await vi.waitFor(() => {
+      expect(runtime.diagnostics().skills).toContainEqual(expect.objectContaining({
+        name: 'background-skill'
+      }))
+    })
   })
 
   it('finds nested skills from legal work keywords without auto-injecting them', async () => {

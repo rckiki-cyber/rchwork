@@ -42,11 +42,17 @@ import {
 
 const POLL_INTERVAL_MS = 5 * 60_000
 const TURN_TIMEOUT_MS = 4 * 60 * 60_000
-const MAX_SOURCE_CHARS = 200_000
-const MAX_THREADS = 50
-const MAX_KNOWLEDGE_FILES = 25
-const MAX_MEMORY_AND_SKILLS = 100
-const MAX_SINGLE_SOURCE_CHARS = 60_000
+const MAX_MODEL_RESULT_ATTEMPTS = 2
+const MAX_SOURCE_CHARS = 120_000
+const MAX_THREADS = 40
+const MAX_KNOWLEDGE_FILES = 12
+const MAX_MEMORY_AND_SKILLS = 60
+const MAX_SINGLE_SOURCE_CHARS = 20_000
+const MAX_USER_MESSAGE_CHARS = 6_000
+const MAX_REPORT_MARKDOWN_CHARS = 8_000
+const MAX_MEMORY_PROPOSALS = 20
+const MAX_SKILL_PROPOSALS = 5
+const MAX_REJECTED_PROPOSALS = 30
 const LEARNING_THREAD_TITLE_PREFIX = '[Learning iteration]'
 const RESULT_BEGIN = 'BEGIN_LEARNING_RESULT'
 const RESULT_END = 'END_LEARNING_RESULT'
@@ -69,6 +75,13 @@ const EMPTY_COUNTS: LearningIterationCounts = {
 }
 
 type SourceKind = 'thread' | 'memory' | 'knowledge' | 'skill'
+
+const SOURCE_CHAR_RESERVES: Record<SourceKind, number> = {
+  thread: 70_000,
+  memory: 10_000,
+  knowledge: 30_000,
+  skill: 10_000
+}
 
 type LearningSource = {
   key: string
@@ -226,7 +239,9 @@ export class LearningIterationRuntime {
   private manualQueue = false
   private forceRun = false
   private activeRunId = ''
+  private activeRunStartedAt = ''
   private activeLearningThreadId = ''
+  private activeSourceCounts: LearningIterationCounts = { ...EMPTY_COUNTS }
   private message = ''
   private lastPendingSourceCount = 0
 
@@ -427,7 +442,7 @@ export class LearningIterationRuntime {
     const state = await this.readState(settings)
     const today = localDay(this.now())
     const automaticEligible = state.lastLocalDay !== today
-    if (!automaticEligible && !this.forceRun) {
+    if (!automaticEligible) {
       if (this.queued) {
         this.queued = false
         this.message = '今日已有成功记录，请在下一个自然日再检查'
@@ -437,7 +452,7 @@ export class LearningIterationRuntime {
     if (!this.forceRun && state.lastRetryAt && !retryIsDue(state, this.now())) {
       return
     }
-    if (!this.forceRun && await this.isBusy(settings)) {
+    if (await this.isBusy(settings)) {
       if (this.queued) this.message = '正在等待所有任务结束并达到空闲条件'
       return
     }
@@ -492,7 +507,9 @@ export class LearningIterationRuntime {
       this.running = false
       this.forceRun = false
       this.activeRunId = ''
+      this.activeRunStartedAt = ''
       this.activeLearningThreadId = ''
+      this.activeSourceCounts = { ...EMPTY_COUNTS }
     }
   }
 
@@ -520,6 +537,13 @@ export class LearningIterationRuntime {
     const runDir = this.runDir(settings, runId)
     await mkdir(join(runDir, 'rollback', 'skills'), { recursive: true })
     const startedAt = this.now().toISOString()
+    this.activeRunStartedAt = startedAt
+    this.activeSourceCounts = {
+      ...EMPTY_COUNTS,
+      sources: inventory.sources.length,
+      threads: inventory.sources.filter((source) => source.kind === 'thread').length,
+      knowledgeFiles: inventory.sources.filter((source) => source.kind === 'knowledge').length
+    }
     this.message = '正在理解、验证并构造候选记忆与 Skill'
     const corpus = renderCorpus(inventory.sources)
     await writeFile(join(runDir, 'INPUT.md'), corpus, 'utf8')
@@ -534,10 +558,10 @@ export class LearningIterationRuntime {
     }
 
     this.message = '正在验证并发布学习结果'
-    const sourceKeys = new Set(inventory.sources.map((source) => source.key))
+    const sourceByKey = new Map(inventory.sources.map((source) => [source.key, source]))
     const validated = validateModelResult(
       result,
-      sourceKeys,
+      sourceByKey,
       new Map(inventory.memories.map((memory) => [memory.id, memory]))
     )
     const protectedSkillCandidates = validated.result.skills.filter((proposal) =>
@@ -629,7 +653,9 @@ export class LearningIterationRuntime {
     const parsed = parseJsonObject(response.body)
     const threads = Array.isArray(parsed?.threads) ? parsed.threads as ThreadSummaryJson[] : []
     return threads.some((thread) =>
-      thread.status === 'running' && thread.id !== this.activeLearningThreadId
+      thread.status === 'running' &&
+      thread.id !== this.activeLearningThreadId &&
+      !String(thread.title ?? '').startsWith(LEARNING_THREAD_TITLE_PREFIX)
     )
   }
 
@@ -661,39 +687,10 @@ export class LearningIterationRuntime {
         status: thread.status
       }))
       .slice(0, MAX_THREADS)
-    let remainingTextAttachments = MAX_THREADS
     for (const thread of selectedThreads) {
       const detail = await this.request(settings, `/v1/threads/${encodeURIComponent(thread.id)}`, 'GET')
       const detailObject = parseJsonObject(detail.body)
-      let content = extractThreadText(detailObject)
-      const attachmentIds = extractAttachmentIds(detailObject)
-        .slice(0, remainingTextAttachments)
-      remainingTextAttachments -= attachmentIds.length
-      for (const attachmentId of attachmentIds) {
-        const metadataResponse = await this.deps.runtimeRequest(
-          settings,
-          `/v1/attachments/${encodeURIComponent(attachmentId)}`,
-          { method: 'GET' }
-        )
-        if (!metadataResponse.ok) continue
-        const metadataObject = parseJsonObject(metadataResponse.body)
-        const attachment = metadataObject?.attachment as Record<string, unknown> | undefined
-        const name = typeof attachment?.name === 'string' ? attachment.name : attachmentId
-        const mimeType = typeof attachment?.mimeType === 'string' ? attachment.mimeType : ''
-        const byteSize = typeof attachment?.byteSize === 'number' ? attachment.byteSize : Number.POSITIVE_INFINITY
-        if (!isExtractableTextAttachment(name, mimeType) || byteSize > MAX_SINGLE_SOURCE_CHARS) continue
-        const contentResponse = await this.deps.runtimeRequest(
-          settings,
-          `/v1/attachments/${encodeURIComponent(attachmentId)}/content?thread_id=${encodeURIComponent(thread.id)}`,
-          { method: 'GET' }
-        )
-        if (!contentResponse.ok) continue
-        const attachmentContent = parseJsonObject(contentResponse.body)
-        if (typeof attachmentContent?.dataBase64 !== 'string') continue
-        const text = Buffer.from(attachmentContent.dataBase64, 'base64').toString('utf8').trim()
-        if (!text || text.includes('\u0000')) continue
-        content += `\n\n附件「${name}」可提取文本：\n${text}`
-      }
+      const content = extractLearningThreadText(detailObject)
       if (!content.trim()) continue
       addChangedChunks(candidates, state, {
         baseKey: `thread:${thread.id}`,
@@ -805,16 +802,7 @@ export class LearningIterationRuntime {
     }
 
     const pendingCount = candidates.length
-    const sources: LearningSource[] = []
-    let totalChars = 0
-    for (const source of candidates) {
-      const remaining = MAX_SOURCE_CHARS - totalChars
-      if (remaining <= 0) break
-      if (source.content.length > remaining) break
-      if (!source.content.trim()) continue
-      sources.push(source)
-      totalChars += source.content.length
-    }
+    const sources = selectLearningSources(candidates)
     const processedHashes: Record<string, string> = Object.fromEntries(
       sources.map((source) => [source.key, source.fingerprint])
     )
@@ -851,7 +839,35 @@ export class LearningIterationRuntime {
     const threadId = typeof thread?.id === 'string' ? thread.id : ''
     if (!threadId) throw new Error('学习线程创建失败：缺少 thread id。')
     this.activeLearningThreadId = threadId
-    const prompt = buildLearningPrompt(corpus)
+    let prompt = buildLearningPrompt(corpus)
+    let parseError: unknown
+    for (let attempt = 0; attempt < MAX_MODEL_RESULT_ATTEMPTS; attempt += 1) {
+      const lastText = await this.runLearningTurn(settings, threadId, prompt)
+      const outputName = attempt === 0 ? 'MODEL_OUTPUT.txt' : `MODEL_OUTPUT_RETRY_${attempt}.txt`
+      await writeFile(join(runDir, outputName), lastText, 'utf8')
+      try {
+        return parseLearningModelResult(lastText)
+      } catch (error) {
+        parseError = error
+        if (attempt + 1 >= MAX_MODEL_RESULT_ATTEMPTS) break
+        this.message = '学习结果格式异常，正在自动修复并重试'
+        this.deps.logError('learning-iteration', 'Learning result JSON was invalid; retrying', {
+          message: errorMessage(error),
+          runId: this.activeRunId,
+          attempt: attempt + 1
+        })
+        prompt = buildLearningRepairPrompt(error)
+      }
+    }
+    throw parseError instanceof Error ? parseError : new Error(errorMessage(parseError))
+  }
+
+  private async runLearningTurn(
+    settings: AppSettingsV1,
+    threadId: string,
+    prompt: string
+  ): Promise<string> {
+    const runtime = getLegalworkRuntimeSettings(settings)
     const turnResponse = await this.request(
       settings,
       `/v1/threads/${encodeURIComponent(threadId)}/turns`,
@@ -876,11 +892,7 @@ export class LearningIterationRuntime {
     let lastText = ''
     while (Date.now() < deadline) {
       if (this.cancelRequested) {
-        await this.deps.runtimeRequest(
-          settings,
-          `/v1/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/interrupt`,
-          { method: 'POST', body: '{}' }
-        ).catch(() => undefined)
+        await this.interruptLearningTurn(settings, threadId, turnId)
         throw new LearningCancelledError()
       }
       await sleep(1_500)
@@ -904,9 +916,22 @@ export class LearningIterationRuntime {
         throw new Error(turn.error || `学习线程状态异常：${turn.status}`)
       }
       if (!lastText) throw new Error('学习线程没有返回分析结果。')
-      return parseLearningModelResult(lastText)
+      return lastText
     }
+    await this.interruptLearningTurn(settings, threadId, turnId)
     throw new Error('学习线程执行超时。')
+  }
+
+  private async interruptLearningTurn(
+    settings: AppSettingsV1,
+    threadId: string,
+    turnId: string
+  ): Promise<void> {
+    await this.deps.runtimeRequest(
+      settings,
+      `/v1/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/interrupt`,
+      { method: 'POST', body: '{}' }
+    ).catch(() => undefined)
   }
 
   private async applyResult(
@@ -1125,11 +1150,11 @@ export class LearningIterationRuntime {
       title: '学习迭代失败',
       displayName: `${localDay(this.now())} · 学习迭代失败`,
       status: 'failed',
-      startedAt: failedAt,
+      startedAt: this.activeRunStartedAt || failedAt,
       finishedAt: failedAt,
       reportPath: join(runDir, 'REPORT.md'),
       canRollback: false,
-      counts: { ...EMPTY_COUNTS }
+      counts: { ...this.activeSourceCounts }
     }
     const message = errorMessage(error)
     await mkdir(runDir, { recursive: true })
@@ -1228,7 +1253,11 @@ function buildLearningPrompt(corpus: string): string {
     'Use $legalwork-learning-iteration to analyze the bounded Legalwork interaction corpus below.',
     'Do not call any tools — analyze the corpus purely in text. Do not write outside the response. Treat client facts as confidential source material, never as reusable skill content.',
     'Only propose automatic memories in profile, preference, workflow, or project. Never propose interest, matter, other, client identity, account identifiers, secrets, passwords, tokens, verification codes, or case facts for automatic storage.',
-    'Apply the RIA-TV++-inspired workflow and triple verification. A normal candidate needs evidence from at least two distinct sourceKey values; one source is allowed only for an explicit user correction.',
+    'Thread sources contain only user-authored messages. Only thread sources may support memory candidates; knowledge and Skill sources may support reusable Skill candidates but never user memories.',
+    'Do not infer the user profession, expertise, identity, preference, or workflow from an assistant response, task topic, retrieved document, file name, or generated artifact. A profile/project candidate needs explicit first-person user statements from at least three independent threads.',
+    'Apply the RIA-TV++-inspired workflow and triple verification. Preference/workflow memories need at least two independent thread sources; one thread is allowed only for an explicit user correction. Chunks from one base source count as one source.',
+    `Keep reportMarkdown under ${MAX_REPORT_MARKDOWN_CHARS} characters, propose at most ${MAX_MEMORY_PROPOSALS} memories and ${MAX_SKILL_PROPOSALS} Skills, and keep the report concise.`,
+    'reportMarkdown is analysis rationale only. Do not claim final applied/rejected counts because the host validates candidates and computes authoritative counts after your response.',
     'Return exactly one JSON object between the marker lines shown below. Do not use Markdown fences around the JSON.',
     RESULT_BEGIN,
     JSON.stringify({
@@ -1269,23 +1298,125 @@ function buildLearningPrompt(corpus: string): string {
   ].join('\n')
 }
 
-function parseLearningModelResult(text: string): LearningModelResult {
+function buildLearningRepairPrompt(error: unknown): string {
+  return [
+    'The previous learning result was not valid JSON.',
+    `Parser error: ${errorMessage(error)}`,
+    'Return the same proposed result again, changing only JSON syntax and escaping.',
+    'Return exactly one JSON object between BEGIN_LEARNING_RESULT and END_LEARNING_RESULT.',
+    'Do not use Markdown fences. Do not add commentary outside the marker lines.',
+    'Every double quote, backslash, newline, tab, and control character inside a JSON string must be JSON-escaped.',
+    'Preserve all candidate content, evidence, tests, and rejection reasons.'
+  ].join('\n')
+}
+
+export function parseLearningModelResult(text: string): LearningModelResult {
   const start = text.indexOf(RESULT_BEGIN)
   const end = text.indexOf(RESULT_END, start + RESULT_BEGIN.length)
   const jsonText = start >= 0 && end > start
     ? text.slice(start + RESULT_BEGIN.length, end).trim()
     : extractJsonObject(text)
-  const parsed = JSON.parse(jsonText) as Partial<LearningModelResult>
+  const parsed = parseLearningModelJson(jsonText)
+  const memories = Array.isArray(parsed.memories)
+    ? parsed.memories.filter(isRecord).slice(0, MAX_MEMORY_PROPOSALS) as MemoryProposal[]
+    : []
+  const skills = Array.isArray(parsed.skills)
+    ? parsed.skills.filter(isRecord).slice(0, MAX_SKILL_PROPOSALS) as SkillProposal[]
+    : []
+  const rejected = Array.isArray(parsed.rejected)
+    ? parsed.rejected
+        .filter((item): item is { title: string; reason: string } =>
+          isRecord(item) && typeof item.title === 'string' && typeof item.reason === 'string'
+        )
+        .slice(0, MAX_REJECTED_PROPOSALS)
+    : []
   return {
     title: typeof parsed.title === 'string' ? parsed.title : '学习迭代报告',
-    summary: typeof parsed.summary === 'string' ? parsed.summary : '',
+    summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 1_000) : '',
     reportMarkdown: typeof parsed.reportMarkdown === 'string'
-      ? parsed.reportMarkdown.replace(/\\n/g, '\n')
+      ? parsed.reportMarkdown.replace(/\\n/g, '\n').slice(0, MAX_REPORT_MARKDOWN_CHARS)
       : '',
-    memories: Array.isArray(parsed.memories) ? parsed.memories : [],
-    skills: Array.isArray(parsed.skills) ? parsed.skills : [],
-    rejected: Array.isArray(parsed.rejected) ? parsed.rejected : []
+    memories,
+    skills,
+    rejected
   }
+}
+
+function parseLearningModelJson(jsonText: string): Partial<LearningModelResult> {
+  try {
+    return JSON.parse(jsonText) as Partial<LearningModelResult>
+  } catch (originalError) {
+    const repaired = repairLearningModelJson(jsonText)
+    if (repaired === jsonText) throw originalError
+    try {
+      return JSON.parse(repaired) as Partial<LearningModelResult>
+    } catch {
+      throw originalError
+    }
+  }
+}
+
+/**
+ * Repairs the two common forms of invalid model-authored JSON without
+ * changing object structure: unescaped characters inside string values
+ * and invalid backslash escapes. Structural JSON errors are left for the
+ * model retry so we do not guess at missing fields, commas, or braces.
+ */
+export function repairLearningModelJson(jsonText: string): string {
+  let output = ''
+  let inString = false
+
+  for (let index = 0; index < jsonText.length; index += 1) {
+    const char = jsonText[index]
+    if (!inString) {
+      output += char
+      if (char === '"') inString = true
+      continue
+    }
+
+    if (char === '\\') {
+      const next = jsonText[index + 1]
+      if (next && isValidJsonEscape(jsonText, index + 1)) {
+        output += char + next
+        index += 1
+      } else {
+        output += '\\\\'
+      }
+      continue
+    }
+
+    if (char === '"') {
+      if (looksLikeJsonStringTerminator(jsonText, index + 1)) {
+        output += char
+        inString = false
+      } else {
+        output += '\\"'
+      }
+      continue
+    }
+
+    const code = char.charCodeAt(0)
+    if (char === '\n') output += '\\n'
+    else if (char === '\r') output += '\\r'
+    else if (char === '\t') output += '\\t'
+    else if (code < 0x20) output += `\\u${code.toString(16).padStart(4, '0')}`
+    else output += char
+  }
+
+  return output
+}
+
+function isValidJsonEscape(text: string, escapeIndex: number): boolean {
+  const char = text[escapeIndex]
+  if ('"\\/bfnrt'.includes(char)) return true
+  if (char !== 'u') return false
+  return /^[0-9a-fA-F]{4}$/.test(text.slice(escapeIndex + 1, escapeIndex + 5))
+}
+
+function looksLikeJsonStringTerminator(text: string, fromIndex: number): boolean {
+  let index = fromIndex
+  while (index < text.length && /\s/.test(text[index])) index += 1
+  return index >= text.length || ':,}]'.includes(text[index])
 }
 
 function extractJsonObject(text: string): string {
@@ -1295,9 +1426,13 @@ function extractJsonObject(text: string): string {
   return text.slice(start, end + 1)
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function validateModelResult(
   result: LearningModelResult,
-  sourceKeys: Set<string>,
+  sourceByKey: Map<string, LearningSource>,
   memoryById: Map<string, MemorySnapshot>
 ): {
   result: LearningModelResult
@@ -1306,6 +1441,17 @@ function validateModelResult(
 } {
   const rejectionReasons: string[] = []
   const memories = result.memories.filter((proposal) => {
+    if (!['create', 'update', 'disable'].includes(proposal.action)) {
+      rejectionReasons.push('一个记忆候选缺少有效操作类型，已阻止发布。')
+      return false
+    }
+    if (proposal.content !== undefined && typeof proposal.content !== 'string') {
+      rejectionReasons.push('一个记忆候选的内容不是文本，已阻止发布。')
+      return false
+    }
+    proposal.tags = Array.isArray(proposal.tags)
+      ? proposal.tags.filter((tag): tag is string => typeof tag === 'string')
+      : undefined
     const current = proposal.id ? memoryById.get(proposal.id) : undefined
     const category = proposal.category ?? current?.category ?? (proposal.action === 'create' ? 'preference' : 'other')
     // explicitCorrection bypasses category restriction (e.g. can be 'interest' or 'matter')
@@ -1317,13 +1463,21 @@ function validateModelResult(
       rejectionReasons.push(`记忆候选“${proposal.id || '未命名'}”不是自动学习记录，不能由后台学习自动停用。`)
       return false
     }
-    const evidence = validEvidence(proposal.evidence, sourceKeys)
-    if (evidence.length < 2 && !(proposal.explicitCorrection && evidence.length >= 1)) {
+    const evidence = validEvidence(proposal.evidence, sourceByKey, new Set(['thread']))
+    const requiredEvidence = category === 'profile' || category === 'project' ? 3 : 2
+    if (evidence.length < requiredEvidence && !(proposal.explicitCorrection && evidence.length >= 1)) {
       rejectionReasons.push(`记忆候选“${proposal.content?.slice(0, 36) || proposal.id || '未命名'}”缺少独立证据。`)
       return false
     }
-    if (!proposal.explicitCorrection && (proposal.confidence ?? 0) < 0.8) {
-      rejectionReasons.push(`记忆候选“${proposal.content?.slice(0, 36) || proposal.id || '未命名'}”置信度低于 0.8。`)
+    const requiredConfidence = category === 'profile' || category === 'project' ? 0.9 : 0.85
+    if (!proposal.explicitCorrection && (proposal.confidence ?? 0) < requiredConfidence) {
+      rejectionReasons.push(
+        `记忆候选“${proposal.content?.slice(0, 36) || proposal.id || '未命名'}”置信度低于 ${requiredConfidence}。`
+      )
+      return false
+    }
+    if (proposal.content && proposal.content.length > 1_500) {
+      rejectionReasons.push('一个记忆候选过长，不适合作为可复用记忆，已阻止发布。')
       return false
     }
     if (proposal.content && containsSecret(proposal.content)) {
@@ -1334,26 +1488,44 @@ function validateModelResult(
       rejectionReasons.push('一个记忆候选可能包含客户、案件或账号标识，需要用户确认，未自动发布。')
       return false
     }
+    proposal.evidence = evidence
     return proposal.action === 'disable' || Boolean(proposal.content?.trim())
   })
   const skills = result.skills.filter((proposal) => {
-    const evidence = validEvidence(proposal.evidence, sourceKeys)
-    const categories = new Set(proposal.tests?.map((test) => test.expected) ?? [])
+    const evidence = validEvidence(proposal.evidence, sourceByKey, new Set(['thread', 'knowledge']))
+    const tests = Array.isArray(proposal.tests)
+      ? proposal.tests.filter((test): test is SkillProposal['tests'][number] =>
+          isRecord(test) &&
+          typeof test.prompt === 'string' &&
+          typeof test.expected === 'string' &&
+          ['should-trigger', 'should-not-trigger', 'ambiguous', 'sibling-confusion'].includes(test.expected) &&
+          test.passed === true
+        )
+      : []
+    const categories = new Set(tests.map((test) => test.expected))
     const valid =
+      typeof proposal.id === 'string' &&
       /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(proposal.id) &&
       evidence.length >= 2 &&
+      typeof proposal.description === 'string' &&
       proposal.description.trim().length >= 12 &&
+      typeof proposal.skillMarkdown === 'string' &&
       proposal.skillMarkdown.length <= 30_000 &&
       proposal.skillMarkdown.includes('---') &&
       !containsSecret(proposal.skillMarkdown) &&
-      proposal.tests.length >= 6 &&
-      proposal.tests.length <= 10 &&
-      proposal.tests.every((test) => test.passed === true) &&
+      tests.length >= 6 &&
+      tests.length <= 10 &&
+      tests.every((test) => test.passed === true) &&
       categories.has('should-trigger') &&
       categories.has('should-not-trigger') &&
       categories.has('ambiguous') &&
       categories.has('sibling-confusion')
-    if (!valid) rejectionReasons.push(`Skill 候选“${proposal.name || proposal.id}”未通过结构或压力测试门槛。`)
+    if (!valid) {
+      rejectionReasons.push(`Skill 候选“${proposal.name || proposal.id}”未通过结构或压力测试门槛。`)
+      return false
+    }
+    proposal.tests = tests
+    proposal.evidence = evidence
     return valid
   })
   return {
@@ -1363,11 +1535,20 @@ function validateModelResult(
   }
 }
 
-function validEvidence(evidence: EvidenceRef[] | undefined, sourceKeys: Set<string>): EvidenceRef[] {
+function validEvidence(
+  evidence: EvidenceRef[] | undefined,
+  sourceByKey: Map<string, LearningSource>,
+  allowedKinds: Set<SourceKind>
+): EvidenceRef[] {
   const unique = new Map<string, EvidenceRef>()
   for (const item of evidence ?? []) {
-    if (!item || typeof item.sourceKey !== 'string' || !sourceKeys.has(item.sourceKey)) continue
-    unique.set(item.sourceKey, item)
+    if (!item || typeof item.sourceKey !== 'string') continue
+    const source = sourceByKey.get(item.sourceKey)
+    if (!source || !allowedKinds.has(source.kind)) continue
+    const baseKey = typeof source.metadata?.baseKey === 'string'
+      ? source.metadata.baseKey
+      : source.key.replace(/#chunk:\d+$/, '')
+    unique.set(baseKey, item)
   }
   return [...unique.values()]
 }
@@ -1430,7 +1611,7 @@ function buildReport(
     '## Skill 变化与压力测试',
     '',
     ...(skillRows.length ? skillRows : ['- 本轮没有通过验证的 Skill 变化。', '']),
-    '## 验证与发布详情',
+    '## 模型分析说明（非最终发布计数）',
     '',
     result.reportMarkdown.trim() || '本轮没有需要补充的模型说明。',
     '',
@@ -1519,48 +1700,58 @@ function memoryComparable(memory: MemorySnapshot): Record<string, unknown> {
   }
 }
 
-function extractThreadText(object: Record<string, unknown> | null): string {
+export function extractLearningThreadText(object: Record<string, unknown> | null): string {
   const turns = Array.isArray(object?.turns) ? object.turns as Array<Record<string, unknown>> : []
   const lines: string[] = []
   for (const turn of turns) {
     const items = Array.isArray(turn.items) ? turn.items as Array<Record<string, unknown>> : []
     for (const item of items) {
       const kind = String(item.kind ?? '')
-      if (kind !== 'user_message' && kind !== 'assistant_text') continue
-      const text = typeof item.text === 'string' ? item.text.trim() : ''
-      if (!text) continue
-      lines.push(`${kind === 'user_message' ? '用户' : 'Legalwork'}：${text}`)
+      if (kind !== 'user_message') continue
+      const raw = typeof item.text === 'string' ? item.text.trim() : ''
+      const text = normalizeLearningUserText(raw)
+      if (!isMeaningfulLearningUserText(text)) continue
+      lines.push(`用户：${clipLearningUserText(text)}`)
     }
   }
   return lines.join('\n\n')
 }
 
-function extractAttachmentIds(object: Record<string, unknown> | null): string[] {
-  const turns = Array.isArray(object?.turns) ? object.turns as Array<Record<string, unknown>> : []
-  const ids: string[] = []
-  for (const turn of turns) {
-    if (Array.isArray(turn.attachmentIds)) {
-      ids.push(...turn.attachmentIds.filter((id): id is string => typeof id === 'string'))
-    }
-    const items = Array.isArray(turn.items) ? turn.items as Array<Record<string, unknown>> : []
-    for (const item of items) {
-      if (!Array.isArray(item.attachmentIds)) continue
-      ids.push(...item.attachmentIds.filter((id): id is string => typeof id === 'string'))
-    }
+function normalizeLearningUserText(text: string): string {
+  const questionMarker = text.lastIndexOf('## 用户问题')
+  if (questionMarker >= 0) {
+    const question = text
+      .slice(questionMarker + '## 用户问题'.length)
+      .split(/\n\s*请基于(?:检索到|以上)/u, 1)[0]
+      .trim()
+    if (question) return question
   }
-  return [...new Set(ids)]
+  if (text.includes('## RAG 检索上下文') || text.includes('【知识库检索结果】')) {
+    const matches = [...text.matchAll(/(?:查询|问题)[：:]\s*([^\n]+)/gu)]
+    const fallback = matches.at(-1)?.[1]?.trim()
+    if (fallback) return fallback
+  }
+  return text.trim()
 }
 
-function isExtractableTextAttachment(name: string, mimeType: string): boolean {
-  if (mimeType.toLowerCase().startsWith('text/')) return true
-  if (new Set([
-    'application/json',
-    'application/ld+json',
-    'application/xml',
-    'application/javascript',
-    'application/x-javascript'
-  ]).has(mimeType.toLowerCase())) return true
-  return isPlainTextExtension(name.slice(name.lastIndexOf('.')))
+function isMeaningfulLearningUserText(text: string): boolean {
+  const compact = text.replace(/[\s?!？！。,.，、~～]+/g, '').toLowerCase()
+  if (!compact) return false
+  return !new Set([
+    '在', '在么', '在吗', '你好', '您好', 'hello', 'hi', 'zaime',
+    '你是谁', '你是', '你谁啊', '？', '?', '新会话'
+  ]).has(compact)
+}
+
+function clipLearningUserText(text: string): string {
+  if (text.length <= MAX_USER_MESSAGE_CHARS) return text
+  const tailChars = Math.min(1_000, Math.floor(MAX_USER_MESSAGE_CHARS / 4))
+  const headChars = MAX_USER_MESSAGE_CHARS - tailChars
+  return [
+    text.slice(0, headChars),
+    '\n\n[中间过长内容已省略，仅用于学习用户明确表达的稳定偏好与工作流]\n\n',
+    text.slice(-tailChars)
+  ].join('')
 }
 
 function flattenKnowledgeNodes(nodes: KnowledgeNodeJson[]): KnowledgeNodeJson[] {
@@ -1579,6 +1770,38 @@ function isPlainTextExtension(extension: string | undefined): boolean {
 
 function clipSource(content: string): string {
   return redactSecrets(content).slice(0, MAX_SINGLE_SOURCE_CHARS)
+}
+
+function selectLearningSources(candidates: LearningSource[]): LearningSource[] {
+  const selected: LearningSource[] = []
+  const selectedKeys = new Set<string>()
+  const usedByKind: Record<SourceKind, number> = {
+    thread: 0,
+    memory: 0,
+    knowledge: 0,
+    skill: 0
+  }
+  let totalChars = 0
+
+  const add = (source: LearningSource): boolean => {
+    if (!source.content.trim() || selectedKeys.has(source.key)) return false
+    if (totalChars + source.content.length > MAX_SOURCE_CHARS) return false
+    selected.push(source)
+    selectedKeys.add(source.key)
+    usedByKind[source.kind] += source.content.length
+    totalChars += source.content.length
+    return true
+  }
+
+  for (const source of candidates) {
+    if (usedByKind[source.kind] + source.content.length > SOURCE_CHAR_RESERVES[source.kind]) continue
+    add(source)
+  }
+  for (const source of candidates) {
+    if (totalChars >= MAX_SOURCE_CHARS) break
+    add(source)
+  }
+  return selected
 }
 
 function addChangedChunks(
@@ -1633,7 +1856,7 @@ function redactSecrets(content: string): string {
   return content
     .replace(/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/gi, '[REDACTED PRIVATE KEY]')
     .replace(/\b(?:sk|pk|api)[-_][A-Za-z0-9]{16,}\b/gi, '[REDACTED TOKEN]')
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=\-]{12,}\b/gi, 'Bearer [REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/gi, 'Bearer [REDACTED]')
     .replace(/\bAKIA[A-Z0-9]{16}\b/g, '[REDACTED AWS KEY]')
     .replace(/(?:api[_\s-]?key|token|client[_\s-]?secret|secret|password|passwd|密码|口令|密钥|秘钥|验证码|verification\s*code)\s*(?:[:=：]|是|为)\s*\S+/gi, '[REDACTED CREDENTIAL]')
 }

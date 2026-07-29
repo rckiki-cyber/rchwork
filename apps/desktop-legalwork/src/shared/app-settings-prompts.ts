@@ -64,6 +64,51 @@ export function normalizeClawImPlatformCredential(input: unknown): ClawImPlatfor
       createdAt: typeof raw.createdAt === 'string' && raw.createdAt ? raw.createdAt : new Date().toISOString()
     }
   }
+  if (raw.kind === 'qq') {
+    const appId = typeof raw.appId === 'string' ? raw.appId.trim() : ''
+    const appSecret = typeof raw.appSecret === 'string' ? raw.appSecret.trim() : ''
+    const markdownTemplateId = typeof raw.markdownTemplateId === 'string'
+      ? raw.markdownTemplateId.trim()
+      : ''
+    const markdownTemplateKey = typeof raw.markdownTemplateKey === 'string'
+      ? raw.markdownTemplateKey.trim()
+      : ''
+    if (!appId || !appSecret) return undefined
+    return {
+      kind: raw.kind,
+      appId,
+      appSecret,
+      ...(markdownTemplateId
+        ? {
+            markdownTemplateId,
+            markdownTemplateKey: markdownTemplateKey || 'content'
+          }
+        : {}),
+      createdAt: typeof raw.createdAt === 'string' && raw.createdAt ? raw.createdAt : new Date().toISOString()
+    }
+  }
+  if (raw.kind === 'dingtalk') {
+    const clientId = typeof raw.clientId === 'string' ? raw.clientId.trim() : ''
+    const clientSecret = typeof raw.clientSecret === 'string' ? raw.clientSecret.trim() : ''
+    if (!clientId || !clientSecret) return undefined
+    return {
+      kind: raw.kind,
+      clientId,
+      clientSecret,
+      createdAt: typeof raw.createdAt === 'string' && raw.createdAt ? raw.createdAt : new Date().toISOString()
+    }
+  }
+  if (raw.kind === 'wecom') {
+    const botId = typeof raw.botId === 'string' ? raw.botId.trim() : ''
+    const secret = typeof raw.secret === 'string' ? raw.secret.trim() : ''
+    if (!botId || !secret) return undefined
+    return {
+      kind: raw.kind,
+      botId,
+      secret,
+      createdAt: typeof raw.createdAt === 'string' && raw.createdAt ? raw.createdAt : new Date().toISOString()
+    }
+  }
   if (raw.kind !== 'feishu') return undefined
   const appId = typeof raw.appId === 'string' ? raw.appId.trim() : ''
   const appSecret = typeof raw.appSecret === 'string' ? raw.appSecret.trim() : ''

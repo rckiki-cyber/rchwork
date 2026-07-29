@@ -7,6 +7,7 @@ import {
   computeLegalworkRuntimeCredentialPatch,
   legalworkSettingsEnvelope,
   DEFAULT_GUI_UPDATE_CHANNEL,
+  DEFAULT_UI_FONT_SCALE,
   DEFAULT_WRITE_WORKSPACE_ROOT,
   defaultClawSettings,
   defaultLegalworkRuntimeSettings,
@@ -95,7 +96,13 @@ function defaultClawChannelWorkspaceRoot(channel: ClawImChannelV1): string {
     ? credential.appId
     : credential?.kind === 'weixin'
       ? credential.accountId
-      : ''
+      : credential?.kind === 'qq'
+        ? credential.appId
+        : credential?.kind === 'dingtalk'
+          ? credential.clientId
+          : credential?.kind === 'wecom'
+            ? credential.botId
+            : ''
   const workspaceId = sanitizePathSegment(credentialId || channel.id, 'channel')
   return join(DEFAULT_CLAW_CHANNELS_ROOT, channel.provider, domain, workspaceId)
 }
@@ -206,7 +213,7 @@ const defaultSettings = (): AppSettingsV1 => ({
   version: 1,
   locale: 'zh',
   theme: 'system',
-  uiFontScale: 'small',
+  uiFontScale: DEFAULT_UI_FONT_SCALE,
   provider: defaultModelProviderSettings(),
   agents: {
     legalwork: defaultLegalworkRuntimeSettings()

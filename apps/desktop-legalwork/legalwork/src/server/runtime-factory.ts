@@ -19,7 +19,11 @@ import { CapabilityRegistry } from '../adapters/tool/capability-registry.js'
 import { buildGoalLocalTools } from '../adapters/tool/goal-tools.js'
 import { buildTodoLocalTools } from '../adapters/tool/todo-tools.js'
 import { LocalToolHost, buildDefaultLocalTools } from '../adapters/tool/local-tool-host.js'
-import { buildMcpToolProviders } from '../adapters/tool/mcp-tool-provider.js'
+import {
+  buildMcpToolProviders,
+  pendingMcpToolProviders
+} from '../adapters/tool/mcp-tool-provider.js'
+import { resolveBundledPkulawToken } from '../adapters/tool/pkulaw-fallback-auth.js'
 import { buildMemoryToolProviders } from '../adapters/tool/memory-tool-provider.js'
 import { buildKnowledgeToolProviders } from '../adapters/tool/knowledge-tool-provider.js'
 import { buildDelegationToolProviders } from '../adapters/tool/delegation-tool-provider.js'
@@ -151,7 +155,7 @@ export async function createLegalworkServeRuntime(
     nowIso
   })
   const threadService = new ThreadService({ threadStore, sessionStore, events, ids, nowIso })
-  await seedUsageCarryover({ threadStore, sessionStore, usageService })
+  void seedUsageCarryover({ threadStore, sessionStore, usageService }).catch(() => undefined)
   const modelClient = createModelClient({
     baseUrl: options.baseUrl,
     apiKey: options.apiKey,
@@ -174,9 +178,10 @@ export async function createLegalworkServeRuntime(
     ...(tokenEconomy ? { tokenEconomy } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {})
   })
-  const mcpProviders = await buildMcpToolProviders(options.capabilities?.mcp)
+  let mcpProviders = pendingMcpToolProviders(options.capabilities?.mcp)
   const webProviders = buildWebToolProviders(options.capabilities?.web)
   const skillRuntime = await SkillRuntime.create(options.capabilities?.skills, {
+    deferDiscovery: true,
     onRootsChanged: async (roots) => {
       if (!options.configPath) return
       const existing = readOptionalLegalworkConfigFile(options.configPath)
@@ -248,10 +253,16 @@ export async function createLegalworkServeRuntime(
       available: true,
       tools: buildDefaultLocalTools({}, {
         dataCompliance: { service: dataComplianceTaskService },
-        skillTools: { skillRuntime }
+        skillTools: { skillRuntime },
+        compressContext: {
+          compactor,
+          prefix,
+          sessionStore,
+          events,
+          usage: usageService
+        }
       })
     },
-    ...mcpProviders.providers,
     ...webProviders.providers,
     ...buildMemoryToolProviders(memoryStore, threadStore),
     ...buildKnowledgeToolProviders(knowledgeStore)
@@ -285,7 +296,7 @@ export async function createLegalworkServeRuntime(
         }
       })
     : undefined
-  const capabilities = buildRuntimeCapabilityManifest({
+  const runtimeCapabilities = () => buildRuntimeCapabilityManifest({
     config: options.capabilities,
     model: modelCapabilitiesForModel(options.model, modelProfiles),
     mcp: {
@@ -338,6 +349,25 @@ export async function createLegalworkServeRuntime(
     },
     ...buildDelegationToolProviders(delegationRuntime)
   ])
+  let shuttingDown = false
+  const mcpInitializationTimer = setTimeout(() => {
+    void buildMcpToolProviders(options.capabilities?.mcp, {
+      resolvePkulawFallbackToken: resolveBundledPkulawToken
+    })
+      .then(async (initialized) => {
+        if (shuttingDown) {
+          await initialized.close()
+          return
+        }
+        mcpProviders = initialized
+        for (const provider of initialized.providers) {
+          childRegistry.registerProvider(provider)
+          registry.registerProvider(provider)
+        }
+      })
+      .catch(() => undefined)
+  }, 250)
+  mcpInitializationTimer.unref?.()
   const toolHost = new LocalToolHost({ registry, readTracker: true })
   const loop = new AgentLoop({
     threadStore,
@@ -410,7 +440,7 @@ export async function createLegalworkServeRuntime(
       insecure: options.insecure,
       startedAt,
       pid: process.pid,
-      capabilities
+      capabilities: runtimeCapabilities()
     }),
     toolDiagnostics: async () => ({
       providers: registry.diagnostics(),
@@ -434,6 +464,8 @@ export async function createLegalworkServeRuntime(
     },
     dataComplianceTaskService,
     shutdown: async () => {
+      shuttingDown = true
+      clearTimeout(mcpInitializationTimer)
       try {
         await mcpProviders.close()
       } finally {

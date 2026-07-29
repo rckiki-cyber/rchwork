@@ -677,6 +677,67 @@ pre {
     0 16px 34px rgba(0, 0, 0, 0.18);
 }
 
+/* PDF.js lays out every glyph run with the source document's exact transform.
+ * Keep this in sync with pdfjs-dist's textLayer contract so selection follows
+ * a single visual line instead of the canvas image's approximate coordinates. */
+.pdfjs-text-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+}
+
+.pdfjs-text-layer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+}
+
+.pdfjs-text-layer > :not(.markedContent),
+.pdfjs-text-layer .markedContent span:not(.markedContent) {
+  z-index: 1;
+}
+
+.pdfjs-text-layer span.markedContent {
+  top: 0;
+  height: 0;
+}
+
+.pdfjs-text-layer span[role='img'] {
+  user-select: none;
+  cursor: default;
+}
+
+.pdfjs-text-layer ::selection {
+  background: color-mix(in srgb, AccentColor, transparent 72%);
+}
+
+.pdfjs-text-layer br::selection {
+  background: transparent;
+}
+
+.pdfjs-text-layer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.pdfjs-text-layer.selecting .endOfContent {
+  top: 0;
+}
+
 .ds-transition {
   transition:
     background-color 0.15s ease,

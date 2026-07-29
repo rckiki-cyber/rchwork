@@ -180,6 +180,21 @@ describe('app behavior settings', () => {
   })
 })
 
+describe('font scale settings', () => {
+  it('defaults missing font scale settings to medium', () => {
+    const raw = {
+      ...settings(),
+      uiFontScale: undefined
+    } as unknown as AppSettingsV1
+
+    expect(normalizeAppSettings(raw).uiFontScale).toBe('medium')
+  })
+
+  it('preserves an explicitly selected font scale', () => {
+    expect(normalizeAppSettings(settings()).uiFontScale).toBe('small')
+  })
+})
+
 describe('keyboard shortcut settings', () => {
   it('defaults shortcut overrides to empty', () => {
     const raw = {

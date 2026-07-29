@@ -1,5 +1,6 @@
 import {
   DEFAULT_GUI_UPDATE_CHANNEL,
+  DEFAULT_UI_FONT_SCALE,
   defaultLegalworkRuntimeSettings,
   applyLegalworkRuntimePatch,
   computeLegalworkRuntimeCredentialPatch,
@@ -97,7 +98,7 @@ export function coerceRendererSettings(settings: AppSettingsV1): AppSettingsV1 {
   const uiFontScale =
     raw.uiFontScale === 'small' || raw.uiFontScale === 'medium' || raw.uiFontScale === 'large'
       ? raw.uiFontScale
-      : 'medium'
+      : DEFAULT_UI_FONT_SCALE
   return {
     version: 1,
     locale: raw.locale === 'zh' ? 'zh' : 'en',

@@ -4,6 +4,7 @@ import { getProvider } from '../../agent/registry'
 import type { ChatBlock, ThreadDeltaEvent, ThreadEventSink, ToolEventPayload } from '../../agent/types'
 import { normalizeWorkspaceRoot } from '../../lib/workspace-path'
 import { rendererRuntimeClient } from '../../agent/runtime-client'
+import { applyLegalResearchSummaryEdit } from './legal-research-records'
 
 type ResearchStepStatus = 'pending' | 'running' | 'done' | 'error'
 
@@ -27,6 +28,8 @@ export interface ResearchRecord {
   blocks: ChatBlock[]
   steps: ResearchStep[]
   summary: string
+  editedSummary?: string
+  reportRevision?: number
   reasoning: string
   threadId: string
   turnId?: string
@@ -90,7 +93,7 @@ export function useLegalResearch() {
       t('legalResearchAgentPrompt', {
         query,
         defaultValue:
-          '请对以下法律问题进行多源调研：「{{query}}」。\n\n【重要要求】\n1. 你的所有思考过程、推理分析必须使用中文，不要使用英文。\n2. 主动调用可用的 skill 和 MCP 工具（如多引擎搜索、类案检索、学术文献、法规提取、网页内容抓取等）。\n3. 收集网络信息、裁判案例、学术文献、现行法规与权威解读。\n4. 最后给出结构化的综合总结。\n5. 推理过程要简洁，只列出关键行动步骤，不要展开长篇大论。\n6. 【容错原则】如果某个工具调用失败或返回错误，不要停止，立即尝试其他工具或替代方法完成调研。一个途径不行就换另一个，确保最终给出完整结果。'
+          '请对以下法律问题进行多源调研：「{{query}}」。\n\n【重要要求】\n1. 你的所有思考过程、推理分析必须使用中文，不要使用英文。\n2. 主动调用可用的 skill 和 MCP 工具（如多引擎搜索、类案检索、学术文献、法规提取、网页内容抓取等）。\n3. 收集网络信息、裁判案例、学术文献、现行法规与权威解读。\n4. 如果检索工具提供原文链接，必须保留工具返回的完整 URL，不得自行拼接或猜测；北大法宝 doc-link/链接增强工具可用时，使用它补全法规与案例的原文链接。\n5. 最终总结使用 Markdown 输出，将法规名称、法条标题、案例名称或案号写成可点击的 `[名称](完整URL)`；没有真实 URL 时只写名称并明确标注“无可核验链接”，不得生成虚假链接。\n6. 最后给出结构化的综合总结。\n7. 推理过程要简洁，只列出关键行动步骤，不要展开长篇大论。\n8. 【容错原则】如果某个工具调用失败或返回错误，不要停止，立即尝试其他工具或替代方法完成调研。一个途径不行就换另一个，确保最终给出完整结果。'
       }),
     [t]
   )
@@ -342,6 +345,13 @@ export function useLegalResearch() {
     }
   }, [t, persist])
 
+  const saveEditedSummary = useCallback(
+    (id: string, editedSummary: string) => {
+      persist((prev) => applyLegalResearchSummaryEdit(prev, id, editedSummary))
+    },
+    [persist]
+  )
+
   return {
     records,
     activeRecord,
@@ -350,6 +360,7 @@ export function useLegalResearch() {
     isResearching,
     runResearch,
     stopResearch,
+    saveEditedSummary,
     deleteRecord,
     clearHistory
   }

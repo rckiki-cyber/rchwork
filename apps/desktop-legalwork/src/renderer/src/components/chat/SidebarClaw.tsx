@@ -7,6 +7,9 @@ import {
   Settings
 } from 'lucide-react'
 import type { ClawImChannelV1 } from '@shared/app-settings'
+import dingTalkLogo from '../../assets/channel-logos/dingtalk.png'
+import qqLogo from '../../assets/channel-logos/qq.png'
+import weComLogo from '../../assets/channel-logos/wecom.png'
 import {
   SidebarIconButton,
   SidebarSectionHeader,
@@ -152,6 +155,9 @@ export function ClawSidebarContent({
 
 export function clawProviderDisplayLabel(provider: ClawImChannelV1['provider']): string {
   if (provider === 'weixin') return 'WeChat'
+  if (provider === 'qq') return 'QQ'
+  if (provider === 'dingtalk') return 'DingTalk'
+  if (provider === 'wecom') return 'WeCom'
   return 'Feishu / Lark'
 }
 
@@ -184,6 +190,36 @@ export function ClawProviderLogo({
         <circle cx="12.6" cy="14.9" r="0.62" fill="white" />
         <circle cx="16.2" cy="14.9" r="0.62" fill="white" />
       </svg>
+    )
+  }
+  if (provider === 'qq') {
+    return (
+      <img
+        src={qqLogo}
+        alt=""
+        className={`${className} shrink-0 object-contain`}
+        aria-hidden="true"
+      />
+    )
+  }
+  if (provider === 'dingtalk') {
+    return (
+      <img
+        src={dingTalkLogo}
+        alt=""
+        className={`${className} shrink-0 object-contain`}
+        aria-hidden="true"
+      />
+    )
+  }
+  if (provider === 'wecom') {
+    return (
+      <img
+        src={weComLogo}
+        alt=""
+        className={`${className} shrink-0 object-contain`}
+        aria-hidden="true"
+      />
     )
   }
   return (

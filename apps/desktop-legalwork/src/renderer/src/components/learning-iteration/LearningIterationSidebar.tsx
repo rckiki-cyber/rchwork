@@ -25,8 +25,10 @@ export function LearningIterationSidebar(): ReactElement {
     <div className="ds-no-drag flex min-h-0 flex-1 flex-col px-1">
       <button
         type="button"
+        data-sidebar-hover-target
+        data-sidebar-active={selectedId === null ? 'true' : undefined}
         onClick={() => void select(null)}
-        className={`flex min-h-[38px] items-center gap-2.5 rounded-[9px] px-3 text-[13.5px] font-semibold transition ${
+        className={`flex min-h-[38px] items-center gap-2.5 rounded-[12px] px-3 text-[13.5px] font-semibold transition ${
           selectedId === null
             ? 'bg-[var(--ds-sidebar-row-active)] text-ds-ink shadow-[inset_0_0_0_1px_var(--ds-sidebar-row-ring)]'
             : 'text-ds-muted hover:bg-[var(--ds-sidebar-row-hover)] hover:text-ds-ink'
@@ -55,8 +57,10 @@ export function LearningIterationSidebar(): ReactElement {
           <button
             key={record.id}
             type="button"
+            data-sidebar-hover-target
+            data-sidebar-active={selectedId === record.id ? 'true' : undefined}
             onClick={() => void select(record.id)}
-            className={`flex w-full items-start gap-2 rounded-[9px] px-2.5 py-2.5 text-left transition ${
+            className={`flex w-full items-start gap-2 rounded-[12px] px-2.5 py-2.5 text-left transition ${
               selectedId === record.id
                 ? 'bg-[var(--ds-sidebar-row-active)] text-ds-ink'
                 : 'text-ds-muted hover:bg-[var(--ds-sidebar-row-hover)] hover:text-ds-ink'

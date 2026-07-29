@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   builtInTemplates,
   type LegalTemplate,
@@ -8,6 +8,19 @@ import {
 } from './legal-templates'
 import type { DocumentHistoryRecord } from '../../../../shared/document-history'
 import type { UserTemplate } from '../../../../shared/user-templates'
+import { getProvider } from '../../agent/registry'
+import type { ThreadDeltaEvent, ThreadEventSink, ToolEventPayload } from '../../agent/types'
+import { rendererRuntimeClient } from '../../agent/runtime-client'
+import { normalizeWorkspaceRoot } from '../../lib/workspace-path'
+import {
+  advanceDocumentWritingStage,
+  buildDocumentWritingAgentPrompt,
+  completeDocumentWritingStages,
+  createDocumentWritingStages,
+  documentWritingStageForTool,
+  updateDocumentWritingStages,
+  type DocumentWritingStage
+} from './document-writing-agent'
 
 export type UploadedMaterial = {
   id: string
@@ -16,6 +29,26 @@ export type UploadedMaterial = {
   content: string
   loaded: boolean
   error?: string
+}
+
+export type DocumentWritingWorkflow = {
+  status: 'idle' | 'running' | 'done' | 'error'
+  stages: DocumentWritingStage[]
+  toolCount: number
+  reasoning: string
+  lastTool?: string
+  error?: string
+}
+
+export type DocumentWritingWorkflowVisibility = 'expanded' | 'minimized' | 'hidden'
+
+function idleWorkflow(): DocumentWritingWorkflow {
+  return {
+    status: 'idle',
+    stages: createDocumentWritingStages(0).map((stage) => ({ ...stage, status: 'pending' })),
+    toolCount: 0,
+    reasoning: ''
+  }
 }
 
 type DocumentWritingContextValue = {
@@ -38,6 +71,9 @@ type DocumentWritingContextValue = {
   uploadedMaterials: UploadedMaterial[]
   instruction: string
   setInstruction: (value: string) => void
+  workflow: DocumentWritingWorkflow
+  workflowVisibility: DocumentWritingWorkflowVisibility
+  setWorkflowVisibility: (visibility: DocumentWritingWorkflowVisibility) => void
   knowledgePanelOpen: boolean
   setKnowledgePanelOpen: (open: boolean) => void
   knowledgePanelWidth: number
@@ -47,6 +83,7 @@ type DocumentWritingContextValue = {
   activeTemplate: LegalTemplate | null
   handleSelectTemplate: (template: LegalTemplate) => void
   handleFieldChange: (fieldId: string, value: string) => void
+  handleGeneratedContentChange: (content: string) => void
   handleGenerate: () => Promise<void>
   handleNewDocument: () => void
   handleUpload: (file: File) => Promise<void>
@@ -151,8 +188,12 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null)
   const [uploadedMaterials, setUploadedMaterials] = useState<UploadedMaterial[]>([])
   const [instruction, setInstruction] = useState('')
+  const [workflow, setWorkflow] = useState<DocumentWritingWorkflow>(idleWorkflow)
+  const [workflowVisibility, setWorkflowVisibility] = useState<DocumentWritingWorkflowVisibility>('hidden')
   const [knowledgePanelOpen, setKnowledgePanelOpen] = useState(false)
   const [knowledgePanelWidth, setKnowledgePanelWidth] = useState(460)
+  const workflowAbortRef = useRef<AbortController | null>(null)
+  const workflowRunRef = useRef(0)
 
   const normalizedBuiltInTemplates = useMemo(
     () => builtInTemplates.map(withInferredTemplateFields),
@@ -176,6 +217,8 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
   useEffect(() => {
     void loadUserTemplates()
   }, [loadUserTemplates])
+
+  useEffect(() => () => workflowAbortRef.current?.abort(), [])
 
   const allTemplates = useMemo(() => {
     if (activeCategory === 'custom') return userTemplates
@@ -211,6 +254,10 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       return
     }
     setFieldValues((prev) => ({ ...prev, [fieldId]: value }))
+  }, [])
+
+  const handleGeneratedContentChange = useCallback((content: string) => {
+    setGeneratedContent(content)
   }, [])
 
   const saveCurrentToHistory = useCallback(
@@ -252,34 +299,145 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       return
     }
 
+    workflowAbortRef.current?.abort()
+    const abortController = new AbortController()
+    workflowAbortRef.current = abortController
+    const runId = ++workflowRunRef.current
+    const request = {
+      template: {
+        id: activeTemplate.id,
+        name: activeTemplate.name,
+        description: activeTemplate.description,
+        content: activeTemplate.content,
+        fields: activeTemplate.fields,
+        legalBasis: activeTemplate.legalBasis
+      },
+      fieldValues,
+      materials: materials.length > 0 ? materials : undefined,
+      instructions: instruction.trim() || undefined
+    }
+
     setGenerating(true)
     setError(null)
+    setWorkflowVisibility('expanded')
+    setWorkflow({
+      status: 'running',
+      stages: createDocumentWritingStages(materials.length),
+      toolCount: 0,
+      reasoning: ''
+    })
 
     try {
-      const result = await window.dsGui.generateDocumentFromTemplate({
-        template: {
-          id: activeTemplate.id,
-          name: activeTemplate.name,
-          description: activeTemplate.description,
-          content: activeTemplate.content,
-          fields: activeTemplate.fields,
-          legalBasis: activeTemplate.legalBasis
-        },
-        fieldValues,
-        materials: materials.length > 0 ? materials : undefined,
-        instructions: instruction.trim() || undefined
+      const provider = getProvider()
+      const settings = await rendererRuntimeClient.getSettings()
+      const workspace = normalizeWorkspaceRoot(settings.workspaceRoot) || '~'
+      const thread = await provider.createThread({
+        workspace,
+        title: `文书写作：${activeTemplate.name}`,
+        mode: 'agent'
       })
+      const sent = await provider.sendUserMessage(thread.id, buildDocumentWritingAgentPrompt(request), {
+        mode: 'agent'
+      })
+      let assistantText = ''
+      let reasoning = ''
+      let completed = false
 
-      if (result.ok) {
-        setGeneratedContent(result.content)
-        void saveCurrentToHistory(result.content)
-      } else {
-        setError(result.message)
+      const updateWorkflow = (updater: (current: DocumentWritingWorkflow) => DocumentWritingWorkflow): void => {
+        if (workflowRunRef.current !== runId) return
+        setWorkflow((current) => updater(current))
       }
+      const fail = (message: string): void => {
+        if (completed || workflowRunRef.current !== runId) return
+        completed = true
+        updateWorkflow((current) => ({
+          ...current,
+          status: 'error',
+          error: message,
+          stages: updateDocumentWritingStages(
+            current.stages,
+            current.stages.find((stage) => stage.status === 'running')?.id ?? 'materials',
+            'error',
+            message
+          )
+        }))
+        setError(message)
+      }
+
+      const sink: ThreadEventSink = {
+        onSeq: () => {},
+        onDeltas: (deltas: ThreadDeltaEvent[]) => {
+          for (const delta of deltas) {
+            if (delta.kind === 'agent_message') assistantText += delta.text
+            else reasoning += delta.text
+          }
+          updateWorkflow((current) => ({
+            ...current,
+            reasoning: reasoning.trim(),
+            stages: assistantText.trim()
+              ? advanceDocumentWritingStage(current.stages, 'drafting', '正在组织并写入文书正文')
+              : advanceDocumentWritingStage(current.stages, 'issues', '正在归纳争议焦点和证明要点')
+          }))
+        },
+        onUserMessage: () => {},
+        onTool: (event: ToolEventPayload) => {
+          const stageId = documentWritingStageForTool(
+            event.summary,
+            typeof event.meta?.toolName === 'string' ? event.meta.toolName : undefined
+          )
+          updateWorkflow((current) => ({
+            ...current,
+            toolCount: current.toolCount + (event.status === 'running' ? 1 : 0),
+            lastTool: event.summary || '正在调用法律工具',
+            stages: advanceDocumentWritingStage(
+              current.stages,
+              stageId,
+              event.status === 'error'
+                ? `${event.summary || '工具调用'}未成功，正在尝试其他来源`
+                : event.summary || current.stages.find((stage) => stage.id === stageId)?.detail
+            )
+          }))
+        },
+        onCompaction: () => {},
+        onApproval: () => {},
+        onUserInput: () => {},
+        onUserInputStatus: () => {},
+        onGoal: () => {},
+        onTurnComplete: () => {
+          if (workflowRunRef.current !== runId) return
+          const content = assistantText.trim()
+          if (!content) {
+            fail('文书 Agent 已结束，但未返回文书正文。')
+            return
+          }
+          completed = true
+          setGeneratedContent(content)
+          void saveCurrentToHistory(content)
+          updateWorkflow((current) => ({
+            ...current,
+            status: 'done',
+            stages: completeDocumentWritingStages(current.stages)
+          }))
+        },
+        onError: (event) => fail(`文书生成连接中断：${event.message}`)
+      }
+
+      await provider.subscribeThreadEvents(thread.id, 0, sink, abortController.signal)
+      if (!abortController.signal.aborted && !completed) {
+        fail('文书生成连接已结束，但未收到完成事件。')
+      }
+      void sent
     } catch (err) {
-      setError(err instanceof Error ? err.message : '生成失败，请重试。')
+      if (!abortController.signal.aborted) {
+        const message = err instanceof Error ? err.message : '生成失败，请重试。'
+        setError(message)
+        setWorkflow((current) => ({ ...current, status: 'error', error: message }))
+      }
     } finally {
-      setGenerating(false)
+      if (workflowRunRef.current === runId) {
+        setGenerating(false)
+        workflowAbortRef.current = null
+      }
     }
   }, [activeTemplate, fieldValues, instruction, saveCurrentToHistory, uploadedMaterials])
 
@@ -452,6 +610,9 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       uploadedMaterials,
       instruction,
       setInstruction,
+      workflow,
+      workflowVisibility,
+      setWorkflowVisibility,
       knowledgePanelOpen,
       setKnowledgePanelOpen,
       knowledgePanelWidth,
@@ -461,6 +622,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       activeTemplate,
       handleSelectTemplate,
       handleFieldChange,
+      handleGeneratedContentChange,
       handleGenerate,
       handleNewDocument,
       handleUpload,
@@ -486,6 +648,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       handleCategoryChange,
       handleDeleteUserTemplate,
       handleFieldChange,
+      handleGeneratedContentChange,
       handleGenerate,
       handleKnowledgeToggle,
       handleNewDocument,
@@ -504,7 +667,9 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       showUserTemplates,
       uploadedMaterials,
       uploaderOpen,
-      userTemplates
+      userTemplates,
+      workflow,
+      workflowVisibility
     ]
   )
 

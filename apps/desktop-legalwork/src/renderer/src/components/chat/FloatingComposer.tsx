@@ -1679,6 +1679,8 @@ export function FloatingComposer({
         ) : null}
 
         <div
+          data-liquid-surface="composer"
+          data-liquid-reactive
           className={`ds-composer-shell ds-chat-composer ds-frosted flex flex-col gap-1 px-3 pb-2 pt-2 transition ${
             draft.focused ? 'ds-chat-composer-focus' : ''
           } ${compact ? 'rounded-[24px] px-3 py-2 shadow-none' : ''}`}

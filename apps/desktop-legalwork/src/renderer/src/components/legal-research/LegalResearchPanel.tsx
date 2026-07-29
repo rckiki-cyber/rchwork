@@ -1,12 +1,24 @@
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search, Scale, Square, ChevronDown, ChevronRight, FileDown } from 'lucide-react'
+import {
+  Search,
+  Scale,
+  Square,
+  ChevronDown,
+  ChevronRight,
+  FileDown,
+  FilePenLine
+} from 'lucide-react'
 import { MessageBubble } from '../chat/message-timeline-bubbles'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
 import type { ChatBlock } from '../../agent/types'
 import type { ReturnUseLegalResearch } from './useLegalResearch'
-import { preprocessLegalResearchSummary } from './legal-research-markdown'
+import {
+  preprocessLegalResearchSummary,
+  resolveLegalResearchMarkdown
+} from './legal-research-markdown'
+import { LegalResearchEditorDialog } from './LegalResearchEditorDialog'
 
 export type LegalResearchPanelProps = {
   legalResearch: ReturnUseLegalResearch
@@ -23,11 +35,13 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
   const [clockNow, setClockNow] = useState(Date.now())
   const [exportInFlight, setExportInFlight] = useState(false)
   const [exportNotice, setExportNotice] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
   const {
     activeRecord,
     isResearching,
     runResearch,
-    stopResearch
+    stopResearch,
+    saveEditedSummary
   } = legalResearch
 
   useEffect(() => {
@@ -47,6 +61,10 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
       bottomRef.current?.scrollIntoView({ block: 'end' })
     })
     return () => window.cancelAnimationFrame(frame)
+  }, [activeRecord?.id])
+
+  useEffect(() => {
+    setEditingRecordId(null)
   }, [activeRecord?.id])
 
   useEffect(() => {
@@ -87,7 +105,8 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     setExportInFlight(true)
     setExportNotice(null)
 
-    const { query, summary, reasoning, steps, timestamp } = activeRecord
+    const { query, reasoning, steps, timestamp } = activeRecord
+    const summary = resolveLegalResearchMarkdown(activeRecord)
 
     // Build a complete HTML document for Word export
     const summaryHtml = summary
@@ -192,6 +211,16 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     }
   }, [activeRecord, exportInFlight, t])
 
+  const handleSaveEditedReport = useCallback(
+    (markdown: string) => {
+      if (!activeRecord || editingRecordId !== activeRecord.id) return
+      saveEditedSummary(activeRecord.id, markdown)
+      setEditingRecordId(null)
+      setExportNotice({ tone: 'success', text: t('legalResearchEditSaved') })
+    },
+    [activeRecord, editingRecordId, saveEditedSummary, t]
+  )
+
   const renderBlock = (block: ChatBlock): ReactElement | null => {
     if (block.kind === 'user') {
       return (
@@ -266,6 +295,9 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
   const runningSteps = activeRecord?.steps.filter((step) => step.status === 'running') ?? []
   const lastRunningStep = runningSteps[runningSteps.length - 1]
   const runningSince = activeRecord?.status === 'running' ? clockNow - updatedAt : 0
+  const hasActiveReport = Boolean(
+    activeRecord && (activeRecord.summary || activeRecord.editedSummary !== undefined)
+  )
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ds-main)]">
@@ -313,7 +345,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
         </div>
 
         {/* Export button row */}
-        {activeRecord?.summary && (
+        {hasActiveReport && activeRecord && (
           <div className="flex items-center justify-between gap-3 border-b border-[var(--ds-border)] px-6 py-2">
             <div
               className={`min-w-0 truncate text-[11px] ${
@@ -323,15 +355,26 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
             >
               {exportNotice?.text ?? ''}
             </div>
-            <button
-              type="button"
-              onClick={handleExportWord}
-              disabled={exportInFlight}
-              className="flex shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--ds-border)] bg-[var(--ds-sidebar-field-bg)] px-3 py-1.5 text-[11px] font-medium text-[var(--ds-ink)] transition-colors hover:bg-[var(--ds-sidebar-row-hover)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <FileDown className="h-3.5 w-3.5" strokeWidth={1.75} />
-              {exportInFlight ? '导出中...' : t('legalResearchExportWord')}
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingRecordId(activeRecord.id)}
+                disabled={activeRecord.status === 'running'}
+                className="flex shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--ds-border)] bg-[var(--ds-sidebar-field-bg)] px-3 py-1.5 text-[11px] font-medium text-[var(--ds-ink)] transition-colors hover:bg-[var(--ds-sidebar-row-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <FilePenLine className="h-3.5 w-3.5" strokeWidth={1.75} />
+                {t('legalResearchEditReport')}
+              </button>
+              <button
+                type="button"
+                onClick={handleExportWord}
+                disabled={exportInFlight}
+                className="flex shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--ds-border)] bg-[var(--ds-sidebar-field-bg)] px-3 py-1.5 text-[11px] font-medium text-[var(--ds-ink)] transition-colors hover:bg-[var(--ds-sidebar-row-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-accent)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FileDown className="h-3.5 w-3.5" strokeWidth={1.75} />
+                {exportInFlight ? t('legalResearchExportingWord') : t('legalResearchExportWord')}
+              </button>
+            </div>
           </div>
         )}
 
@@ -457,7 +500,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                 </div>
               )}
 
-              {activeRecord.summary && (
+              {(activeRecord.summary || activeRecord.editedSummary !== undefined) && (
                 <div className="rounded-[10px] border border-[var(--ds-border)] bg-[var(--ds-sidebar)] p-4">
                   <div className="mb-2 flex items-center gap-2">
                     <span>📋</span>
@@ -465,8 +508,12 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                       {t('legalResearchSummaryTitle')}
                     </span>
                   </div>
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed text-[var(--ds-ink)] [overflow-wrap:anywhere]">
-                    <AssistantMarkdown text={preprocessLegalResearchSummary(activeRecord.summary)} streaming={false} />
+                  <div className="ds-markdown ds-chat-answer max-w-none text-[13px] leading-relaxed text-[var(--ds-ink)] [overflow-wrap:anywhere]">
+                    <AssistantMarkdown
+                      key={`${activeRecord.id}:${activeRecord.reportRevision ?? 'generated'}`}
+                      text={preprocessLegalResearchSummary(resolveLegalResearchMarkdown(activeRecord))}
+                      streaming={false}
+                    />
                   </div>
                 </div>
               )}
@@ -480,6 +527,13 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
             </div>
           )}
         </div>
+        {activeRecord && editingRecordId === activeRecord.id && (
+          <LegalResearchEditorDialog
+            initialMarkdown={resolveLegalResearchMarkdown(activeRecord)}
+            onClose={() => setEditingRecordId(null)}
+            onSave={handleSaveEditedReport}
+          />
+        )}
     </div>
   )
 }

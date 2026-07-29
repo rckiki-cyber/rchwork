@@ -17,6 +17,7 @@ dist/
 ### Local release secrets
 scripts/release.local.env
 release.local.env
+scripts/pkulaw-fallback.local.json
 *.p12
 *.p8
 *.pem
@@ -49,3 +50,4 @@ TestResults.xml
 
 ### Internal docs
 docs/R2_RELEASE.md
+.dev-dist/

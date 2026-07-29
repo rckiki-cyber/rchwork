@@ -884,7 +884,6 @@ function ScheduleTaskDialog({
               variant="default"
               size="sm"
               type="submit"
-              className="bg-ds-userbubble text-ds-userbubbleFg font-semibold hover:opacity-90"
             >
               {t('confirm')}
             </AstryxButton>

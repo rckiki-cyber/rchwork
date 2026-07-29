@@ -22,11 +22,16 @@ export function SettingsSidebar({
     }`
 
   return (
-    <aside className="ds-drag flex w-[248px] shrink-0 flex-col border-r border-ds-border bg-ds-sidebar backdrop-blur-md">
+    <aside
+      data-sidebar-hover-root
+      className="ds-drag relative flex w-[248px] shrink-0 flex-col overflow-hidden border-r border-ds-border bg-ds-sidebar backdrop-blur-md"
+    >
+      <span aria-hidden data-sidebar-hover-indicator />
       <div className="px-3 pb-3 pt-3">
         <div aria-hidden className="ds-titlebar-safe-block" />
         <button
           type="button"
+          data-sidebar-hover-target
           onClick={goBack}
           className="ds-no-drag flex items-center gap-2 rounded-xl px-2 py-2 text-[14px] text-ds-muted hover:bg-ds-hover hover:text-ds-ink"
         >
@@ -35,27 +40,27 @@ export function SettingsSidebar({
         </button>
       </div>
       <nav className="ds-no-drag flex flex-col gap-0.5 px-2">
-        <button type="button" className={catCls('general')} onClick={() => setCategory('general')}>
+        <button type="button" data-sidebar-hover-target data-sidebar-active={category === 'general' ? 'true' : undefined} className={catCls('general')} onClick={() => setCategory('general')}>
           <Globe className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />
           {t('general')}
         </button>
-        <button type="button" className={catCls('agents')} onClick={() => setCategory('agents')}>
+        <button type="button" data-sidebar-hover-target data-sidebar-active={category === 'agents' ? 'true' : undefined} className={catCls('agents')} onClick={() => setCategory('agents')}>
           <Bot className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />
           {t('agents')}
         </button>
-        <button type="button" className={catCls('memory')} onClick={() => setCategory('memory')}>
+        <button type="button" data-sidebar-hover-target data-sidebar-active={category === 'memory' ? 'true' : undefined} className={catCls('memory')} onClick={() => setCategory('memory')}>
           <Brain className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />
           {t('memory')}
         </button>
-        <button type="button" className={catCls('shortcuts')} onClick={() => setCategory('shortcuts')}>
+        <button type="button" data-sidebar-hover-target data-sidebar-active={category === 'shortcuts' ? 'true' : undefined} className={catCls('shortcuts')} onClick={() => setCategory('shortcuts')}>
           <Keyboard className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />
           {t('keyboardShortcuts')}
         </button>
-        <button type="button" className={catCls('claw')} onClick={() => setCategory('claw')}>
+        <button type="button" data-sidebar-hover-target data-sidebar-active={category === 'claw' ? 'true' : undefined} className={catCls('claw')} onClick={() => setCategory('claw')}>
           <Smartphone className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />
           {t('claw')}
         </button>
-        <button type="button" className={catCls('guiUpdate')} onClick={() => setCategory('guiUpdate')}>
+        <button type="button" data-sidebar-hover-target data-sidebar-active={category === 'guiUpdate' ? 'true' : undefined} className={catCls('guiUpdate')} onClick={() => setCategory('guiUpdate')}>
           <RefreshCw className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />
           {t('guiUpdate')}
         </button>

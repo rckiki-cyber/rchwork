@@ -11,6 +11,7 @@ import {
   createConnectPhoneAgentProfile,
   createConnectPhoneChannelOptions,
   createConnectPhoneCredential,
+  createRegionalConnectPhoneCredential,
   formatConnectPhoneUserCode,
   hasClawPhoneChannel,
   hasEnabledClawPhoneChannel
@@ -56,6 +57,9 @@ describe('ConnectPhoneView', () => {
 
     expect(html).toContain('Use your phone to connect legalwork')
     expect(html).toContain('Generate authorization QR')
+    expect(html).toContain('QQ')
+    expect(html).toContain('DingTalk')
+    expect(html).toContain('WeCom')
     expect(html).not.toContain('Legalwork usage')
   })
 
@@ -63,6 +67,9 @@ describe('ConnectPhoneView', () => {
     expect(connectPhoneProviderForTarget('feishu')).toBe('feishu')
     expect(connectPhoneProviderForTarget('lark')).toBe('feishu')
     expect(connectPhoneProviderForTarget('weixin')).toBe('weixin')
+    expect(connectPhoneProviderForTarget('qq')).toBe('qq')
+    expect(connectPhoneProviderForTarget('dingtalk')).toBe('dingtalk')
+    expect(connectPhoneProviderForTarget('wecom')).toBe('wecom')
     expect(connectPhoneInstallRequestOptions('feishu')).toEqual({
       provider: 'feishu',
       options: { isLark: false }
@@ -73,6 +80,54 @@ describe('ConnectPhoneView', () => {
     })
     expect(connectPhoneInstallRequestOptions('weixin')).toEqual({
       provider: 'weixin'
+    })
+  })
+
+  it('builds trimmed credentials for the regional long-connection channels', () => {
+    expect(
+      createRegionalConnectPhoneCredential(
+        'qq',
+        ' 1024 ',
+        ' qq-secret ',
+        {
+          templateId: ' template-1 ',
+          templateKey: ' content '
+        },
+        '2026-06-03T01:02:03.000Z'
+      )
+    ).toEqual({
+      kind: 'qq',
+      appId: '1024',
+      appSecret: 'qq-secret',
+      markdownTemplateId: 'template-1',
+      markdownTemplateKey: 'content',
+      createdAt: '2026-06-03T01:02:03.000Z'
+    })
+    expect(
+      createRegionalConnectPhoneCredential(
+        'dingtalk',
+        ' ding-client ',
+        ' ding-secret ',
+        '2026-06-03T01:02:03.000Z'
+      )
+    ).toEqual({
+      kind: 'dingtalk',
+      clientId: 'ding-client',
+      clientSecret: 'ding-secret',
+      createdAt: '2026-06-03T01:02:03.000Z'
+    })
+    expect(
+      createRegionalConnectPhoneCredential(
+        'wecom',
+        ' wecom-bot ',
+        ' wecom-secret ',
+        '2026-06-03T01:02:03.000Z'
+      )
+    ).toEqual({
+      kind: 'wecom',
+      botId: 'wecom-bot',
+      secret: 'wecom-secret',
+      createdAt: '2026-06-03T01:02:03.000Z'
     })
   })
 
@@ -106,6 +161,9 @@ describe('ConnectPhoneView', () => {
         provider: 'weixin'
       }
     })
+    expect(createConnectPhoneChannelOptions('qq').im.provider).toBe('qq')
+    expect(createConnectPhoneChannelOptions('dingtalk').im.provider).toBe('dingtalk')
+    expect(createConnectPhoneChannelOptions('wecom').im.provider).toBe('wecom')
     expect(
       createConnectPhoneCredential(
         {

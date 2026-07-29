@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { preprocessLegalResearchSummary } from './legal-research-markdown'
+import {
+  preprocessLegalResearchSummary,
+  resolveLegalResearchMarkdown
+} from './legal-research-markdown'
+
+describe('resolveLegalResearchMarkdown', () => {
+  it('uses the generated Markdown before a report has been edited', () => {
+    expect(resolveLegalResearchMarkdown({ summary: '# 原始报告' })).toBe('# 原始报告')
+  })
+
+  it('uses the saved edited Markdown, including an intentionally empty report', () => {
+    expect(
+      resolveLegalResearchMarkdown({
+        summary: '# 原始报告',
+        editedSummary: '# 编辑后的报告'
+      })
+    ).toBe('# 编辑后的报告')
+    expect(resolveLegalResearchMarkdown({ summary: '# 原始报告', editedSummary: '' })).toBe('')
+  })
+})
 
 describe('preprocessLegalResearchSummary', () => {
   it('wraps box-drawing legal framework diagrams in a text fence', () => {
@@ -40,6 +59,16 @@ describe('preprocessLegalResearchSummary', () => {
       'A||B',
       '┌──┐',
       '```'
+    ].join('\n')
+
+    expect(preprocessLegalResearchSummary(input)).toBe(input)
+  })
+
+  it('preserves Markdown links returned by legal research tools', () => {
+    const input = [
+      '适用法规：',
+      '- [《个人信息出境标准合同办法》](https://www.pkulaw.com/law/example)',
+      '- <https://www.pkulaw.com/case/example>'
     ].join('\n')
 
     expect(preprocessLegalResearchSummary(input)).toBe(input)

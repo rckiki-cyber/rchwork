@@ -43,11 +43,16 @@ import type { ResearchRecord } from '../legal-research/useLegalResearch'
 import { KnowledgeBaseChatSidebar } from '../knowledge-base/KnowledgeBaseChatSidebar'
 import { DocumentWritingSidebarContent } from '../document-writing/DocumentWritingSidebarContent'
 import { LearningIterationSidebar } from '../learning-iteration/LearningIterationSidebar'
+import {
+  getWorkspaceModeView,
+  isAgentWorkspaceView,
+  type SidebarView
+} from './sidebar-navigation-model'
 
 type Props = {
   threads: NormalizedThread[]
   activeThreadId: string | null
-  activeView: 'chat' | 'dataCompliance' | 'desensitize' | 'claw' | 'schedule' | 'documentWriting' | 'legalResearch' | 'knowledgeBase' | 'learningIteration'
+  activeView: SidebarView
   dataComplianceSection: DataComplianceSection
   desensitizeSection: DesensitizeSection
   connectPhoneSidebarOpen: boolean
@@ -156,6 +161,7 @@ export function Sidebar({
 
   const [imDialogMode, setImDialogMode] = useState<ClawImDialogMode | null>(null)
   const showAgentStartingHint = !runtimeReady && (runtimeConnection === 'idle' || runtimeConnection === 'checking')
+  const showAgentRetryingHint = !runtimeReady && runtimeConnection === 'offline'
 
   const activeClawChannel = useMemo(
     () => clawChannels.find((channel) => channel.id === activeClawChannelId) ?? clawChannels[0] ?? null,
@@ -188,13 +194,13 @@ export function Sidebar({
     >
       <div className="ds-no-drag flex flex-col px-1">
         <WorkspaceModeTabs
-          activeView={activeView === 'knowledgeBase' || activeView === 'learningIteration' ? 'chat' : activeView}
+          activeView={getWorkspaceModeView(activeView)}
           onCodeOpen={onCodeOpen}
           onDesensitizeOpen={onDesensitizeOpen}
           onDataComplianceOpen={onDataComplianceOpen}
         />
 
-        {activeView === 'chat' || activeView === 'knowledgeBase' ? (
+        {isAgentWorkspaceView(activeView) ? (
           <>
             <SidebarCommandRow
               icon={<Plus className="h-4 w-4" strokeWidth={2} />}
@@ -208,6 +214,7 @@ export function Sidebar({
               icon={<BrainCircuit className="h-4 w-4" strokeWidth={1.8} />}
               label={t('learningIteration')}
               onClick={onLearningIterationOpen}
+              active={activeView === 'learningIteration'}
               variant="accent"
             />
             {showAgentStartingHint ? (
@@ -216,23 +223,29 @@ export function Sidebar({
                 <span className="min-w-0">{t('sidebarAgentStarting')}</span>
               </div>
             ) : null}
+            {showAgentRetryingHint ? (
+              <div className="mx-2 mb-1 mt-1 flex items-start gap-2 rounded-[8px] border border-amber-200 bg-amber-50 px-2.5 py-2 text-[12px] leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                <LoaderCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" strokeWidth={2} />
+                <span className="min-w-0">{t('sidebarAgentRetrying')}</span>
+              </div>
+            ) : null}
             <SidebarCommandRow
               icon={<FileText className="h-4 w-4" strokeWidth={1.75} />}
               label={t('documentWriting')}
               onClick={onDocumentWritingOpen}
-              active={false}
+              active={activeView === 'documentWriting'}
             />
             <SidebarCommandRow
               icon={<Scale className="h-4 w-4" strokeWidth={1.75} />}
               label={t('legalResearch')}
               onClick={onLegalResearchOpen}
-              active={false}
+              active={activeView === 'legalResearch'}
             />
             <SidebarCommandRow
               icon={<Database className="h-4 w-4" strokeWidth={1.75} />}
               label={t('knowledgeBase')}
               onClick={onKnowledgeOpen}
-              active={knowledgePanelOpen}
+              active={activeView === 'knowledgeBase' || knowledgePanelOpen}
             />
             <SidebarCommandRow
               icon={<LayoutGrid className="h-4 w-4" strokeWidth={1.75} />}
@@ -244,7 +257,7 @@ export function Sidebar({
               icon={<Clock3 className="h-4 w-4" strokeWidth={1.75} />}
               label={t('schedule')}
               onClick={onScheduleOpen}
-              active={false}
+              active={activeView === 'schedule'}
             />
           </>
         ) : null}

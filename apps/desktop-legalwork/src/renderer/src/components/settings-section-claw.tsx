@@ -74,6 +74,21 @@ function updateChannelProfile(
   })
 }
 
+function updateQqMarkdownCredential(
+  form: AppSettingsV1,
+  update: (partial: AppSettingsPatch) => void,
+  channel: ClawImChannelV1,
+  patch: { markdownTemplateId?: string; markdownTemplateKey?: string }
+): void {
+  if (channel.platformCredential?.kind !== 'qq') return
+  updateChannel(form, update, channel.id, {
+    platformCredential: {
+      ...channel.platformCredential,
+      ...patch
+    }
+  })
+}
+
 function channelEffectiveWorkspace(form: AppSettingsV1, channel: ClawImChannelV1): string {
   return channel.workspaceRoot.trim() || form.claw.im.workspaceRoot.trim() || form.workspaceRoot
 }
@@ -162,7 +177,15 @@ export function ClawSettingsSection({ ctx }: { ctx: ClawSettingsContext }): Reac
                     <div className="truncate text-[14px] font-semibold text-ds-ink">{name}</div>
                     <div className="mt-1 text-[12px] text-ds-faint">
                       {t('clawManageAgentMeta', {
-                        provider: 'Feishu / Lark',
+                        provider: channel.provider === 'weixin'
+                          ? 'WeChat'
+                          : channel.provider === 'qq'
+                            ? 'QQ'
+                            : channel.provider === 'dingtalk'
+                              ? 'DingTalk'
+                              : channel.provider === 'wecom'
+                                ? 'WeCom'
+                                : 'Feishu / Lark',
                         model: channel.model,
                         workspace: channelEffectiveWorkspace(form, channel)
                       })}
@@ -218,6 +241,47 @@ export function ClawSettingsSection({ ctx }: { ctx: ClawSettingsContext }): Reac
                       })}
                     />
                   </label>
+                  {channel.platformCredential?.kind === 'qq' ? (
+                    <div className="rounded-xl border border-ds-border bg-ds-card p-3 md:col-span-2">
+                      <div className="text-[12px] font-semibold text-ds-muted">
+                        {t('clawQqMarkdownTitle')}
+                      </div>
+                      <p className="mt-1 text-[12px] leading-5 text-ds-faint">
+                        {t('clawQqMarkdownDescription')}
+                      </p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <label className="block min-w-0">
+                          <span className="mb-1.5 block text-[12px] font-semibold text-ds-muted">
+                            {t('clawQqMarkdownTemplateId')}
+                          </span>
+                          <input
+                            className={textInputClass()}
+                            value={channel.platformCredential.markdownTemplateId ?? ''}
+                            onChange={(e) => updateQqMarkdownCredential(form, update, channel, {
+                              markdownTemplateId: e.target.value
+                            })}
+                            placeholder={t('clawQqMarkdownTemplateIdPlaceholder')}
+                          />
+                        </label>
+                        <label className="block min-w-0">
+                          <span className="mb-1.5 block text-[12px] font-semibold text-ds-muted">
+                            {t('clawQqMarkdownTemplateKey')}
+                          </span>
+                          <input
+                            className={textInputClass()}
+                            value={channel.platformCredential.markdownTemplateKey ?? 'content'}
+                            onChange={(e) => updateQqMarkdownCredential(form, update, channel, {
+                              markdownTemplateKey: e.target.value
+                            })}
+                            placeholder="content"
+                          />
+                        </label>
+                      </div>
+                      <p className="mt-2 text-[11px] leading-5 text-ds-faint">
+                        {t('clawQqMarkdownTemplateHint')}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="mt-4 grid gap-3">

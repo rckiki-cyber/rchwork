@@ -43,7 +43,15 @@ export function normalizeRunMode(value: unknown): ClawRunMode {
 }
 
 export function normalizeImProvider(value: unknown): ClawImProvider {
-  return value === 'weixin' ? 'weixin' : 'feishu'
+  if (
+    value === 'weixin' ||
+    value === 'qq' ||
+    value === 'dingtalk' ||
+    value === 'wecom'
+  ) {
+    return value
+  }
+  return 'feishu'
 }
 
 export function normalizeClawModel(value: unknown): ClawModel {

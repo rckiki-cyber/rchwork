@@ -76,9 +76,9 @@ const HIDDEN_START_ARG = '--hidden'
 const startupTraceEnabled = process.env.DEEPSEEK_GUI_STARTUP_TRACE === '1'
 const startupTraceStart = Date.now()
 const RUNTIME_ENSURE_SLOW_MS = 2_500
-const RUNTIME_EXISTING_HEALTH_FAST_MS = 400
+const RUNTIME_EXISTING_HEALTH_FAST_MS = 200
 const RUNTIME_PORT_CONFLICT_HEALTH_RECHECK_MS = 2_000
-const RUNTIME_THREAD_API_PROBE_TIMEOUT_MS = 5_000
+const RUNTIME_THREAD_API_PROBE_TIMEOUT_MS = 800
 
 function traceStartup(label: string, detail?: unknown): void {
   if (!startupTraceEnabled) return

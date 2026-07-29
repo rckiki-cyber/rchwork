@@ -5,6 +5,7 @@ export type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
+  reasoning?: string
   timestamp: number
 }
 
@@ -87,8 +88,10 @@ export function findKnowledgeFileForChatContext(
 export function knowledgeChatHistoryFromBlocks(blocks: ChatBlock[]): KnowledgeChatHistory {
   const messages: ChatMessage[] = []
   let context: KnowledgeChatContext = { kind: 'global' }
+  let pendingReasoning = ''
   for (const block of blocks) {
     if (block.kind === 'user') {
+      pendingReasoning = ''
       context = extractKnowledgeChatContext(block.text) ?? context
       messages.push({
         id: block.id,
@@ -96,13 +99,17 @@ export function knowledgeChatHistoryFromBlocks(blocks: ChatBlock[]): KnowledgeCh
         content: restoreKnowledgeUserQuestion(block.text),
         timestamp: block.createdAt ? new Date(block.createdAt).getTime() : Date.now()
       })
+    } else if (block.kind === 'reasoning') {
+      pendingReasoning = [pendingReasoning, block.text].filter(Boolean).join('\n\n')
     } else if (block.kind === 'assistant') {
       messages.push({
         id: block.id,
         role: 'assistant',
         content: block.text,
+        ...(pendingReasoning ? { reasoning: pendingReasoning } : {}),
         timestamp: block.createdAt ? new Date(block.createdAt).getTime() : Date.now()
       })
+      pendingReasoning = ''
     }
   }
   return { messages, context }

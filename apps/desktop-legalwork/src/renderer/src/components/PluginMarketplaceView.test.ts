@@ -111,6 +111,16 @@ describe('PluginMarketplaceView MCP config helpers', () => {
     expect(Object.values(servers).every((server) => server.enabled === true)).toBe(true)
   })
 
+  it('can install every PKULaw endpoint without persisting an Authorization header', () => {
+    const config = buildPkulawMcpConfig('')
+    const servers = config.servers as Record<string, any>
+
+    expect(Object.keys(servers)).toHaveLength(9)
+    expect(Object.values(servers).every((server) =>
+      Object.keys(server.headers).length === 0
+    )).toBe(true)
+  })
+
   it('can re-enable previously disabled PKULaw endpoints when refreshing the token config', () => {
     const existing = JSON.stringify({
       servers: {
@@ -313,9 +323,9 @@ describe('PluginMarketplaceView MCP config helpers', () => {
         id: 'pkulaw',
         title: 'PKULaw',
         needsToken: true,
-        sourceLabel: 'Token required',
-        statusTone: 'warning',
-        description: 'Configure an access token to enable this MCP source.'
+        sourceLabel: 'Error',
+        statusTone: 'error',
+        description: expect.stringContaining('401')
       })
     ])
     expect(items.some((item) => item.id === 'pkulaw-law-keyword')).toBe(false)

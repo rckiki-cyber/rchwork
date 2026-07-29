@@ -293,7 +293,15 @@ export function createClawActions(options: CreateClawActionsOptions): Pick<
       }
       const duplicateProvider = settings.claw.channels.find((channel) => channel.provider === provider)
       if (duplicateProvider) {
-        const providerLabel = provider === 'weixin' ? 'WeChat' : 'Feishu / Lark'
+        const providerLabel = provider === 'weixin'
+          ? 'WeChat'
+          : provider === 'qq'
+            ? 'QQ'
+            : provider === 'dingtalk'
+              ? 'DingTalk'
+              : provider === 'wecom'
+                ? 'WeCom'
+                : 'Feishu / Lark'
         throw new Error(i18n.t('common:connectPhoneProviderAlreadyConnected', { provider: providerLabel }))
       }
 
