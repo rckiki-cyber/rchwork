@@ -48,6 +48,11 @@ let downloadedUpdatePaths: string[] = []
 let downloadedUpdateSha512 = ''
 let fallbackInstallStarted = false
 
+/** GitHub API mirror for users in regions where GitHub is slow or unreachable. */
+const GITHUB_MIRROR_BASE = 'https://ghfast.top/'
+/** Per-URL cache: once a mirror works for a URL, skip the direct attempt next time. */
+const mirrorCache = new Set<string>()
+
 const GUI_UPDATE_SCHEDULE_FILE = 'gui-update-schedule.json'
 const GUI_UPDATE_INSTALL_EXIT_TIMEOUT_MS = 12_000
 const MAX_RELEASE_HIGHLIGHTS = 5
@@ -397,7 +402,7 @@ async function fetchGithubReleaseHighlights(version: string): Promise<string[]> 
   const cleanVersion = version.trim().replace(/^v/i, '')
   for (const tag of [`v${cleanVersion}`, cleanVersion]) {
     try {
-      const res = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`, {
+      const res = await fetchWithMirrorFallback(`https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`, {
         headers: {
           Accept: 'application/vnd.github+json',
           'User-Agent': `legalwork/${app.getVersion()}`
@@ -893,6 +898,49 @@ export function setGuiUpdateChannel(channel: GuiUpdateChannel): void {
   configureUpdaterChannel(channel)
 }
 
+/**
+ * Fetch a URL with automatic mirror fallback for GitHub URLs.
+ *
+ * 1. If the URL was previously served successfully by the mirror, go directly to the mirror.
+ * 2. Otherwise, try the original URL with a 6-second timeout.
+ * 3. If the original fails (timeout / network error / 404), retry via `GITHUB_MIRROR_BASE`.
+ * 4. Cache the mirror success so subsequent checks skip the direct attempt.
+ *
+ * This lets VPN users fetch at full speed while Chinese users without VPN
+ * get a working fallback with only a few seconds of delay.
+ */
+const FETCH_TIMEOUT_MS = 6_000
+
+async function fetchWithMirrorFallback(url: string, init?: RequestInit): Promise<Response> {
+  const mirrorUrl = url.startsWith('https://api.github.com/') || url.startsWith('https://github.com/')
+    ? `${GITHUB_MIRROR_BASE}${url}`
+    : null
+
+  // If mirror previously worked for this URL, skip direct and use mirror directly
+  if (mirrorUrl && mirrorCache.has(url)) {
+    const res = await fetch(mirrorUrl, init)
+    if (res.ok) return res
+    mirrorCache.delete(url)
+  }
+
+  // Try direct first
+  if (!mirrorUrl) return fetch(url, init)
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal })
+    clearTimeout(timer)
+    return res
+  } catch {
+    clearTimeout(timer)
+    // Fallback to mirror
+    const res = await fetch(mirrorUrl, init)
+    if (res.ok) mirrorCache.add(url)
+    return res
+  }
+}
+
 async function resolveGithubManifestUrl(channel: GuiUpdateChannel): Promise<string | null> {
   const repo = resolveGithubOwnerRepo()
   if (!repo) return null
@@ -939,7 +987,7 @@ async function checkGithubApiUpdate(channel: GuiUpdateChannel): Promise<GuiUpdat
     let releaseBody: string | undefined
 
     if (channel === 'stable') {
-      const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+      const res = await fetchWithMirrorFallback(`https://api.github.com/repos/${repo}/releases/latest`, {
         headers: {
           Accept: 'application/vnd.github+json',
           'User-Agent': `legalwork/${currentVersion}`
@@ -952,7 +1000,7 @@ async function checkGithubApiUpdate(channel: GuiUpdateChannel): Promise<GuiUpdat
       releaseName = release.name
       releaseBody = release.body
     } else {
-      const res = await fetch(`https://api.github.com/repos/${repo}/releases`, {
+      const res = await fetchWithMirrorFallback(`https://api.github.com/repos/${repo}/releases`, {
         headers: {
           Accept: 'application/vnd.github+json',
           'User-Agent': `legalwork/${currentVersion}`
@@ -998,7 +1046,7 @@ async function checkManualUpdate(
   const currentVersion = app.getVersion()
   try {
     const url = (await resolveGithubManifestUrl(channel)) ?? `${updateFeedUrl(channel)}${platformManifestName()}`
-    const res = await fetch(url, {
+    const res = await fetchWithMirrorFallback(url, {
       headers: {
         Accept: 'application/x-yaml,text/yaml,text/plain,*/*',
         'User-Agent': `legalwork/${currentVersion}`
