@@ -151,8 +151,11 @@ export function renderLegalDocumentMarkdown(markdown: string): string {
         components: {
           p: ({ children, ...props }: ComponentPropsWithoutRef<'p'>): ReactNode =>
             createElement('p', { ...props, className: paragraphClass(children) }, children),
-          a: ({ children }: ComponentPropsWithoutRef<'a'>): ReactNode =>
-            createElement('span', null, children)
+          a: ({ href, children }: ComponentPropsWithoutRef<'a'>): ReactNode => {
+            const label = textFromReactNode(children).trim()
+            const suffix = href && href.trim() && href.trim() !== label ? `（${href.trim()}）` : ''
+            return createElement('span', null, children, suffix)
+          }
         }
       },
       markdown

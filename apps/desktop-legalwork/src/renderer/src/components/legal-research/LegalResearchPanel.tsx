@@ -96,7 +96,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
   )
 
   const handleExportWord = useCallback(async () => {
-    if (!activeRecord?.summary) return
+    if (!activeRecord || (!activeRecord.summary && activeRecord.editedSummary === undefined)) return
     if (typeof window.dsGui?.exportLegalResearchToWord !== 'function') {
       setExportNotice({ tone: 'error', text: '当前环境不支持导出 Word。' })
       return
@@ -105,97 +105,15 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     setExportInFlight(true)
     setExportNotice(null)
 
-    const { query, reasoning, steps, timestamp } = activeRecord
-    const summary = resolveLegalResearchMarkdown(activeRecord)
-
-    // Build a complete HTML document for Word export
-    const summaryHtml = summary
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/^- (.+)$/gm, '<li>$1</li>')
-      .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-      .replace(/((?:<li>.*<\/li>\n?)+)/g, (match) => {
-        if (match.includes('<ul>')) return match
-        return `<ol>${match}</ol>`
-      })
-      .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-      .replace(/\n{2,}/g, '\n')
-      .split('\n')
-      .map((line) => {
-        const trimmed = line.trim()
-        if (!trimmed) return ''
-        if (/^<[holeu]/.test(trimmed) || /^<\/(ul|ol)>/.test(trimmed)) return line
-        return `<p>${trimmed}</p>`
-      })
-      .join('\n')
-
-    const reasoningHtml = reasoning
-      ? reasoning
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .split('\n')
-          .map((l) => `<p>${l.trim()}</p>`)
-          .join('\n')
-      : ''
-
-    const stepsHtml = steps
-      .map(
-        (s) =>
-          `<tr><td>${s.icon}</td><td>${s.tool}</td><td>${s.status}</td><td>${s.output ?? ''}</td></tr>`
-      )
-      .join('\n')
-
-    const html = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <title>法律调研报告 - ${query}</title>
-  <style>
-    body { font-family: SimSun, serif; font-size: 12pt; line-height: 1.8; color: #222; max-width: 800px; margin: 0 auto; padding: 40px; }
-    h1 { font-size: 22pt; text-align: center; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 8px; }
-    h2 { font-size: 16pt; margin-top: 28px; color: #1a1a1a; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-    h3 { font-size: 14pt; margin-top: 20px; }
-    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-    th, td { border: 1px solid #bbb; padding: 6px 10px; text-align: left; }
-    th { background: #f0f0f0; font-weight: bold; }
-    code { background: #f5f5f5; padding: 2px 5px; border-radius: 3px; font-size: 11pt; }
-    pre { background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; }
-    blockquote { border-left: 4px solid #ddd; margin-left: 0; padding-left: 16px; color: #666; }
-    ul, ol { margin: 6px 0; padding-left: 24px; }
-    li { margin: 2px 0; }
-    .meta { text-align: center; color: #888; font-size: 10pt; margin-bottom: 30px; }
-    .step-table { margin-top: 16px; }
-  </style>
-</head>
-<body>
-  <h1>📋 ${t('legalResearch')}报告</h1>
-  <div class="meta">${t('legalResearchQuestion')}：${query}<br>${timestamp}</div>
-
-  <h2>🔍 ${t('legalResearchQuestion')}</h2>
-  <p>${query}</p>
-
-  <h2>📄 ${t('legalResearchSummaryTitle')}</h2>
-  ${summaryHtml}
-
-  ${reasoning ? `<h2>🧠 ${t('legalResearchReasoning')}</h2>\n  ${reasoningHtml}` : ''}
-
-  ${steps.length > 0 ? `<h2>🛠 调研步骤</h2>\n  <table class="step-table">\n    <tr><th></th><th>工具</th><th>状态</th><th>输出</th></tr>\n${stepsHtml}\n  </table>` : ''}
-</body>
-</html>`
-
+    const { query } = activeRecord
+    const markdown = preprocessLegalResearchSummary(resolveLegalResearchMarkdown(activeRecord))
     const defaultName = `法律调研_${query.slice(0, 30)}`.replace(/[<>:"/\\|?*]/g, '_')
     try {
-      const result = await window.dsGui.exportLegalResearchToWord({ html, defaultName })
+      const result = await window.dsGui.exportLegalResearchToWord({
+        markdown,
+        templateName: '法律调研报告',
+        defaultName
+      })
       if (result.ok) {
         setExportNotice({ tone: 'success', text: `已导出：${result.path}` })
       } else if (!result.canceled) {
@@ -209,7 +127,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     } finally {
       setExportInFlight(false)
     }
-  }, [activeRecord, exportInFlight, t])
+  }, [activeRecord, exportInFlight])
 
   const handleSaveEditedReport = useCallback(
     (markdown: string) => {

@@ -105,7 +105,7 @@
   "clawQqMarkdownTemplateId": "Markdown template ID",
   "clawQqMarkdownTemplateIdPlaceholder": "Leave empty to use native Markdown",
   "clawQqMarkdownTemplateKey": "Template parameter key",
-  "clawQqMarkdownTemplateHint": "Use {{.content}} as the template body and keep the parameter key as content. Saving restarts the QQ connection automatically.",
+  "clawQqMarkdownTemplateHint": "Use {{template}} as the template body and keep the parameter key as content. Saving restarts the QQ connection automatically.",
   "clawWorkspaceOverrideDesc": "Leave empty to use the default working directory.",
   "clawTasksTitle": "Scheduled tasks",
   "clawTasksDesc": "Each task sends its prompt to the AI assistant on the configured schedule.",

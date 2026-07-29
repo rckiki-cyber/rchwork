@@ -105,7 +105,7 @@
   "clawQqMarkdownTemplateId": "Markdown 模板 ID",
   "clawQqMarkdownTemplateIdPlaceholder": "不填则使用原生 Markdown",
   "clawQqMarkdownTemplateKey": "模板参数名",
-  "clawQqMarkdownTemplateHint": "模板正文填写 {{.content}}，参数名保持 content；保存后 QQ 长连接会自动重启。",
+  "clawQqMarkdownTemplateHint": "模板正文填写 {{template}}，参数名保持 content；保存后 QQ 长连接会自动重启。",
   "clawWorkspaceOverrideDesc": "留空则使用默认工作目录。",
   "clawTasksTitle": "定时任务",
   "clawTasksDesc": "每个任务会按计划把提示词发送给 AI 助手。",

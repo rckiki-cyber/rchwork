@@ -1,0 +1,7 @@
+interface:
+  display_name: "LegalWork Word 底层格式"
+  short_description: "法律文书、合同、报告和论文的 Word 格式与逐页质检"
+  default_prompt: "Use $legal-document-formatting to format this document as a polished, submission-ready DOCX."
+
+policy:
+  allow_implicit_invocation: true

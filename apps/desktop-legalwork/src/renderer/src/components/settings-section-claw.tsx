@@ -278,7 +278,7 @@ export function ClawSettingsSection({ ctx }: { ctx: ClawSettingsContext }): Reac
                         </label>
                       </div>
                       <p className="mt-2 text-[11px] leading-5 text-ds-faint">
-                        {t('clawQqMarkdownTemplateHint')}
+                        {t('clawQqMarkdownTemplateHint', { template: '{{.content}}' })}
                       </p>
                     </div>
                   ) : null}

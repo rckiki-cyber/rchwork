@@ -89,11 +89,11 @@ describe('ConnectPhoneView', () => {
         'qq',
         ' 1024 ',
         ' qq-secret ',
+        '2026-06-03T01:02:03.000Z',
         {
           templateId: ' template-1 ',
           templateKey: ' content '
-        },
-        '2026-06-03T01:02:03.000Z'
+        }
       )
     ).toEqual({
       kind: 'qq',

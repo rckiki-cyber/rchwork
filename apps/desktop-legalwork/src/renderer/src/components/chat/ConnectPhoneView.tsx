@@ -128,11 +128,11 @@ export function createRegionalConnectPhoneCredential(
   target: RegionalInstallTarget,
   firstValue: string,
   secondValue: string,
+  createdAt: string = new Date().toISOString(),
   qqMarkdown?: {
     templateId?: string
     templateKey?: string
-  },
-  createdAt: string = new Date().toISOString()
+  }
 ): ClawImPlatformCredentialV1 {
   if (target === 'qq') {
     const markdownTemplateId = qqMarkdown?.templateId?.trim() ?? ''
@@ -193,6 +193,7 @@ function RegionalProviderSetup({
         target,
         firstValue,
         secondValue,
+        undefined,
         target === 'qq'
           ? {
               templateId: qqMarkdownTemplateId,
@@ -270,7 +271,7 @@ function RegionalProviderSetup({
               />
             ) : null}
             <div className="text-[10.5px] leading-4 text-ds-faint">
-              {t('connectPhoneQqMarkdownTemplateHint')}
+              {t('connectPhoneQqMarkdownTemplateHint', { template: '{{.content}}' })}
             </div>
           </>
         ) : null}

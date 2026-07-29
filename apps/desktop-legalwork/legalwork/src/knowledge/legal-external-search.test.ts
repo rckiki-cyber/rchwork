@@ -87,8 +87,12 @@ describe('legalExternalSearch', () => {
     expect(result.records).toHaveLength(1)
     expect(result.records[0]?.title).toBe('中华人民共和国劳动合同法')
     expect(result.records[0]?.sourceKind).toBe('web')
+    expect(result.records[0]?.path).toBe(
+      'https://flk.npc.gov.cn/detail?id=law-1&title=%E4%B8%AD%E5%8D%8E%E4%BA%BA%E6%B0%91%E5%85%B1%E5%92%8C%E5%9B%BD%E5%8A%B3%E5%8A%A8%E5%90%88%E5%90%8C%E6%B3%95'
+    )
     expect(result.records[0]?.excerpt).toContain('现行有效')
     expect(result.records[0]?.excerpt).toContain('目录命中：第三十八条')
+    expect(result.records[0]?.excerpt).toContain('来源：国家法律法规数据库详情页')
     expect(result.summary).toContain('标题精确 + 标题模糊 + 正文模糊')
     expect(fetchMock).toHaveBeenCalled()
   })

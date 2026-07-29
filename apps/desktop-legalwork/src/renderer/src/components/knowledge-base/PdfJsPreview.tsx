@@ -14,7 +14,7 @@ type PdfRenderedPage = {
   width: number
   height: number
   dataUrl: string
-  textContent: Awaited<ReturnType<pdfjsLib.PDFPageProxy['getTextContent']>>
+  textContent: Awaited<ReturnType<pdfjsLib.PDFPageProxy['getTextContent']>> | null
   viewport: ReturnType<pdfjsLib.PDFPageProxy['getViewport']>
 }
 
@@ -31,6 +31,7 @@ function PdfSelectablePage({
     const container = textLayerRef.current
     if (!container) return
     container.replaceChildren()
+    if (!page.textContent) return
     const textLayer = new pdfjsLib.TextLayer({
       textContentSource: page.textContent,
       container,
@@ -172,6 +173,7 @@ export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
       setError(null)
       setPages([])
       let pdf: pdfjsLib.PDFDocumentProxy | null = null
+      const textLayerPromises: Promise<void>[] = []
       try {
         pdf = await withTimeout(
           pdfjsLib.getDocument({
@@ -183,7 +185,6 @@ export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
           PDF_RENDER_TIMEOUT_MS,
           'PDF 加载超时'
         )
-        const renderedPages: PdfRenderedPage[] = []
         for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
           if (cancelled) break
           if (pageNumber > 1) {
@@ -210,26 +211,35 @@ export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
           )
           if (cancelled) break
 
-          const textContent = await withTimeout(
-            page.getTextContent(),
-            PDF_RENDER_TIMEOUT_MS,
-            `第 ${pageNumber} 页文字解析超时`
-          )
-
           const renderedPage: PdfRenderedPage = {
             pageNumber,
             width: viewport.width,
             height: viewport.height,
             dataUrl: canvas.toDataURL('image/png'),
-            textContent,
+            textContent: null,
             viewport
           }
-          renderedPages.push(renderedPage)
           setPages((prev) => [...prev, renderedPage])
+          setLoading(false)
+
+          const textLayerPromise = withTimeout(
+            page.getTextContent(),
+            PDF_RENDER_TIMEOUT_MS,
+            `第 ${pageNumber} 页文字解析超时`
+          ).then((textContent) => {
+            if (cancelled) return
+            setPages((prev) =>
+              prev.map((item) =>
+                item.pageNumber === pageNumber ? { ...item, textContent } : item
+              )
+            )
+          }).catch(() => undefined)
+          textLayerPromises.push(textLayerPromise)
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'PDF 预览渲染失败')
       } finally {
+        await Promise.allSettled(textLayerPromises)
         if (pdf) void pdf.destroy()
         if (!cancelled) setLoading(false)
         if (!cancelled) setRenderingMore(false)

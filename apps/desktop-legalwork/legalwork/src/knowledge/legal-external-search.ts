@@ -442,6 +442,12 @@ const statusLabel = (value: number | string | undefined): string => {
   return NPC_STATUS_LABELS[key] ?? (key ? `未知状态(${key})` : '未标注')
 }
 
+const buildNpcDetailUrl = (bbbs: string, title: string): string => {
+  const params = new URLSearchParams({ id: bbbs })
+  if (title.trim()) params.set('title', title.trim())
+  return `${NPC_BASE_URL}/detail?${params.toString()}`
+}
+
 const scoreNpcRow = (row: NpcSearchRow, strategies: string[], query: string): number => {
   const title = stripHtml(row.title)
   const normalizedQuery = removeArticleQuery(query).replace(/[《》\s]/g, '')
@@ -489,7 +495,7 @@ const searchNpcLaws = async (query: string): Promise<NpcLawResult[]> => {
         effectiveDate: item.row.sxrq ?? '未标注',
         status: statusLabel(item.row.sxx),
         statusCode: String(item.row.sxx ?? ''),
-        detailUrl: `${NPC_BASE_URL}/detail?id=${encodeURIComponent(bbbs)}`,
+        detailUrl: buildNpcDetailUrl(bbbs, title),
         strategies: [...new Set(item.strategies)],
         score: scoreNpcRow(item.row, item.strategies, query),
         outline: [] as string[],
@@ -569,7 +575,7 @@ const formatNpcRecord = (result: NpcLawResult): KnowledgeContextRecord => {
     extractErrorLine,
     `命中策略：${result.strategies.slice(0, 4).join('；')}`,
     outline,
-    `来源：${result.detailUrl}`
+    `来源：国家法律法规数据库详情页 ${result.detailUrl}`
   ].filter(Boolean).join('\n')
 
   return {
