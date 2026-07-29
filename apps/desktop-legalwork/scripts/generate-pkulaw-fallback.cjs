@@ -5,6 +5,7 @@ const { dirname, join, resolve } = require('node:path')
 const FORMAT_VERSION = 1
 const KEY_CONTEXT = 'legalwork:pkulaw-fallback:v1'
 const LOCAL_SOURCE_CONFIG = join(__dirname, 'pkulaw-fallback.local.json')
+const FALLBACK_SOURCE_PATH = join(__dirname, '..', 'legalwork', 'src', 'adapters', 'tool', 'pkulaw-fallback.auth')
 const OUTPUT_PATH = join(
   __dirname,
   '..',
