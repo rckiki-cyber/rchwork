@@ -10,6 +10,7 @@ type SidebarFrameProps = {
   title: string
   children: ReactNode
   footer?: ReactNode
+  titlebarContent?: ReactNode
   onCollapse?: () => void
   className?: string
 }
@@ -46,6 +47,7 @@ export function SidebarFrame({
   title,
   children,
   footer,
+  titlebarContent,
   onCollapse,
   className
 }: SidebarFrameProps): ReactElement {
@@ -60,7 +62,12 @@ export function SidebarFrame({
     >
       <span aria-hidden data-sidebar-hover-indicator />
       <div className="ds-sidebar-titlebar-spacer shrink-0 pb-2 pt-3">
-        <div className="ds-sidebar-titlebar-row flex min-h-[24px] items-center justify-end">
+        <div className="ds-sidebar-titlebar-row flex min-h-[24px] items-center justify-between gap-2">
+          {titlebarContent ? (
+            <div className="ds-no-drag min-w-0 flex-1">
+              {titlebarContent}
+            </div>
+          ) : null}
           {onCollapse ? (
             <SidebarTitlebarToggleButton
               onClick={onCollapse}

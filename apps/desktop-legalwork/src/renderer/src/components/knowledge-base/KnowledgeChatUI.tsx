@@ -1,7 +1,26 @@
 import type { KeyboardEvent, ReactElement, ReactNode } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { SendIcon } from '../icons/SendIcon'
+
+const KNOWLEDGE_CHAT_SIDEBAR_EXIT_MS = 320
+
+export function useKnowledgeChatSidebarPresence(open: boolean): boolean {
+  const [present, setPresent] = useState(open)
+
+  useEffect(() => {
+    if (open) {
+      setPresent(true)
+      return
+    }
+    if (!present) return
+
+    const timer = window.setTimeout(() => setPresent(false), KNOWLEDGE_CHAT_SIDEBAR_EXIT_MS)
+    return () => window.clearTimeout(timer)
+  }, [open, present])
+
+  return present
+}
 
 type KnowledgeChatHeaderProps = {
   title: string
@@ -89,7 +108,7 @@ export function KnowledgeChatMessage({
     <div className={`mb-4 flex items-start ${user ? 'justify-end' : 'justify-start'}`}>
       {!user && leading ? <div className="mr-2 mt-1 shrink-0">{leading}</div> : null}
       <div
-        className={`max-w-[88%] px-3.5 py-2.5 text-[13px] leading-[1.65] ${
+        className={`max-w-[88%] px-3.5 py-2.5 !text-[13px] leading-[1.65] ${
           user
             ? 'ds-user-message-bubble rounded-[18px] rounded-br-[6px] bg-[var(--ds-userbubble)] text-[var(--ds-userbubbleFg)]'
             : auxiliary

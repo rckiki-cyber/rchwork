@@ -1,7 +1,30 @@
 .ds-markdown {
   color: var(--ds-text);
+  font-family: var(
+    --font-apple-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'SF Pro Text',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei UI',
+    'Segoe UI',
+    'Helvetica Neue',
+    Arial,
+    sans-serif
+  );
   font-size: 15px;
   line-height: 1.5;
+}
+
+.ds-chat-answer {
+  font-size: var(--type-chat-body, 15px);
+  line-height: var(--leading-chat-body, 1.62);
+}
+
+.ds-chat-answer :where(p, ul, ol, blockquote, table, span, div) {
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .ds-markdown .space-y-4 > :not([hidden]) ~ :not([hidden]) {
@@ -29,7 +52,19 @@
 .ds-markdown h2,
 .ds-markdown h3 {
   margin: 0 0 0.42rem;
-  font-family: 'SF Pro Display', 'PingFang SC', 'Noto Sans SC', sans-serif;
+  font-family: var(
+    --font-apple-display,
+    'SF Pro Display',
+    -apple-system,
+    BlinkMacSystemFont,
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei UI',
+    'Segoe UI',
+    'Helvetica Neue',
+    Arial,
+    sans-serif
+  );
   font-weight: 600;
   letter-spacing: 0;
   line-height: 1.2;
@@ -716,3 +751,46 @@ html[data-theme='dark'] .ds-file-preview-code-html > pre span {
 [data-streamdown='table-fullscreen'] button {
   -webkit-app-region: no-drag;
 }
+
+/* ── Word document (docx) preview ── */
+.docx-layout-preview {
+  min-width: 100%;
+  background: color-mix(in srgb, var(--ds-subtle) 72%, var(--ds-main));
+}
+
+.docx-layout-preview .legalwork-docx-wrapper {
+  min-width: max-content;
+  min-height: 100%;
+  padding: 24px !important;
+  padding-bottom: 0 !important;
+  background: color-mix(in srgb, var(--ds-subtle) 82%, var(--ds-main)) !important;
+}
+
+.docx-layout-preview .legalwork-docx-wrapper > section.legalwork-docx {
+  margin-bottom: 24px !important;
+  background: #ffffff !important;
+  color: #1d1d1f !important;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.08),
+    0 12px 32px rgba(15, 23, 42, 0.12) !important;
+}
+
+.docx-layout-preview .legalwork-docx,
+.docx-layout-preview .legalwork-docx *,
+.docx-layout-preview .legalwork-docx *::before,
+.docx-layout-preview .legalwork-docx *::after {
+  font-family: var(--font-apple-ui) !important;
+}
+
+.docx-preview h1 { font-size: 1.5rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+.docx-preview h2 { font-size: 1.25rem; font-weight: 600; margin: 0.85rem 0 0.4rem; }
+.docx-preview h3 { font-size: 1.1rem; font-weight: 600; margin: 0.7rem 0 0.3rem; }
+.docx-preview h4 { font-size: 1rem; font-weight: 600; margin: 0.5rem 0 0.25rem; }
+.docx-preview p { margin: 0.4rem 0; line-height: 1.7; }
+.docx-preview strong { font-weight: 600; }
+.docx-preview em { font-style: italic; }
+.docx-preview ul, .docx-preview ol { margin: 0.3rem 0; padding-left: 1.5rem; }
+.docx-preview li { margin: 0.15rem 0; line-height: 1.6; }
+.docx-preview table { border-collapse: collapse; margin: 0.5rem 0; width: 100%; }
+.docx-preview th, .docx-preview td { border: 1px solid var(--ds-border); padding: 0.3rem 0.5rem; text-align: left; }
+.docx-preview th { font-weight: 600; background: var(--ds-subtle); }

@@ -113,6 +113,7 @@ const buildNpcSearchGuidance = (query: string): string =>
   [
     `默认官方法规来源：${NPC_LAW_DATABASE.name}（${NPC_LAW_DATABASE.url}）`,
     `适用：${NPC_LAW_DATABASE.defaultFor}`,
+    '有效详情链接必须来自本次 API 核验通过的 records.path，格式为 https://flk.npc.gov.cn/detail?id=...；/index?... 是数据库首页或失效旧链接，不能作为法规详情页引用。',
     '',
     '未指定北大法宝、元典 MCP 或其他商业库时，法条/法规原文检索默认动作：',
     '  1. 已知法规名称：标题精确检索；无结果再做标题模糊检索。',
@@ -506,7 +507,7 @@ const searchNpcLaws = async (query: string): Promise<NpcLawResult[]> => {
     .slice(0, MAX_NPC_RECORDS)
 
   const detailSettled = await Promise.allSettled(
-    ranked.slice(0, MAX_NPC_DETAILS).map(async (result) => ({
+    ranked.map(async (result) => ({
       bbbs: result.bbbs,
       detail: await fetchNpcDetail(result.bbbs)
     }))
@@ -516,10 +517,11 @@ const searchNpcLaws = async (query: string): Promise<NpcLawResult[]> => {
     if (item.status === 'fulfilled' && item.value.detail) details.set(item.value.bbbs, item.value.detail)
   }
 
-  const withDetails = ranked.map((result) => {
+  const withDetails = ranked.flatMap((result) => {
     const detail = details.get(result.bbbs)
+    if (!detail) return []
     const outline = collectOutline(detail?.content)
-    return {
+    return [{
       ...result,
       title: detail?.title ?? result.title,
       flxz: detail?.flxz ?? result.flxz,
@@ -531,8 +533,8 @@ const searchNpcLaws = async (query: string): Promise<NpcLawResult[]> => {
       detail,
       outline,
       articleDirectoryHit: findArticleDirectoryHit(detail?.content, articleQuery)
-    }
-  })
+    }]
+  }).slice(0, MAX_NPC_DETAILS)
 
   const shouldExtractArticles = Boolean(articleQuery) || !buildQueryCandidates(query).some((candidate) => candidate.length >= 5 && /法|条例|办法|规定|解释/u.test(candidate))
   if (!shouldExtractArticles) return withDetails
@@ -627,7 +629,7 @@ export async function legalExternalSearch(query: string): Promise<{
       ].join('\n')
     : records.length
       ? [
-          `国家法律法规数据库 API 已直接检索：返回 ${records.length} 个去重候选。`,
+          `国家法律法规数据库 API 已直接检索：返回 ${records.length} 个详情接口核验通过的去重候选。`,
           '执行策略：标题精确 + 标题模糊 + 正文模糊；结果已按现行有效、标题命中、法源位阶和多策略重合度排序。',
           articleQuery
             ? `检测到具体条文请求：${articleQuery}。已在候选法规目录中做条号定位；引用正文前仍应以下载原文/详情页逐字核验为准。`
@@ -635,8 +637,8 @@ export async function legalExternalSearch(query: string): Promise<{
           '可直接优先使用 records 中的官方候选；无需先让模型自行猜测法规名称。'
         ].filter(Boolean).join('\n')
       : [
-          '国家法律法规数据库 API 未返回结构化候选。',
-          '建议放宽关键词、去掉条号后重试，或使用下列官方来源继续检索。'
+          '国家法律法规数据库 API 未返回详情接口核验通过的结构化候选。',
+          '不要引用 /index?... 首页或未经详情接口验证的旧链接；建议放宽关键词、去掉条号后重试，或改用官方公报 PDF、全国人大官网等权威来源。'
         ].join('\n')
 
   const summary = [

@@ -22,6 +22,7 @@ import type {
   LearningIterationDetailResult,
   LearningIterationListResult,
   LearningIterationRecordSummary,
+  LearningIterationUserReport,
   LearningIterationRuntimeStatus
 } from '../shared/ds-gui-api'
 import type { JsonSettingsStore } from './settings-store'
@@ -332,7 +333,8 @@ export class LearningIterationRuntime {
         ok: true,
         detail: {
           summary: manifest.summary,
-          reportMarkdown
+          reportMarkdown,
+          userReport: buildUserReport(manifest.modelResult, manifest.summary)
         }
       }
     } catch (error) {
@@ -1257,13 +1259,16 @@ function buildLearningPrompt(corpus: string): string {
     'Do not infer the user profession, expertise, identity, preference, or workflow from an assistant response, task topic, retrieved document, file name, or generated artifact. A profile/project candidate needs explicit first-person user statements from at least three independent threads.',
     'Apply the RIA-TV++-inspired workflow and triple verification. Preference/workflow memories need at least two independent thread sources; one thread is allowed only for an explicit user correction. Chunks from one base source count as one source.',
     `Keep reportMarkdown under ${MAX_REPORT_MARKDOWN_CHARS} characters, propose at most ${MAX_MEMORY_PROPOSALS} memories and ${MAX_SKILL_PROPOSALS} Skills, and keep the report concise.`,
-    'reportMarkdown is analysis rationale only. Do not claim final applied/rejected counts because the host validates candidates and computes authoritative counts after your response.',
+    'Write title, summary, and reportMarkdown for the end user, not for developers. Use plain, friendly Chinese and focus on what the product learned, how the experience will improve, and what it will do differently next time.',
+    'In reportMarkdown, use the sections “这次学到了什么”, “会带来哪些提升”, and “以后会怎样帮你”. Do not expose raw source keys, thread IDs, memory IDs, JSON field names, internal workflow names, validation framework names, test categories, or developer implementation details.',
+    'Write every Skill name and description in clear Chinese as well; only its machine-readable id stays in lowercase English.',
+    'Do not claim final applied/rejected counts because the host validates candidates and computes authoritative counts after your response.',
     'Return exactly one JSON object between the marker lines shown below. Do not use Markdown fences around the JSON.',
     RESULT_BEGIN,
     JSON.stringify({
-      title: '10-40 character Chinese report title',
-      summary: 'short summary',
-      reportMarkdown: '# 学习迭代报告\\n\\n...',
+      title: '10-24 character Chinese title describing the user-visible learning theme',
+      summary: 'one plain-language sentence explaining the user-visible outcome',
+      reportMarkdown: '## 这次学到了什么\\n\\n...\\n\\n## 会带来哪些提升\\n\\n...\\n\\n## 以后会怎样帮你\\n\\n...',
       memories: [{
         action: 'create | update | disable',
         id: 'required for update or disable',
@@ -1556,82 +1561,121 @@ function validEvidence(
 function buildReport(
   result: LearningModelResult,
   summary: LearningIterationRecordSummary,
-  sources: LearningSource[],
-  rejectionReasons: string[]
+  _sources: LearningSource[],
+  _rejectionReasons: string[]
 ): string {
-  const sourceRows = sources
-    .map((source) => `| ${source.kind} | \`${source.key}\` | ${escapeTable(source.title)} |`)
-    .join('\n')
-  const memoryRows = result.memories
-    .map((memory) => [
-      `### ${memory.action} · ${memory.id || memory.content?.slice(0, 48) || '未命名记忆'}`,
-      '',
-      `- 内容：${memory.content || '（停用现有记忆）'}`,
-      `- 证据：${(memory.evidence ?? []).map((item) => `\`${item.sourceKey}\``).join('、') || '无'}`,
-      ''
-    ].join('\n'))
-  const skillRows = result.skills
-    .map((skill) => [
-      `### ${skill.action} · ${skill.name || skill.id}`,
-      '',
-      `- 标识：\`${skill.id}\``,
-      `- 触发说明：${skill.description}`,
-      `- 证据：${(skill.evidence ?? []).map((item) => `\`${item.sourceKey}\``).join('、') || '无'}`,
-      '',
-      '| 测试类型 | 提示摘要 | 结果 |',
-      '|---|---|---|',
-      ...skill.tests.map((test) =>
-        `| ${test.expected} | ${escapeTable(test.prompt.slice(0, 100))} | ${test.passed ? '通过' : '未通过'} |`
-      ),
-      ''
-    ].join('\n'))
-  const audit = [
+  const userReport = buildUserReport(result, summary)
+  return [
     `# ${summary.title}`,
     '',
-    `> ${result.summary || '本轮已完成增量学习、验证与发布。'}`,
+    `> ${userReport.overview}`,
     '',
-    '## 执行摘要',
+    '## 这次学到了什么',
     '',
-    `- 记录：${summary.displayName}`,
-    `- 时间：${formatDateTime(summary.startedAt)} – ${formatDateTime(summary.finishedAt)}`,
-    `- 数据来源：${summary.counts.sources} 项（会话 ${summary.counts.threads}、知识库文件 ${summary.counts.knowledgeFiles}）`,
-    `- 记忆变化：新增 ${summary.counts.memoriesCreated}、更新 ${summary.counts.memoriesUpdated}、停用 ${summary.counts.memoriesDisabled}`,
-    `- Skill 变化：新增 ${summary.counts.skillsCreated}、更新 ${summary.counts.skillsUpdated}`,
-    `- 淘汰候选：${summary.counts.rejected}`,
+    ...(userReport.learned.length
+      ? userReport.learned.map((item) => `- **${item.title}**：${item.detail}`)
+      : ['- 本轮没有发现足够稳定的新习惯，因此没有贸然记住不确定的信息。']),
     '',
-    '## 来源范围',
+    '## 会带来哪些提升',
     '',
-    '| 类型 | 来源标识 | 标题 |',
-    '|---|---|---|',
-    sourceRows || '| - | - | - |',
+    ...(userReport.improvements.length
+      ? userReport.improvements.map((item) => `- **${item.title}**：${item.detail}`)
+      : ['- 本轮主要完成了理解和核验，现有工作方式保持不变。']),
     '',
-    '## 记忆变化',
+    '## 学习结果一览',
     '',
-    ...(memoryRows.length ? memoryRows : ['- 本轮没有通过验证的记忆变化。', '']),
-    '## Skill 变化与压力测试',
+    '| 学习结果 | 数量 |',
+    '|---|---:|',
+    `| 浏览并理解的内容 | ${summary.counts.sources} |`,
+    `| 新增或更新的用户习惯 | ${memoryChangeCount(summary.counts)} |`,
+    `| 新增或改进的工作方法 | ${skillChangeCount(summary.counts)} |`,
+    `| 因信息不够确定而未采纳 | ${summary.counts.rejected} |`,
     '',
-    ...(skillRows.length ? skillRows : ['- 本轮没有通过验证的 Skill 变化。', '']),
-    '## 模型分析说明（非最终发布计数）',
+    '## 以后会怎样帮你',
     '',
-    result.reportMarkdown.trim() || '本轮没有需要补充的模型说明。',
+    ...userReport.nextTime.map((item) => `- ${item}`),
     '',
-    '## 自动淘汰',
+    '## 隐私与控制',
     '',
-    ...(result.rejected.length || rejectionReasons.length
-      ? [
-          ...result.rejected.map((item) => `- **${item.title}**：${item.reason}`),
-          ...rejectionReasons.map((reason) => `- ${reason}`)
-        ]
-      : ['- 无']),
-    '',
-    '## 回滚',
-    '',
+    '- 只会记住经过多次确认、能长期帮助你的习惯和方法。',
+    '- 客户身份、案件事实、账号、密码和验证码不会被自动保存。',
     summary.canRollback
-      ? '本轮变更已保存发布前快照，可在学习迭代总览中回滚。'
-      : '本轮没有产生需要回滚的记忆或 Skill 变更。',
+      ? '- 如果你不想保留本轮学习结果，可以随时回滚。'
+      : '- 本轮没有修改需要回滚的内容。',
     ''
+  ].join('\n')
+}
+
+function memoryChangeCount(counts: LearningIterationCounts): number {
+  return counts.memoriesCreated + counts.memoriesUpdated + counts.memoriesDisabled
+}
+
+function skillChangeCount(counts: LearningIterationCounts): number {
+  return counts.skillsCreated + counts.skillsUpdated
+}
+
+function buildUserReport(
+  result: LearningModelResult | undefined,
+  summary: LearningIterationRecordSummary
+): LearningIterationUserReport {
+  const learned = (result?.memories ?? []).slice(0, 6).map((memory) => ({
+    title: memory.action === 'disable'
+      ? '不再沿用一项旧习惯'
+      : memory.action === 'update'
+        ? '更新了对你的了解'
+        : memory.category === 'workflow'
+          ? '记住了你的工作方式'
+          : memory.category === 'project'
+            ? '理解了你的长期工作重点'
+            : '记住了你的使用偏好',
+    detail: singleLine(memory.content || '已停止使用一项不再适合你的旧偏好。')
+  }))
+
+  const improvements = (result?.skills ?? []).slice(0, 5).map((skill) => ({
+    title: skill.action === 'update' ? `改进了「${singleLine(skill.name)}」` : `学会了「${singleLine(skill.name)}」`,
+    detail: userFacingSkillDescription(skill.description)
+  }))
+
+  if (learned.length > 0 && improvements.length === 0) {
+    improvements.push({
+      title: '回答会更贴合你的习惯',
+      detail: '处理相似任务时会优先采用这次确认过的偏好，减少你重复说明。'
+    })
+  }
+
+  const accepted = memoryChangeCount(summary.counts) + skillChangeCount(summary.counts)
+  const suppliedSummary = result?.summary?.trim()
+  const overview = summary.status === 'rolled_back'
+    ? '这轮学习结果已经回滚，之后的回答不会再使用本轮新增的习惯和方法。'
+    : suppliedSummary && isUserFacingSummary(suppliedSummary)
+      ? singleLine(suppliedSummary)
+      : accepted > 0
+        ? `这次形成了 ${accepted} 项可复用的理解与方法，今后处理相似任务会更贴合你的需要。`
+        : '这次完成了学习检查，但没有发现足够稳定的新规律，因此没有贸然改变现有方式。'
+
+  const nextTime = [
+    ...(learned.length > 0 ? ['遇到相似任务时，优先按已经确认的偏好组织回答，减少重复沟通。'] : []),
+    ...(improvements.length > 0 ? ['需要同类工作时，直接采用本轮验证过的方法，提高处理的一致性。'] : []),
+    ...(learned.length === 0 && improvements.length === 0
+      ? ['继续观察后续使用习惯，只有在证据足够稳定时才会形成新的长期记忆。']
+      : []),
+    '如果你明确纠正了某项偏好，会以你的最新说明为准。'
   ]
-  return audit.join('\n')
+
+  return { overview, learned, improvements, nextTime }
+}
+
+function userFacingSkillDescription(value: string): string {
+  const description = singleLine(value)
+    .replace(/\bskill\b/gi, '工作方法')
+    .replace(/\btrigger(?:ing)?\b/gi, '使用')
+  return (description.match(/[\u3400-\u9fff]/g)?.length ?? 0) >= 4
+    ? description
+    : '处理相似任务时，会自动采用已经验证过的步骤，减少遗漏并保持结果一致。'
+}
+
+function isUserFacingSummary(value: string): boolean {
+  return !/(?:thread:|skill:|RIA|TV\+\+|候选|语料|来源标识|压力测试|模型分析|独立线程|三重验证|JSON|Markdown|分析了\s*\d+)/i.test(value)
 }
 
 async function installGeneratedSkill(
@@ -1863,10 +1907,6 @@ function redactSecrets(content: string): string {
 
 function singleLine(value: string): string {
   return value.replace(/[\r\n]+/g, ' ').trim().replace(/:/g, ' -')
-}
-
-function escapeTable(value: string): string {
-  return value.replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ')
 }
 
 function hashText(value: string): string {

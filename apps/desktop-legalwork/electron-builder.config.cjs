@@ -104,6 +104,11 @@ module.exports = {
       to: 'ocr_agent.py'
     },
     {
+      from: 'scripts',
+      to: 'scripts',
+      filter: ['ima-mcp-server.py']
+    },
+    {
       from: '../../document',
       to: 'document',
       filter: ['**/*', '!**/__pycache__/**/*', '!**/*.pyc', '!**/*.pyo', '!.DS_Store']

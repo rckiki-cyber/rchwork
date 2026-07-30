@@ -147,13 +147,14 @@ export function DocumentTemplateLibrary({
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
+          <div data-control-hover-root className="grid grid-cols-2 gap-2">
             {filteredTemplates.map((tmpl) => {
               const isCustom = tmpl.category === 'custom' || '_isCustom' in tmpl
               return (
                 <div key={tmpl.id} className="group relative min-w-0">
                   <button
                     type="button"
+                    data-control-active={activeTemplateId === tmpl.id ? 'true' : undefined}
                     onClick={() => onSelectTemplate(tmpl)}
                     title={tmpl.name}
                     className={`ds-no-drag flex min-h-[84px] w-full flex-col items-start justify-between rounded-[14px] px-3 py-3 text-left transition duration-150 ${
@@ -172,7 +173,18 @@ export function DocumentTemplateLibrary({
                     <span className="mt-2 line-clamp-2 text-[12.5px] font-medium leading-[1.35] text-[var(--ds-ink)]">
                       {tmpl.name}
                     </span>
-                    {isCustom && (
+                    {isCustom && tmpl.learningStatus === 'analyzing' && (
+                      <span className="mt-1 inline-flex items-center gap-1 text-[9.5px] text-amber-500">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" strokeWidth={2.2} />
+                        AI 分析中
+                      </span>
+                    )}
+                    {isCustom && tmpl.learningStatus === 'failed' && (
+                      <span className="mt-1 inline-flex items-center gap-1 text-[9.5px] text-red-400">
+                        AI 分析失败
+                      </span>
+                    )}
+                    {isCustom && (!tmpl.learningStatus || tmpl.learningStatus === 'idle' || tmpl.learningStatus === 'done') && (
                       <span className="mt-1 inline-flex items-center gap-1 text-[9.5px] text-[var(--ds-accent)]">
                         <User className="h-2.5 w-2.5" strokeWidth={2.2} />
                         自定义
@@ -182,6 +194,7 @@ export function DocumentTemplateLibrary({
                   {isCustom && onDeleteUserTemplate && (
                     <button
                       type="button"
+                      data-control-hover-preserve
                       onClick={(e) => {
                         e.stopPropagation()
                         onDeleteUserTemplate(tmpl.id)

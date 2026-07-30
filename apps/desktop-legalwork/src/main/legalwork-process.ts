@@ -43,6 +43,7 @@ import { defaultLegalworkDataDir } from './runtime/legalwork-adapter'
 import { isLegalworkHealthResponseBody } from './legalwork-health'
 import { appendManagedLogLine } from './logger'
 import { guiSkillRootsForRuntime, normalizeSkillRootPath } from './services/skill-service'
+import { buildOcrRuntimeEnvironment } from './data-compliance-runtime'
 
 let child: ChildProcess | null = null
 let childLogCapture: LegalworkChildLogCapture | null = null
@@ -290,21 +291,43 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
     insecure: isLegalworkRuntimeInsecure(runtime)
   })
   const webRoot = join(root, 'vendor', 'data-compliance-review-codex', 'data-compliance-web')
+  const repositoryRoot = join(root, '..', '..')
+  const ocrAgentPath = app.isPackaged
+    ? join(process.resourcesPath, 'ocr_agent.py')
+    : join(repositoryRoot, 'ocr_agent.py')
+  const dataComplianceVenvPython = process.platform === 'win32'
+    ? join(app.getPath('userData'), 'data-compliance', 'python-venv', 'Scripts', 'python.exe')
+    : join(app.getPath('userData'), 'data-compliance', 'python-venv', 'bin', 'python')
+  const repositoryVenvPython = process.platform === 'win32'
+    ? join(repositoryRoot, '.venv', 'Scripts', 'python.exe')
+    : join(repositoryRoot, '.venv', 'bin', 'python')
+  const ocrPython = [
+    process.env.LEGALWORK_OCR_PYTHON,
+    process.env.LEGALWORK_PYTHON,
+    dataComplianceVenvPython,
+    repositoryVenvPython
+  ].find((candidate) => Boolean(candidate && existsSync(candidate)))
   const runtimePath = buildBundledOfficeCliPath(
     process.env.PATH,
     app.getAppPath(),
     app.isPackaged
   )
-  child = spawn(resolution.command, args, {
-    env: {
+  const childEnvironment = buildOcrRuntimeEnvironment(
+    [root, app.getAppPath()],
+    {
       ...process.env,
       PATH: runtimePath,
       ELECTRON_RUN_AS_NODE: '1',
       LEGALWORK_RUNTIME_TOKEN: runtime.runtimeToken,
       LEGALWORK_COMPLIANCE_WEB_ROOT: webRoot,
+      ...(existsSync(ocrAgentPath) ? { LEGALWORK_OCR_AGENT_PATH: ocrAgentPath } : {}),
+      ...(ocrPython ? { LEGALWORK_OCR_PYTHON: ocrPython } : {}),
       DEEPSEEK_API_KEY: runtime.apiKey || process.env.DEEPSEEK_API_KEY || '',
       KIMI_API_KEY: runtime.apiKey || process.env.KIMI_API_KEY || ''
-    },
+    }
+  )
+  child = spawn(resolution.command, args, {
+    env: childEnvironment,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false
   })

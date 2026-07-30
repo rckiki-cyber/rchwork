@@ -244,6 +244,77 @@ describe('learning model result parsing', () => {
   })
 })
 
+describe('learning outcome report compatibility', () => {
+  it('turns a legacy technical report into a plain-language user outcome', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'legalwork-learning-report-'))
+    tempRoots.push(dataDir)
+    const runId = '2026-07-30-0042-c31dde14'
+    const runDir = join(dataDir, 'learning-iterations', 'runs', runId)
+    await mkdir(runDir, { recursive: true })
+    await writeFile(join(runDir, 'REPORT.md'), '# 模型分析说明\n\nRIA-TV++ 与 thread:abc', 'utf8')
+    await writeFile(join(runDir, 'manifest.json'), JSON.stringify({
+      version: 1,
+      summary: {
+        id: runId,
+        title: '法律调研与知识库探索行为分析',
+        displayName: '2026-07-30 · 法律调研与知识库探索行为分析',
+        status: 'completed',
+        startedAt: '2026-07-30T00:42:00.000Z',
+        finishedAt: '2026-07-30T00:45:00.000Z',
+        reportPath: join(runDir, 'REPORT.md'),
+        canRollback: true,
+        counts: {
+          sources: 16,
+          threads: 11,
+          knowledgeFiles: 2,
+          memoriesCreated: 1,
+          memoriesUpdated: 0,
+          memoriesDisabled: 0,
+          skillsCreated: 0,
+          skillsUpdated: 0,
+          rejected: 3
+        }
+      },
+      sourceHashes: {},
+      rollback: { memories: [], skills: [] },
+      modelResult: {
+        title: '法律调研与知识库探索行为分析',
+        summary: '本次迭代分析了 16 个独立线程，并使用 RIA-TV++ 完成三重验证。',
+        reportMarkdown: '# 模型分析说明',
+        memories: [{
+          action: 'create',
+          content: '进行法律调研时，偏好同时核对法规、裁判案例与学术资料。',
+          category: 'workflow'
+        }],
+        skills: [],
+        rejected: []
+      }
+    }), 'utf8')
+
+    const runtime = createLearningIterationRuntime({
+      store: { load: vi.fn(async () => settings(dataDir)) } as never,
+      runtimeRequest: emptyRuntimeRequest(),
+      getSystemIdleSeconds: () => 0,
+      getExternalBusy: async () => false,
+      logError: vi.fn()
+    })
+    const result = await runtime.get(runId)
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.detail.userReport.overview).toBe(
+        '这次形成了 1 项可复用的理解与方法，今后处理相似任务会更贴合你的需要。'
+      )
+      expect(result.detail.userReport.learned).toEqual([{
+        title: '记住了你的工作方式',
+        detail: '进行法律调研时，偏好同时核对法规、裁判案例与学术资料。'
+      }])
+      expect(result.detail.reportMarkdown).toContain('RIA-TV++')
+    }
+    runtime.stop()
+  })
+})
+
 describe('learning source hygiene', () => {
   it('keeps the real knowledge-base question and excludes RAG context and assistant output', () => {
     const detail = {

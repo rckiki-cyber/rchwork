@@ -144,12 +144,13 @@ export function DocumentWritingEditor({
   const { t } = useTranslation('common')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showAllFields, setShowAllFields] = useState(false)
-  const [exporting, setExporting] = useState(false)
+  const [exportingFormat, setExportingFormat] = useState<'word' | 'markdown' | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
 
   const handleExportWord = useCallback(async (): Promise<void> => {
     if (!generatedContent || !template || typeof window.dsGui?.exportLegalResearchToWord !== 'function') return
-    setExporting(true)
+    if (exportingFormat) return
+    setExportingFormat('word')
     try {
       const defaultName = template.name.replace(/[<>:"/\\|?*]/g, '_')
       const result = await window.dsGui.exportLegalResearchToWord({
@@ -164,9 +165,29 @@ export function DocumentWritingEditor({
     } catch (error) {
       console.error('[document-writing] Word export error:', error)
     } finally {
-      setExporting(false)
+      setExportingFormat(null)
     }
-  }, [generatedContent, template])
+  }, [exportingFormat, generatedContent, template])
+
+  const handleExportMarkdown = useCallback(async (): Promise<void> => {
+    if (!generatedContent || !template || typeof window.dsGui?.exportMarkdownDocument !== 'function') return
+    if (exportingFormat) return
+    setExportingFormat('markdown')
+    try {
+      const defaultName = template.name.replace(/[<>:"/\\|?*]/g, '_')
+      const result = await window.dsGui.exportMarkdownDocument({
+        markdown: generatedContent,
+        defaultName
+      })
+      if (!result.ok && !result.canceled) {
+        console.error('[document-writing] Markdown export failed:', result.message)
+      }
+    } catch (error) {
+      console.error('[document-writing] Markdown export error:', error)
+    } finally {
+      setExportingFormat(null)
+    }
+  }, [exportingFormat, generatedContent, template])
 
   const missingRequiredFields = useMemo(() => {
     if (!template) return []
@@ -262,7 +283,7 @@ export function DocumentWritingEditor({
             </section>
 
             <aside className="min-w-0">
-              <div className="document-writing-card document-writing-assistant-card sticky top-6 p-4">
+              <div data-control-hover-root className="document-writing-card document-writing-assistant-card sticky top-6 p-4">
                 <div className="mb-4 flex items-center gap-3 px-1">
                   <span className="document-writing-ai-icon">
                     <WandSparkles className="h-[18px] w-[18px]" strokeWidth={1.9} />
@@ -274,16 +295,37 @@ export function DocumentWritingEditor({
                 </div>
                 <button
                   type="button"
-                  disabled={exporting}
+                  disabled={exportingFormat !== null}
                   onClick={() => void handleExportWord()}
                   className="document-writing-primary-button mb-2 w-full"
                 >
-                  {exporting ? (
+                  {exportingFormat === 'word' ? (
                     <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
                   ) : (
                     <FileDown className="h-4 w-4" strokeWidth={1.9} />
                   )}
-                  <span>导出 Word</span>
+                  <span>
+                    {exportingFormat === 'word'
+                      ? t('documentWritingExportingWord')
+                      : t('documentWritingExportWord')}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={exportingFormat !== null}
+                  onClick={() => void handleExportMarkdown()}
+                  className="document-writing-secondary-button mb-2 w-full justify-center"
+                >
+                  {exportingFormat === 'markdown' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                  ) : (
+                    <FileText className="h-4 w-4" strokeWidth={1.9} />
+                  )}
+                  <span>
+                    {exportingFormat === 'markdown'
+                      ? t('documentWritingExportingMarkdown')
+                      : t('documentWritingExportMarkdown')}
+                  </span>
                 </button>
                 <button
                   type="button"

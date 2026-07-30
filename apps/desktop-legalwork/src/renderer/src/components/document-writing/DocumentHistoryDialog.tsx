@@ -109,10 +109,11 @@ export function DocumentHistoryDialog({ open, onClose, onRestore }: Props): Reac
             <h2 className="text-[15px] font-semibold text-[var(--ds-ink)]">生成历史</h2>
             {!loading && <span className="text-[12px] text-[var(--ds-faint)]">({summaries.length}条)</span>}
           </div>
-          <div className="flex items-center gap-2">
+          <div data-control-hover-root className="flex items-center gap-2">
             {summaries.length > 0 && (
               <button
                 type="button"
+                data-control-hover-preserve
                 onClick={handleClearAll}
                 className="rounded-[6px] px-2.5 py-1 text-[12px] text-[var(--ds-faint)] transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
               >
@@ -163,12 +164,13 @@ export function DocumentHistoryDialog({ open, onClose, onRestore }: Props): Reac
                 </p>
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto px-4 py-2">
+              <div data-control-hover-root className="flex-1 overflow-y-auto px-4 py-2">
                 <div className="space-y-1">
                   {filtered.map((s) => (
                     <button
                       key={s.id}
                       type="button"
+                      data-control-active={selectedId === s.id ? 'true' : undefined}
                       onClick={() => loadRecord(s.id)}
                       className={`group relative flex w-full items-start gap-3 rounded-[8px] px-3 py-2.5 text-left transition ${
                         selectedId === s.id
@@ -188,6 +190,7 @@ export function DocumentHistoryDialog({ open, onClose, onRestore }: Props): Reac
                       </div>
                       <button
                         type="button"
+                        data-control-hover-preserve
                         onClick={(e) => handleDelete(s.id, e)}
                         className="absolute right-1.5 top-2 rounded-[4px] p-0.5 text-[var(--ds-faint)] opacity-0 hover:text-red-500 group-hover:opacity-100"
                       >
@@ -203,7 +206,7 @@ export function DocumentHistoryDialog({ open, onClose, onRestore }: Props): Reac
           {/* Detail */}
           {fullRecord && (
             <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="flex items-center gap-2 border-b border-[var(--ds-sidebar-divider)] px-4 py-2">
+              <div data-control-hover-root className="flex items-center gap-2 border-b border-[var(--ds-sidebar-divider)] px-4 py-2">
                 <button
                   type="button"
                   onClick={() => { setSelectedId(null); setFullRecord(null) }}

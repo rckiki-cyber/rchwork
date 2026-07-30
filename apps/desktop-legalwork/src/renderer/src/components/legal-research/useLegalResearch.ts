@@ -45,13 +45,13 @@ function mapToolStatus(status: ToolEventPayload['status']): ResearchStepStatus {
 
 function iconForTool(toolName?: string, summary?: string): string {
   const text = `${toolName ?? ''} ${summary ?? ''}`.toLowerCase()
-  if (text.includes('search') || text.includes('搜索')) return '🔎'
-  if (text.includes('case') || text.includes('案例') || text.includes('判例')) return '⚖'
-  if (text.includes('paper') || text.includes('文献') || text.includes('cnki')) return '📚'
-  if (text.includes('regulation') || text.includes('law') || text.includes('法规') || text.includes('条文')) return '📰'
-  if (text.includes('synthesis') || text.includes('summar') || text.includes('总结') || text.includes('综述')) return '📑'
-  if (text.includes('web') || text.includes('fetch') || text.includes('提取')) return '🌐'
-  return '🛠'
+  if (text.includes('search') || text.includes('搜索')) return 'search'
+  if (text.includes('case') || text.includes('案例') || text.includes('判例')) return 'case'
+  if (text.includes('paper') || text.includes('文献') || text.includes('cnki')) return 'literature'
+  if (text.includes('regulation') || text.includes('law') || text.includes('法规') || text.includes('条文')) return 'regulation'
+  if (text.includes('synthesis') || text.includes('summar') || text.includes('总结') || text.includes('综述')) return 'summary'
+  if (text.includes('web') || text.includes('fetch') || text.includes('提取')) return 'web'
+  return 'tool'
 }
 
 function loadRecords(): ResearchRecord[] {
@@ -93,7 +93,7 @@ export function useLegalResearch() {
       t('legalResearchAgentPrompt', {
         query,
         defaultValue:
-          '请对以下法律问题进行多源调研：「{{query}}」。\n\n【重要要求】\n1. 你的所有思考过程、推理分析必须使用中文，不要使用英文。\n2. 主动调用可用的 skill 和 MCP 工具（如多引擎搜索、类案检索、学术文献、法规提取、网页内容抓取等）。\n3. 收集网络信息、裁判案例、学术文献、现行法规与权威解读。\n4. 如果检索工具提供原文链接，必须保留工具返回的完整 URL，不得自行拼接或猜测；国家法律法规数据库检索/详情/下载接口可用时，不要把普通的前端页面抓取不完整概括为“反爬限制”；只有工具明确返回 403、验证码、WAF 或访问限制证据时，才说明访问受限。北大法宝 doc-link/链接增强工具可用时，使用它补全法规与案例的原文链接。\n5. 最终总结使用 Markdown 输出：如果链接前的文字已经写清楚法规名称、法条标题、案例名称、案号或网页标题，链接文本可简写为 `[国家法律法规数据库链接](完整URL)`、`[北大法宝链接](完整URL)`、`[原文链接](完整URL)`；如果前文没有说明标题，链接文本必须使用清楚的页面标题或资料名称。没有真实 URL 时只写名称并明确标注“无可核验链接”，不得生成虚假链接。\n6. 最后给出结构化的综合总结。\n7. 推理过程要简洁，只列出关键行动步骤，不要展开长篇大论。\n8. 【容错原则】如果某个工具调用失败或返回错误，不要停止，立即尝试其他工具或替代方法完成调研。一个途径不行就换另一个，确保最终给出完整结果。'
+          '请对以下法律问题进行多源调研：「{{query}}」。\n\n【重要要求】\n1. 你的所有思考过程、推理分析必须使用中文，不要使用英文。\n2. 主动调用可用的 skill 和 MCP 工具（如多引擎搜索、类案检索、学术文献、法规提取、网页内容抓取等）。\n3. 收集网络信息、裁判案例、学术文献、现行法规与权威解读。\n4. 如果检索工具提供原文链接，必须保留工具返回的完整 URL，不得自行拼接或猜测；引用国家法律法规数据库时，优先调用 `knowledge_legal_external_sources`，只使用该工具本次返回且经详情接口核验的 `records.path`（应为 `https://flk.npc.gov.cn/detail?id=...`），不得引用会打开数据库首页的 `https://flk.npc.gov.cn/index?...`。没有核验通过的详情记录时，改引官方公报 PDF、全国人大官网等权威页面，或明确标注无可核验链接。国家法律法规数据库检索/详情/下载接口可用时，不要把普通的前端页面抓取不完整概括为“反爬限制”；只有工具明确返回 403、验证码、WAF 或访问限制证据时，才说明访问受限。北大法宝 doc-link/链接增强工具可用时，使用它补全法规与案例的原文链接。\n5. 最终总结使用 Markdown 输出：如果链接前的文字已经写清楚法规名称、法条标题、案例名称、案号或网页标题，链接文本可简写为 `[国家法律法规数据库链接](完整URL)`、`[北大法宝链接](完整URL)`、`[原文链接](完整URL)`；如果前文没有说明标题，链接文本必须使用清楚的页面标题或资料名称。没有真实 URL 时只写名称并明确标注“无可核验链接”，不得生成虚假链接。\n6. 最后给出结构化的综合总结。\n7. 推理过程要简洁，只列出关键行动步骤，不要展开长篇大论。\n8. 【容错原则】如果某个工具调用失败或返回错误，不要停止，立即尝试其他工具或替代方法完成调研。一个途径不行就换另一个，确保最终给出完整结果。'
       }),
     [t]
   )
@@ -221,7 +221,7 @@ export function useLegalResearch() {
               const step: ResearchStep = {
                 id: ev.itemId,
                 tool: ev.summary || t('legalResearchToolUnknown'),
-                icon: isError ? '⚠️' : iconForTool(ev.meta?.toolName as string | undefined, ev.summary),
+                icon: isError ? 'error' : iconForTool(ev.meta?.toolName as string | undefined, ev.summary),
                 status: isError ? 'error' : mapToolStatus(ev.status),
                 input: trimmedQuery,
                 output: isError ? `调用失败：${ev.detail || '未知错误'}，将尝试其他方法...` : ev.detail,

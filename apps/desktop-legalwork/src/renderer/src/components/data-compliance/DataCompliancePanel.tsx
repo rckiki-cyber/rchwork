@@ -2010,7 +2010,7 @@ export function DataCompliancePanel({
                   刷新
                 </button>
               </div>
-              <div className="mt-4 divide-y divide-ds-border-muted overflow-hidden rounded-[12px] border border-ds-border-muted">
+              <div data-control-hover-root className="mt-4 divide-y divide-ds-border-muted overflow-hidden rounded-[12px] border border-ds-border-muted">
                 {history.length === 0 ? (
                   <div className="px-4 py-8 text-center text-[13px] text-ds-faint">暂无历史任务。</div>
                 ) : history.map((task) => {
@@ -2044,6 +2044,7 @@ export function DataCompliancePanel({
                         {id ? (
                           <button
                             type="button"
+                            data-control-hover-preserve
                             onClick={(event) => void deleteHistoryTask(id, event)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ds-faint transition hover:bg-red-500/10 hover:text-red-600"
                             aria-label="删除历史任务"
@@ -2118,7 +2119,7 @@ export function DataCompliancePanel({
                           </div>
                         ) : null}
                       </div>
-                      <div className="flex shrink-0 flex-wrap gap-2">
+                      <div data-control-hover-root className="flex shrink-0 flex-wrap gap-2">
                         <button
                           type="button"
                           disabled={!reportTaskId}

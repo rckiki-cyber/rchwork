@@ -21,6 +21,25 @@ describe('document-writing agent workflow', () => {
     expect(prompt).toContain('北大法宝（PKULaw）、元典')
     expect(prompt.indexOf('法律调研')).toBeLessThan(prompt.indexOf('撰写文书'))
     expect(prompt).toContain('绝不编造法规、案例、案号、链接或事实')
+    expect(prompt).toContain('必须先调用 resolve_legal_document_template')
+  })
+
+  it('keeps a user-uploaded template above hidden built-ins', () => {
+    const prompt = buildDocumentWritingAgentPrompt({
+      template: {
+        id: 'custom-123',
+        name: '客户专用起诉状',
+        description: '用户上传模板：客户专用起诉状.docx',
+        content: '# 客户专用起诉状\n\n## 客户固定结构',
+        fields: [],
+        source: 'user'
+      },
+      fieldValues: {}
+    })
+
+    expect(prompt).toContain('用户上传模板（最高优先级）')
+    expect(prompt).toContain('不得调用或改用隐藏内置模板')
+    expect(prompt).not.toContain('必须先调用 resolve_legal_document_template')
   })
 
   it('starts with material understanding and maps legal-source tools to research', () => {

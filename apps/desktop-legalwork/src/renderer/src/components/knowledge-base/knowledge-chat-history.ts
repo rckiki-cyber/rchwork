@@ -18,8 +18,43 @@ export type KnowledgeChatHistory = {
   context: KnowledgeChatContext
 }
 
+export const KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION =
+  '直接回答用户问题，不要在回答开头重复、改写或概括用户问题；不要把用户问题作为 Markdown 标题、加粗文本或引言单独输出。'
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function normalizeRepeatedQuestionLine(value: string): string {
+  let normalized = value.trim()
+  normalized = normalized.replace(/^>\s*/, '')
+  normalized = normalized.replace(/^#{1,6}\s*/, '')
+
+  const boldMatch = normalized.match(/^(?:\*\*|__)([\s\S]*?)(?:\*\*|__)$/)
+  if (boldMatch) normalized = boldMatch[1]
+
+  return normalized
+    .replace(/^(?:用户问题|问题|提问)\s*[:：]\s*/, '')
+    .trim()
+    .replace(/^[“”"'‘’《》「」『』]+|[“”"'‘’《》「」『』]+$/g, '')
+    .replace(/[?？!！。.:：;；，,]+$/g, '')
+    .replace(/\s+/g, '')
+    .toLocaleLowerCase()
+}
+
+export function stripRepeatedKnowledgeQuestionLead(answer: string, question: string): string {
+  const normalizedQuestion = normalizeRepeatedQuestionLine(question)
+  if (!answer || !normalizedQuestion) return answer
+
+  const firstLineMatch = answer.match(/^(?:[ \t]*\r?\n)*[ \t]*([^\r\n]+)(?:\r?\n|$)/)
+  if (!firstLineMatch) return answer
+
+  const normalizedFirstLine = normalizeRepeatedQuestionLine(firstLineMatch[1])
+  if (normalizedFirstLine !== normalizedQuestion) return answer
+
+  return answer
+    .slice(firstLineMatch[0].length)
+    .replace(/^(?:[ \t]*\r?\n)+/, '')
 }
 
 function extractMarkdownSection(text: string, heading: string): string | null {
@@ -31,9 +66,22 @@ function extractMarkdownSection(text: string, heading: string): string | null {
 function restoreKnowledgeUserQuestion(text: string): string {
   const userQuestion = extractMarkdownSection(text, '用户问题')
   if (!userQuestion) return text
-  return userQuestion
-    .split(/\n{2,}请(?:基于|根据|结合)/)[0]
-    .trim()
+
+  // New prompts put internal instructions under their own heading, so the
+  // section extractor above returns only the visible question. Older stored
+  // prompts appended the instructions to the same section; remove those exact
+  // legacy suffixes when restoring chat history.
+  const legacyInstructionPrefixes = [
+    '请优先依据“当前打开文件的正文”回答',
+    '请基于检索到的内容给出准确、专业的回答',
+    '请基于当前文件给出回答'
+  ]
+  const instructionStart = legacyInstructionPrefixes
+    .map((prefix) => userQuestion.indexOf(`\n\n${prefix}`))
+    .filter((index) => index >= 0)
+    .sort((left, right) => left - right)[0]
+
+  return (instructionStart === undefined ? userQuestion : userQuestion.slice(0, instructionStart)).trim()
 }
 
 function normalizeKnowledgeFileName(value: string): string {
@@ -89,14 +137,16 @@ export function knowledgeChatHistoryFromBlocks(blocks: ChatBlock[]): KnowledgeCh
   const messages: ChatMessage[] = []
   let context: KnowledgeChatContext = { kind: 'global' }
   let pendingReasoning = ''
+  let latestUserQuestion = ''
   for (const block of blocks) {
     if (block.kind === 'user') {
       pendingReasoning = ''
       context = extractKnowledgeChatContext(block.text) ?? context
+      latestUserQuestion = restoreKnowledgeUserQuestion(block.text)
       messages.push({
         id: block.id,
         role: 'user',
-        content: restoreKnowledgeUserQuestion(block.text),
+        content: latestUserQuestion,
         timestamp: block.createdAt ? new Date(block.createdAt).getTime() : Date.now()
       })
     } else if (block.kind === 'reasoning') {
@@ -105,7 +155,7 @@ export function knowledgeChatHistoryFromBlocks(blocks: ChatBlock[]): KnowledgeCh
       messages.push({
         id: block.id,
         role: 'assistant',
-        content: block.text,
+        content: stripRepeatedKnowledgeQuestionLead(block.text, latestUserQuestion),
         ...(pendingReasoning ? { reasoning: pendingReasoning } : {}),
         timestamp: block.createdAt ? new Date(block.createdAt).getTime() : Date.now()
       })

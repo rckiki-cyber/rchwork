@@ -97,6 +97,32 @@ describe('legalExternalSearch', () => {
     expect(fetchMock).toHaveBeenCalled()
   })
 
+  it('omits stale NPC search rows whose detail endpoint cannot verify the record', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.includes('/flfgDetails')) {
+        return jsonResponse({ code: 200 })
+      }
+      return jsonResponse({
+        rows: [{
+          bbbs: 'stale-law-id',
+          title: '中华人民共和国城市房地产管理法',
+          flxz: '法律',
+          zdjgName: '全国人民代表大会常务委员会',
+          gbrq: '2019-08-26',
+          sxrq: '2020-01-01',
+          sxx: 3
+        }]
+      })
+    })
+
+    const result = await legalExternalSearch('中华人民共和国城市房地产管理法')
+
+    expect(result.records).toHaveLength(0)
+    expect(result.summary).toContain('未返回详情接口核验通过的结构化候选')
+    expect(result.summary).toContain('不要引用 /index?...')
+  })
+
   it('downloads official DOCX and extracts the requested article text', async () => {
     const docx = plainTextToDocxBuffer([
       '中华人民共和国劳动合同法',

@@ -34,7 +34,7 @@ export function LegalResearchEditorDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="legal-research-editor-title"
-        className="flex h-[min(82vh,820px)] w-full max-w-5xl flex-col overflow-hidden rounded-[22px] border border-[var(--ds-border)] bg-[var(--ds-card-strong)] shadow-[0_28px_90px_rgba(0,0,0,0.42)]"
+        className="ds-subfeature-controls flex h-[min(82vh,820px)] w-full max-w-5xl flex-col overflow-hidden rounded-[22px] border border-[var(--ds-border)] bg-[var(--ds-card-strong)] shadow-[0_28px_90px_rgba(0,0,0,0.42)]"
       >
         <header className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--ds-border)] px-6 py-4">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -59,14 +59,14 @@ export function LegalResearchEditorDialog({
             onClick={onClose}
             aria-label={t('legalResearchEditClose')}
             title={t('legalResearchEditClose')}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--ds-faint)] transition-colors hover:bg-[var(--ds-sidebar-row-hover)] hover:text-[var(--ds-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-accent)]"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] text-[var(--ds-faint)] transition-colors hover:bg-[var(--ds-sidebar-row-hover)] hover:text-[var(--ds-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-accent)]"
           >
             <X className="h-4 w-4" strokeWidth={1.8} />
           </button>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col p-5">
-          <div className="flex shrink-0 items-center justify-between gap-4 rounded-t-[12px] border border-b-0 border-[var(--ds-border)] bg-[var(--ds-sidebar)] px-3 py-2">
+          <div className="flex shrink-0 items-center justify-between gap-4 rounded-t-[16px] border border-b-0 border-[var(--ds-border)] bg-[var(--ds-sidebar)] px-3 py-2">
             <AstryxSegmentedControl
               value={appearance}
               items={[
@@ -83,9 +83,9 @@ export function LegalResearchEditorDialog({
               ]}
               onChange={setAppearance}
               ariaLabel={t('legalResearchEditMode')}
-              className="flex items-center rounded-[7px] border border-[var(--ds-border)] bg-[var(--ds-main)] p-0.5"
-              buttonClassName="inline-flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-[11px] font-medium"
-              indicatorClassName="rounded-[5px] bg-[var(--ds-card-strong)] shadow-sm"
+              className="flex items-center rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-main)] p-1"
+              buttonClassName="inline-flex items-center gap-1.5 rounded-[12px] px-2.5 py-1 text-[11px] font-medium"
+              indicatorClassName="rounded-[12px] bg-[var(--ds-card-strong)] shadow-sm"
               activeClassName="text-[var(--ds-ink)]"
               inactiveClassName="text-[var(--ds-faint)] hover:text-[var(--ds-ink)]"
             />
@@ -97,7 +97,7 @@ export function LegalResearchEditorDialog({
           </div>
 
           <div
-            className="min-h-0 flex-1 overflow-hidden rounded-b-[12px] border border-[var(--ds-border)] bg-[var(--ds-main)]"
+            className="min-h-0 flex-1 overflow-hidden rounded-b-[16px] border border-[var(--ds-border)] bg-[var(--ds-main)]"
             aria-label={t('legalResearchEditMarkdownLabel')}
           >
             <WriteMarkdownEditor
@@ -126,7 +126,7 @@ export function LegalResearchEditorDialog({
           <button
             type="button"
             onClick={() => onSave(draft)}
-            className="inline-flex shrink-0 items-center justify-center rounded-[8px] bg-[var(--ds-accent)] px-4 py-2 text-[12px] font-medium text-white shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ds-card-strong)] active:scale-[0.985]"
+            className="inline-flex shrink-0 items-center justify-center rounded-[12px] bg-[var(--ds-accent)] px-4 py-2 text-[12px] font-medium text-white shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ds-card-strong)] active:scale-[0.985]"
           >
             {t('legalResearchEditSave')}
           </button>

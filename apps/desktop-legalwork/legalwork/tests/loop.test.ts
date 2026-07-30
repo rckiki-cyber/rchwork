@@ -251,6 +251,118 @@ describe('AgentLoop', () => {
     expect(toolCall).toMatchObject({ kind: 'tool_call', status: 'completed' })
   })
 
+  it('enforces IMA research for knowledge-heavy legal work when the model skips the tool', async () => {
+    const requests: ModelRequest[] = []
+    let executions = 0
+    const imaResearchTool = LocalToolHost.defineTool({
+      name: 'mcp_ima_knowledge_base_research_ima',
+      description: 'Automatically route and research IMA knowledge bases.',
+      inputSchema: {
+        type: 'object',
+        properties: { question: { type: 'string' } },
+        required: ['question']
+      },
+      policy: 'auto',
+      execute: async (args) => {
+        executions += 1
+        return { output: { answer: 'IMA answer', question: args.question } }
+      }
+    })
+    const h = makeHarness(
+      {
+        provider: 'ima-route',
+        model: 'ima-route',
+        async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
+          requests.push(request)
+          if (requests.length > 1) {
+            yield { kind: 'assistant_text_delta', text: '已结合 IMA 回答。' }
+          }
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      },
+      { tools: [imaResearchTool] }
+    )
+    const question = '请分析企业解除劳动合同的合规风险和法律依据'
+    await bootstrapThread(h, { request: { prompt: question } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const items = await h.sessionStore.loadItems(h.threadId)
+
+    expect(status).toBe('completed')
+    expect(executions).toBe(1)
+    expect(requests[0]?.requiredToolName).toBe('mcp_ima_knowledge_base_research_ima')
+    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual([
+      'mcp_ima_knowledge_base_research_ima'
+    ])
+    expect(requests[0]?.contextInstructions?.join('\n')).toContain('IMA 云知识库')
+    expect(items.some((item) =>
+      item.kind === 'tool_result' &&
+      item.toolName === 'mcp_ima_knowledge_base_research_ima' &&
+      item.isError !== true
+    )).toBe(true)
+  })
+
+  it('enforces IMA discovery and call in progressive MCP mode', async () => {
+    const executed: Array<{ name: string; args: Record<string, unknown> }> = []
+    const mcpSearch = LocalToolHost.defineTool({
+      name: 'mcp_search',
+      description: 'Search MCP catalog.',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async (args) => {
+        executed.push({ name: 'mcp_search', args })
+        return {
+          output: {
+            results: [{ toolId: 'ima-knowledge-base/research_ima' }]
+          }
+        }
+      }
+    })
+    const mcpCall = LocalToolHost.defineTool({
+      name: 'mcp_call',
+      description: 'Call MCP tool.',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async (args) => {
+        executed.push({ name: 'mcp_call', args })
+        return {
+          output: {
+            serverId: 'ima-knowledge-base',
+            toolName: 'research_ima',
+            result: 'IMA answer'
+          }
+        }
+      }
+    })
+    let requests = 0
+    const h = makeHarness(
+      {
+        provider: 'ima-progressive-route',
+        model: 'ima-progressive-route',
+        async *stream(): AsyncIterable<ModelStreamChunk> {
+          requests += 1
+          if (requests > 2) {
+            yield { kind: 'assistant_text_delta', text: '已使用渐进发现的 IMA 工具。' }
+          }
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      },
+      { tools: [mcpSearch, mcpCall] }
+    )
+    const question = '请研究人工智能生成内容的法律监管问题'
+    await bootstrapThread(h, { request: { prompt: question } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed.map((entry) => entry.name)).toEqual(['mcp_search', 'mcp_call'])
+    expect(executed[0]?.args).toMatchObject({ serverId: 'ima-knowledge-base' })
+    expect(executed[1]?.args).toEqual({
+      toolId: 'ima-knowledge-base/research_ima',
+      arguments: { question }
+    })
+  })
+
   it('keeps running past the legacy eight-step ceiling until the model stops', async () => {
     let calls = 0
     const h = makeHarness(

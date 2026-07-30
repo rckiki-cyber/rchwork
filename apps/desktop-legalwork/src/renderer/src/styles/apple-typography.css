@@ -6,6 +6,7 @@
   --type-caption: 12px;
   --type-label: 13px;
   --type-secondary: 14px;
+  --type-chat-body: 15px;
   --type-body: 17px;
   --type-title-3: 18px;
   --type-title-2: 22px;
@@ -14,6 +15,7 @@
   --leading-caption: 1.35;
   --leading-label: 1.4;
   --leading-secondary: 1.5;
+  --leading-chat-body: 1.62;
   --leading-body: 1.72;
   --leading-title: 1.22;
 
@@ -127,8 +129,8 @@ nav [role='button'] {
 .ds-chat-answer,
 .ds-user-message-bubble {
   font-family: var(--font-apple-ui);
-  font-size: var(--type-body);
-  line-height: 1.7;
+  font-size: var(--type-chat-body);
+  line-height: var(--leading-chat-body);
   letter-spacing: -0.006em;
 }
 

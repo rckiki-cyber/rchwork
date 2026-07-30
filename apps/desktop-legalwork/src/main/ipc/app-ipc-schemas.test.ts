@@ -10,6 +10,7 @@ import {
   shellOpenExternalUrlSchema,
   skillListPayloadSchema,
   sseStartPayloadSchema,
+  userTemplateSchema,
   workspaceDirectoryCreatePayloadSchema,
   workspaceDirectoryTargetPayloadSchema,
   workspaceEntryDeletePayloadSchema,
@@ -20,6 +21,33 @@ import {
 } from './app-ipc-schemas'
 
 describe('app-ipc-schemas', () => {
+  it('accepts the template upload learning lifecycle', () => {
+    const template = userTemplateSchema.parse({
+      id: 'custom-1',
+      name: '民事起诉状',
+      description: '用户上传模板',
+      category: 'custom',
+      content: '民事起诉状正文',
+      fields: [
+        {
+          id: 'content',
+          label: '文书内容',
+          type: 'textarea',
+          required: true
+        }
+      ],
+      sourceFile: '民事起诉状.docx',
+      learningStatus: 'analyzing',
+      createdAt: '2026-07-30T00:00:00.000Z',
+      updatedAt: '2026-07-30T00:00:00.000Z'
+    })
+
+    expect(template.learningStatus).toBe('analyzing')
+    expect(() =>
+      userTemplateSchema.parse({ ...template, learningStatus: 'stuck' })
+    ).toThrow()
+  })
+
   it('normalizes runtime request paths', () => {
     const payload = runtimeRequestPayloadSchema.parse({
       path: 'v1/threads?limit=1',

@@ -45,8 +45,13 @@ export function WorkspaceModeTabs({
         else if (next === 'desensitize') onDesensitizeOpen?.()
         else if (next === 'dataCompliance') onDataComplianceOpen()
       }}
+      onReselect={(current) => {
+        // Agent subfeatures keep Work visually selected. Clicking it again is
+        // an explicit return to the existing conversation, never a new chat.
+        if (current === 'chat') onCodeOpen()
+      }}
       ariaLabel="work / 脱敏 / 合规"
-      className="apple-mode-tabs mb-2 flex flex-row rounded-[16px] bg-[#f1f5f9] p-1 dark:bg-white/[0.06]"
+      className="apple-mode-tabs flex flex-row rounded-[16px] bg-[#f1f5f9] p-1 dark:bg-white/[0.06]"
       buttonClassName="apple-mode-tab inline-flex min-h-[32px] min-w-fit flex-1 items-center justify-center gap-1.5 rounded-[12px] px-3 text-left text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:focus-visible:ring-white/20"
       indicatorClassName="rounded-[12px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:bg-white/[0.12] dark:shadow-[0_1px_4px_rgba(0,0,0,0.2)]"
       activeClassName="font-semibold text-[#1f2937] dark:text-white"

@@ -43,6 +43,8 @@ export interface LegalTemplate {
   legalBasis?: string[]
   /** 图标emoji */
   icon: string
+  /** AI 学习状态 */
+  learningStatus?: 'idle' | 'analyzing' | 'done' | 'failed'
 }
 
 const inferredFieldDefaults: Record<string, Omit<LegalTemplateField, 'id'>> = {

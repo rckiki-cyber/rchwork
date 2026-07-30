@@ -278,7 +278,7 @@ export function KnowledgeFileBrowser({ onRefresh }: { onRefresh?: () => void }):
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Toolbar */}
-      <div className="ds-no-drag flex shrink-0 items-center gap-1 border-b border-ds-border px-2 py-2">
+      <div data-control-hover-root className="ds-no-drag flex shrink-0 items-center gap-1 border-b border-ds-border px-2 py-2">
         <button
           type="button"
           onClick={() => {
@@ -327,7 +327,7 @@ export function KnowledgeFileBrowser({ onRefresh }: { onRefresh?: () => void }):
 
       {/* Inline create folder */}
       {creatingFolder ? (
-        <div className="flex shrink-0 items-center gap-1 border-b border-ds-border px-3 py-2">
+        <div data-control-hover-root className="flex shrink-0 items-center gap-1 border-b border-ds-border px-3 py-2">
           <Folder className="h-4 w-4 text-amber-500" strokeWidth={1.5} />
           <input
             ref={renameInputRef}
@@ -373,7 +373,7 @@ export function KnowledgeFileBrowser({ onRefresh }: { onRefresh?: () => void }):
 
       {/* Rename inline */}
       {renaming ? (
-        <div className="flex shrink-0 items-center gap-1 border-b border-ds-border px-3 py-2">
+        <div data-control-hover-root className="flex shrink-0 items-center gap-1 border-b border-ds-border px-3 py-2">
           <Pencil className="h-3.5 w-3.5 text-[var(--ds-muted)]" strokeWidth={1.75} />
           <input
             ref={renameInputRef}
@@ -424,6 +424,7 @@ export function KnowledgeFileBrowser({ onRefresh }: { onRefresh?: () => void }):
       {/* Context Menu */}
       {contextMenu.visible ? (
         <div
+          data-control-hover-root
           className="fixed z-50 min-w-[140px] rounded-[8px] border border-ds-border bg-ds-card py-1 shadow-lg"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
@@ -437,6 +438,7 @@ export function KnowledgeFileBrowser({ onRefresh }: { onRefresh?: () => void }):
           </button>
           <button
             type="button"
+            data-control-hover-preserve
             onClick={handleDelete}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-500 transition hover:bg-red-50 dark:hover:bg-red-950/30"
           >

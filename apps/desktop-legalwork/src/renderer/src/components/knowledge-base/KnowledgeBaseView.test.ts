@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { ChatBlock } from '../../agent/types'
 import {
   findKnowledgeFileForChatContext,
-  knowledgeChatHistoryFromBlocks
+  knowledgeChatHistoryFromBlocks,
+  stripRepeatedKnowledgeQuestionLead
 } from './knowledge-chat-history'
 
 describe('knowledgeChatHistoryFromBlocks', () => {
@@ -97,6 +98,48 @@ describe('knowledgeChatHistoryFromBlocks', () => {
     })
   })
 
+  it('does not expose legacy file-chat instructions in the restored user message', () => {
+    const blocks: ChatBlock[] = [{
+      kind: 'user',
+      id: 'user-1',
+      text: `你是一个专业的法律知识助手。
+
+## 当前文件
+第一次跟委托人见面要不要主动递名片或加微信.md（MD）
+
+## 用户问题
+?
+
+请优先依据“当前打开文件的正文”回答；知识库补充检索结果只能用于交叉参考或补充背景，不能把其他文件内容误认为当前文件内容。如果当前文件正文不足以回答问题，请明确说明缺口。`
+    }]
+
+    expect(knowledgeChatHistoryFromBlocks(blocks).messages[0]).toMatchObject({
+      role: 'user',
+      content: '?'
+    })
+  })
+
+  it('restores only the user question from prompts with a separate answer-requirements section', () => {
+    const blocks: ChatBlock[] = [{
+      kind: 'user',
+      id: 'user-1',
+      text: `你是一个专业的法律知识助手。
+
+## 用户问题
+请比较这两份材料。
+
+需要分别说明共同点和差异。
+
+## 回答要求
+请基于检索到的内容给出准确、专业的回答。`
+    }]
+
+    expect(knowledgeChatHistoryFromBlocks(blocks).messages[0]).toMatchObject({
+      role: 'user',
+      content: '请比较这两份材料。\n\n需要分别说明共同点和差异。'
+    })
+  })
+
   it('attaches a stored reasoning block to its assistant answer', () => {
     const blocks: ChatBlock[] = [
       {
@@ -115,6 +158,45 @@ describe('knowledgeChatHistoryFromBlocks', () => {
       role: 'assistant',
       reasoning: '先读取当前文件，再提取关键信息。',
       content: '## 结论\n\n这是最终回答。'
+    })
+  })
+
+  it('removes a repeated user question used as the answer heading', () => {
+    expect(stripRepeatedKnowledgeQuestionLead(
+      '# 这是什么\n\n这是一个实务经验分享文档。',
+      '这是什么'
+    )).toBe('这是一个实务经验分享文档。')
+  })
+
+  it('removes a repeated user question used as bold lead text', () => {
+    expect(stripRepeatedKnowledgeQuestionLead(
+      '**问题：这是什么？**\n\n这是一个实务经验分享文档。',
+      '这是什么'
+    )).toBe('这是一个实务经验分享文档。')
+  })
+
+  it('preserves a useful answer heading that is not the user question', () => {
+    const answer = '## 核心内容\n\n这是一份实务经验分享文档。'
+    expect(stripRepeatedKnowledgeQuestionLead(answer, '这是什么')).toBe(answer)
+  })
+
+  it('cleans repeated question headings when restoring stored answers', () => {
+    const blocks: ChatBlock[] = [
+      {
+        kind: 'user',
+        id: 'user-1',
+        text: '这是什么'
+      },
+      {
+        kind: 'assistant',
+        id: 'assistant-1',
+        text: '# 这是什么\n\n这是一个实务经验分享文档。'
+      }
+    ]
+
+    expect(knowledgeChatHistoryFromBlocks(blocks).messages[1]).toMatchObject({
+      role: 'assistant',
+      content: '这是一个实务经验分享文档。'
     })
   })
 

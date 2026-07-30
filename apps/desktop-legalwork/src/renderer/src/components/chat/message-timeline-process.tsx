@@ -941,7 +941,7 @@ function ProcessEntryDetail({
   }
   if (detail.kind === 'assistant') {
     return (
-      <div className="ds-markdown text-[13.5px] leading-6 text-ds-ink">
+      <div className="ds-markdown ds-chat-answer min-w-0 max-w-full text-ds-ink">
         <AssistantMarkdown
           text={detail.text}
           streaming={processing && block.kind === 'assistant' && block.id === 'live-assistant'}

@@ -211,9 +211,22 @@ export type LearningIterationRecordSummary = {
   counts: LearningIterationCounts
 }
 
+export type LearningIterationReportItem = {
+  title: string
+  detail: string
+}
+
+export type LearningIterationUserReport = {
+  overview: string
+  learned: LearningIterationReportItem[]
+  improvements: LearningIterationReportItem[]
+  nextTime: string[]
+}
+
 export type LearningIterationRecordDetail = {
   summary: LearningIterationRecordSummary
   reportMarkdown: string
+  userReport: LearningIterationUserReport
 }
 
 export type LearningIterationRuntimeStatus = {
@@ -297,6 +310,16 @@ export type LegalResearchExportPayload = {
   templateName?: string
   defaultName: string
 }
+
+export type MarkdownDocumentExportPayload = {
+  markdown: string
+  defaultName: string
+}
+
+export type MarkdownDocumentExportResult =
+  | { ok: true; path: string }
+  | { ok: false; canceled: true; message?: string }
+  | { ok: false; canceled: false; message: string }
 
 export type DocumentMaterialExtractionPayload = {
   fileName: string
@@ -433,6 +456,9 @@ export type DsGuiApi = {
   exportLegalResearchToWord: (
     payload: LegalResearchExportPayload
   ) => Promise<LegalResearchExportResult>
+  exportMarkdownDocument: (
+    payload: MarkdownDocumentExportPayload
+  ) => Promise<MarkdownDocumentExportResult>
   startSse: (threadId: string, sinceSeq: number, streamId?: string) => Promise<{ streamId: string }>
   stopSse: (streamId: string) => Promise<boolean>
   onSseEvent: (handler: (payload: SseEventPayload) => void) => () => void
@@ -476,4 +502,20 @@ export type DsGuiApi = {
   logError: (category: string, message: string, detail?: unknown) => Promise<void>
   getLogPath: () => Promise<string>
   openLogDir: () => Promise<{ ok: boolean; message?: string }>
+
+  // IMA 知识库认证
+  imaAuthStatus: () => Promise<{ kind: string; auth?: { clientId?: string; apiKey?: string } }>
+  imaLogin: () => Promise<{ ok: boolean; message?: string }>
+  imaRelogin: () => Promise<{ ok: boolean; message?: string }>
+  imaLogout: () => Promise<void>
+  imaGetConfig: () => Promise<{
+    cookie: boolean
+    bkn: boolean
+    loggedIn: boolean
+    status: 'valid' | 'expired' | 'unverified' | 'network_error' | 'not_configured'
+    message?: string
+    knowledgeBaseCount: number
+  }>
+  imaGetMcpConfig: () => Promise<Record<string, unknown> | { error: string }>
+  imaRefresh: () => Promise<{ ok: boolean; changed?: boolean; message?: string; status: string }>
 }

@@ -106,6 +106,7 @@ export function SettingsCard({
 }): ReactElement {
   return (
     <section
+      data-control-hover-root
       className={`rounded-2xl border border-ds-border bg-ds-card/95 shadow-sm shadow-black/5 dark:shadow-black/25 ${className}`}
     >
       <div className="border-b border-ds-border-muted px-5 py-3">
@@ -129,7 +130,8 @@ export function SettingRow({
 }): ReactElement {
   return (
     <div
-      className={`flex gap-3 px-3 py-4 ${
+      data-control-hover-target
+      className={`flex gap-3 rounded-[12px] px-3 py-4 hover:z-[3] focus-within:z-[3] ${
         wideControl
           ? 'flex-col sm:gap-3.5'
           : 'flex-col sm:flex-row sm:items-start sm:justify-between sm:gap-8'

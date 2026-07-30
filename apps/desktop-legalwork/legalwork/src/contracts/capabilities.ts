@@ -161,6 +161,7 @@ export const WebCapabilityConfig = CapabilityToggleConfig.extend({
   fetchEnabled: z.boolean().default(false),
   searchEnabled: z.boolean().default(false),
   provider: z.string().min(1).optional(),
+  anysearchApiKey: z.string().min(1).optional(),
   allowDomains: z.array(z.string().min(1)).default([]),
   denyDomains: z.array(z.string().min(1)).default([])
 }).strict()

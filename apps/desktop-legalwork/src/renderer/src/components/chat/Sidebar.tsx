@@ -173,6 +173,14 @@ export function Sidebar({
     <SidebarFrame
       title={t('appName')}
       onCollapse={onToggleSidebar}
+      titlebarContent={
+        <WorkspaceModeTabs
+          activeView={getWorkspaceModeView(activeView)}
+          onCodeOpen={onCodeOpen}
+          onDesensitizeOpen={onDesensitizeOpen}
+          onDataComplianceOpen={onDataComplianceOpen}
+        />
+      }
       footer={
         <div className="space-y-1">
           <GuiUpdateBadge />
@@ -193,13 +201,6 @@ export function Sidebar({
       }
     >
       <div className="ds-no-drag flex flex-col px-1">
-        <WorkspaceModeTabs
-          activeView={getWorkspaceModeView(activeView)}
-          onCodeOpen={onCodeOpen}
-          onDesensitizeOpen={onDesensitizeOpen}
-          onDataComplianceOpen={onDataComplianceOpen}
-        />
-
         {isAgentWorkspaceView(activeView) ? (
           <>
             <SidebarCommandRow

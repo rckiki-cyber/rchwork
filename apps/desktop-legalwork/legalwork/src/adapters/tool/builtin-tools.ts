@@ -12,6 +12,7 @@ import { createDataComplianceLocalTool } from './builtin-data-compliance-tool.js
 import { createCompressContextLocalTool } from './builtin-compress-context-tool.js'
 import { createFindLocalTool, createGrepLocalTool, createLsLocalTool } from './builtin-search-tools.js'
 import { createRequestDocumentPreferencesTool } from './builtin-document-preference-tools.js'
+import { createResolveLegalDocumentTemplateTool } from './builtin-legal-document-template-tool.js'
 import {
   createRefreshSkillsTool,
   createInstallSkillTool,
@@ -57,6 +58,8 @@ export function createBuiltinLocalTool(
       return createInstallSkillTool(options.skillTools)
     case 'request_document_preferences':
       return createRequestDocumentPreferencesTool()
+    case 'resolve_legal_document_template':
+      return createResolveLegalDocumentTemplateTool()
     case 'compress_context':
       return createCompressContextLocalTool(options.compressContext!)
   }
@@ -93,6 +96,7 @@ export function buildBuiltinLocalTools(options: BuiltinLocalToolsOptions = {}): 
     tools.push(createCompressContextLocalTool(options.compressContext))
   }
   tools.push(createRequestDocumentPreferencesTool())
+  tools.push(createResolveLegalDocumentTemplateTool())
   return tools
 }
 
@@ -143,6 +147,7 @@ export function buildBuiltinLocalToolRecord(
     refresh_skills: createRefreshSkillsTool(options.skillTools),
     install_skill: createInstallSkillTool(options.skillTools),
     request_document_preferences: createRequestDocumentPreferencesTool(),
+    resolve_legal_document_template: createResolveLegalDocumentTemplateTool(),
     compress_context: createCompressContextLocalTool(options.compressContext!)
   }
 }

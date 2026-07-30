@@ -496,7 +496,8 @@ describe('FloatingComposer capability controls', () => {
 
     expect(html).toContain('Openspec Apply Change')
     expect(html).toContain('Implement tasks from an OpenSpec change')
-    expect(html).toContain('项目')
+    expect(html).toContain('Skill')
+    expect(html).not.toContain('项目')
     expect(html).toContain('/skill:openspec-apply-change')
   })
 

@@ -41,6 +41,10 @@ export default function AppShell(): React.ReactElement {
   } | null>(null)
   const sidebarHoverRootRef = useRef<HTMLElement | null>(null)
   const sidebarHoverTargetRef = useRef<HTMLElement | null>(null)
+  const sidebarHoverPointRef = useRef<{
+    clientX: number
+    clientY: number
+  } | null>(null)
 
   useEffect(() => {
     let frame = 0
@@ -81,40 +85,57 @@ export default function AppShell(): React.ReactElement {
   }, [])
 
   const hideSidebarHover = (): void => {
-    sidebarHoverRootRef.current?.removeAttribute('data-sidebar-hover-active')
+    sidebarHoverRootRef.current?.removeAttribute('data-shared-hover-active')
     sidebarHoverRootRef.current = null
     sidebarHoverTargetRef.current = null
   }
 
-  const updateSidebarHover = (origin: Element): void => {
-    const target = origin.closest<HTMLElement>('[data-sidebar-hover-target]')
-    const root = target?.closest<HTMLElement>('[data-sidebar-hover-root]') ?? null
-    if (!target || !root) {
+  const updateSidebarHover = (origin: Element, force = false): void => {
+    const root = origin.closest<HTMLElement>(
+      '[data-sidebar-hover-root], [data-control-hover-root]'
+    )
+    const candidateTarget = origin.closest<HTMLElement>(
+      '[data-sidebar-hover-target]:not(:disabled), [data-control-hover-target]:not(:disabled), [data-control-hover-root] button:not(:disabled):not([role="switch"]):not([data-control-hover-ignore])'
+    )
+    if (!root) {
       hideSidebarHover()
       return
     }
-    if (target === sidebarHoverTargetRef.current && root === sidebarHoverRootRef.current) return
+    const target = candidateTarget && root.contains(candidateTarget)
+      ? candidateTarget
+      : null
+    if (!target) {
+      if (root !== sidebarHoverRootRef.current) hideSidebarHover()
+      return
+    }
+    if (!force && target === sidebarHoverTargetRef.current && root === sidebarHoverRootRef.current) return
 
     if (sidebarHoverRootRef.current && sidebarHoverRootRef.current !== root) {
-      sidebarHoverRootRef.current.removeAttribute('data-sidebar-hover-active')
+      sidebarHoverRootRef.current.removeAttribute('data-shared-hover-active')
     }
-    const indicator = root.querySelector<HTMLElement>('[data-sidebar-hover-indicator]')
+    const indicator = root.hasAttribute('data-control-hover-root')
+      ? root
+      : root.querySelector<HTMLElement>('[data-sidebar-hover-indicator]')
     if (!indicator) return
     const rootRect = root.getBoundingClientRect()
     const targetRect = target.getBoundingClientRect()
     const scaleX = root.offsetWidth > 0 ? rootRect.width / root.offsetWidth : 1
     const scaleY = root.offsetHeight > 0 ? rootRect.height / root.offsetHeight : 1
     indicator.style.setProperty(
-      '--sidebar-hover-x',
-      `${(targetRect.left - rootRect.left) / scaleX}px`
+      '--shared-hover-x',
+      `${(targetRect.left - rootRect.left) / scaleX + root.scrollLeft}px`
     )
     indicator.style.setProperty(
-      '--sidebar-hover-y',
-      `${(targetRect.top - rootRect.top) / scaleY}px`
+      '--shared-hover-y',
+      `${(targetRect.top - rootRect.top) / scaleY + root.scrollTop}px`
     )
-    indicator.style.setProperty('--sidebar-hover-width', `${targetRect.width / scaleX}px`)
-    indicator.style.setProperty('--sidebar-hover-height', `${targetRect.height / scaleY}px`)
-    root.setAttribute('data-sidebar-hover-active', 'true')
+    indicator.style.setProperty('--shared-hover-width', `${targetRect.width / scaleX}px`)
+    indicator.style.setProperty('--shared-hover-height', `${targetRect.height / scaleY}px`)
+    indicator.style.setProperty(
+      '--shared-hover-radius',
+      window.getComputedStyle(target).borderRadius
+    )
+    root.setAttribute('data-shared-hover-active', 'true')
     sidebarHoverRootRef.current = root
     sidebarHoverTargetRef.current = target
   }
@@ -122,6 +143,10 @@ export default function AppShell(): React.ReactElement {
   const handleLiquidPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const origin = event.target
     if (!(origin instanceof Element)) return
+    sidebarHoverPointRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    }
     updateSidebarHover(origin)
     if (!liquidPointerEnabledRef.current) return
     const surface = origin.closest<HTMLElement>('[data-liquid-reactive]')
@@ -158,12 +183,19 @@ export default function AppShell(): React.ReactElement {
     const origin = event.target
     if (!(origin instanceof Element)) return
     const destination = event.relatedTarget
-    const currentHoverRoot = origin.closest<HTMLElement>('[data-sidebar-hover-root]')
+    const currentHoverRoot = origin.closest<HTMLElement>(
+      '[data-sidebar-hover-root], [data-control-hover-root]'
+    )
     const nextHoverRoot =
       destination instanceof Element
-        ? destination.closest<HTMLElement>('[data-sidebar-hover-root]')
+        ? destination.closest<HTMLElement>(
+            '[data-sidebar-hover-root], [data-control-hover-root]'
+          )
         : null
-    if (currentHoverRoot && currentHoverRoot !== nextHoverRoot) hideSidebarHover()
+    if (currentHoverRoot && currentHoverRoot !== nextHoverRoot) {
+      sidebarHoverPointRef.current = null
+      hideSidebarHover()
+    }
 
     const currentSurface = origin.closest<HTMLElement>('[data-liquid-reactive]')
     if (!currentSurface) return
@@ -179,6 +211,17 @@ export default function AppShell(): React.ReactElement {
     }
   }
 
+  const handleLiquidScroll = (): void => {
+    const point = sidebarHoverPointRef.current
+    if (!point) return
+    const origin = document.elementFromPoint(point.clientX, point.clientY)
+    if (origin instanceof Element) {
+      updateSidebarHover(origin, true)
+    } else {
+      hideSidebarHover()
+    }
+  }
+
   return (
     <div
       className={
@@ -188,6 +231,7 @@ export default function AppShell(): React.ReactElement {
       }
       onPointerMove={handleLiquidPointerMove}
       onPointerOut={handleLiquidPointerOut}
+      onScrollCapture={handleLiquidScroll}
     >
       {hasDesktopTitleBar ? <WindowsTitleBar platform={platform} /> : null}
       <div className="flex min-h-0 flex-1 flex-col">

@@ -171,6 +171,30 @@ def _assemble_ocr_text(blocks: List[Dict[str, Any]]) -> str:
     return "\n".join(line for line in assembled_lines if line is not None).strip()
 
 
+def _paddle_model_dirs() -> Dict[str, str]:
+    """Resolve bundled PaddleOCR v3 models without triggering downloads."""
+    raw_root = (
+        os.environ.get("LEGALWORK_PADDLEOCR_MODEL_ROOT")
+        or os.environ.get("PADDLEOCR_MODEL_ROOT")
+    )
+    if not raw_root:
+        return {}
+
+    root = Path(raw_root).expanduser()
+    mapping = {
+        "doc_orientation_classify_model_dir": "PP-LCNet_x1_0_doc_ori",
+        "doc_unwarping_model_dir": "UVDoc",
+        "textline_orientation_model_dir": "PP-LCNet_x1_0_textline_ori",
+        "text_detection_model_dir": "PP-OCRv6_medium_det",
+        "text_recognition_model_dir": "PP-OCRv6_medium_rec",
+    }
+    return {
+        argument: str(model_dir)
+        for argument, model_name in mapping.items()
+        if (model_dir := root / model_name).is_dir()
+    }
+
+
 class BaseOCRAdapter:
     """OCR 适配器基类"""
 
@@ -260,10 +284,15 @@ class PaddleOCRAdapter(BaseOCRAdapter):
 
             if is_v3:
                 # PaddleOCR v3.x API
-                self._engine = PaddleOCR(
-                    lang=lang,
-                    use_textline_orientation=True,
-                )
+                options: Dict[str, Any] = {
+                    "lang": lang,
+                    "use_textline_orientation": True,
+                }
+                model_dirs = _paddle_model_dirs()
+                options.update(model_dirs)
+                if model_dirs:
+                    options.pop("lang", None)
+                self._engine = PaddleOCR(**options)
             else:
                 # PaddleOCR v2.x API
                 self._engine = PaddleOCR(

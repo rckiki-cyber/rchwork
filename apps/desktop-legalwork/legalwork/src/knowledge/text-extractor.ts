@@ -6,6 +6,7 @@ import { inflateRawSync } from 'node:zlib'
 const execFileAsync = promisify(execFile)
 const MIN_TEXT_BEFORE_OCR = 40
 const OCR_OUTPUT_BUFFER_BYTES = 1024 * 1024 * 1024
+const OCR_TIMEOUT_MS = 120_000
 
 export const EXTRACTABLE_EXTENSIONS = new Set([
   '.pdf',
@@ -24,35 +25,51 @@ export const EXTRACTABLE_EXTENSIONS = new Set([
   '.tif'
 ])
 
+export type DocumentTextResult = {
+  text: string
+  /** Formatted HTML for docx files; undefined for other formats. */
+  html?: string
+}
+
 /**
  * Extract plain text from common binary document formats.
  * Falls back to empty string when extraction fails or the format is unsupported.
  */
-export async function extractDocumentText(filePath: string): Promise<string> {
+export async function extractDocumentText(filePath: string): Promise<DocumentTextResult> {
   const extension = filePath.slice(filePath.lastIndexOf('.')).toLowerCase()
   try {
     if (extension === '.pdf') {
-      return await extractPdfText(filePath)
+      const text = await extractPdfText(filePath)
+      return { text }
     }
     if (extension === '.docx' || extension === '.doc') {
-      return await extractDocxText(filePath)
+      const text = await extractDocxText(filePath)
+      let html: string | undefined
+      if (extension === '.docx') {
+        html = await extractDocxHtml(filePath).catch(() => undefined)
+      }
+      return { text, html }
     }
     if (extension === '.pptx') {
-      return await extractPptxText(filePath)
+      const text = await extractPptxText(filePath)
+      return { text }
     }
     if (extension === '.ppt') {
-      return await extractTextutilText(filePath)
+      const text = await extractTextutilText(filePath)
+      return { text }
     }
     if (extension === '.xlsx' || extension === '.xls') {
-      return await extractXlsxText(filePath)
+      const text = await extractXlsxText(filePath)
+      return { text }
     }
     if (isOcrImageExtension(extension)) {
-      return await extractOcrText(filePath)
+      const text = await extractOcrText(filePath)
+      return { text }
     }
   } catch {
     // Extraction failures are treated as unindexable content.
   }
-  return ''
+  return { text: '' }
 }
 
 async function extractPdfText(filePath: string): Promise<string> {
@@ -78,6 +95,28 @@ async function extractDocxText(filePath: string): Promise<string> {
   const buffer = await readFile(filePath)
   const result = await mammoth.extractRawText({ buffer })
   return normalizeExtractedText(result.value)
+}
+
+/**
+ * Extract formatted HTML from a .docx file, preserving fonts, sizes,
+ * bold/italic, paragraphs, headings, and basic structure.
+ */
+export async function extractDocxHtml(filePath: string): Promise<string> {
+  const { default: mammoth } = await import('mammoth')
+  const buffer = await readFile(filePath)
+  const result = await mammoth.convertToHtml({ buffer }, {
+    styleMap: [
+      'p[style-name=\'Title\'] => h1:fresh',
+      'p[style-name=\'Subtitle\'] => h2:fresh',
+      'p[style-name=\'Heading 1\'] => h1:fresh',
+      'p[style-name=\'Heading 2\'] => h2:fresh',
+      'p[style-name=\'Heading 3\'] => h3:fresh',
+      'p[style-name=\'Heading 4\'] => h4:fresh',
+      'r[style-name=\'Strong\'] => strong',
+      'r[style-name=\'Emphasis\'] => em'
+    ]
+  })
+  return result.value || ''
 }
 
 async function extractPptxText(filePath: string): Promise<string> {
@@ -204,6 +243,12 @@ function naturalNameCompare(a: string, b: string): number {
 }
 
 async function extractOcrText(filePath: string): Promise<string> {
+  const paddleText = await extractWithLegalworkOcrAgent(filePath)
+  if (paddleText) return paddleText
+
+  const nativeText = await extractWithTesseract(filePath)
+  if (nativeText) return nativeText
+
   const script = String.raw`
 import json
 import os
@@ -245,13 +290,85 @@ except Exception as exc:
 `
   try {
     const { stdout } = await execFileAsync(process.env.PYTHON || process.env.PYTHON3 || 'python3', ['-c', script, filePath], {
-      maxBuffer: OCR_OUTPUT_BUFFER_BYTES
+      maxBuffer: OCR_OUTPUT_BUFFER_BYTES,
+      timeout: OCR_TIMEOUT_MS
     })
     const parsed = JSON.parse(stdout.trim() || '{}') as { ok?: boolean; text?: string }
     return parsed.ok && parsed.text ? normalizeExtractedText(parsed.text) : ''
   } catch {
     return ''
   }
+}
+
+async function extractWithLegalworkOcrAgent(filePath: string): Promise<string> {
+  const agentPath = process.env.LEGALWORK_OCR_AGENT_PATH?.trim()
+  if (!agentPath) return ''
+
+  const pythonCandidates = [
+    process.env.LEGALWORK_OCR_PYTHON,
+    process.env.LEGALWORK_PYTHON,
+    process.env.PYTHON,
+    process.env.PYTHON3,
+    'python3'
+  ].filter((candidate, index, all): candidate is string =>
+    Boolean(candidate?.trim()) && all.indexOf(candidate) === index
+  )
+
+  for (const python of pythonCandidates) {
+    try {
+      const { stdout } = await execFileAsync(
+        python,
+        [agentPath, 'scan', filePath, 'fast_local_ocr'],
+        {
+          maxBuffer: OCR_OUTPUT_BUFFER_BYTES,
+          timeout: OCR_TIMEOUT_MS,
+          env: process.env
+        }
+      )
+      const parsed = parseOcrAgentResult(stdout)
+      if (parsed?.success === true && typeof parsed.text === 'string') {
+        const text = normalizeExtractedText(parsed.text)
+        if (text) return text
+      }
+    } catch {
+      // Try another Python runtime, then fall back to the native Tesseract path.
+    }
+  }
+  return ''
+}
+
+function parseOcrAgentResult(stdout: string): { success?: boolean; text?: string } | null {
+  const jsonStart = stdout.lastIndexOf('\n{')
+  const jsonText = (jsonStart >= 0 ? stdout.slice(jsonStart + 1) : stdout.slice(stdout.indexOf('{'))).trim()
+  if (!jsonText.startsWith('{')) return null
+  try {
+    return JSON.parse(jsonText) as { success?: boolean; text?: string }
+  } catch {
+    return null
+  }
+}
+
+async function extractWithTesseract(filePath: string): Promise<string> {
+  const command = process.env.LEGALWORK_TESSERACT_CMD || 'tesseract'
+  const requestedLanguage = process.env.LEGALWORK_OCR_LANG || 'chi_sim+eng'
+  for (const language of [...new Set([requestedLanguage, 'eng'])]) {
+    try {
+      const { stdout } = await execFileAsync(
+        command,
+        [filePath, 'stdout', '-l', language],
+        {
+          maxBuffer: OCR_OUTPUT_BUFFER_BYTES,
+          timeout: OCR_TIMEOUT_MS,
+          env: process.env
+        }
+      )
+      const text = normalizeExtractedText(stdout)
+      if (text) return text
+    } catch {
+      // Try the English fallback, then the Python/Pillow route below.
+    }
+  }
+  return ''
 }
 
 function isOcrImageExtension(extension: string): boolean {

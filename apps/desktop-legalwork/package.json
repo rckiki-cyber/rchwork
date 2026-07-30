@@ -1,7 +1,7 @@
 {
   "name": "legalwork",
   "productName": "legalwork",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "Electron workbench for the Legalwork runtime (HTTP/SSE)",
   "main": "./out/main/index.cjs",
   "type": "module",
@@ -48,6 +48,7 @@
     "@wecom/aibot-node-sdk": "1.0.7",
     "better-sqlite3": "^12.10.0",
     "dingtalk-stream": "2.1.6-beta.1",
+    "docx-preview": "^0.4.0",
     "electron-store": "^10.1.0",
     "electron-updater": "^6.8.3",
     "html-to-docx": "^1.8.0",

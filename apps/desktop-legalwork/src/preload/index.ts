@@ -114,6 +114,8 @@ const api = {
     ipcRenderer.invoke('write:copy-rich-text', payload),
   exportLegalResearchToWord: (payload) =>
     ipcRenderer.invoke('legal-research:export-word', payload),
+  exportMarkdownDocument: (payload) =>
+    ipcRenderer.invoke('document:export-markdown', payload),
   requestWriteInlineCompletion: (payload) =>
     ipcRenderer.invoke('write:inline-completion', payload),
   generateDocument: (payload) =>
@@ -247,7 +249,16 @@ const api = {
   logError: (category, message, detail) =>
     ipcRenderer.invoke('log:error', { category, message, detail }),
   getLogPath: () => ipcRenderer.invoke('log:get-path'),
-  openLogDir: () => ipcRenderer.invoke('log:open-dir')
+  openLogDir: () => ipcRenderer.invoke('log:open-dir'),
+
+  // IMA 知识库认证
+  imaAuthStatus: () => ipcRenderer.invoke('ima:auth-status'),
+  imaLogin: () => ipcRenderer.invoke('ima:auth-login'),
+  imaRelogin: () => ipcRenderer.invoke('ima:auth-relogin'),
+  imaLogout: () => ipcRenderer.invoke('ima:auth-logout'),
+  imaGetConfig: () => ipcRenderer.invoke('ima:get-config'),
+  imaGetMcpConfig: () => ipcRenderer.invoke('ima:get-mcp-config'),
+  imaRefresh: () => ipcRenderer.invoke('ima:auth-refresh'),
 } satisfies DsGuiApi
 
 contextBridge.exposeInMainWorld('dsGui', api)

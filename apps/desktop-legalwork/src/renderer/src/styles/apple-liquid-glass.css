@@ -75,6 +75,10 @@
   --text-placeholder: rgba(60, 60, 67, 0.42);
   --ds-accent: var(--lg-accent);
   --ds-accent-soft: rgba(0, 122, 255, 0.13);
+  --ds-accent-button-bg: rgba(0, 122, 255, 0.12);
+  --ds-accent-button-bg-hover: rgba(0, 122, 255, 0.17);
+  --ds-accent-button-border: rgba(0, 122, 255, 0.22);
+  --ds-accent-button-fg: #0068d8;
   --ds-bg-main: var(--lg-canvas);
   --ds-bg-canvas: var(--lg-canvas-raised);
   --ds-stage-gradient: #ffffff;
@@ -122,6 +126,10 @@
   --text-placeholder: rgba(235, 235, 245, 0.36);
   --ds-accent: var(--lg-accent);
   --ds-accent-soft: rgba(10, 132, 255, 0.18);
+  --ds-accent-button-bg: rgba(10, 132, 255, 0.18);
+  --ds-accent-button-bg-hover: rgba(10, 132, 255, 0.24);
+  --ds-accent-button-border: rgba(10, 132, 255, 0.28);
+  --ds-accent-button-fg: #8bc7ff;
   --ds-bg-main: var(--lg-canvas);
   --ds-bg-canvas: var(--lg-canvas-raised);
   --ds-stage-gradient: #101114;
@@ -557,6 +565,24 @@
   transition-timing-function: var(--lg-ease-spring);
 }
 
+/*
+ * Primary actions stay recognizable without becoming solid-blue visual anchors.
+ * Exact class-token selectors intentionally leave accent dots, progress bars,
+ * selections and already-soft accent surfaces untouched.
+ */
+.apple-liquid-app
+  :is(button, a, [role='button']):not([role='switch']):is([class~='bg-accent'], [class~='bg-primary'], [class~='bg-[var(--ds-accent)]']) {
+  background-color: var(--ds-accent-button-bg);
+  border-color: var(--ds-accent-button-border);
+  box-shadow: inset 0 0 0 1px var(--ds-accent-button-border);
+  color: var(--ds-accent-button-fg);
+}
+
+.apple-liquid-app
+  :is(button, a, [role='button']):not([role='switch']):is([class~='bg-accent'], [class~='bg-primary'], [class~='bg-[var(--ds-accent)]']):hover:not(:disabled) {
+  background-color: var(--ds-accent-button-bg-hover);
+}
+
 /* Shared spring selector for every mutually-exclusive mode/tab control. */
 .apple-liquid-app .astryx-segmented-control {
   isolation: isolate;
@@ -665,6 +691,33 @@
     transform 260ms var(--lg-ease-spring);
 }
 
+/*
+ * Every feature outside the primary Agent workspace uses the same comfortable
+ * rectangular control shape as the workspace mode selector. Text actions,
+ * icon controls, list actions and dialog actions all resolve to 12px; only
+ * true circular controls and switches keep their semantic geometry.
+ */
+.apple-liquid-app .ds-subfeature-controls :where(button:not([role='switch'])) {
+  border-radius: var(--lg-radius-control);
+}
+
+.apple-liquid-app
+  .ds-subfeature-controls
+  :where(button.rounded-full[class*='h-'][class*='w-']) {
+  border-radius: 9999px;
+}
+
+.apple-liquid-app .ds-subfeature-controls .astryx-segmented-control {
+  border-radius: 16px;
+}
+
+.apple-liquid-app
+  .ds-subfeature-controls
+  .astryx-segmented-control
+  [data-astryx-segment-indicator] {
+  border-radius: var(--lg-radius-control);
+}
+
 .apple-liquid-app .ds-sidebar-shell :where(.group, [class*='transition']) {
   transition-duration: 220ms;
   transition-timing-function: var(--lg-ease-material);
@@ -675,23 +728,40 @@
  * paint their own hover fill; that would make the highlight snap between DOM
  * boxes instead of travelling continuously.
  */
-.apple-liquid-app [data-sidebar-hover-root] {
-  position: relative;
+.apple-liquid-app
+  :is([data-sidebar-hover-root], [data-control-hover-root]) {
   isolation: isolate;
 }
 
+.apple-liquid-app
+  :is([data-sidebar-hover-root], [data-control-hover-root]):not([class~='absolute']):not([class~='fixed']) {
+  position: relative;
+}
+
+:is(
+  .apple-liquid-app [data-control-hover-root],
+  [data-control-hover-root][data-control-hover-portal]
+) {
+  --shared-hover-x: 0px;
+  --shared-hover-y: 0px;
+  --shared-hover-width: 0px;
+  --shared-hover-height: 0px;
+  --shared-hover-radius: var(--lg-radius-selection);
+}
+
 .apple-liquid-app [data-sidebar-hover-indicator] {
-  --sidebar-hover-x: 0px;
-  --sidebar-hover-y: 0px;
-  --sidebar-hover-width: 0px;
-  --sidebar-hover-height: 0px;
+  --shared-hover-x: 0px;
+  --shared-hover-y: 0px;
+  --shared-hover-width: 0px;
+  --shared-hover-height: 0px;
+  --shared-hover-radius: var(--lg-radius-selection);
   position: absolute;
   left: 0;
   top: 0;
   z-index: 1;
-  width: var(--sidebar-hover-width);
-  height: var(--sidebar-hover-height);
-  border-radius: var(--lg-radius-selection);
+  width: var(--shared-hover-width);
+  height: var(--shared-hover-height);
+  border-radius: var(--shared-hover-radius);
   background: color-mix(
     in srgb,
     var(--ds-sidebar-row-active) 58%,
@@ -700,17 +770,18 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-sidebar-row-ring) 55%, transparent);
   opacity: 0;
   pointer-events: none;
-  transform: translate3d(var(--sidebar-hover-x), var(--sidebar-hover-y), 0);
+  transform: translate3d(var(--shared-hover-x), var(--shared-hover-y), 0);
   transition:
     transform 340ms var(--lg-ease-spring),
     width 280ms var(--lg-ease-spring),
     height 280ms var(--lg-ease-spring),
+    border-radius 280ms var(--lg-ease-spring),
     opacity 150ms var(--lg-ease-material);
   will-change: transform, width, height, opacity;
 }
 
 .apple-liquid-app [data-knowledge-row-hover-root] [data-sidebar-hover-indicator] {
-  border-radius: 8px;
+  border-radius: var(--lg-radius-selection);
   background: color-mix(
     in srgb,
     var(--ds-sidebar-row-active) 72%,
@@ -721,12 +792,15 @@
     0 8px 20px color-mix(in srgb, var(--ds-sidebar-row-active) 16%, transparent);
 }
 
-.apple-liquid-app [data-sidebar-hover-root][data-sidebar-hover-active='true']
+.apple-liquid-app
+  [data-sidebar-hover-root][data-shared-hover-active='true']
   [data-sidebar-hover-indicator] {
   opacity: 1;
 }
 
-.apple-liquid-app [data-sidebar-hover-root] > :not([data-sidebar-hover-indicator]) {
+.apple-liquid-app
+  [data-sidebar-hover-root]
+  > :not([data-sidebar-hover-indicator]) {
   position: relative;
   z-index: 2;
 }
@@ -734,6 +808,351 @@
 .apple-liquid-app
   [data-sidebar-hover-target]:not([data-sidebar-active='true']):hover {
   background-color: transparent !important;
+}
+
+:is(
+  .apple-liquid-app [data-control-hover-target],
+  .apple-liquid-app [data-control-hover-root] button:not([role='switch']),
+  [data-control-hover-root][data-control-hover-portal] [data-control-hover-target],
+  [data-control-hover-root][data-control-hover-portal] button:not([role='switch'])
+) {
+  position: relative;
+  z-index: 2;
+}
+
+:is(
+  .apple-liquid-app [data-control-hover-root],
+  [data-control-hover-root][data-control-hover-portal]
+)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: var(--shared-hover-width);
+  height: var(--shared-hover-height);
+  border-radius: var(--shared-hover-radius);
+  background: var(--ds-surface-hover);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--ds-border) 55%, transparent),
+    0 6px 16px color-mix(in srgb, var(--ds-text) 5%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(var(--shared-hover-x), var(--shared-hover-y), 0);
+  transition:
+    transform 340ms var(--lg-ease-spring),
+    width 280ms var(--lg-ease-spring),
+    height 280ms var(--lg-ease-spring),
+    border-radius 280ms var(--lg-ease-spring),
+    opacity 150ms var(--lg-ease-material);
+  will-change: transform, width, height, border-radius, opacity;
+}
+
+:is(
+  .apple-liquid-app [data-control-hover-root],
+  [data-control-hover-root][data-control-hover-portal]
+)[data-shared-hover-active='true']::before {
+  opacity: 1;
+}
+
+/*
+ * Solid controls can otherwise cover the moving plate. In layered groups the
+ * control background stays below the plate while icons and labels stay above.
+ */
+:is(
+  .apple-liquid-app [data-control-hover-root],
+  [data-control-hover-root][data-control-hover-portal]
+)[data-control-hover-layered]
+  :is([data-control-hover-target], button:not([role='switch'])) {
+  z-index: auto;
+}
+
+:is(
+  .apple-liquid-app [data-control-hover-root],
+  [data-control-hover-root][data-control-hover-portal]
+)[data-control-hover-layered]::before {
+  z-index: 2;
+}
+
+:is(
+  .apple-liquid-app [data-control-hover-root],
+  [data-control-hover-root][data-control-hover-portal]
+)[data-control-hover-layered]
+  button
+  > * {
+  position: relative;
+  z-index: 3;
+}
+
+:is(
+  .apple-liquid-app [data-control-hover-root],
+  [data-control-hover-root][data-control-hover-portal]
+)
+  :is(button, [data-control-hover-target]):not([data-control-active='true']):not([data-control-hover-ignore]):not([data-control-hover-preserve]):not(:is([class~='bg-accent'], [class~='bg-primary'], [class~='bg-[var(--ds-accent)]'], [class~='bg-ds-userbubble'], [class~='bg-[var(--ds-text)]'], [class*='bg-red-'])):hover {
+  background-color: transparent !important;
+}
+
+/*
+ * The composer action menu grows out of the plus button instead of popping
+ * into place. The small overshoot gives it a restrained, material spring.
+ */
+.apple-liquid-app .ds-composer-action-menu {
+  transform-origin: 22px calc(100% + 8px);
+  background: color-mix(in srgb, var(--lg-glass-tint) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(145%);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 46%, transparent),
+    0 18px 48px color-mix(in srgb, var(--ds-text) 14%, transparent);
+  animation: ds-composer-action-menu-in 440ms linear both;
+  will-change: transform, opacity, filter;
+}
+
+@keyframes ds-composer-action-menu-in {
+  0% {
+    opacity: 0;
+    filter: blur(7px);
+    transform: translate3d(0, 14px, 0) scale(0.88);
+    animation-timing-function: cubic-bezier(0.18, 0.82, 0.24, 1);
+  }
+
+  56% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, -2px, 0) scale(1.025);
+    animation-timing-function: cubic-bezier(0.36, 0, 0.22, 1);
+  }
+
+  80% {
+    transform: translate3d(0, 1px, 0) scale(0.992);
+    animation-timing-function: cubic-bezier(0.2, 0.72, 0.2, 1);
+  }
+
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/*
+ * Knowledge chat opens as a real split-view push, not an overlay pop. Its
+ * width and right-anchored surface settle on separate spring phases so the
+ * content area moves continuously while the panel gets a restrained bounce.
+ */
+.apple-liquid-app .ds-knowledge-chat-sidebar {
+  width: var(--knowledge-chat-sidebar-width);
+  min-width: var(--knowledge-chat-sidebar-width);
+  max-width: var(--knowledge-chat-sidebar-width);
+  transform-origin: right center;
+  will-change: width, min-width, max-width, transform, opacity;
+}
+
+.apple-liquid-app .ds-knowledge-chat-sidebar[data-motion='enter'] {
+  animation: ds-knowledge-chat-sidebar-in 500ms linear both;
+}
+
+.apple-liquid-app .ds-knowledge-chat-sidebar[data-motion='enter'] > * {
+  animation: ds-knowledge-chat-sidebar-content-in 300ms 90ms var(--lg-ease-material) both;
+}
+
+.apple-liquid-app .ds-knowledge-chat-sidebar[data-motion='exit'] {
+  pointer-events: none;
+  animation: ds-knowledge-chat-sidebar-out 320ms linear both;
+}
+
+.apple-liquid-app .ds-knowledge-chat-sidebar[data-motion='exit'] > * {
+  animation: ds-knowledge-chat-sidebar-content-out 150ms ease-in both;
+}
+
+@keyframes ds-knowledge-chat-sidebar-in {
+  0% {
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    opacity: 0;
+    transform: translate3d(46px, 0, 0) scaleX(0.94);
+    animation-timing-function: cubic-bezier(0.18, 0.82, 0.24, 1);
+  }
+
+  58% {
+    width: calc(var(--knowledge-chat-sidebar-width) + 9px);
+    min-width: calc(var(--knowledge-chat-sidebar-width) + 9px);
+    max-width: calc(var(--knowledge-chat-sidebar-width) + 9px);
+    opacity: 1;
+    transform: translate3d(-5px, 0, 0) scaleX(1.012);
+    animation-timing-function: cubic-bezier(0.36, 0, 0.22, 1);
+  }
+
+  80% {
+    width: calc(var(--knowledge-chat-sidebar-width) - 3px);
+    min-width: calc(var(--knowledge-chat-sidebar-width) - 3px);
+    max-width: calc(var(--knowledge-chat-sidebar-width) - 3px);
+    transform: translate3d(2px, 0, 0) scaleX(0.996);
+    animation-timing-function: cubic-bezier(0.2, 0.72, 0.2, 1);
+  }
+
+  100% {
+    width: var(--knowledge-chat-sidebar-width);
+    min-width: var(--knowledge-chat-sidebar-width);
+    max-width: var(--knowledge-chat-sidebar-width);
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scaleX(1);
+  }
+}
+
+@keyframes ds-knowledge-chat-sidebar-out {
+  0% {
+    width: var(--knowledge-chat-sidebar-width);
+    min-width: var(--knowledge-chat-sidebar-width);
+    max-width: var(--knowledge-chat-sidebar-width);
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scaleX(1);
+    animation-timing-function: cubic-bezier(0.34, 0, 0.2, 1);
+  }
+
+  22% {
+    width: calc(var(--knowledge-chat-sidebar-width) + 3px);
+    min-width: calc(var(--knowledge-chat-sidebar-width) + 3px);
+    max-width: calc(var(--knowledge-chat-sidebar-width) + 3px);
+    transform: translate3d(-2px, 0, 0) scaleX(1.004);
+    animation-timing-function: cubic-bezier(0.4, 0, 0.82, 0.18);
+  }
+
+  100% {
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    opacity: 0;
+    transform: translate3d(42px, 0, 0) scaleX(0.95);
+  }
+}
+
+@keyframes ds-knowledge-chat-sidebar-content-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ds-knowledge-chat-sidebar-content-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * Command and file-suggestion menus use one shared plate so the selection
+ * travels between rows instead of repainting a separate hover block.
+ */
+.apple-liquid-app [data-composer-suggestion-root] {
+  position: relative;
+  isolation: isolate;
+}
+
+.apple-liquid-app [data-composer-suggestion-indicator] {
+  --composer-suggestion-x: 0px;
+  --composer-suggestion-y: 0px;
+  --composer-suggestion-width: 0px;
+  --composer-suggestion-height: 0px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: var(--composer-suggestion-width);
+  height: var(--composer-suggestion-height);
+  border-radius: var(--lg-radius-selection);
+  background: var(--ds-surface-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-border) 48%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(
+    var(--composer-suggestion-x),
+    var(--composer-suggestion-y),
+    0
+  );
+  transition:
+    transform 300ms var(--lg-ease-spring),
+    width 240ms var(--lg-ease-spring),
+    height 240ms var(--lg-ease-spring),
+    opacity 120ms var(--lg-ease-material);
+  will-change: transform, width, height, opacity;
+}
+
+.apple-liquid-app
+  [data-composer-suggestion-root][data-composer-suggestion-active='true']
+  [data-composer-suggestion-indicator] {
+  opacity: 1;
+}
+
+.apple-liquid-app [data-composer-suggestion-root] > button {
+  position: relative;
+  z-index: 2;
+}
+
+/*
+ * The project picker is portaled to document.body, so it needs its own
+ * unscoped shared hover plate instead of relying on .apple-liquid-app.
+ */
+[data-project-picker-hover-root] {
+  isolation: isolate;
+  border-radius: 16px;
+}
+
+[data-project-picker-hover-indicator] {
+  --project-picker-hover-x: 0px;
+  --project-picker-hover-y: 0px;
+  --project-picker-hover-width: 0px;
+  --project-picker-hover-height: 0px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: var(--project-picker-hover-width);
+  height: var(--project-picker-hover-height);
+  border-radius: var(--lg-radius-control);
+  background: var(--ds-surface-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-border) 48%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(
+    var(--project-picker-hover-x),
+    var(--project-picker-hover-y),
+    0
+  );
+  transition:
+    transform 300ms var(--lg-ease-spring),
+    width 240ms var(--lg-ease-spring),
+    height 240ms var(--lg-ease-spring),
+    opacity 120ms var(--lg-ease-material);
+  will-change: transform, width, height, opacity;
+}
+
+[data-project-picker-hover-root][data-project-picker-hover-active='true']
+  [data-project-picker-hover-indicator] {
+  opacity: 1;
+}
+
+[data-project-picker-hover-root] > :not([data-project-picker-hover-indicator]) {
+  position: relative;
+  z-index: 2;
+}
+
+[data-project-picker-hover-target]:is(:hover, :focus, :focus-visible) {
+  background-color: transparent !important;
+}
+
+[data-project-picker-hover-target] {
+  border-radius: var(--lg-radius-control) !important;
 }
 
 /* Keep selected rows and the moving hover preview on one softer Apple radius. */
@@ -752,6 +1171,169 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.055),
     0 5px 14px rgba(0, 0, 0, 0.16);
+}
+
+/*
+ * Legal research keeps live activity visible without turning the report into
+ * a dashboard. The stream treatment follows actual SSE Markdown rendering:
+ * a quiet rail marks the live report, new activity rows enter once, and the
+ * terminal caret shows where text is still arriving.
+ */
+.apple-liquid-app .legal-research-live-strip::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--ds-accent) 20%, transparent) 22%,
+    var(--ds-accent) 50%,
+    color-mix(in srgb, var(--ds-accent) 20%, transparent) 78%,
+    transparent 100%
+  );
+  opacity: 0.72;
+  transform: translateX(-100%);
+  animation: legal-research-live-rail 2.4s var(--lg-ease-material) infinite;
+}
+
+.apple-liquid-app .legal-research-step {
+  animation: legal-research-item-enter 220ms var(--lg-ease-material) both;
+}
+
+.apple-liquid-app .legal-research-report {
+  position: relative;
+  isolation: isolate;
+}
+
+.apple-liquid-app .legal-research-report::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 0;
+  width: 2px;
+  background: var(--ds-border-strong);
+  opacity: 0.6;
+  transition:
+    width 180ms var(--lg-ease-material),
+    opacity 180ms var(--lg-ease-material),
+    background-color 180ms var(--lg-ease-material);
+}
+
+.apple-liquid-app .legal-research-report.is-streaming::before {
+  width: 3px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ds-accent) 20%, transparent),
+    var(--ds-accent) 44%,
+    color-mix(in srgb, var(--ds-accent) 24%, transparent)
+  );
+  opacity: 0.9;
+  animation: legal-research-stream-rail 2.4s ease-in-out infinite;
+}
+
+.apple-liquid-app .legal-research-report > * {
+  position: relative;
+  z-index: 1;
+}
+
+.apple-liquid-app .legal-research-stream-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  border-radius: 2px;
+  background: var(--ds-accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ds-accent) 35%, transparent);
+  vertical-align: -0.14em;
+  animation: legal-research-caret 1s steps(1, end) infinite;
+}
+
+.apple-liquid-app .legal-research-stream-placeholder {
+  display: grid;
+  gap: 9px;
+}
+
+.apple-liquid-app .legal-research-stream-placeholder span {
+  display: block;
+  width: min(100%, 720px);
+  height: 10px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    90deg,
+    var(--ds-surface-subtle) 0%,
+    color-mix(in srgb, var(--ds-text-faint) 14%, var(--ds-surface-subtle)) 48%,
+    var(--ds-surface-subtle) 100%
+  );
+  background-size: 220% 100%;
+  animation: legal-research-placeholder 1.8s ease-in-out infinite;
+}
+
+.apple-liquid-app .legal-research-stream-placeholder span:nth-child(2) {
+  width: min(82%, 590px);
+  animation-delay: -0.22s;
+}
+
+.apple-liquid-app .legal-research-stream-placeholder span:nth-child(3) {
+  width: min(58%, 420px);
+  animation-delay: -0.44s;
+}
+
+@keyframes legal-research-live-rail {
+  0% {
+    transform: translateX(-100%);
+  }
+  52%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes legal-research-item-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes legal-research-stream-rail {
+  0%,
+  100% {
+    opacity: 0.48;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes legal-research-caret {
+  0%,
+  48% {
+    opacity: 1;
+  }
+  49%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes legal-research-placeholder {
+  0% {
+    background-position: 100% 0;
+    opacity: 0.54;
+  }
+  50% {
+    opacity: 0.92;
+  }
+  100% {
+    background-position: -100% 0;
+    opacity: 0.54;
+  }
 }
 
 .apple-liquid-app .ds-workbench-divider::after {
@@ -823,6 +1405,7 @@
   .apple-liquid-app .ds-sidebar-shell,
   .apple-liquid-app [data-liquid-surface='toolbar'],
   .apple-liquid-app .ds-chat-composer,
+  .apple-liquid-app .ds-composer-action-menu,
   .apple-liquid-app .absolute.ds-card-strong,
   .apple-liquid-app [role='dialog'] {
     background: var(--lg-glass-fallback) !important;

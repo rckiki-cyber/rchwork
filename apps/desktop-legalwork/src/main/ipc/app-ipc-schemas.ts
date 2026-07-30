@@ -974,6 +974,7 @@ export const userTemplateSchema = z
       .max(200),
     legalBasis: z.array(z.string().max(1000)).max(50).optional(),
     sourceFile: z.string().max(1000).optional(),
+    learningStatus: z.enum(['idle', 'analyzing', 'done', 'failed']).optional(),
     createdAt: z.string(),
     updatedAt: z.string()
   })

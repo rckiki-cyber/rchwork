@@ -111,20 +111,29 @@ export function buildDocumentWritingAgentPrompt(request: TemplateGenerateWithMat
   const legalBasis = request.template.legalBasis?.length
     ? request.template.legalBasis.map((item) => `- ${item}`).join('\n')
     : '（模板未预设法律依据，需根据事实自行核验。）'
+  const hasUserTemplate =
+    request.template.source === 'user' ||
+    request.template.id?.startsWith('custom-') ||
+    request.template.description.includes('用户上传模板')
+  const templatePriorityInstruction = hasUserTemplate
+    ? '本任务已提供用户上传模板，属于最高优先级。必须以该模板为主，不得调用或改用隐藏内置模板。'
+    : '本任务没有用户上传模板。起草民事起诉状或民事答辩状时，必须先调用 resolve_legal_document_template；匹配成功则以内置模板为主，未匹配时才根据材料自主组织结构。'
 
-  return `你正在执行 LegalWork 文书写作任务。界面已收集用户的文书类型、字段和写作要求；不要再次要求用户填写偏好。必须按以下顺序完成，不能跳过调研直接起草：
+  return `你正在执行 LegalWork 文书写作任务。界面已收集用户的文书类型、字段和写作要求；不要再次要求用户填写偏好。
 
 1. 理解材料：先阅读全部材料，提取当事人、事实、时间线、证据、已知诉求与缺失信息；区分已证实事实、当事人主张和待核实信息。
 2. 归纳争议：列出文书必须回应的争议焦点、证明责任和需要补充的事实。
-3. 法律调研：先调用可用的知识库工具寻找团队模板、先例和写作参考；再主动调用可用的北大法宝（PKULaw）、元典以及其他已配置法律法规/案例工具。若某一来源不可用或失败，继续用国家法律法规数据库或其他可用权威来源完成核验，不能因单个工具失败而停止。
-4. 研究论证：核验法律效力状态、条文、案例要旨和适用关系。保留工具返回的完整来源 URL，绝不编造法规、案例、案号、链接或事实。
-5. 撰写文书：严格遵循模板结构，以用户填写字段优先；冲突或缺失的信息必须以【待核实：…】标注。文书中的法律依据应尽可能带可核验链接；没有真实链接时明确标注“无可核验链接”。
+3. 选择模板：${templatePriorityInstruction}
+4. 法律调研：调用可用的知识库工具寻找团队先例和写作参考；再主动调用可用的北大法宝（PKULaw）、元典以及其他已配置法律法规/案例工具。若某一来源不可用或失败，继续用国家法律法规数据库或其他可用权威来源完成核验，不能因单个工具失败而停止。
+5. 研究论证：核验法律效力状态、条文、案例要旨和适用关系。保留工具返回的完整来源 URL，绝不编造法规、案例、案号、链接或事实。
+6. 撰写文书：严格遵循最高优先级模板结构，以用户填写字段优先；冲突或缺失的信息必须以【待核实：…】标注。文书中的法律依据应尽可能带可核验链接；没有真实链接时明确标注“无可核验链接”。
 
 最终回复只能输出完整的 Markdown 文书正文，不要输出过程说明、调研摘要、步骤标题或代码块。工具调用和推理会由界面单独可视化。
 
 ## 目标文书
 名称：${request.template.name}
 说明：${request.template.description}
+模板来源：${hasUserTemplate ? '用户上传模板（最高优先级）' : '产品模板目录（若命中隐藏内置模板，应由隐藏内置模板覆盖其通用结构）'}
 
 ## 预设法律依据
 ${legalBasis}

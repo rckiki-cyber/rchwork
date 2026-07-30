@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { BookOpen, Clock, Database, RefreshCw, Upload } from 'lucide-react'
+import { BookOpen, Clock, Database, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AstryxSegmentedControl } from '../astryx/AstryxSegmentedControl'
 import { DocumentHistorySidebar } from './DocumentHistorySidebar'
@@ -71,19 +71,10 @@ export function DocumentWritingSidebarContent(): ReactElement {
               <button
                 type="button"
                 onClick={() => documentWriting.setUploaderOpen(true)}
-                disabled={documentWriting.loadingTemplates}
-                className="flex w-full items-center justify-center gap-2 rounded-[8px] border border-[var(--ds-sidebar-row-ring)] bg-[var(--ds-sidebar-field-bg)] px-4 py-2 text-[13px] font-medium text-[var(--ds-ink)] transition hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)] disabled:opacity-40"
+                className="flex w-full items-center justify-center gap-2 rounded-[8px] border border-[var(--ds-sidebar-row-ring)] bg-[var(--ds-sidebar-field-bg)] px-4 py-2 text-[13px] font-medium text-[var(--ds-ink)] transition hover:bg-[color-mix(in_srgb,var(--ds-sidebar-field-focus)_56%,transparent)]"
               >
-                {documentWriting.loadingTemplates ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" strokeWidth={1.75} />
-                ) : (
-                  <Upload className="h-4 w-4" strokeWidth={1.75} />
-                )}
-                <span>
-                  {documentWriting.loadingTemplates
-                    ? t('documentWritingLoadingTemplates') || '加载中...'
-                    : t('documentWritingUploadTemplate')}
-                </span>
+                <Upload className="h-4 w-4" strokeWidth={1.75} />
+                <span>{t('documentWritingUploadTemplate')}</span>
               </button>
             </div>
           </div>
@@ -99,7 +90,6 @@ export function DocumentWritingSidebarContent(): ReactElement {
         open={documentWriting.uploaderOpen}
         onClose={() => documentWriting.setUploaderOpen(false)}
         onUpload={documentWriting.handleUpload}
-        onSaveLearnedTemplate={documentWriting.handleSaveLearnedTemplate}
       />
     </div>
   )

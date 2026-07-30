@@ -92,9 +92,14 @@
 }
 
 :root[data-platform='darwin'] {
-  --ds-window-controls-safe-block: 42px;
-  --ds-window-controls-safe-inset: 56px;
+  --ds-window-controls-safe-block: 50px;
+  --ds-window-controls-safe-inset: 62px;
   --ds-write-titlebar-extra-inset: 20px;
+}
+
+/* macOS titlebar safe area: push the shell content below native traffic lights */
+:root[data-platform='darwin'] .apple-liquid-app {
+  padding-top: var(--ds-window-controls-safe-block);
 }
 
 :root[data-platform='win32'],

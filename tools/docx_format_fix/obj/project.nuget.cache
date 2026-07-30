@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "gY29DPhOzwg=",
+  "success": true,
+  "projectFilePath": "/Users/xiangyang/Desktop/legalwork/tools/docx_format_fix/DocxFormatFix.csproj",
+  "expectedPackageFiles": [
+    "/Users/xiangyang/.nuget/packages/documentformat.openxml/3.5.1/documentformat.openxml.3.5.1.nupkg.sha512",
+    "/Users/xiangyang/.nuget/packages/documentformat.openxml.framework/3.5.1/documentformat.openxml.framework.3.5.1.nupkg.sha512",
+    "/Users/xiangyang/.nuget/packages/system.io.packaging/10.0.2/system.io.packaging.10.0.2.nupkg.sha512"
+  ],
+  "logs": []
+}

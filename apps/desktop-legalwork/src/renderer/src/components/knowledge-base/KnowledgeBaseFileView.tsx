@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { CSSProperties, ReactElement } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
@@ -31,16 +31,20 @@ import { brandForModel } from '../../lib/model-brand'
 import type { KnowledgeTreeNode } from './types'
 import {
   findKnowledgeFileForChatContext,
-  knowledgeChatHistoryFromBlocks
+  KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION,
+  knowledgeChatHistoryFromBlocks,
+  stripRepeatedKnowledgeQuestionLead
 } from './knowledge-chat-history'
 import { extractPdfTextFromBase64, PdfJsPreview } from './PdfJsPreview'
 import { setKnowledgeSourceMap, setKnowledgeOpenFileHandler } from './source-map-store'
 import { KnowledgeFileIcon, KnowledgeFileTypeBadge } from './KnowledgeFileIcon'
+import { DocxPreview } from './DocxPreview'
 import {
   KnowledgeChatComposer,
   KnowledgeChatEmptyState,
   KnowledgeChatHeader,
-  KnowledgeChatMessage
+  KnowledgeChatMessage,
+  useKnowledgeChatSidebarPresence
 } from './KnowledgeChatUI'
 import { KnowledgeAssistantContent } from './KnowledgeReasoningBlock'
 
@@ -159,6 +163,10 @@ type FileContent = {
   objectUrl?: string
   type: PreviewType
   extractedText?: string
+  /** Original .docx package for layout-faithful browser rendering. */
+  docxBase64?: string
+  /** Formatted HTML for document preview (docx files). */
+  html?: string
 }
 
 function knowledgeFileChatTitle(fileName: string, question: string): string {
@@ -175,22 +183,43 @@ function currentFileTextForPrompt(fileContent: FileContent | null): string {
 
 // ── Document text extraction preview component ──
 
-function DocumentPreview({ text, fileName }: { text: string; fileName: string }): ReactElement {
+function DocumentPreview({
+  text,
+  fileName,
+  html,
+  docxBase64
+}: {
+  text: string
+  fileName: string
+  html?: string
+  docxBase64?: string
+}): ReactElement {
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-ds-border bg-ds-card px-4 py-2 text-[12px] text-[var(--ds-muted)]">
-        文档文本预览 · {fileName}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 border-b border-ds-border bg-ds-card px-4 py-2 text-[12px] text-[var(--ds-muted)]">
+        {docxBase64 ? 'Word 版式预览' : '文档文本预览'} · {fileName}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-6">
-        {text ? (
-          <pre className="whitespace-pre-wrap font-sans text-[13px] leading-[22px] text-[var(--ds-ink)]">
+      <div className={`min-h-0 flex-1 overflow-auto overscroll-contain ${docxBase64 ? '' : 'p-6'}`}>
+        {docxBase64 ? (
+          <DocxPreview
+            base64Content={docxBase64}
+            fileName={fileName}
+            fallbackText={text}
+          />
+        ) : html ? (
+          <div
+            className="docx-preview text-[15px] leading-[28px] text-[var(--ds-ink)]"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        ) : text ? (
+          <pre className="whitespace-pre-wrap break-words font-sans text-[16px] leading-[30px] text-[var(--ds-ink)]">
             {text}
           </pre>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-[13px] text-[var(--ds-muted)]">
+          <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3 text-center text-[14px] text-[var(--ds-muted)]">
             <File className="h-10 w-10 text-slate-300" strokeWidth={1.4} />
             <div>未能提取到可预览文本</div>
-            <div className="text-[12px]">你可以通过右侧 AI 对话功能提问文件相关问题。</div>
+            <div className="text-[13px]">你可以通过右侧 AI 对话功能提问文件相关问题。</div>
           </div>
         )}
       </div>
@@ -242,6 +271,7 @@ export function KnowledgeBaseFileView({
   const [liveAssistant, setLiveAssistant] = useState('')
   const [runtimeModel, setRuntimeModel] = useState('')
   const [chatOpen, setChatOpen] = useState(true)
+  const chatSidebarPresent = useKnowledgeChatSidebarPresence(chatOpen)
   const [chatWidth, setChatWidth] = useState(360)
   const [splitWidth, setSplitWidth] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -358,13 +388,28 @@ export function KnowledgeBaseFileView({
           return
         }
         if (type === 'document') {
-          // Extract plain text from pdf/docx/xlsx via the runtime
+          const ext = fileExtension(node)
           try {
-            const data = await requestJson<{ path: string; text: string; extension: string }>(
+            const extractionPromise = requestJson<{ path: string; text: string; extension: string; html?: string }>(
               `${LEGALWORK_KNOWLEDGE_EXTRACT_TEXT_PATH}?path=${encodeURIComponent(node.path)}`
-            )
+            ).catch(() => null)
+            const packagePromise = ext === 'docx'
+              ? requestJson<{ path: string; content: string; encoding: 'utf8' | 'base64' }>(
+                  `${LEGALWORK_KNOWLEDGE_READ_FILE_PATH}?path=${encodeURIComponent(node.path)}&encoding=base64`
+                ).catch(() => null)
+              : Promise.resolve(null)
+            const [data, docxPackage] = await Promise.all([extractionPromise, packagePromise])
             if (cancelled) return
-            setFileContent({ content: data.text, encoding: 'utf8', type: 'document' })
+            if (!data && !docxPackage) throw new Error('文档内容读取失败')
+            const text = data?.text ?? ''
+            setFileContent({
+              content: text,
+              encoding: 'utf8',
+              type: 'document',
+              extractedText: text,
+              html: data?.html,
+              ...(docxPackage?.content ? { docxBase64: docxPackage.content } : {})
+            })
           } catch {
             if (!cancelled) setFileContent({ content: '', encoding: 'utf8', type: 'document' })
           }
@@ -617,6 +662,8 @@ ${citations}
 ## 用户问题
 ${question.trim()}
 
+## 回答要求
+${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
 请优先依据“当前打开文件的正文”回答；知识库补充检索结果只能用于交叉参考或补充背景，不能把其他文件内容误认为当前文件内容。如果当前文件正文不足以回答问题，请明确说明缺口。引用补充来源时请标注对应的 [来源编号]，不要编造未出现在上下文中的依据。`
 
       // Step 4: Reuse the active file-chat thread or create a side thread so it does not sync to the main chat sidebar.
@@ -666,7 +713,7 @@ ${question.trim()}
                 setLiveReasoning(streamedReasoning)
               } else {
                 streamedAssistant += delta.text
-                setLiveAssistant(streamedAssistant)
+                setLiveAssistant(stripRepeatedKnowledgeQuestionLead(streamedAssistant, question))
               }
             }
           },
@@ -716,7 +763,10 @@ ${question.trim()}
       const assistantMsg = await pollTurnCompletion(threadId, turnId)
 
       // Convert [来源 N] references to clickable source://N markdown links
-      const markedUp = (assistantMsg || streamedAssistant).replace(
+      const markedUp = stripRepeatedKnowledgeQuestionLead(
+        assistantMsg || streamedAssistant,
+        question
+      ).replace(
         /\[来源\s*(\d+)\]/g,
         (_match, n) => `[来源 ${n}](source://${n})`
       )
@@ -787,9 +837,10 @@ ${question.trim()}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div data-control-hover-root className="flex items-center gap-2">
           <button
             type="button"
+            data-control-active={chatOpen ? 'true' : undefined}
             onClick={toggleChat}
             className={`inline-flex h-8 items-center gap-1.5 rounded-[6px] border px-3 text-[12px] font-medium transition ${
               chatOpen
@@ -819,7 +870,7 @@ ${question.trim()}
       {/* Content + Chat split */}
       <div ref={splitContainerRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* File Content Panel */}
-        <div className={`flex min-w-0 flex-1 flex-col overflow-hidden ${chatOpen ? 'border-r border-ds-border' : ''}`}>
+        <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${chatSidebarPresent ? 'border-r border-ds-border' : ''}`}>
           {fileLoading ? (
             <div className="flex h-full items-center justify-center gap-2 text-[13px] text-[var(--ds-muted)]">
               <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.8} />
@@ -864,15 +915,20 @@ ${question.trim()}
                   <div className="text-[12px] text-[var(--ds-muted)]">{node.name}</div>
                 </div>
               ) : fileContent.type === 'document' ? (
-                <DocumentPreview text={fileContent.content} fileName={node.name} />
+                <DocumentPreview
+                  text={fileContent.content}
+                  fileName={node.name}
+                  html={fileContent.html}
+                  docxBase64={fileContent.docxBase64}
+                />
               ) : fileContent.type === 'markdown' ? (
                 <AssistantMarkdown
                   text={fileContent.content}
                   streaming={false}
-                  className="ds-markdown ds-chat-answer break-words px-6 py-5 leading-7 text-[var(--ds-ink)]"
+                  className="ds-markdown ds-chat-answer break-words px-6 py-5 leading-7 text-[15px] text-[var(--ds-ink)]"
                 />
               ) : fileContent.type === 'text' ? (
-                <pre className="whitespace-pre-wrap p-6 font-mono text-[13px] leading-[22px] text-[var(--ds-ink)]">
+                <pre className="whitespace-pre-wrap p-6 font-mono text-[14px] leading-[26px] text-[var(--ds-ink)]">
                   {fileContent.content}
                 </pre>
               ) : (
@@ -904,7 +960,7 @@ ${question.trim()}
         </div>
 
         {/* AI Chat Panel */}
-        {chatOpen ? (
+        {chatSidebarPresent ? (
           <>
             <div
               role="separator"
@@ -913,8 +969,11 @@ ${question.trim()}
               onPointerDown={startChatResize}
             />
             <aside
-              className="flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-ds-border bg-ds-card"
-              style={{ width: effectiveChatWidth }}
+              data-motion={chatOpen ? 'enter' : 'exit'}
+              className="ds-knowledge-chat-sidebar flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-ds-border bg-ds-card"
+              style={{
+                '--knowledge-chat-sidebar-width': `${effectiveChatWidth}px`
+              } as CSSProperties}
             >
           <KnowledgeChatHeader
             title="知识库 AI 对话"
@@ -973,11 +1032,11 @@ ${question.trim()}
                       reasoning={msg.reasoning}
                     />
                   ) : msg.role === 'reasoning' ? (
-                    <AssistantMarkdown
-                      text={msg.content}
-                      streaming={false}
-                      className="ds-markdown ds-chat-answer break-words"
-                    />
+                  <AssistantMarkdown
+                    text={msg.content}
+                    streaming={false}
+                    className="ds-markdown ds-chat-answer break-words !text-[12px]"
+                  />
                   ) : msg.role === 'tool' ? (
                     <div className="flex items-center gap-2">
                       {msg.status === 'running' ? (
@@ -999,7 +1058,7 @@ ${question.trim()}
                   <AssistantMarkdown
                     text={liveReasoning}
                     streaming
-                    className="ds-markdown ds-chat-answer break-words"
+                    className="ds-markdown ds-chat-answer break-words !text-[12px]"
                   />
                 </KnowledgeChatMessage>
               ) : null}
@@ -1012,7 +1071,7 @@ ${question.trim()}
                   <AssistantMarkdown
                     text={liveAssistant}
                     streaming
-                    className="ds-markdown ds-chat-answer break-words"
+                    className="ds-markdown ds-chat-answer break-words !text-[13px]"
                   />
                 </KnowledgeChatMessage>
               ) : null}

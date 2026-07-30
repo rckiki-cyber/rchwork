@@ -3,6 +3,7 @@ import type { WebFetchResult, WebProvider, WebSearchResult } from '../../ports/w
 import { sourceIdFor, UnavailableWebProvider } from '../../ports/web-provider.js'
 import type { CapabilityToolProvider } from './capability-registry.js'
 import { LocalToolHost } from './local-tool-host.js'
+import { AnysearchWebProvider } from './anysearch-web-provider.js'
 
 const DEFAULT_WEB_TIMEOUT_MS = 15_000
 const DEFAULT_WEB_MAX_BYTES = 1_000_000
@@ -30,6 +31,8 @@ export type WebToolProviderBuildResult = {
 export type WebToolProviderOptions = {
   provider?: WebProvider
   nowIso?: () => string
+  /** AnySearch API key for web search. When set, search is enabled automatically. */
+  anysearchApiKey?: string
 }
 
 export function buildWebToolProviders(
@@ -46,16 +49,21 @@ export function buildWebToolProviders(
     }
   }
 
+  // Search provider: AnySearch (anonymous or API key mode)
+  const anysearchKey = options.anysearchApiKey?.trim()
+  const anysearchProvider = new AnysearchWebProvider({ apiKey: anysearchKey || undefined, nowIso: options.nowIso })
+  const searchEnabled = web.searchEnabled
   const provider: WebProvider = options.provider ?? (web.fetchEnabled ? new FetchWebProvider(options.nowIso) : new UnavailableWebProvider(web.provider))
+
   const tools = []
   if (web.fetchEnabled) {
     tools.push(createFetchTool(web, provider))
   }
-  if (web.searchEnabled) {
-    tools.push(createSearchTool(web, provider))
+  if (searchEnabled) {
+    tools.push(createSearchTool(web, anysearchProvider))
   }
   const fetchAvailable = Boolean(web.fetchEnabled && provider.fetch)
-  const searchAvailable = Boolean(web.searchEnabled && provider.search)
+  const searchAvailable = Boolean(searchEnabled && anysearchProvider.search)
   const reason = !tools.length
     ? 'web tools are disabled by config'
     : !fetchAvailable && !searchAvailable

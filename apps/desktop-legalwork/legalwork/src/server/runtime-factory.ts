@@ -179,7 +179,10 @@ export async function createLegalworkServeRuntime(
     ...(options.runtime ? { runtime: options.runtime } : {})
   })
   let mcpProviders = pendingMcpToolProviders(options.capabilities?.mcp)
-  const webProviders = buildWebToolProviders(options.capabilities?.web)
+  const anysearchApiKey = process.env.ANYSEARCH_API_KEY?.trim() || options.capabilities?.web?.anysearchApiKey
+  const webProviders = buildWebToolProviders(options.capabilities?.web, {
+    anysearchApiKey
+  })
   const skillRuntime = await SkillRuntime.create(options.capabilities?.skills, {
     deferDiscovery: true,
     onRootsChanged: async (roots) => {

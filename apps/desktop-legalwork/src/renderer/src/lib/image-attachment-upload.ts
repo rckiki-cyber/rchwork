@@ -64,6 +64,52 @@ export type PreparedAttachmentUpload = {
   previewUrl?: string
 }
 
+export type AttachmentUploadInput = {
+  name: string
+  mimeType?: string
+  threadId?: string
+  workspace?: string
+}
+
+export type AttachmentUploader<T> = {
+  uploadAttachmentFile?: (file: File, input: AttachmentUploadInput) => Promise<T>
+  uploadAttachment?: (input: AttachmentUploadInput & {
+    dataBase64: string
+    textFallback?: CoreAttachmentTextFallbackJson
+  }) => Promise<T>
+}
+
+export async function uploadAttachmentWithMemoryFallback<T>(
+  file: File,
+  capabilities: ImageAttachmentUploadCapabilities,
+  uploader: AttachmentUploader<T>,
+  input: AttachmentUploadInput
+): Promise<{ attachment: T; prepared: PreparedAttachmentUpload | null }> {
+  if (uploader.uploadAttachmentFile) {
+    try {
+      return {
+        attachment: await uploader.uploadAttachmentFile(file, input),
+        prepared: null
+      }
+    } catch (error) {
+      if (!uploader.uploadAttachment || !isMissingAttachmentFilePathError(error)) throw error
+    }
+  }
+  if (!uploader.uploadAttachment) {
+    throw new Error('Attachment upload is unavailable.')
+  }
+  const prepared = await prepareAttachmentUpload(file, capabilities)
+  return {
+    attachment: await uploader.uploadAttachment({
+      ...input,
+      mimeType: prepared.mimeType,
+      dataBase64: prepared.dataBase64,
+      textFallback: prepared.textFallback
+    }),
+    prepared
+  }
+}
+
 export async function prepareAttachmentUpload(
   file: File,
   capabilities: ImageAttachmentUploadCapabilities,
@@ -144,6 +190,14 @@ export async function prepareImageAttachmentUpload(
 
 export function isImageFile(file: File): boolean {
   return resolveAttachmentMimeType(file).toLowerCase().startsWith('image/')
+}
+
+export function isMissingAttachmentFilePathError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    message.includes('无法读取所选文件路径') ||
+    message.toLowerCase().includes('selected file path')
+  )
 }
 
 export async function encodeImageWithCanvas(
@@ -288,6 +342,24 @@ export function resolveAttachmentMimeType(file: File): string {
     if (lowerName.endsWith(extension)) return mimeType
   }
   return 'application/octet-stream'
+}
+
+export function resolveAttachmentUploadName(file: File): string {
+  const name = file.name.trim()
+  if (name) return name
+  const extensionByMimeType: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/bmp': 'bmp',
+    'image/tiff': 'tiff',
+    'image/avif': 'avif',
+    'image/heic': 'heic',
+    'image/heif': 'heif'
+  }
+  const extension = extensionByMimeType[resolveAttachmentMimeType(file).toLowerCase()]
+  return extension ? `pasted-image.${extension}` : 'attachment'
 }
 
 function imageFitsLimits(input: {

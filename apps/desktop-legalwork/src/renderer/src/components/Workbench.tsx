@@ -49,9 +49,9 @@ import type { DataComplianceSection, DesensitizeSection } from './data-complianc
 import { useLegalResearch } from './legal-research/useLegalResearch'
 import {
   isImageFile,
-  prepareAttachmentUpload,
-  prepareImageAttachmentUpload,
-  resolveAttachmentMimeType
+  resolveAttachmentMimeType,
+  resolveAttachmentUploadName,
+  uploadAttachmentWithMemoryFallback
 } from '../lib/image-attachment-upload'
 import { isChatAttachmentUploadEnabled } from '../lib/attachment-upload-availability'
 import { normalizeWorkspaceRoot } from '../lib/workspace-path'
@@ -771,24 +771,20 @@ export function Workbench(): ReactElement {
       const uploaded: AttachmentReference[] = []
       for (const file of files) {
         const mimeType = resolveAttachmentMimeType(file)
-        const prepared = typeof provider.uploadAttachmentFile === 'function'
-          ? null
-          : await prepareAttachmentUpload(file, attachmentCapabilities)
-        const attachment = typeof provider.uploadAttachmentFile === 'function'
-          ? await provider.uploadAttachmentFile(file, {
-            name: file.name || 'attachment',
+        const scope = {
+          ...(activeThreadId ? { threadId: activeThreadId } : {}),
+          ...(workspace ? { workspace } : {})
+        }
+        const { attachment, prepared } = await uploadAttachmentWithMemoryFallback(
+          file,
+          attachmentCapabilities,
+          provider,
+          {
+            name: resolveAttachmentUploadName(file),
             mimeType,
-            ...(activeThreadId ? { threadId: activeThreadId } : {}),
-            ...(workspace ? { workspace } : {})
-          })
-          : await provider.uploadAttachment!({
-            name: file.name || 'attachment',
-            mimeType: prepared!.mimeType,
-            dataBase64: prepared!.dataBase64,
-            textFallback: prepared!.textFallback,
-            ...(activeThreadId ? { threadId: activeThreadId } : {}),
-            ...(workspace ? { workspace } : {})
-          })
+            ...scope
+          }
+        )
         uploaded.push({
           id: attachment.id,
           name: attachment.name,
@@ -1201,6 +1197,15 @@ export function Workbench(): ReactElement {
                 : route === 'desensitize'
                   ? 'desensitize'
                   : 'chat'
+  const usesSubfeatureControlRadius =
+    route === 'plugins' ||
+    route === 'learningIteration' ||
+    route === 'schedule' ||
+    route === 'documentWriting' ||
+    route === 'legalResearch' ||
+    route === 'knowledgeBase' ||
+    route === 'dataCompliance' ||
+    route === 'desensitize'
 
   const closeRightPanel = (): void => {
     setRightPanelMode(null)
@@ -1292,7 +1297,9 @@ export function Workbench(): ReactElement {
     <DocumentWritingProvider>
     <div
       ref={shellRef}
-      className="ds-workbench-shell ds-drag flex h-full min-h-0 w-full min-w-0 bg-ds-main"
+      className={`ds-workbench-shell ds-drag flex h-full min-h-0 w-full min-w-0 bg-ds-main ${
+        usesSubfeatureControlRadius ? 'ds-subfeature-controls' : ''
+      }`}
     >
       {!leftSidebarCollapsed ? (
         <>

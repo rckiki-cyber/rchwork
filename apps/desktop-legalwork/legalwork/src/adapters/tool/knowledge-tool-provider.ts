@@ -289,7 +289,7 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
       }),
       LocalToolHost.defineTool({
         name: 'knowledge_legal_external_sources',
-        description: 'Get a list of authoritative legal external sources (official government websites, judicial databases, academic legal platforms) that can be consulted for the latest regulations, cases, and legal interpretations. Use this when you need to find the most current legal information beyond the local knowledge base.',
+        description: 'Search authoritative legal external sources for current regulations, cases, and legal interpretations. For National Laws and Regulations Database citations, use the verified canonical records.path returned by this tool; never cite flk.npc.gov.cn/index?... as a statute detail page.',
         inputSchema: {
           type: 'object',
           properties: {

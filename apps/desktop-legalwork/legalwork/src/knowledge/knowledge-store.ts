@@ -36,8 +36,8 @@ export interface KnowledgeStore {
   writeFile(input: KnowledgeFileContent): Promise<{ path: string; sizeBytes: number }>
   /** Read a file under managed root. */
   readFile(path: string, encoding?: 'utf8' | 'base64'): Promise<KnowledgeFileContent>
-  /** Extract plain text from a managed document (pdf/docx/xlsx etc.). */
-  extractText(path: string): Promise<{ path: string; text: string; extension: string }>
+  /** Extract plain text from a managed document (pdf/docx/xlsx etc.). Returns optional formatted HTML for docx. */
+  extractText(path: string): Promise<{ path: string; text: string; extension: string; html?: string }>
   /** Resolve the absolute path of a managed file/folder. */
   absolutePath(path: string): Promise<{ path: string; absolute: string }>
   /** Move / rename a file or folder under managed root. */
@@ -242,14 +242,14 @@ export class FileKnowledgeStore implements KnowledgeStore {
     return { path: filePath, content, encoding: 'utf8' }
   }
 
-  async extractText(filePath: string): Promise<{ path: string; text: string; extension: string }> {
+  async extractText(filePath: string): Promise<{ path: string; text: string; extension: string; html?: string }> {
     await this.ensureManagedRoot()
     const absolute = this.resolveManaged(filePath)
     const extension = extname(absolute).toLowerCase()
-    const text = EXTRACTABLE_EXTENSIONS.has(extension)
+    const result = EXTRACTABLE_EXTENSIONS.has(extension)
       ? await extractDocumentText(absolute)
-      : ''
-    return { path: filePath, text, extension }
+      : { text: '' }
+    return { path: filePath, text: result.text, extension, html: result.html }
   }
 
   async absolutePath(filePath: string): Promise<{ path: string; absolute: string }> {
@@ -358,7 +358,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
         const ext = extname(filePath).toLowerCase()
         const content = TEXT_EXTENSIONS.has(ext)
           ? normalizeText(await readFile(filePath, 'utf8'))
-          : await extractDocumentText(filePath)
+          : (await extractDocumentText(filePath)).text
         if (!content.trim()) {
           skippedCount += 1
           continue
@@ -522,7 +522,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
       const content = TEXT_EXTENSIONS.has(ext)
         ? await readFile(absolute, 'utf8')
         : EXTRACTABLE_EXTENSIONS.has(ext)
-          ? await extractDocumentText(absolute)
+          ? (await extractDocumentText(absolute)).text
           : ''
       return normalizeText(content).slice(0, CLASSIFY_TEXT_LIMIT)
     } catch {

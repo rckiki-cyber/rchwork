@@ -7,6 +7,7 @@ import type { ImmutablePrefix } from '../../cache/immutable-prefix.js'
 import type { SessionStore } from '../../ports/session-store.js'
 import type { RuntimeEventRecorder } from '../../services/runtime-event-recorder.js'
 import type { UsageService } from '../../services/usage-service.js'
+import type { DocumentTextResult } from '../../knowledge/text-extractor.js'
 
 export type FsStats = NonNullable<Awaited<ReturnType<typeof stat>>>
 
@@ -110,6 +111,7 @@ export type BuiltinToolName =
   | 'refresh_skills'
   | 'install_skill'
   | 'request_document_preferences'
+  | 'resolve_legal_document_template'
   | 'compress_context'
 export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'read',
@@ -125,6 +127,7 @@ export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'refresh_skills',
   'install_skill',
   'request_document_preferences',
+  'resolve_legal_document_template',
   'compress_context'
 ])
 export type ToolName = BuiltinToolName
@@ -200,7 +203,7 @@ export type ToolsOptions = BuiltinLocalToolsOptions
 export interface ReadLocalToolOperations {
   stat?: (path: string) => Promise<FsStats>
   readFile?: (path: string) => Promise<Buffer>
-  extractDocumentText?: (path: string) => Promise<string>
+  extractDocumentText?: (path: string) => Promise<DocumentTextResult>
   detectImageMimeType?: (buffer: Buffer) => ImageDetection | null
   resizeImage?: (
     buffer: Buffer,

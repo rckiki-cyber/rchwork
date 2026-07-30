@@ -117,7 +117,7 @@ export function ModelListPicker({
 
   return (
     <div ref={rootRef} className="relative w-full min-w-0 md:max-w-md">
-      <div className="flex items-center gap-2">
+      <div data-control-hover-root className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
@@ -148,7 +148,11 @@ export function ModelListPicker({
       ) : null}
 
       {open ? (
-        <div className="absolute z-20 mt-2 w-full rounded-xl border border-ds-border bg-ds-card shadow-lg">
+        <div
+          data-control-hover-root
+          data-control-hover-layered
+          className="absolute z-20 mt-2 w-full rounded-xl border border-ds-border bg-ds-card shadow-lg"
+        >
           <div className="border-b border-ds-border p-2">
             <input
               className="w-full rounded-lg border border-ds-border bg-ds-main/60 px-2.5 py-1.5 text-[13px] text-ds-ink focus:border-accent/40 focus:outline-none"

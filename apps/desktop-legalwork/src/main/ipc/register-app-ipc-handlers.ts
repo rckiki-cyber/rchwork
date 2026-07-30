@@ -1,6 +1,6 @@
 import { app, dialog, ipcMain, shell, type BrowserWindow, type WebContents } from 'electron'
 import { watch, type FSWatcher } from 'node:fs'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { dirname, extname, join } from 'node:path'
@@ -137,7 +137,61 @@ import {
 } from '../services/document-history-service'
 import { copyWriteDocumentAsRichText, exportWriteDocument } from '../services/write-export-service'
 import { legalDocumentMarkdownToDocx } from '../services/legal-document-export-service'
+import { exportMarkdownDocument } from '../services/markdown-export-service'
 import { importGuiSkillFromPath, listGuiSkills, readGuiSkillFile } from '../services/skill-service'
+import {
+  loadImaAuth,
+  clearImaAuth,
+  clearImaLoginSession,
+  captureImaAuthViaLogin,
+  replaceImaAuthViaLogin,
+  refreshImaAuth,
+  credsFilePath,
+  type ImaAuthStatus
+} from '../ima-auth-manager'
+
+// ── IMA Cookie 自动刷新定时器 + 按需触发 ──
+
+let imaRefreshTimer: ReturnType<typeof setInterval> | null = null
+let imaRefreshInProgress = false
+
+/** IMA 刷新触发文件路径（MCP Server 写，Electron 侦听） */
+function imaRefreshTriggerPath(): string {
+  return join(app.getPath('userData'), '.ima_refresh_trigger')
+}
+
+/** 启动 IMA 凭据定时刷新（每 2 小时）。仅当 IMA 已登录时有效。 */
+function startImaRefreshTimer(): void {
+  if (imaRefreshTimer) return
+  const auth = loadImaAuth()
+  if (!auth?.cookie || !auth?.bkn) return
+
+  // 启动后立即刷新一次
+  runImaRefresh()
+
+  imaRefreshTimer = setInterval(() => {
+    runImaRefresh()
+  }, 120 * 60 * 1000)   // 2 小时
+}
+
+function stopImaRefreshTimer(): void {
+  if (imaRefreshTimer) {
+    clearInterval(imaRefreshTimer)
+    imaRefreshTimer = null
+  }
+}
+
+async function runImaRefresh(): Promise<void> {
+  if (imaRefreshInProgress) return
+  imaRefreshInProgress = true
+  try {
+    await refreshImaAuth()
+  } catch {
+    // 静默失败，下次定时器还会重试
+  } finally {
+    imaRefreshInProgress = false
+  }
+}
 
 type GuiUpdaterModule = typeof import('../gui-updater')
 
@@ -533,13 +587,27 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         }
       }
 
-      // 3. Install dependencies via pip
+      // 3. Install dependencies via pip with per-package progress
       if (existsSync(requirementsPath)) {
-        sendProgress({ step: 'installing', percent: 60, message: '正在安装 Python 依赖包（这可能需要几分钟）…' })
+        const reqText = readFileSync(requirementsPath, 'utf8')
+        const reqLines = reqText.split('\n').filter((l: string) => l.trim() && !l.trim().startsWith('#')).length
+        sendProgress({ step: 'installing', percent: 36, message: `正在下载并安装 ${reqLines} 个 Python 依赖包（首次需要几分钟）…` })
+        let completedPkgs = 0
         const installResult = await runCommand(
           venvPython,
-          ['-m', 'pip', 'install', '-r', requirementsPath],
-          { cwd: webRoot, timeout: 600_000 }
+          ['-m', 'pip', 'install', '-r', requirementsPath, '--verbose'],
+          {
+            cwd: webRoot,
+            timeout: 600_000,
+            onStderr: (line: string) => {
+              // pip verbose output: "Collecting package_name==version" or "Installing collected packages: ..."
+              const collectMatch = line.match(/^Collecting\s+(\S+)/)
+              const installMatch = line.match(/^(Successfully installed|Installing collected packages)/)
+              if (collectMatch || installMatch) completedPkgs += 1
+              const pct = Math.min(88, 36 + Math.round((completedPkgs / Math.max(reqLines, 1)) * 52))
+              sendProgress({ step: 'installing', percent: pct, message: `正在安装依赖包 (${Math.min(completedPkgs, reqLines)}/${reqLines})…` })
+            }
+          }
         )
         if (installResult.exitCode !== 0) {
           sendProgress({
@@ -1495,6 +1563,22 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       }
     }
   })
+  ipcMain.handle('document:export-markdown', async (_, payload: unknown) => {
+    return exportMarkdownDocument(
+      parseIpcPayload(
+        'document:export-markdown',
+        z.object({
+          markdown: z.string().max(10_000_000),
+          defaultName: z.string().min(1).max(200)
+        }).strict(),
+        payload
+      ),
+      {
+        showSaveDialog: (options) => dialog.showSaveDialog(options),
+        writeFile
+      }
+    )
+  })
   ipcMain.handle('write:inline-completion', async (_, payload: unknown) =>
     requestWriteInlineCompletion(
       await store.load(),
@@ -1547,6 +1631,138 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       payload
     )
     return generateFromTemplate(await store.load(), request)
+  })
+
+  // ── IMA 知识库认证 ──
+
+  ipcMain.handle('ima:auth-status', async (): Promise<ImaAuthStatus> => {
+    const auth = loadImaAuth()
+    if (auth) {
+      const sanitized = { ...auth, cookie: '', bkn: '' }
+      if (auth.verificationStatus === 'expired') {
+        return {
+          kind: 'expired',
+          auth: sanitized,
+          status: 'expired',
+          message: auth.verificationMessage
+        }
+      }
+      return {
+        kind: 'logged_in',
+        auth: sanitized,
+        status: auth.verificationStatus || 'unverified'
+      }
+    }
+    return { kind: 'not_configured' }
+  })
+
+  ipcMain.handle('ima:auth-login', async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    try {
+      await captureImaAuthViaLogin()
+      startImaRefreshTimer()
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, message }
+    }
+  })
+
+  ipcMain.handle('ima:auth-relogin', async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    stopImaRefreshTimer()
+    try {
+      await replaceImaAuthViaLogin()
+      startImaRefreshTimer()
+      return { ok: true }
+    } catch (error) {
+      if (loadImaAuth()) startImaRefreshTimer()
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, message }
+    }
+  })
+
+  ipcMain.handle('ima:auth-logout', async (): Promise<void> => {
+    clearImaAuth()
+    await clearImaLoginSession()
+    stopImaRefreshTimer()
+  })
+
+  ipcMain.handle('ima:auth-refresh', async (): Promise<{ ok: true; changed: boolean; status: string } | { ok: false; message: string; status: string }> => {
+    try {
+      const auth = loadImaAuth()
+      if (!auth?.cookie || !auth?.bkn) {
+        return { ok: false, message: 'IMA 未登录', status: 'not_configured' }
+      }
+      const result = await refreshImaAuth()
+      if (result.status === 'valid') {
+        return { ok: true, changed: result.changed, status: result.status }
+      }
+      return { ok: false, message: result.message, status: result.status }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, message, status: 'network_error' }
+    }
+  })
+
+  ipcMain.handle('ima:get-config', async (): Promise<{
+    cookie: boolean
+    bkn: boolean
+    loggedIn: boolean
+    status: string
+    message?: string
+    knowledgeBaseCount: number
+  }> => {
+    const auth = loadImaAuth()
+    if (!auth?.cookie || !auth?.bkn) {
+      return {
+        cookie: false,
+        bkn: false,
+        loggedIn: false,
+        status: 'not_configured',
+        knowledgeBaseCount: 0
+      }
+    }
+    const result = await refreshImaAuth()
+    const current = 'auth' in result ? result.auth : auth
+    return {
+      cookie: true,
+      bkn: true,
+      loggedIn: result.status === 'valid',
+      status: result.status,
+      message: result.status === 'valid' ? undefined : result.message,
+      knowledgeBaseCount: current.knowledgeBases?.length || 0
+    }
+  })
+
+  ipcMain.handle('ima:get-mcp-config', async (): Promise<Record<string, unknown> | { error: string }> => {
+    const auth = loadImaAuth()
+    if (!auth?.cookie || !auth?.bkn) {
+      return { error: 'IMA 未登录，请先登录' }
+    }
+    const scriptsDir = join(app.getAppPath(), '..', 'scripts')
+    const scriptPath = join(scriptsDir, 'ima-mcp-server.py')
+    if (!existsSync(scriptPath)) {
+      return { error: 'IMA MCP 服务脚本不存在' }
+    }
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
+    // 传递凭证文件路径供 MCP Server 实时读取（自动刷新后无需重启即可生效）
+    return {
+      servers: {
+        'ima-knowledge-base': {
+          enabled: true,
+          transport: 'stdio',
+          command: pythonCmd,
+          args: [scriptPath],
+          env: {
+            IMA_CREDS_FILE: credsFilePath(),
+            IMA_REFRESH_TRIGGER_PATH: imaRefreshTriggerPath(),
+            IMA_X_IMA_COOKIE: auth.cookie,   // 兜底：文件不存在时回退到环境变量
+            IMA_X_IMA_BKN: auth.bkn,
+          },
+          trustScope: 'user',
+          timeoutMs: 120000
+        }
+      }
+    }
   })
 
   ipcMain.handle('document:material:extract', async (_, payload: unknown) => {
@@ -1704,6 +1920,55 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     if (error) return { ok: false, message: error }
     return { ok: true }
   })
+
+  // ── IMA 按需触发文件侦听（仅 agent 调 MCP 工具 `open_ima_login` 时触发） ──
+  const triggerPath = imaRefreshTriggerPath()
+  let imaLoginInProgress = false
+  let triggerLastProcessed = 0
+  const TRIGGER_COOLDOWN = 5_000
+
+  function processImaTrigger(): void {
+    try {
+      if (!existsSync(triggerPath)) return
+      const stat = readFileSync(triggerPath, 'utf8')
+      if (!stat.trim()) return
+      const now = Date.now()
+      if (now - triggerLastProcessed < TRIGGER_COOLDOWN) return
+
+      const content = JSON.parse(stat)
+      triggerLastProcessed = now
+      const action = content?.action || 'refresh'
+
+      if (action === 'login') {
+        if (imaLoginInProgress) return  // 已有登录弹窗，不重复弹
+        imaLoginInProgress = true
+        replaceImaAuthViaLogin().then(() => {
+          imaLoginInProgress = false
+          try { writeFileSync(triggerPath, '', { encoding: 'utf8' }) } catch { /* ignore */ }
+        }).catch(() => {
+          imaLoginInProgress = false
+          try { writeFileSync(triggerPath, '', { encoding: 'utf8' }) } catch { /* ignore */ }
+        })
+      } else {
+        runImaRefresh().then(() => {
+          try { writeFileSync(triggerPath, '', { encoding: 'utf8' }) } catch { /* ignore */ }
+        })
+      }
+    } catch { /* 无触发文件或解析失败则跳过 */ }
+  }
+
+  setInterval(processImaTrigger, 2_000)
+
+  // fs.watch 作为辅助加速
+  try {
+    const userDataDir = app.getPath('userData')
+    if (existsSync(userDataDir)) {
+      watch(userDataDir, () => processImaTrigger())
+    }
+  } catch { /* fs.watch 不可用则跳过 */ }
+
+  // 启动 IMA Cookie 定时刷新（如已登录自动开始）
+  startImaRefreshTimer()
 }
 
 export function parsePythonVersionOutput(output: string): { major: number; minor: number; patch: number } | null {
@@ -1777,7 +2042,7 @@ async function resolvePythonForCompliance(env?: NodeJS.ProcessEnv): Promise<stri
 function runCommand(
   command: string,
   args: string[],
-  options?: { cwd?: string; timeout?: number; env?: NodeJS.ProcessEnv }
+  options?: { cwd?: string; timeout?: number; env?: NodeJS.ProcessEnv; onStderr?: (line: string) => void }
 ): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
   return new Promise((resolvePromise) => {
     const child = spawn(command, args, {
@@ -1789,7 +2054,15 @@ function runCommand(
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []
     child.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk))
-    child.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk))
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr.push(chunk)
+      if (options?.onStderr) {
+        const lines = chunk.toString('utf8').split('\n')
+        for (const line of lines) {
+          if (line.trim()) options.onStderr(line.trim())
+        }
+      }
+    })
     child.on('close', (exitCode) => {
       resolvePromise({
         exitCode,

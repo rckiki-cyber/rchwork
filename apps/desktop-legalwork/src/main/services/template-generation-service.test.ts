@@ -36,4 +36,21 @@ describe('template generation legal formatting prompt', () => {
     expect(systemPrompt).toContain('签署页')
     expect(systemPrompt).toContain('不要用“此致”')
   })
+
+  it('preserves the highest priority for user-uploaded templates', () => {
+    const { systemPrompt } = buildGenerationPrompt({
+      template: {
+        id: 'custom-client-complaint',
+        name: '客户专用起诉状',
+        description: '用户上传模板',
+        content: '# 客户专用起诉状',
+        fields: [],
+        source: 'user'
+      },
+      fieldValues: {}
+    })
+
+    expect(systemPrompt).toContain('当前模板为用户上传模板，具有最高优先级')
+    expect(systemPrompt).toContain('不能用通用结构替换')
+  })
 })

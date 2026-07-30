@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import {
   buildFlintChartMcpConfig,
   buildPkulawMcpConfig,
   buildMcpConfig,
   customMcpConfigFragment,
+  ImaConfigPanel,
   inferMarketplaceCategory,
   mcpConfigHasServer,
   mcpMarketplaceItemsFromConfigAndDiagnostics,
+  mergeMarketplaceCatalogItems,
   mergeMcpJsonConfig,
   upsertMcpJsonConfig,
   skillMarketplaceItemsFromDiscoveredSkills
@@ -42,6 +46,58 @@ const mcpLabels = {
 }
 
 describe('PluginMarketplaceView MCP config helpers', () => {
+  it('shows a separate re-login action for an authenticated IMA connection', () => {
+    const labels: Record<string, string> = {
+      pluginMcpImaTitle: 'IMA Knowledge Base',
+      pluginMcpImaLoggedIn: 'Logged In',
+      pluginMcpImaDesc: 'Description',
+      pluginMcpImaReloginHint: 'Replace old cookies after login.',
+      pluginMcpPkulawCancel: 'Cancel',
+      pluginMcpImaRelogin: 'Re-login',
+      pluginMcpImaReconnect: 'Reconnect'
+    }
+    const html = renderToStaticMarkup(createElement(ImaConfigPanel, {
+      loggedIn: true,
+      loggingIn: false,
+      reloggingIn: false,
+      onLogin: () => undefined,
+      onRelogin: () => undefined,
+      onCancel: () => undefined,
+      t: (key: string) => labels[key] ?? key
+    }))
+
+    expect(html).toContain('Re-login')
+    expect(html).toContain('Reconnect')
+    expect(html).toContain('Replace old cookies after login.')
+  })
+
+  it('shows an expired IMA credential instead of reporting it as connected', () => {
+    const labels: Record<string, string> = {
+      pluginMcpImaTitle: 'IMA Knowledge Base',
+      pluginMcpImaExpired: 'Login expired',
+      pluginMcpImaDesc: 'Description',
+      pluginMcpImaLoginHint: 'Scan to login.',
+      pluginMcpPkulawCancel: 'Cancel',
+      pluginMcpImaLogin: 'Login IMA'
+    }
+    const html = renderToStaticMarkup(createElement(ImaConfigPanel, {
+      loggedIn: false,
+      status: 'expired',
+      statusMessage: 'Token expired',
+      knowledgeBaseCount: 0,
+      loggingIn: false,
+      reloggingIn: false,
+      onLogin: () => undefined,
+      onRelogin: () => undefined,
+      onCancel: () => undefined,
+      t: (key: string) => labels[key] ?? key
+    }))
+
+    expect(html).toContain('Login expired')
+    expect(html).toContain('Token expired')
+    expect(html).not.toContain('pluginMcpImaLoggedIn')
+  })
+
   it('builds Flint Chart as an optional pinned npx MCP without bundling it', () => {
     const config = buildFlintChartMcpConfig() as {
       servers: Record<string, Record<string, unknown>>
@@ -241,6 +297,47 @@ describe('PluginMarketplaceView MCP config helpers', () => {
       title: 'Playwright',
       description: 'Browser automation'
     })).toBe('browser')
+  })
+
+  it('merges installed and recommended legal MCP entries into one capability catalog', () => {
+    const items = mergeMarketplaceCatalogItems([
+      {
+        id: 'pkulaw',
+        kind: 'mcp',
+        title: 'PKULaw catalog',
+        description: 'Catalog description',
+        group: 'recommended',
+        category: 'legal'
+      },
+      {
+        id: 'pkulaw',
+        kind: 'mcp',
+        title: 'PKULaw runtime',
+        description: '9 connected services',
+        group: 'personal',
+        category: 'legal',
+        sourceLabel: 'Connected',
+        statusTone: 'success'
+      },
+      {
+        id: 'yuandian',
+        kind: 'mcp',
+        title: 'Yuandian',
+        description: 'Legal research source',
+        group: 'recommended',
+        category: 'legal'
+      }
+    ])
+
+    expect(items).toHaveLength(2)
+    expect(items.map((item) => item.id)).toEqual(['pkulaw', 'yuandian'])
+    expect(items.every((item) => item.category === 'legal')).toBe(true)
+    expect(items[0]).toMatchObject({
+      title: 'PKULaw catalog',
+      description: '9 connected services',
+      sourceLabel: 'Connected',
+      statusTone: 'success'
+    })
   })
 
   it('overlays MCP runtime diagnostics onto configured marketplace items', () => {

@@ -2,7 +2,8 @@ import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 import {
   buildLegalDocumentHtml,
-  legalDocumentMarkdownToDocx
+  legalDocumentMarkdownToDocx,
+  prepareLegalDocumentMarkdown
 } from './legal-document-export-service'
 
 const require = createRequire(import.meta.url)
@@ -39,11 +40,54 @@ describe('legal document Word export', () => {
 
     expect(html).toContain('<table>')
     expect(html).toContain('<th>法规名称</th>')
-    expect(html).toContain('北大法宝（https://www.pkulaw.com/chl/example.html）')
+    expect(html).toContain('<a href="https://www.pkulaw.com/chl/example.html">北大法宝</a>')
+    expect(html).not.toContain('北大法宝（https://www.pkulaw.com/chl/example.html）')
     expect(html).not.toContain('| --- |')
   })
 
-  it('writes an explicit East Asian font into DOCX OOXML', async () => {
+  it('converts a generated research answer into report-only prose', () => {
+    const markdown = prepareLegalDocumentMarkdown({
+      templateName: '法律调研报告',
+      markdown: [
+        '我来为你进行多源调研。现在整合输出调研报告。',
+        '',
+        '# 多源调研报告：土地出让金返还条款效力',
+        '',
+        '## 一、研究摘要',
+        '',
+        '- **核心结论**：该条款原则上无效。',
+        '- **制定机关**：国务院',
+        '- **效力等级**：行政法规',
+        '- **时效性**：现行有效',
+        '- [北大法宝链接](https://www.pkulaw.com/chl/example.html)',
+        '',
+        '### 1.1 法律依据',
+        '',
+        '| 项目 | 内容 |',
+        '| --- | --- |',
+        '| 案号 | （2024）某号 |',
+        '| 裁判要旨 | 违反强制性规定 |',
+        '',
+        '如需我继续补充，请告诉我。'
+      ].join('\n')
+    })
+
+    expect(markdown).toContain('# 多源调研报告：土地出让金返还条款效力')
+    expect(markdown).toContain('## 1、研究摘要')
+    expect(markdown).toContain('### （1）法律依据')
+    expect(markdown).toContain('**核心结论**：该条款原则上无效。')
+    expect(markdown).toContain('**案号：** （2024）某号')
+    expect(markdown).toContain('[北大法宝链接](https://www.pkulaw.com/chl/example.html)')
+    expect(markdown).not.toContain('我来为你')
+    expect(markdown).not.toContain('制定机关')
+    expect(markdown).not.toContain('效力等级')
+    expect(markdown).not.toContain('时效性')
+    expect(markdown).not.toContain('| 项目 |')
+    expect(markdown).not.toContain('如需我继续')
+    expect(markdown).not.toMatch(/^- /m)
+  })
+
+  it('writes the reference-report font and paragraph settings into DOCX OOXML', async () => {
     const buffer = await legalDocumentMarkdownToDocx({
       templateId: 'legal-opinion',
       templateName: '法律意见书',
@@ -52,13 +96,21 @@ describe('legal document Word export', () => {
     const zip = await JSZip.loadAsync(buffer)
     const styles = await zip.file('word/styles.xml')!.async('string')
     const document = await zip.file('word/document.xml')!.async('string')
-    expect(styles).toContain('w:eastAsia="Arial Unicode MS"')
+    expect(styles).toContain('w:eastAsia="宋体"')
     expect(styles).not.toContain('w:eastAsiaTheme=')
     expect(document).toContain('中文正文')
-    expect(document).toContain('w:eastAsia="Arial Unicode MS"')
+    expect(document).toContain('w:eastAsia="宋体"')
+    expect(styles).toContain('w:sz w:val="24"')
+    expect(document).toContain('w:line="360" w:lineRule="auto"')
+    expect(document).toContain('w:firstLine="480" w:firstLineChars="200"')
+    expect(document).toContain('w:top="1440"')
+    expect(document).toContain('w:right="1800"')
+    expect(document).toContain('w:bottom="1440"')
+    expect(document).toContain('w:left="1800"')
+    expect(document).toMatch(/<w:sectPr\b[\s\S]*?<\/w:sectPr>\s*<\/w:body>/)
   })
 
-  it('exports Markdown tables as real Word tables', async () => {
+  it('exports multi-column Markdown tables as real Word tables', async () => {
     const buffer = await legalDocumentMarkdownToDocx({
       templateName: '法律调研报告',
       markdown: [
@@ -75,7 +127,41 @@ describe('legal document Word export', () => {
     expect(document).toContain('<w:tbl>')
     expect(document).toContain('法规名称')
     expect(document).toContain('北大法宝')
-    expect(document).toContain('https://www.pkulaw.com/chl/example.html')
+    expect(document).not.toContain('https://www.pkulaw.com/chl/example.html')
     expect(document).not.toContain('| --- |')
+  })
+
+  it('creates real Word hyperlinks and excludes research-only noise', async () => {
+    const buffer = await legalDocumentMarkdownToDocx({
+      templateName: '法律调研报告',
+      markdown: [
+        '我来为你进行多源调研。现在整合输出调研报告。',
+        '',
+        '# 土地出让金返还条款法律调研',
+        '',
+        '## 一、法律依据',
+        '',
+        '- **制定机关**：国务院',
+        '- **效力等级**：行政法规',
+        '- **时效性**：现行有效',
+        '- [北大法宝链接](https://www.pkulaw.com/chl/example.html)',
+        '',
+        '这是连续的法律分析正文。'
+      ].join('\n')
+    })
+
+    const zip = await JSZip.loadAsync(buffer)
+    const document = await zip.file('word/document.xml')!.async('string')
+    const relationships = await zip.file('word/_rels/document.xml.rels')!.async('string')
+
+    expect(document).toContain('<w:hyperlink')
+    expect(document).toContain('北大法宝链接')
+    expect(document).toContain('这是连续的法律分析正文')
+    expect(document).not.toContain('我来为你')
+    expect(document).not.toContain('制定机关')
+    expect(document).not.toContain('效力等级')
+    expect(document).not.toContain('时效性')
+    expect(relationships).toContain('Target="https://www.pkulaw.com/chl/example.html"')
+    expect(relationships).toContain('TargetMode="External"')
   })
 })

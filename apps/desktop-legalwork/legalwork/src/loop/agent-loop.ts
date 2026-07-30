@@ -48,6 +48,12 @@ import type { ThreadGoal, ThreadTodoList } from '../contracts/threads.js'
 import { modelCapabilitiesForModel, type ContextCompactionConfig } from './model-context-profile.js'
 import type { SkillRuntime } from '../skills/skill-runtime.js'
 import type { AttachmentContent, AttachmentStore } from '../attachments/attachment-store.js'
+import {
+  attachmentOcrInstruction,
+  extractImageAttachmentOcr,
+  shouldRunAttachmentOcr,
+  type AttachmentOcrResult
+} from '../attachments/attachment-ocr.js'
 import type { ModelInputAttachment, ModelTextAttachmentFallback } from '../ports/model-client.js'
 import type { MemoryStore } from '../memory/memory-store.js'
 import {
@@ -71,6 +77,7 @@ import { GET_GOAL_TOOL_NAME, UPDATE_GOAL_TOOL_NAME } from '../adapters/tool/goal
 import { TODO_LIST_TOOL_NAME, TODO_WRITE_TOOL_NAME } from '../adapters/tool/todo-tools.js'
 import { shellRuntimeInstruction } from '../adapters/tool/builtin-tool-utils.js'
 import { LEGALWORK_SYSTEM_PROMPT } from '../prompt/legalwork-system-prompt.js'
+import { resolveImaRouteAction } from './ima-knowledge-router.js'
 
 const PARALLEL_READ_ONLY_TOOL_NAMES = new Set(['read', 'grep', 'find', 'ls'])
 const MAX_PARALLEL_TOOL_CALLS = 3
@@ -691,12 +698,23 @@ export class AgentLoop {
     const createPlanSatisfied = planTurnActive
       ? hasSuccessfulCreatePlanResult(healed.items, turnId)
       : false
-    const requiredToolName =
+    const planRequiredToolName =
       planTurnActive &&
       !createPlanSatisfied &&
       toolSpecs.some((tool) => tool.name === CREATE_PLAN_TOOL_NAME)
         ? CREATE_PLAN_TOOL_NAME
         : undefined
+    const imaRouteAction = resolveImaRouteAction({
+      prompt: turn?.prompt ?? '',
+      tools: toolSpecs,
+      items: healed.items,
+      turnId,
+      enabled: !planTurnActive
+    })
+    const requiredToolName = planRequiredToolName ?? imaRouteAction?.requiredToolName
+    const requestToolSpecs = requiredToolName
+      ? toolSpecs.filter((tool) => tool.name === requiredToolName)
+      : toolSpecs
     // Final step of a plan turn that still owes a plan. Offer ONLY create_plan
     // (this DeepSeek-compatible provider ignores a forced tool_choice, so we
     // remove the investigation tools instead) so the model can only save the
@@ -709,11 +727,13 @@ export class AgentLoop {
     const contextInstructions = [
       modelIdentityInstruction(modelCapabilities.id),
       ...(attachments.fileReferences.length ? [attachmentFileReferenceInstruction(attachments.fileReferences)] : []),
+      ...(attachments.ocrResults.length ? [attachmentOcrInstruction(attachments.ocrResults)] : []),
       ...(activeGoalInstruction ? [activeGoalInstruction] : []),
       ...(activeTodoInstruction ? [activeTodoInstruction] : []),
       ...memoryInstructions(memories),
       ...skillResolution.instructions,
-      ...(toolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
+      ...(imaRouteAction ? [imaRouteAction.instruction] : []),
+      ...(requestToolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
       ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : [])
     ]
     await this.recordPipelineStage(threadId, turnId, 'input_remembered', {
@@ -732,7 +752,7 @@ export class AgentLoop {
       history,
       ...(attachments.imageAttachments.length ? { attachments: attachments.imageAttachments } : {}),
       ...(attachments.textFallbacks.length ? { attachmentTextFallbacks: attachments.textFallbacks } : {}),
-      tools: toolSpecs,
+      tools: requestToolSpecs,
       ...(requiredToolName ? { requiredToolName } : {}),
       ...(modelRoute.reasoningEffort ? { reasoningEffort: modelRoute.reasoningEffort } : {}),
       abortSignal: signal
@@ -769,6 +789,7 @@ export class AgentLoop {
         attachmentIds: turn?.attachmentIds ?? [],
         imageAttachments: attachments.imageAttachments,
         textFallbacks: attachments.textFallbacks,
+        ocrResults: attachments.ocrResults,
         modelCapabilities
       })
     })
@@ -990,7 +1011,61 @@ export class AgentLoop {
           if (dispatched === 'aborted') return 'aborted'
           return 'continue'
         }
-        const message = `Model did not call the required \`${request.requiredToolName}\` tool for this GUI plan turn.`
+        if (
+          imaRouteAction &&
+          request.requiredToolName === imaRouteAction.requiredToolName
+        ) {
+          const callId = this.opts.ids.next('call_ima_route')
+          const provider = toolProviderMetadata.get(imaRouteAction.requiredToolName)
+          const toolKind = toolKinds.get(imaRouteAction.requiredToolName)
+          const call: ToolCallLike = {
+            callId,
+            toolName: imaRouteAction.requiredToolName,
+            ...(provider?.providerId ? { providerId: provider.providerId } : {}),
+            toolKind,
+            arguments: imaRouteAction.requiredArguments
+          }
+          const itemId = `item_tool_${turnId}_${callId}`
+          await this.opts.turns.applyItem(
+            threadId,
+            makeToolCallItem({
+              id: itemId,
+              turnId,
+              threadId,
+              callId,
+              toolName: imaRouteAction.requiredToolName,
+              toolKind,
+              arguments: imaRouteAction.requiredArguments,
+              summary: 'Runtime-enforced IMA knowledge-base routing.'
+            })
+          )
+          await this.opts.events.record({
+            kind: 'tool_call_ready',
+            threadId,
+            turnId,
+            itemId,
+            callId,
+            toolName: imaRouteAction.requiredToolName,
+            readyCount: 1
+          })
+          const dispatched = await this.dispatchToolCalls({
+            calls: [call],
+            threadId,
+            turnId,
+            workspace: thread?.workspace ?? '',
+            threadMode: effectiveMode,
+            activePlanContext,
+            modelCapabilities,
+            activeSkillIds: skillResolution.activeSkillIds,
+            allowedToolNames,
+            toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
+            approvalPolicy,
+            signal
+          })
+          if (dispatched === 'aborted') return 'aborted'
+          return 'continue'
+        }
+        const message = `Model did not call the required \`${request.requiredToolName}\` tool for this turn.`
         await this.opts.events.record({
           kind: 'error',
           threadId,
@@ -1819,9 +1894,10 @@ export class AgentLoop {
     imageAttachments: ModelInputAttachment[]
     textFallbacks: ModelTextAttachmentFallback[]
     fileReferences: AttachmentFileReference[]
+    ocrResults: AttachmentOcrResult[]
   }> {
     if (input.attachmentIds.length === 0) {
-      return { imageAttachments: [], textFallbacks: [], fileReferences: [] }
+      return { imageAttachments: [], textFallbacks: [], fileReferences: [], ocrResults: [] }
     }
     if (!this.opts.attachmentStore) {
       throw new Error('attachment store is unavailable')
@@ -1831,6 +1907,8 @@ export class AgentLoop {
     const imageAttachments: ModelInputAttachment[] = []
     const textFallbacks: ModelTextAttachmentFallback[] = []
     const fileReferences: AttachmentFileReference[] = []
+    const ocrResults: AttachmentOcrResult[] = []
+    const shouldRunImageOcr = shouldRunAttachmentOcr(input.modelCapabilities.id)
     for (const id of input.attachmentIds) {
       const attachment = await this.opts.attachmentStore.resolveContent(id, {
         threadId: input.threadId,
@@ -1843,6 +1921,10 @@ export class AgentLoop {
           mimeType: attachment.mimeType,
           localFilePath: attachment.localFilePath
         })
+      }
+      if (shouldRunImageOcr) {
+        const ocrResult = await extractImageAttachmentOcr(attachment)
+        if (ocrResult) ocrResults.push(ocrResult)
       }
       if (supportsImageInput && attachment.mimeType.toLowerCase().startsWith('image/')) {
         imageAttachments.push({
@@ -1861,7 +1943,7 @@ export class AgentLoop {
         textFallbackPolicy.textFallbackMaxBase64Bytes
       ))
     }
-    return { imageAttachments, textFallbacks, fileReferences }
+    return { imageAttachments, textFallbacks, fileReferences, ocrResults }
   }
 
   private async retrieveMemories(input: {
@@ -1962,12 +2044,14 @@ function attachmentRequestPipelineDetails(input: {
   attachmentIds: readonly string[]
   imageAttachments: readonly ModelInputAttachment[]
   textFallbacks: readonly ModelTextAttachmentFallback[]
+  ocrResults: readonly AttachmentOcrResult[]
   modelCapabilities: ModelCapabilityMetadata
 }): Record<string, unknown> {
   if (
     input.attachmentIds.length === 0 &&
     input.imageAttachments.length === 0 &&
-    input.textFallbacks.length === 0
+    input.textFallbacks.length === 0 &&
+    input.ocrResults.length === 0
   ) {
     return {}
   }
@@ -1986,7 +2070,9 @@ function attachmentRequestPipelineDetails(input: {
       (total, attachment) => total + Buffer.byteLength(attachment.dataBase64, 'utf8'),
       0
     ),
-    textFallbackMimeTypes: [...new Set(input.textFallbacks.map((attachment) => attachment.mimeType))]
+    textFallbackMimeTypes: [...new Set(input.textFallbacks.map((attachment) => attachment.mimeType))],
+    ocrAttemptedCount: input.ocrResults.length,
+    ocrRecognizedCount: input.ocrResults.filter((result) => result.status === 'recognized').length
   }
 }
 

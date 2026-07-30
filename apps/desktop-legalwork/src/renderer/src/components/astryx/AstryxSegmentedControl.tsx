@@ -13,6 +13,7 @@ type Props<T extends string> = {
   value: T
   items: readonly AstryxSegmentedItem<T>[]
   onChange: (value: T) => void
+  onReselect?: (value: T) => void
   ariaLabel: string
   className?: string
   buttonClassName?: string
@@ -32,6 +33,7 @@ export function AstryxSegmentedControl<T extends string>({
   value,
   items,
   onChange,
+  onReselect,
   ariaLabel,
   className = '',
   buttonClassName = '',
@@ -95,9 +97,9 @@ export function AstryxSegmentedControl<T extends string>({
   const select = useCallback(
     (nextValue: T) => {
       setVisualValue(nextValue)
-      if (nextValue !== value) onChange(nextValue)
+      dispatchSegmentSelection(nextValue, value, onChange, onReselect)
     },
-    [onChange, value]
+    [onChange, onReselect, value]
   )
 
   const handleKeyDown = useCallback(
@@ -175,4 +177,17 @@ export function AstryxSegmentedControl<T extends string>({
       })}
     </div>
   )
+}
+
+export function dispatchSegmentSelection<T extends string>(
+  nextValue: T,
+  currentValue: T,
+  onChange: (value: T) => void,
+  onReselect?: (value: T) => void
+): void {
+  if (nextValue === currentValue) {
+    onReselect?.(nextValue)
+    return
+  }
+  onChange(nextValue)
 }

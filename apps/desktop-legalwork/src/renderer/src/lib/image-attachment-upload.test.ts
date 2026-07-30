@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   arrayBufferToBase64,
+  isMissingAttachmentFilePathError,
   prepareAttachmentUpload,
   prepareImageAttachmentUpload,
+  resolveAttachmentUploadName,
+  uploadAttachmentWithMemoryFallback,
   type EncodedAttachmentImage
 } from './image-attachment-upload'
 
@@ -11,6 +14,57 @@ afterEach(() => {
 })
 
 describe('image attachment upload preparation', () => {
+  it('recognizes the in-memory clipboard file path error for base64 fallback', () => {
+    expect(isMissingAttachmentFilePathError(new Error('无法读取所选文件路径'))).toBe(true)
+    expect(isMissingAttachmentFilePathError(new Error('Unable to read selected file path'))).toBe(true)
+    expect(isMissingAttachmentFilePathError(new Error('attachment is too large'))).toBe(false)
+  })
+
+  it('gives unnamed clipboard images a MIME-derived file extension for OCR', () => {
+    const file = new File([new Uint8Array([1])], '', { type: 'image/webp' })
+    expect(resolveAttachmentUploadName(file)).toBe('pasted-image.webp')
+  })
+
+  it('falls back to an in-memory upload for a pasted image without a disk path', async () => {
+    const close = vi.fn()
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({
+      width: 10,
+      height: 8,
+      close
+    })))
+    vi.stubGlobal('document', {})
+    const file = new File([new Uint8Array([1, 2, 3, 4])], 'pasted-image.png', {
+      type: 'image/png'
+    })
+    const uploadAttachmentFile = vi.fn(async () => {
+      throw new Error('无法读取所选文件路径')
+    })
+    const uploadAttachment = vi.fn(async () => ({ id: 'att_pasted' }))
+
+    const result = await uploadAttachmentWithMemoryFallback(
+      file,
+      {
+        maxImageBytes: 5 * 1024 * 1024,
+        maxImageDimension: 4096,
+        textFallbackMaxBase64Bytes: 512 * 1024,
+        textFallbackMaxImageDimension: 1280
+      },
+      { uploadAttachmentFile, uploadAttachment },
+      { name: file.name, mimeType: file.type, workspace: '/workspace' }
+    )
+
+    expect(uploadAttachmentFile).toHaveBeenCalledOnce()
+    expect(uploadAttachment).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'pasted-image.png',
+      mimeType: 'image/png',
+      workspace: '/workspace',
+      dataBase64: 'AQIDBA=='
+    }))
+    expect(result.attachment).toEqual({ id: 'att_pasted' })
+    expect(result.prepared?.previewUrl).toBe('data:image/png;base64,AQIDBA==')
+    expect(close).toHaveBeenCalledOnce()
+  })
+
   it('prepares arbitrary files without image canvas encoding', async () => {
     const file = new File(['hello'], 'notes.txt', { type: 'text/plain' })
     const prepared = await prepareAttachmentUpload(file, {

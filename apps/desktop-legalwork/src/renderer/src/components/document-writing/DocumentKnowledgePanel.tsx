@@ -281,9 +281,10 @@ export function DocumentKnowledgePanel({ onClose }: Props): ReactElement {
 
       {/* View mode tabs */}
       <div className="ds-no-drag shrink-0 border-b border-ds-border px-4 pt-2 pb-2">
-        <div className="flex gap-1 rounded-[8px] bg-[var(--ds-sidebar-field-bg)] p-0.5">
+        <div data-control-hover-root className="flex gap-1 rounded-[8px] bg-[var(--ds-sidebar-field-bg)] p-0.5">
           <button
             type="button"
+            data-control-active={viewMode === 'search' ? 'true' : undefined}
             onClick={() => setViewMode('search')}
             className={`flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[6px] text-[11.5px] font-medium transition ${
               viewMode === 'search'
@@ -296,6 +297,7 @@ export function DocumentKnowledgePanel({ onClose }: Props): ReactElement {
           </button>
           <button
             type="button"
+            data-control-active={viewMode === 'browse' ? 'true' : undefined}
             onClick={() => setViewMode('browse')}
             className={`flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[6px] text-[11.5px] font-medium transition ${
               viewMode === 'browse'
@@ -313,7 +315,7 @@ export function DocumentKnowledgePanel({ onClose }: Props): ReactElement {
         <>
       {/* Search bar */}
       <div className="ds-no-drag shrink-0 border-b border-ds-border px-4 py-3">
-        <div className="flex gap-2">
+        <div data-control-hover-root className="flex gap-2">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ds-muted)]" strokeWidth={1.75} />
             <input
@@ -422,11 +424,12 @@ export function DocumentKnowledgePanel({ onClose }: Props): ReactElement {
               <span>未找到匹配结果</span>
             </div>
           ) : (
-            <div className="divide-y divide-ds-border">
+            <div data-control-hover-root className="divide-y divide-ds-border">
               {sortedHits.map((hit) => (
                 <button
                   key={hit.chunkId}
                   type="button"
+                  data-control-active={selectedHit?.chunkId === hit.chunkId ? 'true' : undefined}
                   onClick={() => setSelectedChunkId(hit.chunkId)}
                   className={`w-full px-3 py-2.5 text-left transition ${
                     selectedHit?.chunkId === hit.chunkId

@@ -317,6 +317,39 @@ function isProjectSkill(skill: { root?: string; scope?: 'project' | 'global' | '
   return skill.scope === 'project' || (skill.scope !== 'global' && isProjectSkillRoot(skill.root, workspaceRoot))
 }
 
+function positionComposerSuggestionIndicator(
+  root: HTMLDivElement | null,
+  target: HTMLButtonElement | undefined
+): void {
+  if (!root || !target) return
+  const indicator = root.querySelector<HTMLElement>('[data-composer-suggestion-indicator]')
+  if (!indicator) return
+
+  const targetTop = target.offsetTop
+  const targetBottom = targetTop + target.offsetHeight
+  if (targetTop < root.scrollTop) {
+    root.scrollTop = Math.max(0, targetTop - 2)
+  } else if (targetBottom > root.scrollTop + root.clientHeight) {
+    root.scrollTop = targetBottom - root.clientHeight + 2
+  }
+
+  const rootRect = root.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  const scaleX = root.offsetWidth > 0 ? rootRect.width / root.offsetWidth : 1
+  const scaleY = root.offsetHeight > 0 ? rootRect.height / root.offsetHeight : 1
+  indicator.style.setProperty(
+    '--composer-suggestion-x',
+    `${(targetRect.left - rootRect.left) / scaleX + root.scrollLeft}px`
+  )
+  indicator.style.setProperty(
+    '--composer-suggestion-y',
+    `${(targetRect.top - rootRect.top) / scaleY + root.scrollTop}px`
+  )
+  indicator.style.setProperty('--composer-suggestion-width', `${targetRect.width / scaleX}px`)
+  indicator.style.setProperty('--composer-suggestion-height', `${targetRect.height / scaleY}px`)
+  root.setAttribute('data-composer-suggestion-active', 'true')
+}
+
 function normalizedImageFile(file: File, mimeTypeHint?: string): File | null {
   const mimeType = isImageMimeType(file.type)
     ? file.type
@@ -693,6 +726,10 @@ export function FloatingComposer({
   const composerMenuButtonRef = useRef<HTMLButtonElement | null>(null)
   const composerMenuPanelRef = useRef<HTMLDivElement | null>(null)
   const goalPanelRef = useRef<HTMLDivElement | null>(null)
+  const slashCommandListRef = useRef<HTMLDivElement | null>(null)
+  const slashCommandItemRefs = useRef(new Map<SlashCommandId, HTMLButtonElement>())
+  const fileMentionListRef = useRef<HTMLDivElement | null>(null)
+  const fileMentionItemRefs = useRef(new Map<string, HTMLButtonElement>())
   const goalRuntimeStartedAtRef = useRef<number | null>(null)
   const placeholder = !runtimeReady
     ? t('runtimeActionNeedsConnection')
@@ -748,9 +785,10 @@ export function FloatingComposer({
         .slice(0, 40)
         .map<SlashCommand>((skill) => {
           const prompt = `/skill:${skill.id} `
-          const scopeLabel = isProjectSkill(skill, effectiveWorkspaceRoot)
+          const skillScopeLabel = isProjectSkill(skill, effectiveWorkspaceRoot)
             ? t('slashSkillScopeProject')
             : t('slashSkillScopeGlobal')
+          const typeLabel = t('slashCommandTypeSkill')
           const triggers = [
             ...(skill.triggers?.commands ?? []),
             ...(skill.triggers?.fileTypes ?? []),
@@ -761,10 +799,10 @@ export function FloatingComposer({
             kind: 'skill',
             title: skill.name,
             description: skill.description?.trim() || t('slashSkillDescriptionFallback'),
-            keywords: [skill.id, skill.name, skill.root ?? '', scopeLabel, 'skill', '技能', ...triggers],
+            keywords: [skill.id, skill.name, skill.root ?? '', skillScopeLabel, typeLabel, 'skill', '技能', ...triggers],
             icon: <Sparkles className="h-4 w-4" strokeWidth={1.9} />,
             badge: prompt.trim(),
-            scopeLabel,
+            typeLabel,
             skillPrompt: prompt,
             disabled: !runtimeReady
           }
@@ -875,6 +913,10 @@ export function FloatingComposer({
     filteredSlashCommands.length > 0
       ? filteredSlashCommands[Math.min(selectedCommandIndex, filteredSlashCommands.length - 1)]
       : null
+  const highlightedSlashCommandId = highlightedSlashCommand?.id ?? null
+  const highlightedSlashCommandIndicatorId = highlightedSlashCommand?.disabled
+    ? null
+    : highlightedSlashCommandId
   const activeFileMention = useMemo<ComposerFileMention | null>(() => {
     if (!fileReferenceEnabled || slashQuery != null || !effectiveWorkspaceRoot) return null
     return getFileMentionAtCursor(input, composerCursor)
@@ -892,6 +934,7 @@ export function FloatingComposer({
     fileMentionSuggestions.length > 0
       ? fileMentionSuggestions[Math.min(selectedFileMentionIndex, fileMentionSuggestions.length - 1)]
       : null
+  const highlightedFileMentionPath = highlightedFileMention?.relativePath ?? null
   const parsedGoalCommand = parseGoalCommand(input)
   const goalPanelDraftObjective = getGoalPanelDraftObjective(input, goalPanelOpen)
   const canSetGoalPanelDraft =
@@ -929,6 +972,31 @@ export function FloatingComposer({
   useEffect(() => {
     setSelectedCommandIndex(0)
   }, [slashQuery])
+
+  useEffect(() => {
+    if (!highlightedSlashCommandIndicatorId) {
+      slashCommandListRef.current?.removeAttribute('data-composer-suggestion-active')
+      return
+    }
+    const frame = window.requestAnimationFrame(() => {
+      positionComposerSuggestionIndicator(
+        slashCommandListRef.current,
+        slashCommandItemRefs.current.get(highlightedSlashCommandIndicatorId)
+      )
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [filteredSlashCommands.length, highlightedSlashCommandIndicatorId])
+
+  useEffect(() => {
+    if (!highlightedFileMentionPath) return
+    const frame = window.requestAnimationFrame(() => {
+      positionComposerSuggestionIndicator(
+        fileMentionListRef.current,
+        fileMentionItemRefs.current.get(highlightedFileMentionPath)
+      )
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [fileMentionSuggestions.length, highlightedFileMentionPath])
 
   useEffect(() => {
     if (!selectedSkillId) return
@@ -1407,7 +1475,8 @@ export function FloatingComposer({
         {composerMenuOpen && slashQuery == null ? (
           <div
             ref={composerMenuPanelRef}
-            className="absolute bottom-12 left-1 z-40 w-48 overflow-hidden rounded-[18px] border border-ds-border bg-white py-1.5 text-[13px] text-ds-muted shadow-[0_18px_48px_rgba(15,23,42,0.16)] dark:bg-ds-card"
+            data-control-hover-root
+            className="ds-composer-action-menu absolute bottom-12 left-1 z-40 w-48 overflow-hidden rounded-[18px] border border-ds-border bg-white py-1.5 text-[13px] text-ds-muted shadow-[0_18px_48px_rgba(15,23,42,0.16)] dark:bg-ds-card"
           >
             {attachmentUploadEnabled ? (
               <>
@@ -1415,7 +1484,7 @@ export function FloatingComposer({
                   type="button"
                   disabled={!canPickAttachment || !onPickAttachments}
                   onClick={handleAttachmentMenuClick}
-                  className="ds-no-drag flex h-8 w-full items-center gap-2 px-3 text-left transition hover:bg-ds-hover hover:text-ds-ink disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-ds-muted"
+                  className="ds-no-drag mx-1.5 flex h-8 w-[calc(100%_-_0.75rem)] items-center gap-2 rounded-[12px] px-3 text-left transition hover:bg-ds-hover hover:text-ds-ink disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-ds-muted"
                 >
                   {attachmentUploadBusy ? (
                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" strokeWidth={1.9} />
@@ -1431,7 +1500,7 @@ export function FloatingComposer({
               type="button"
               disabled={!canTogglePlanMode}
               onClick={handlePlanToolbarClick}
-              className="ds-no-drag flex h-8 w-full items-center gap-2 px-3 text-left transition hover:bg-ds-hover hover:text-ds-ink disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-ds-muted"
+              className="ds-no-drag mx-1.5 flex h-8 w-[calc(100%_-_0.75rem)] items-center gap-2 rounded-[12px] px-3 text-left transition hover:bg-ds-hover hover:text-ds-ink disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-ds-muted"
             >
               <ListTodo className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} />
               <span className="min-w-0 flex-1 truncate">{t('composerMenuPlanMode')}</span>
@@ -1455,7 +1524,7 @@ export function FloatingComposer({
               type="button"
               disabled={!canOpenGoalPanel}
               onClick={handleGoalMenuClick}
-              className="ds-no-drag flex h-8 w-full items-center gap-2 px-3 text-left transition hover:bg-ds-hover hover:text-ds-ink disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-ds-muted"
+              className="ds-no-drag mx-1.5 flex h-8 w-[calc(100%_-_0.75rem)] items-center gap-2 rounded-[12px] px-3 text-left transition hover:bg-ds-hover hover:text-ds-ink disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-ds-muted"
             >
               <Target className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} />
               <span className="min-w-0 flex-1 truncate">{t('composerMenuPursueGoal')}</span>
@@ -1484,24 +1553,36 @@ export function FloatingComposer({
               {t('slashCommandMenuTitle')}
             </div>
             {filteredSlashCommands.length > 0 ? (
-              <div className="flex max-h-[min(300px,calc(100vh-260px))] flex-col gap-0.5 overflow-y-auto pr-1">
-                {filteredSlashCommands.map((command) => {
+              <div
+                ref={slashCommandListRef}
+                data-composer-suggestion-root
+                className="flex max-h-[min(300px,calc(100vh-260px))] flex-col gap-0.5 overflow-y-auto pr-1"
+              >
+                <span aria-hidden data-composer-suggestion-indicator />
+                {filteredSlashCommands.map((command, index) => {
                   const active = highlightedSlashCommand?.id === command.id
                   return (
                     <button
                       key={command.id}
+                      ref={(node) => {
+                        if (node) slashCommandItemRefs.current.set(command.id, node)
+                        else slashCommandItemRefs.current.delete(command.id)
+                      }}
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => {
+                        if (!command.disabled) setSelectedCommandIndex(index)
+                      }}
                       onClick={() => applySlashCommand(command.id)}
                       disabled={command.disabled}
                       className={`flex min-h-[52px] w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
                         active && !command.disabled
-                          ? 'bg-ds-hover text-ds-ink shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]'
-                          : 'text-ds-muted hover:bg-ds-hover hover:text-ds-ink disabled:hover:bg-transparent disabled:hover:text-ds-muted'
+                          ? 'text-ds-ink'
+                          : 'text-ds-muted hover:text-ds-ink disabled:hover:text-ds-muted'
                       }`}
                     >
                       <span
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] ${
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] transition ${
                           active && !command.disabled ? 'bg-white text-accent shadow-sm dark:bg-ds-card' : 'bg-ds-hover text-ds-muted'
                         }`}
                       >
@@ -1516,9 +1597,9 @@ export function FloatingComposer({
                         </span>
                       </span>
                       <span className="hidden min-w-[106px] shrink-0 flex-col items-end gap-1 sm:flex">
-                        {command.scopeLabel ? (
+                        {command.typeLabel ? (
                           <span className="text-[10.5px] font-semibold leading-none text-ds-muted">
-                            {command.scopeLabel}
+                            {command.typeLabel}
                           </span>
                         ) : null}
                         <span className="max-w-[150px] truncate rounded-full border border-ds-border-muted px-2 py-0.5 text-[10.5px] font-semibold leading-4 text-ds-faint">
@@ -1547,23 +1628,33 @@ export function FloatingComposer({
               ) : null}
             </div>
             {fileMentionSuggestions.length > 0 ? (
-              <div className="flex max-h-[min(280px,calc(100vh-260px))] flex-col gap-0.5 overflow-y-auto pr-1">
-                {fileMentionSuggestions.map((reference) => {
+              <div
+                ref={fileMentionListRef}
+                data-composer-suggestion-root
+                className="flex max-h-[min(280px,calc(100vh-260px))] flex-col gap-0.5 overflow-y-auto pr-1"
+              >
+                <span aria-hidden data-composer-suggestion-indicator />
+                {fileMentionSuggestions.map((reference, index) => {
                   const active = highlightedFileMention?.relativePath === reference.relativePath
                   return (
                     <button
                       key={reference.relativePath}
+                      ref={(node) => {
+                        if (node) fileMentionItemRefs.current.set(reference.relativePath, node)
+                        else fileMentionItemRefs.current.delete(reference.relativePath)
+                      }}
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => setSelectedFileMentionIndex(index)}
                       onClick={() => applyFileMention(reference)}
                       className={`flex min-h-[46px] w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition ${
                         active
-                          ? 'bg-ds-hover text-ds-ink shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]'
-                          : 'text-ds-muted hover:bg-ds-hover hover:text-ds-ink'
+                          ? 'text-ds-ink'
+                          : 'text-ds-muted hover:text-ds-ink'
                       }`}
                     >
                       <span
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] ${
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] transition ${
                           active ? 'bg-white text-accent shadow-sm dark:bg-ds-card' : 'bg-ds-hover text-ds-muted'
                         }`}
                       >
@@ -1723,7 +1814,7 @@ export function FloatingComposer({
           <textarea
             ref={draft.textareaRef}
             rows={1}
-            className={`ds-no-drag block min-w-0 resize-none break-words bg-transparent px-1 py-0.5 text-[15px] leading-[1.45] text-ds-ink placeholder:text-ds-faint focus:outline-none [overflow-wrap:anywhere] ${
+            className={`ds-no-drag block min-w-0 resize-none break-words bg-transparent px-1 py-0.5 text-[14.5px] leading-[1.45] text-ds-ink placeholder:text-ds-faint focus:outline-none [overflow-wrap:anywhere] ${
               canCompose ? '' : 'opacity-80'
             } ${compact ? 'text-[14px]' : 'min-h-[40px]'}`}
             placeholder={placeholder}

@@ -1,4 +1,4 @@
-import { Component, type DragEvent as ReactDragEvent, type ErrorInfo, type ReactElement, type ReactNode } from 'react'
+import { Component, type CSSProperties, type DragEvent as ReactDragEvent, type ErrorInfo, type ReactElement, type ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
@@ -36,15 +36,20 @@ import {
   LEGALWORK_KNOWLEDGE_READ_FILE_PATH,
   LEGALWORK_KNOWLEDGE_RETRIEVE_PATH,
   LEGALWORK_KNOWLEDGE_SYNC_PATH,
-  LEGALWORK_KNOWLEDGE_TREE_PATH
+  LEGALWORK_KNOWLEDGE_TREE_PATH,
+  legalworkThreadTurnPath,
+  legalworkThreadTurnsPath
 } from '../../../../shared/legalwork-endpoints'
+import type { ThreadEventSink } from '../../agent/types'
 
 import type { KnowledgeTreeNode } from './types'
 import { KnowledgeBaseFileView } from './KnowledgeBaseFileView'
 import type { ChatMessage, KnowledgeChatContext } from './knowledge-chat-history'
 import {
   findKnowledgeFileForChatContext,
-  knowledgeChatHistoryFromBlocks
+  KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION,
+  knowledgeChatHistoryFromBlocks,
+  stripRepeatedKnowledgeQuestionLead
 } from './knowledge-chat-history'
 import { PdfJsPreview } from './PdfJsPreview'
 import {
@@ -56,7 +61,8 @@ import {
   KnowledgeChatComposer,
   KnowledgeChatEmptyState,
   KnowledgeChatHeader,
-  KnowledgeChatMessage
+  KnowledgeChatMessage,
+  useKnowledgeChatSidebarPresence
 } from './KnowledgeChatUI'
 import { KnowledgeAssistantContent } from './KnowledgeReasoningBlock'
 type TreeNode = KnowledgeTreeNode
@@ -481,6 +487,7 @@ export function KnowledgeBaseView({
 
   // ── AI Chat state ──
   const [chatOpen, setChatOpen] = useState(false)
+  const chatSidebarPresent = useKnowledgeChatSidebarPresence(chatOpen)
   const [chatSidebarWidth, setChatSidebarWidth] = useState(420)
   const [knowledgeLayoutWidth, setKnowledgeLayoutWidth] = useState(0)
   const knowledgeLayoutRef = useRef<HTMLDivElement>(null)
@@ -490,9 +497,12 @@ export function KnowledgeBaseView({
   const [chatSending, setChatSending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   const [activeChatThreadId, setActiveChatThreadId] = useState<string | null>(null)
+  const [liveReasoning, setLiveReasoning] = useState('')
+  const [liveAssistant, setLiveAssistant] = useState('')
   const [chatContext, setChatContext] = useState<KnowledgeChatContext>({ kind: 'global' })
   const [chatContextThreadId, setChatContextThreadId] = useState<string | null>(null)
   const chatMessagesEndRef = useRef<HTMLDivElement>(null)
+  const chatAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     const element = knowledgeLayoutRef.current
@@ -825,39 +835,37 @@ export function KnowledgeBaseView({
 
   const pollKnowledgeChat = useCallback(async (
     threadId: string,
+    turnId: string,
     maxPolls = 120
   ): Promise<{ content: string; reasoning: string }> => {
     for (let i = 0; i < maxPolls; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1000))
-      const threadData = await requestJson<{
-        turns: Array<{
-          id: string
-          status: string
-          items?: Array<{
-            kind: string
-            text?: string
-            toolName?: string
-            status?: string
-          }>
-          error?: string
+      const turnData = await requestJson<{
+        id: string
+        status: string
+        items?: Array<{
+          kind: string
+          text?: string
+          toolName?: string
+          status?: string
         }>
-      }>(`/v1/threads/${threadId}`)
-      const lastTurn = threadData.turns?.at(-1)
-      if (lastTurn?.status === 'completed') {
-        const reasoningItems = lastTurn.items
+        error?: string
+      }>(legalworkThreadTurnPath(threadId, turnId))
+      if (turnData.status === 'completed') {
+        const reasoningItems = turnData.items
           ?.filter((item) => (item.kind === 'reasoning_text' || item.kind === 'assistant_reasoning') && item.text)
           .map((item) => item.text ?? '')
           .join('\n\n') || ''
-        const textItems = lastTurn.items
+        const textItems = turnData.items
           ?.filter((item) => item.kind === 'assistant_text' && item.text)
           .map((item) => item.text ?? '')
-          .join('\n\n') || '（AI 未返回任何内容）'
+          .join('\n\n') || ''
         return { content: textItems, reasoning: reasoningItems }
       }
-      if (lastTurn?.status === 'failed') {
-        throw new Error(lastTurn.error || 'AI 响应失败')
+      if (turnData.status === 'failed') {
+        throw new Error(turnData.error || 'AI 响应失败')
       }
-      if (lastTurn?.status === 'aborted') {
+      if (turnData.status === 'aborted') {
         throw new Error('对话被中断')
       }
     }
@@ -866,6 +874,9 @@ export function KnowledgeBaseView({
 
   const sendKnowledgeChatMessage = useCallback(async (question: string): Promise<void> => {
     if (!question.trim() || chatSending) return
+    chatAbortRef.current?.abort()
+    const abort = new AbortController()
+    chatAbortRef.current = abort
     const userMsg: ChatMessage = {
       id: `user_${Date.now()}`,
       role: 'user',
@@ -877,6 +888,8 @@ export function KnowledgeBaseView({
     setChatInput('')
     setChatSending(true)
     setChatError(null)
+    setLiveReasoning('')
+    setLiveAssistant('')
 
     try {
       const retrieval = await requestJson<KnowledgeRetrievalResult>(
@@ -910,6 +923,8 @@ ${citations}
 ## 用户问题
 ${question.trim()}
 
+## 回答要求
+${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
 请基于检索到的内容给出准确、专业的回答。如果内容不足以回答问题，请明确说明。引用来源时请标注对应的 [来源编号]，不要编造未出现在上下文中的依据。`
 
       // Reuse the active knowledge-chat thread if one exists; otherwise create a side thread.
@@ -933,36 +948,102 @@ ${question.trim()}
         setActiveChatThreadId(threadId)
       }
 
-      // Start a turn with the runtime's configured model
-      await requestJson(`/v1/threads/${threadId}/turns`, 'POST', { prompt, model: threadModel })
+      const provider = getProvider()
+      const { latestSeq } = await provider.getThreadDetail(threadId)
+      const turnResponse = await requestJson<{ turnId: string }>(
+        legalworkThreadTurnsPath(threadId),
+        'POST',
+        { prompt, model: threadModel }
+      )
 
-      // Poll for completion
-      const assistantMsg = await pollKnowledgeChat(threadId)
+      let streamedAssistant = ''
+      let streamedReasoning = ''
+      await new Promise<void>((resolve, reject) => {
+        let settled = false
+        const settle = (error?: Error): void => {
+          if (settled) return
+          settled = true
+          if (!abort.signal.aborted) abort.abort()
+          if (error) reject(error)
+          else resolve()
+        }
+        const sink: ThreadEventSink = {
+          onSeq: () => undefined,
+          onDeltas: (deltas) => {
+            for (const delta of deltas) {
+              if (delta.kind === 'agent_reasoning') {
+                streamedReasoning += delta.text
+                setLiveReasoning(streamedReasoning)
+              } else {
+                streamedAssistant += delta.text
+                setLiveAssistant(stripRepeatedKnowledgeQuestionLead(streamedAssistant, question))
+              }
+            }
+          },
+          onUserMessage: () => undefined,
+          onTool: () => undefined,
+          onCompaction: () => undefined,
+          onApproval: () => undefined,
+          onUserInput: () => undefined,
+          onUserInputStatus: () => undefined,
+          onGoal: () => undefined,
+          onTodos: () => undefined,
+          onTurnComplete: () => settle(),
+          onError: (err) => settle(err)
+        }
+        void provider.subscribeThreadEvents(threadId, latestSeq, sink, abort.signal).then(
+          () => settle(),
+          (error: unknown) => settle(error instanceof Error ? error : new Error(String(error)))
+        )
+      })
+
+      if (chatAbortRef.current !== abort) return
+
+      // Re-read the specific turn so the final message includes any delta
+      // emitted before the SSE subscriber became active.
+      const assistantMsg = await pollKnowledgeChat(threadId, turnResponse.turnId)
+      if (chatAbortRef.current !== abort) return
 
       // Convert [来源 N] references to clickable source://N markdown links
-      const markedUp = assistantMsg.content.replace(
+      const markedUp = stripRepeatedKnowledgeQuestionLead(
+        assistantMsg.content || streamedAssistant,
+        question
+      ).replace(
         /\[来源\s*(\d+)\]/g,
         (_match, n) => `[来源 ${n}](source://${n})`
       )
+      const finalReasoning = assistantMsg.reasoning.trim() || streamedReasoning.trim()
 
       setChatMessages((prev) => [...prev, {
         id: `ai_${Date.now()}`,
         role: 'assistant',
-        content: markedUp,
-        ...(assistantMsg.reasoning ? { reasoning: assistantMsg.reasoning } : {}),
+        content: markedUp || '（AI 未返回任何内容）',
+        ...(finalReasoning ? { reasoning: finalReasoning } : {}),
         timestamp: Date.now()
       }])
+      setLiveReasoning('')
+      setLiveAssistant('')
       onChatThreadsChange?.()
     } catch (err) {
-      setChatError(err instanceof Error ? err.message : 'AI 响应失败')
+      if (chatAbortRef.current === abort) {
+        setChatError(err instanceof Error ? err.message : 'AI 响应失败')
+      }
     } finally {
-      setChatSending(false)
+      if (chatAbortRef.current === abort) {
+        chatAbortRef.current = null
+        setChatSending(false)
+      }
     }
   }, [chatSending, activeChatThreadId, onChatThreadsChange, pollKnowledgeChat])
 
   const clearChat = useCallback((): void => {
+    chatAbortRef.current?.abort()
+    chatAbortRef.current = null
     setChatMessages([])
     setChatError(null)
+    setLiveReasoning('')
+    setLiveAssistant('')
+    setChatSending(false)
     setActiveChatThreadId(null)
     setChatContext({ kind: 'global' })
     onSelectThread?.(null)
@@ -978,7 +1059,11 @@ ${question.trim()}
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
+  }, [chatMessages, liveAssistant, liveReasoning])
+
+  useEffect(() => {
+    return () => chatAbortRef.current?.abort()
+  }, [])
 
   const handleRowContextMenu = useCallback((event: React.MouseEvent, node: TreeNode) => {
     event.preventDefault()
@@ -1152,20 +1237,27 @@ ${question.trim()}
             <p className="mt-0.5 truncate text-[12px] text-[var(--ds-muted)]">资料会在任务中被自动检索和引用</p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <div className="mr-1 flex items-center rounded-[10px] border border-ds-border bg-[var(--ds-card-soft)] p-0.5 shadow-sm">
+        <div
+          data-control-hover-root
+          data-control-hover-layered
+          className="relative flex shrink-0 items-center gap-1.5"
+        >
+          <div className="mr-1 flex items-center rounded-[var(--lg-radius-selection)] border border-ds-border bg-[var(--ds-card-soft)] p-0.5 shadow-sm">
             <button
               type="button"
+              data-control-hover-target
+              data-control-active="true"
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-[var(--ds-accent)] px-3 text-[12.5px] font-semibold text-white shadow-[0_3px_10px_color-mix(in_srgb,var(--ds-accent)_22%,transparent)] transition duration-150 hover:brightness-105 active:scale-[0.985]"
+              className="inline-flex h-8 items-center gap-1.5 rounded-[calc(var(--lg-radius-selection)_-_3px)] bg-[var(--ds-accent)] px-3 text-[12.5px] font-semibold text-white shadow-[0_3px_10px_color-mix(in_srgb,var(--ds-accent)_22%,transparent)] transition duration-150 hover:brightness-105 active:scale-[0.985]"
             >
               <Upload className="h-3.5 w-3.5" strokeWidth={1.9} />
               <span>上传</span>
             </button>
             <button
               type="button"
+              data-control-hover-target
               onClick={() => folderInputRef.current?.click()}
-              className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--ds-muted)] transition duration-150 hover:bg-ds-hover hover:text-[var(--ds-ink)] active:scale-[0.97]"
+              className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-[calc(var(--lg-radius-selection)_-_3px)] text-[var(--ds-muted)] transition duration-150 hover:bg-ds-hover hover:text-[var(--ds-ink)] active:scale-[0.97]"
               title="上传文件夹"
             >
               <FolderPlus className="h-3.5 w-3.5" strokeWidth={1.8} />
@@ -1174,6 +1266,7 @@ ${question.trim()}
           <div className="mx-0.5 h-5 w-px bg-[var(--ds-border)]" />
           <button
             type="button"
+            data-control-hover-target
             onClick={() => void startCreateFolder()}
             className="flex h-9 w-9 items-center justify-center rounded-[9px] text-[var(--ds-muted)] transition duration-150 hover:bg-ds-hover hover:text-[var(--ds-ink)] active:scale-[0.97]"
             title="新建文件夹"
@@ -1182,6 +1275,7 @@ ${question.trim()}
           </button>
           <button
             type="button"
+            data-control-hover-target
             disabled={syncing}
             onClick={() => void syncIndex()}
             className="flex h-9 w-9 items-center justify-center rounded-[9px] text-[var(--ds-muted)] transition duration-150 hover:bg-ds-hover hover:text-[var(--ds-ink)] active:scale-[0.97] disabled:opacity-50"
@@ -1191,6 +1285,8 @@ ${question.trim()}
           </button>
           <button
             type="button"
+            data-control-hover-target
+            data-control-active={chatOpen ? 'true' : undefined}
             onClick={() => setChatOpen((prev) => !prev)}
             className={`ml-1 inline-flex h-9 items-center gap-1.5 rounded-[9px] border px-3 text-[12.5px] font-medium transition duration-150 active:scale-[0.985] ${
               chatOpen
@@ -1293,7 +1389,7 @@ ${question.trim()}
 
         <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-5 py-4 transition-all ${preview && !chatOpen ? 'pr-4' : ''}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-0.5 text-[13px] text-[var(--ds-muted)]">
+            <div data-control-hover-root className="flex min-w-0 items-center gap-0.5 text-[13px] text-[var(--ds-muted)]">
               <button
                 type="button"
                 onClick={() => setCurrentPath('')}
@@ -1351,7 +1447,7 @@ ${question.trim()}
                 </button>
                 <span className="font-medium">已选择 {selectedPaths.size} 项</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div data-control-hover-root className="flex items-center gap-2">
                 <button
                   type="button"
                   disabled={classifying}
@@ -1371,6 +1467,7 @@ ${question.trim()}
                 </button>
                 <button
                   type="button"
+                  data-control-hover-preserve
                   onClick={() => void batchDelete(Array.from(selectedPaths))}
                   className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-red-200 bg-red-50 px-3 text-[12px] font-medium text-red-600 transition hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/20 dark:hover:bg-red-900/40"
                 >
@@ -1501,7 +1598,7 @@ ${question.trim()}
                     <div className="flex"><KnowledgeFileTypeBadge node={node} /></div>
                     <div className="text-[12.5px] text-[var(--ds-muted)] tabular-nums">{formatBytes(node.sizeBytes)}</div>
                     <div className="text-[12.5px] text-[var(--ds-muted)]">{formatDate(node.updatedAt)}</div>
-                    <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                    <div data-control-hover-root className="flex items-center justify-end gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                       {node.kind === 'file' && previewType(node) !== 'unsupported' ? (
                         <button
                           type="button"
@@ -1514,6 +1611,7 @@ ${question.trim()}
                       ) : null}
                       <button
                         type="button"
+                        data-control-hover-preserve
                         onClick={() => void batchDelete([node.path])}
                         className="flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--ds-muted)] transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
                         title="删除"
@@ -1604,7 +1702,7 @@ ${question.trim()}
             </div>
             <div className="flex shrink-0 items-center justify-between border-t border-ds-border px-4 py-2 text-[12px] text-[var(--ds-muted)]">
               <span>{fileTypeLabel(preview.node)} · {formatBytes(preview.node.sizeBytes)}</span>
-              <div className="flex items-center gap-1">
+              <div data-control-hover-root className="flex items-center gap-1">
                 {!['text', 'markdown', 'document'].includes(previewType(preview.node)) ? (
                   <button
                     type="button"
@@ -1628,14 +1726,13 @@ ${question.trim()}
         ) : null}
 
         {/* AI Chat sidebar */}
-        {chatOpen ? (
+        {chatSidebarPresent ? (
           <aside
-            className="ds-no-drag relative flex h-full shrink-0 flex-col overflow-hidden border-l border-ds-border bg-ds-card"
+            data-motion={chatOpen ? 'enter' : 'exit'}
+            className="ds-knowledge-chat-sidebar ds-no-drag relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-ds-border bg-ds-card"
             style={{
-              width: effectiveChatSidebarWidth,
-              minWidth: effectiveChatSidebarWidth,
-              maxWidth: effectiveChatSidebarWidth
-            }}
+              '--knowledge-chat-sidebar-width': `${effectiveChatSidebarWidth}px`
+            } as CSSProperties}
           >
             {/* Drag handle */}
             <div
@@ -1666,7 +1763,7 @@ ${question.trim()}
               contextLabel={chatContext.kind === 'file' ? `当前文件 · ${chatContext.fileName}` : '全局知识库'}
               actions={(
                 <>
-              {chatMessages.length > 0 ? (
+              {chatMessages.length > 0 || liveAssistant || liveReasoning ? (
                 <button
                   type="button"
                   onClick={clearChat}
@@ -1688,7 +1785,7 @@ ${question.trim()}
               )}
             />
 
-            {chatMessages.length === 0 && !chatSending ? (
+            {chatMessages.length === 0 && !chatSending && !liveAssistant && !liveReasoning ? (
               <KnowledgeChatEmptyState
                 visual={<Sparkles className="h-5 w-5 text-[var(--ds-accent)]" strokeWidth={1.7} />}
                 title={chatContext.kind === 'file' ? '关于此文件提问' : '与知识库对话'}
@@ -1716,7 +1813,27 @@ ${question.trim()}
                   </KnowledgeChatMessage>
                 ))}
 
-                {chatSending ? (
+                {liveReasoning ? (
+                  <KnowledgeChatMessage role="reasoning">
+                    <AssistantMarkdown
+                      text={liveReasoning}
+                      streaming
+                      className="ds-markdown ds-chat-answer break-words !text-[12px]"
+                    />
+                  </KnowledgeChatMessage>
+                ) : null}
+
+                {liveAssistant ? (
+                  <KnowledgeChatMessage role="assistant">
+                    <AssistantMarkdown
+                      text={liveAssistant}
+                      streaming
+                      className="ds-markdown ds-chat-answer break-words !text-[13px]"
+                    />
+                  </KnowledgeChatMessage>
+                ) : null}
+
+                {chatSending && !liveAssistant && !liveReasoning ? (
                   <KnowledgeChatMessage role="assistant">
                     <div className="flex items-center gap-2 text-[var(--ds-muted)]">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
@@ -1781,7 +1898,7 @@ ${question.trim()}
               placeholder="文件夹名称"
               className="mb-4 h-10 w-full rounded-[8px] border border-ds-border bg-ds-main px-3 text-[14px] text-[var(--ds-ink)] outline-none transition focus:border-[var(--ds-accent)]"
             />
-            <div className="flex justify-end gap-2">
+            <div data-control-hover-root className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={cancelCreateFolder}
@@ -1805,6 +1922,7 @@ ${question.trim()}
       {contextMenu.visible ? (
         <div
           ref={contextMenuRef}
+          data-control-hover-root
           className="fixed z-50 min-w-[160px] rounded-[8px] border border-ds-border bg-ds-card py-1 shadow-lg"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
@@ -1834,6 +1952,7 @@ ${question.trim()}
           <div className="my-1 border-t border-ds-border" />
           <button
             type="button"
+            data-control-hover-preserve
             onClick={() => {
               void batchDelete(Array.from(selectedPaths))
               closeContextMenu()
@@ -1866,9 +1985,10 @@ ${question.trim()}
                 <X className="h-4 w-4" strokeWidth={1.8} />
               </button>
             </div>
-            <div className="mb-4 max-h-[240px] overflow-y-auto rounded-[8px] border border-ds-border">
+            <div data-control-hover-root className="mb-4 max-h-[240px] overflow-y-auto rounded-[8px] border border-ds-border">
               <button
                 type="button"
+                data-control-active={moveModal.targetPath === '' ? 'true' : undefined}
                 onClick={() => setMoveModal((prev) => ({ ...prev, targetPath: '' }))}
                 className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition hover:bg-ds-hover ${
                   moveModal.targetPath === '' ? 'bg-[color-mix(in_srgb,var(--ds-accent)_8%,transparent)] text-[var(--ds-ink)]' : 'text-[var(--ds-muted)]'
@@ -1883,6 +2003,7 @@ ${question.trim()}
                   <button
                     key={folder.path}
                     type="button"
+                    data-control-active={moveModal.targetPath === folder.path ? 'true' : undefined}
                     onClick={() => setMoveModal((prev) => ({ ...prev, targetPath: folder.path }))}
                     disabled={selectedCount > 0}
                     className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition hover:bg-ds-hover disabled:opacity-40 ${
@@ -1897,7 +2018,7 @@ ${question.trim()}
                 )
               })}
             </div>
-            <div className="flex justify-end gap-2">
+            <div data-control-hover-root className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setMoveModal((prev) => ({ ...prev, visible: false }))}

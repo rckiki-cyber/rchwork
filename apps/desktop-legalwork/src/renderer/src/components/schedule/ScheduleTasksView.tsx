@@ -425,7 +425,7 @@ export function ScheduleTasksView({
             <p className="text-[14px] leading-6 text-ds-faint">
               {t('scheduleSubtitle')}
             </p>
-            <div className="flex items-center gap-2">
+            <div data-control-hover-root className="flex items-center gap-2">
               <AstryxSelect
                 value={filter}
                 onChange={(event) => setFilter(event.target.value as TaskFilter)}
@@ -506,7 +506,7 @@ export function ScheduleTasksView({
                           <span>{task.model} · {scheduleReasoningLabel(task.reasoningEffort, t)}</span>
                         </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1">
+                      <div data-control-hover-root className="flex shrink-0 items-center gap-1">
                         {lastThreadId ? (
                           <AstryxIconButton
                             onClick={() => onOpenThread?.(lastThreadId)}
@@ -533,6 +533,7 @@ export function ScheduleTasksView({
                         </AstryxIconButton>
                         <AstryxIconButton
                           onClick={() => void deleteTask(task.id)}
+                          data-control-hover-preserve
                           className="hover:bg-red-500/10 hover:text-red-600"
                           title={t('scheduleDeleteTask')}
                           aria-label={t('scheduleDeleteTask')}
@@ -876,7 +877,7 @@ function ScheduleTaskDialog({
             <MoreHorizontal className="h-4 w-4" strokeWidth={1.8} />
             {t('scheduleAdvancedSettings')}
           </AstryxButton>
-          <div className="flex items-center gap-2">
+          <div data-control-hover-root className="flex items-center gap-2">
             <AstryxButton variant="secondary" size="sm" onClick={onClose}>
               {t('cancel')}
             </AstryxButton>

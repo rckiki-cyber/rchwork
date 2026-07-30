@@ -101,9 +101,10 @@ export function createReadLocalTool(options: ReadLocalToolOptions = {}): LocalTo
       if (isBinaryBuffer(fileBuffer) && !isExtractableDocument) {
         return { output: { error: 'read only supports text files, images, and extractable documents in Legalwork serve mode', path: absolutePath }, isError: true }
       }
-      const text = isExtractableDocument
-        ? (await extractDocumentTextOp(absolutePath)).replace(/\r\n/g, '\n')
-        : fileBuffer.toString('utf8').replace(/\r\n/g, '\n')
+      const extracted = isExtractableDocument
+        ? await extractDocumentTextOp(absolutePath)
+        : { text: fileBuffer.toString('utf8').replace(/\r\n/g, '\n') }
+      const text = typeof extracted === 'string' ? extracted : extracted.text
       if (isExtractableDocument && !text.trim()) {
         return { output: { error: 'document text extraction returned no readable text', path: absolutePath }, isError: true }
       }

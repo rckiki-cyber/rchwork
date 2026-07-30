@@ -53,8 +53,17 @@ export function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequ
     request.template.id,
     request.template.name
   )
+  const userTemplatePriority =
+    request.template.source === 'user' ||
+    request.template.id?.startsWith('custom-') ||
+    request.template.description.includes('用户上传模板')
+      ? '当前模板为用户上传模板，具有最高优先级；必须严格遵循，不能用通用结构替换。'
+      : '当前模板来自产品模板目录；若上层 Agent 已匹配到更具体的隐藏内置模板，应优先遵循更具体模板。'
 
   const systemPrompt = `你是一名资深法律文书撰写专家。你的任务是根据用户选择的模板、填写的信息以及提供的参考材料，生成一份格式规范、内容严谨、说理充分的法律文书。
+
+模板优先级：
+${userTemplatePriority}
 
 通用要求：
 1. 严格遵循下方“本类文书格式卡”，不能把所有文书套成通用报告

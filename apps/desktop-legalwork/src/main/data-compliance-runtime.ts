@@ -130,7 +130,7 @@ function pythonExecutable(venvRoot: string = runtimeVenvRoot()): string {
   return join(venvRoot, 'bin', 'python')
 }
 
-function canRunSupportedPython(command: string, env: NodeJS.ProcessEnv = appendPathForPython()): boolean {
+function canRunSupportedPython(command: string, env: NodeJS.ProcessEnv = buildOcrRuntimeEnvironment()): boolean {
   if (!command.trim()) return false
   if (command.includes(' ') && !existsSync(command)) return false
   try {
@@ -147,7 +147,7 @@ function canRunSupportedPython(command: string, env: NodeJS.ProcessEnv = appendP
   }
 }
 
-function findSystemPython(env: NodeJS.ProcessEnv = appendPathForPython()): string {
+function findSystemPython(env: NodeJS.ProcessEnv = buildOcrRuntimeEnvironment()): string {
   const explicit = [process.env.COMPLIANCEAI_PYTHON, process.env.PYTHON, process.env.PYTHON3]
     .filter((candidate): candidate is string => Boolean(candidate?.trim()))
   const candidates = process.platform === 'win32'
@@ -279,7 +279,10 @@ function findHomebrewExecutable(env: NodeJS.ProcessEnv): string | undefined {
   }
 }
 
-function appendPathForPython(baseRoots: Array<string | undefined> = []): NodeJS.ProcessEnv {
+export function buildOcrRuntimeEnvironment(
+  baseRoots: Array<string | undefined> = [],
+  baseEnv: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
   const roots = ocrRuntimeRoots([
     ...baseRoots,
     process.resourcesPath,
@@ -291,13 +294,13 @@ function appendPathForPython(baseRoots: Array<string | undefined> = []): NodeJS.
   const paddleModelRoot = roots
     .map((root) => join(root, 'paddle-models'))
     .find((candidate) => existsSync(candidate))
-  const current = process.env.PATH ?? ''
+  const current = baseEnv.PATH ?? ''
   return {
-    ...process.env,
+    ...baseEnv,
     ...(roots[0] ? { LEGALWORK_OCR_ROOT: roots[0] } : {}),
     ...(paddleModelRoot ? { LEGALWORK_PADDLEOCR_MODEL_ROOT: paddleModelRoot } : {}),
     ...(tesseractCmd ? { LEGALWORK_TESSERACT_CMD: tesseractCmd } : {}),
-    ...(tessdataDir && !process.env.TESSDATA_PREFIX ? { TESSDATA_PREFIX: tessdataDir } : {}),
+    ...(tessdataDir && !baseEnv.TESSDATA_PREFIX ? { TESSDATA_PREFIX: tessdataDir } : {}),
     PATH: [current, ...ocrBinDirs, ...COMMON_BINARY_DIRS].filter(Boolean).join(delimiter)
   }
 }
@@ -312,7 +315,7 @@ async function runCommand(
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
-      env: options.env ?? appendPathForPython(),
+      env: options.env ?? buildOcrRuntimeEnvironment(),
       stdio: ['ignore', 'pipe', 'pipe']
     })
     child.stdout?.pipe(log, { end: false })
@@ -605,7 +608,7 @@ export class DataComplianceRuntime {
     const python = pythonExecutable(venvRoot)
     const marker = join(venvRoot, DEPENDENCY_MARKER)
     const logPath = join(this.logDir, 'data-compliance-runtime.log')
-    const env = appendPathForPython([this.webRoot, this.projectRoot])
+    const env = buildOcrRuntimeEnvironment([this.webRoot, this.projectRoot])
     if (existsSync(python) && !canRunSupportedPython(python, env)) {
       rmSync(venvRoot, { recursive: true, force: true })
       rmSync(marker, { force: true })
@@ -709,7 +712,7 @@ export class DataComplianceRuntime {
     const child = spawn(venvPython, ['server_entry.py', '--port', String(PORT)], {
       cwd: this.webRoot,
       env: {
-        ...appendPathForPython([this.webRoot, this.projectRoot]),
+        ...buildOcrRuntimeEnvironment([this.webRoot, this.projectRoot]),
         ...agentEnv,
         COMPLIANCEAI_PYTHON: venvPython,
         COMPLIANCEAI_LOG_PATH: logPath

@@ -84,6 +84,10 @@ typography:
     sans: "SF Pro Text, 'PingFang SC', 'Noto Sans SC', 'Helvetica Neue', Arial, sans-serif"
     display: "SF Pro Display, 'PingFang SC', 'Noto Sans SC', sans-serif"
     mono: "SF Mono, 'JetBrains Mono', 'IBM Plex Mono', monospace"
+  family_usage:
+    ui_and_identifiers: sans
+    headings: display
+    editable_commands_and_config: mono
   size_scale_px:  # values actually used in JSX
     [9, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 16, 18, 24, 30]
   size_rhythm:
@@ -95,6 +99,7 @@ typography:
     body: 13
     body_lg: 14
     body_xl: 14.5
+    chat_body: 15
     title_sm: 15
     title: 16
     title_lg: 18
@@ -120,6 +125,7 @@ typography:
     title_sm: "Strong inline label"
     body_xl: "Settings subtitle, session header sub"
     body_lg: "Primary form input text, list row primary"
+    chat_body: "Agent conversation body and user message bubbles; one step above sidebar/list UI, below document-preview prose"
     body: "Default body, button text, table cell"
     body_sm: "Secondary metadata, list row secondary"
     label_small: "Tab label, table header"
@@ -163,11 +169,14 @@ radius:
     chip: pill
     pill_button: pill
     avatar: pill
+    subfeature_button: lg
+    subfeature_segment_group: "2xl"
     card_default: lg
     dialog: "3xl"
     topbar_dropdown: "2.5xl"
     composer: composer
     inline_code: sm
+    inset_control_group: "Outer radius uses --lg-radius-selection; inner controls subtract the full border-plus-padding inset so both curves remain concentric."
     icon_only_button: md
 
 # ---------- 5. Elevation (shadows + dark-mode shadows) ----------
@@ -201,7 +210,15 @@ motion:
   special:
     pulse: 1800      # ms, ease-in-out, infinite (logo / status dot)
     shiny_text: 2400 # ms, ease-in-out, infinite (streaming shimmer)
-    hover_preview: 220 # ms, material easing across buttons, rows, and icons
+    hover_preview: 220 # ms, material easing across buttons, rows, and icons; the shared plate inherits each target's radius and stays between its background and content
+    command_menu_hover: 300 # ms, one shared spring plate glides between command and file-suggestion rows
+    composer_action_menu_hover: 340 # ms, the add menu and all model/reasoning menu rows use the shared spring plate
+    composer_action_menu_open: 440 # ms, fast liquid-glass expansion from the plus button followed by progressively slower overshoot settling
+    knowledge_chat_sidebar: "500ms right-to-left split-view push with width overshoot and content fade; 320ms reverse close"
+    project_picker_hover: 300 # ms, one shared spring plate spans project rows and footer actions
+    anchored_menu: "Shared hover roots must preserve an existing absolute or fixed positioning mode so popup geometry remains anchored to its trigger."
+    subfeature_control_hover: 340 # ms, one shared spring plate glides and resizes between adjacent controls
+    legal_research_stream: 2400 # ms, restrained live rail/caret treatment layered over real streaming Markdown
   transform:
     card_lift: "translateY(-1px)"
     button_press: "scale(0.985)"
@@ -213,12 +230,14 @@ motion:
 knowledge_base:
   pdf_preview:
     selection: "Use the PDF.js TextLayer aligned to the rendered viewport for precise selectable text; do not approximate glyph positions manually."
+  docx_preview:
+    fidelity: "Render DOCX from its OOXML package so page size, margins, paragraph spacing, indentation, alignment, lists, tables, headers, footers, notes, and explicit page breaks remain faithful to Word."
+    font: "Preserve document sizing, weight, emphasis, color, and decoration, but replace embedded and document-specified font families with the LegalWork Apple UI font stack."
   ai_chat:
     surface: "Global KB chat and file-specific chat share one compact Apple inspector chrome, empty state, message bubble, and composer language."
     composer: "No persistent blue focus frame; liquid pointer light appears only while the mouse is inside the composer surface."
   file_rows:
-    hover: "Folder and file rows use the shared spring hover plate, matching sidebar preview motion instead of per-row instant hover fills."
-
+    hover: "Folder and file rows use the shared spring hover plate, matching sidebar preview motion instead of per-row instant hover fills. In scrollable lists the hover target is re-sampled from the current pointer position during scroll. All preview/selected rounded rectangles must use the main home sidebar selection radius, --lg-radius-selection."
 # ---------- 7. Z-index ----------
 z_index:
   background: -2
@@ -250,12 +269,32 @@ components:
     base: "border border-ds-border bg-ds-card rounded-xl shadow-sm"
     strong: "border-ds-border-strong bg-ds-elevated shadow-[ds-shadow-card-strong] backdrop-blur-xl"
   button_primary:
-    base: "inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-[13px] font-semibold text-white transition hover:brightness-110"
-    shadow: "0 10px 24px rgba(0,136,255,0.22)"
+    base: "inline-flex items-center gap-1.5 rounded-full border border-accent/20 bg-accent-soft px-4 py-2 text-[13px] font-semibold text-accent transition hover:bg-accent/17"
+    shadow: "inset 0 0 0 1px rgba(0,122,255,0.22)"
   button_secondary:
     base: "inline-flex items-center gap-1.5 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[13px] font-medium text-ds-ink shadow-sm transition hover:bg-ds-hover disabled:opacity-50"
   button_pill:
     base: "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] transition"
+  subfeature_controls:
+    button_radius: "12px — matches the workspace mode selector"
+    segmented_group_radius: "16px"
+    scope: "All non-Agent feature surfaces, including their sidebars and dialogs"
+    exceptions: "True circular controls and switches preserve their semantic shape"
+    hover: "Every adjacent button group uses one shared 12px spring hover plate that glides and resizes between controls. Selected, primary, disabled, switch, and danger semantics remain visually distinct."
+  project_picker:
+    panel_radius: "16px — same outer radius as the workspace mode selector"
+    trigger_and_item_radius: "12px"
+    hover_plate_radius: "12px"
+  legal_research:
+    section_radius: "16px"
+    control_radius: "12px"
+    reading_order: "Question, live status, research activity, reasoning summary, streamed report"
+    iconography: "Lucide only; never emoji"
+    streaming: "Render incomplete Markdown in streaming mode, with a restrained live rail, one-shot entry motion, and a terminal caret. Disable decorative movement for reduced-motion users."
+  composer_model_menu:
+    panel_radius: "22px — shared elevated control-group radius"
+    row_radius: "12px — identical to sidebar selectable rows"
+    hover_plate_radius: "Inherit the hovered row's computed 12px radius"
   input:
     base: "w-full rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[14px] text-ds-ink shadow-sm focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/30"
   chip:
@@ -524,6 +563,11 @@ probably between two rungs — pick the closer one or restructure.
 Default `leading` is `leading-relaxed` for body prose, `leading-5`
 or `leading-6` for compact UI lists, and tight (`leading-tight`)
 only for hero headings. Never `leading-none` except in chips.
+
+Agent chat Markdown must use the `chat_body` rung in both streaming
+and completed states. Do not render a live assistant response at a
+smaller process/detail size and then promote it to `chat_body` after
+completion; that causes visible text growth while the user is reading.
 
 `tracking-wide` is reserved for the small uppercase section labels
 (`text-[11px] font-semibold uppercase tracking-wide text-ds-faint`)
@@ -1527,6 +1571,29 @@ inside a single animation-frame loop; it must never trigger React renders.
 - Forced-colors mode removes optics and preserves native boundaries.
 - The solid fallback must remain complete when `backdrop-filter` is unavailable.
 - Live text and icons stay outside the filtered optical layer.
+
+---
+
+## 18. Learning outcomes report
+
+The learning-iteration detail view is an end-user progress report, not an
+engineering audit. Its default reading order is:
+
+1. one plain-language outcome sentence;
+2. four compact metrics for reviewed content, learned preferences, improved
+   methods, and uncertain items not adopted;
+3. a small comparative bar chart;
+4. concrete cards explaining what was learned and what will improve next time;
+5. privacy, control, and rollback reassurance.
+
+Do not expose thread IDs, memory IDs, source keys, JSON fields, internal
+validation frameworks, pressure-test categories, or model-analysis terminology
+in the primary report. Keep the original Markdown record available in one
+collapsed “technical record” disclosure for auditability.
+
+Reports must remain honest when no stable learning was found. Show an explicit
+empty outcome and explain that uncertain information was deliberately not
+memorized; never manufacture progress for visual effect.
 
 This file is the design source of truth. When the code and this
 file disagree, **this file is wrong** until you change both.

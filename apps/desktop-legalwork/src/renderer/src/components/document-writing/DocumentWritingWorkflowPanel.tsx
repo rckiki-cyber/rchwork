@@ -51,7 +51,7 @@ export function DocumentWritingWorkflowPanel(): ReactElement | null {
                 : '材料、调研与文书已完成'}
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div data-control-hover-root className="flex items-center gap-1">
           <button type="button" onClick={() => setWorkflowVisibility('minimized')} className="rounded-[7px] p-1.5 text-ds-faint hover:bg-ds-hover hover:text-ds-ink" title="最小化流程">
             <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
           </button>

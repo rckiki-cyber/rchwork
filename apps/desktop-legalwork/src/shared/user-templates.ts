@@ -33,6 +33,8 @@ export interface UserTemplate {
   legalBasis?: string[]
   /** Path to the original uploaded file (if any) */
   sourceFile?: string
+  /** AI learning status */
+  learningStatus?: 'idle' | 'analyzing' | 'done' | 'failed'
   /** ISO timestamp of creation */
   createdAt: string
   /** ISO timestamp of last modification */
@@ -79,6 +81,8 @@ export interface TemplateGenerateWithMaterialsRequest {
     content: string
     fields: UserTemplateField[]
     legalBasis?: string[]
+    /** User-uploaded templates outrank hidden built-ins and autonomous drafting. */
+    source?: 'user' | 'catalog'
   }
   /** Field values already filled by user */
   fieldValues: Record<string, string>
@@ -123,6 +127,7 @@ export const userTemplateSchema = z.object({
   fields: z.array(userTemplateFieldSchema).max(200),
   legalBasis: z.array(z.string().max(1000)).max(50).optional(),
   sourceFile: z.string().max(1000).optional(),
+  learningStatus: z.enum(['idle', 'analyzing', 'done', 'failed']).optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 })
@@ -140,7 +145,8 @@ export const templateGenerateWithMaterialsRequestSchema = z.object({
     description: z.string().max(2000),
     content: z.string().min(1).max(50_000),
     fields: z.array(userTemplateFieldSchema).max(200),
-    legalBasis: z.array(z.string().max(1000)).max(50).optional()
+    legalBasis: z.array(z.string().max(1000)).max(50).optional(),
+    source: z.enum(['user', 'catalog']).optional()
   }),
   fieldValues: z.record(z.string(), z.string().max(50_000)),
   materials: z

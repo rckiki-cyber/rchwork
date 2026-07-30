@@ -46,7 +46,7 @@ export function KnowledgeAssistantContent({
             <AssistantMarkdown
               text={legacyParts.reasoning}
               streaming={false}
-              className="ds-markdown ds-chat-answer break-words"
+              className="ds-markdown ds-chat-answer break-words !text-[12px]"
             />
           </div>
         </details>
@@ -54,7 +54,7 @@ export function KnowledgeAssistantContent({
       <AssistantMarkdown
         text={legacyParts.content}
         streaming={false}
-        className="ds-markdown ds-chat-answer break-words leading-relaxed"
+        className="ds-markdown ds-chat-answer break-words !text-[13px] leading-relaxed"
       />
     </div>
   )

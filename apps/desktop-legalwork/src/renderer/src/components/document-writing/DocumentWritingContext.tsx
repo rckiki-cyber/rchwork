@@ -87,18 +87,6 @@ type DocumentWritingContextValue = {
   handleGenerate: () => Promise<void>
   handleNewDocument: () => void
   handleUpload: (file: File) => Promise<void>
-  handleSaveLearnedTemplate: (learned: {
-    name: string
-    description: string
-    content: string
-    fields: Array<{
-      id: string
-      label: string
-      type: string
-      placeholder?: string
-      required?: boolean
-    }>
-  }) => Promise<void>
   handleRestoreHistory: (record: DocumentHistoryRecord) => void
   handleDeleteUserTemplate: (templateId: string) => Promise<void>
   handleAddMaterial: (file: File) => Promise<void>
@@ -121,7 +109,8 @@ function userTemplateToLegalTemplate(ut: UserTemplate): LegalTemplate {
       type: f.type as LegalTemplate['fields'][number]['type']
     })),
     legalBasis: ut.legalBasis,
-    icon: '📄'
+    icon: '📄',
+    learningStatus: (ut.learningStatus || 'idle') as LegalTemplate['learningStatus']
   })
 }
 
@@ -143,6 +132,21 @@ function loadedMaterials(materials: UploadedMaterial[]): Array<{ fileName: strin
     .map((material) => ({ fileName: material.name, content: material.content }))
 }
 
+const TEMPLATE_CONTENT_MAX_CHARS = 50_000
+const TEMPLATE_OPERATION_TIMEOUT_MS = 30_000
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
+
 async function extractMaterialText(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
   if (['txt', 'md', 'markdown', 'csv', 'json', 'html', 'xml'].includes(ext)) {
@@ -159,6 +163,17 @@ async function extractMaterialText(file: File): Promise<string> {
     throw new Error(result.message)
   }
   throw new Error('当前版本无法读取该材料格式，请先转换为 txt 或 md。')
+}
+
+async function extractTemplateText(file: File): Promise<string> {
+  const content = await withTimeout(
+    extractMaterialText(file),
+    TEMPLATE_OPERATION_TIMEOUT_MS,
+    '读取模板文件超时，请确认文件可正常打开后重试。'
+  )
+  const normalized = content.split('\u0000').join('').trim()
+  if (!normalized) throw new Error('未能从模板文件中提取到文字。')
+  return normalized.slice(0, TEMPLATE_CONTENT_MAX_CHARS)
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -205,8 +220,12 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
   const loadUserTemplates = useCallback(async () => {
     setLoadingTemplates(true)
     try {
-      const stored = await window.dsGui.listUserTemplates()
-      setUserTemplates(stored.map(userTemplateToLegalTemplate))
+      const result = await withTimeout(
+        window.dsGui.listUserTemplates(),
+        10_000,
+        '加载自定义模板超时'
+      )
+      setUserTemplates(result.map(userTemplateToLegalTemplate))
     } catch {
       // Backend not available - just use built-in.
     } finally {
@@ -310,7 +329,8 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
         description: activeTemplate.description,
         content: activeTemplate.content,
         fields: activeTemplate.fields,
-        legalBasis: activeTemplate.legalBasis
+        legalBasis: activeTemplate.legalBasis,
+        source: activeTemplate.category === 'custom' ? ('user' as const) : ('catalog' as const)
       },
       fieldValues,
       materials: materials.length > 0 ? materials : undefined,
@@ -448,10 +468,11 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
 
   const handleUpload = useCallback(
     async (file: File) => {
-      const text = await file.text()
+      const text = await extractTemplateText(file)
       const now = new Date().toISOString()
+      const templateId = `custom-${Date.now()}`
       const newTemplate: UserTemplate = {
-        id: `custom-${Date.now()}`,
+        id: templateId,
         name: file.name.replace(/\.[^/.]+$/, ''),
         description: `用户上传模板：${file.name}`,
         category: 'custom',
@@ -466,49 +487,59 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
           }
         ],
         sourceFile: file.name,
+        learningStatus: 'analyzing',
         createdAt: now,
         updatedAt: now
       }
-      const saveResult = await window.dsGui.saveUserTemplate(newTemplate)
+      const saveResult = await withTimeout(
+        window.dsGui.saveUserTemplate(newTemplate),
+        10_000,
+        '保存模板超时，请重试。'
+      )
       if (!saveResult.ok) throw new Error(saveResult.message)
-      await loadUserTemplates()
-    },
-    [loadUserTemplates]
-  )
+      setUserTemplates((current) => [
+        ...current.filter((template) => template.id !== templateId),
+        userTemplateToLegalTemplate(newTemplate)
+      ])
+      void loadUserTemplates()
 
-  const handleSaveLearnedTemplate = useCallback(
-    async (learned: {
-      name: string
-      description: string
-      content: string
-      fields: Array<{
-        id: string
-        label: string
-        type: string
-        placeholder?: string
-        required?: boolean
-      }>
-    }) => {
-      const now = new Date().toISOString()
-      const newTemplate: UserTemplate = {
-        id: `custom-${Date.now()}`,
-        name: learned.name,
-        description: learned.description,
-        category: 'custom',
-        content: learned.content,
-        fields: learned.fields.map((field) => ({
-          id: field.id,
-          label: field.label,
-          type: field.type as 'text' | 'textarea' | 'date' | 'select' | 'array',
-          placeholder: field.placeholder,
-          required: field.required
-        })),
-        createdAt: now,
-        updatedAt: now
-      }
-      const saveResult = await window.dsGui.saveUserTemplate(newTemplate)
-      if (!saveResult.ok) throw new Error(saveResult.message)
-      await loadUserTemplates()
+      // Background AI learning
+      window.dsGui.learnTemplateFromFile({
+        fileContent: text,
+        fileName: file.name
+      }).then((result) => {
+        if (!result.ok) {
+          // Update template with failed status
+          window.dsGui.saveUserTemplate({
+            ...newTemplate,
+            learningStatus: 'failed',
+            updatedAt: new Date().toISOString()
+          }).then(() => loadUserTemplates()).catch(() => {})
+          return
+        }
+        // Update template with learned fields
+        window.dsGui.saveUserTemplate({
+          ...newTemplate,
+          name: result.name || newTemplate.name,
+          description: result.description || newTemplate.description,
+          content: result.content || text,
+          fields: result.fields.map((f: { id: string; label: string; type: string; placeholder?: string; required?: boolean }) => ({
+            id: f.id,
+            label: f.label,
+            type: f.type as 'text' | 'textarea' | 'date' | 'select' | 'array',
+            placeholder: f.placeholder,
+            required: f.required
+          })),
+          learningStatus: 'done',
+          updatedAt: new Date().toISOString()
+        }).then(() => loadUserTemplates()).catch(() => {})
+      }).catch(() => {
+        window.dsGui.saveUserTemplate({
+          ...newTemplate,
+          learningStatus: 'failed',
+          updatedAt: new Date().toISOString()
+        }).then(() => loadUserTemplates()).catch(() => {})
+      })
     },
     [loadUserTemplates]
   )
@@ -626,7 +657,6 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       handleGenerate,
       handleNewDocument,
       handleUpload,
-      handleSaveLearnedTemplate,
       handleRestoreHistory,
       handleDeleteUserTemplate,
       handleAddMaterial,
@@ -654,7 +684,6 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       handleNewDocument,
       handleRemoveMaterial,
       handleRestoreHistory,
-      handleSaveLearnedTemplate,
       handleSelectTemplate,
       handleUpload,
       historyRefreshSignal,

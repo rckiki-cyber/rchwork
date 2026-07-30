@@ -143,7 +143,7 @@ export function ScheduleDefaultsDialog({
           </label>
         </div>
 
-        <div className="mt-5 flex justify-end gap-2">
+        <div data-control-hover-root className="mt-5 flex justify-end gap-2">
           <AstryxButton variant="secondary" size="md" onClick={onClose}>
             {t('cancel')}
           </AstryxButton>

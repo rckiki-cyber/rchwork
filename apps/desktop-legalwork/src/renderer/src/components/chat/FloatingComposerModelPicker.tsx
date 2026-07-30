@@ -292,6 +292,9 @@ export function FloatingComposerModelPicker({
         <div
           ref={menuRef}
           role="menu"
+          data-control-hover-root
+          data-control-hover-layered
+          data-control-hover-portal
           style={menuStyle}
           className={className}
         >
@@ -357,8 +360,11 @@ export function FloatingComposerModelPicker({
             ref={submenuRef}
             role="menu"
             aria-label={activeProviderGroup.label}
+            data-control-hover-root
+            data-control-hover-layered
+            data-control-hover-portal
             style={submenuStyle}
-            className="fixed z-[1001] overflow-y-auto rounded-xl border border-ds-border bg-white p-1.5 text-[13px] text-ds-muted shadow-[0_18px_48px_rgba(15,23,42,0.16)] dark:bg-ds-card"
+            className="fixed z-[1001] overflow-y-auto rounded-[22px] border border-ds-border bg-white p-1.5 text-[13px] text-ds-muted shadow-[0_18px_48px_rgba(15,23,42,0.16)] dark:bg-ds-card"
           >
             <div className="px-2.5 pb-1 pt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-ds-faint">
               {t('composerModel')}
@@ -423,7 +429,7 @@ export function FloatingComposerModelPicker({
             <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.8} />
           </span>
         </button>
-        {renderMenu('fixed z-[1000] overflow-x-hidden overflow-y-auto rounded-xl border border-ds-border bg-white p-1.5 text-[12.5px] shadow-[0_18px_50px_rgba(15,23,42,0.16)] dark:bg-ds-card')}
+        {renderMenu('fixed z-[1000] overflow-x-hidden overflow-y-auto rounded-[22px] border border-ds-border bg-white p-1.5 text-[12.5px] shadow-[0_18px_50px_rgba(15,23,42,0.16)] dark:bg-ds-card')}
       </div>
     )
   }
@@ -462,7 +468,7 @@ export function FloatingComposerModelPicker({
       </button>
 
       {menuOpen && canChangeModel ? (
-        renderMenu('fixed z-[1000] overflow-x-hidden overflow-y-auto rounded-xl border border-ds-border bg-white p-1.5 text-[13px] text-ds-muted shadow-[0_22px_64px_rgba(15,23,42,0.18)] dark:bg-ds-card')
+        renderMenu('fixed z-[1000] overflow-x-hidden overflow-y-auto rounded-[22px] border border-ds-border bg-white p-1.5 text-[13px] text-ds-muted shadow-[0_22px_64px_rgba(15,23,42,0.18)] dark:bg-ds-card')
       ) : null}
     </div>
   )
@@ -671,9 +677,10 @@ function PickerRow({
       type="button"
       role="menuitemradio"
       aria-checked={selected}
+      data-control-active={selected ? 'true' : undefined}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
-      className={`flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition ${
+      className={`flex min-h-9 w-full items-center gap-2 rounded-[12px] px-2.5 py-1.5 text-left transition ${
         selected
           ? 'bg-ds-hover text-ds-ink'
           : 'text-ds-muted hover:bg-ds-hover hover:text-ds-ink'
@@ -718,7 +725,7 @@ function ProviderRow({
       onMouseEnter={onMouseEnter}
       onFocus={onMouseEnter}
       onClick={onClick}
-      className={`flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition ${
+      className={`flex min-h-9 w-full items-center gap-2 rounded-[12px] px-2.5 py-1.5 text-left transition ${
         active
           ? 'bg-ds-hover text-ds-ink'
           : selected

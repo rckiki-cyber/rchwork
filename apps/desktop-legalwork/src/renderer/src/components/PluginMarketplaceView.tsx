@@ -2,22 +2,37 @@ import type { ReactElement, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  Blocks,
+  BookOpenText,
+  BriefcaseBusiness,
   Check,
   ChevronDown,
+  Code2,
   Copy,
+  Database,
   ExternalLink,
+  FileText,
   FolderOpen,
+  Globe2,
   Info,
+  LayoutTemplate,
   Loader2,
+  MessagesSquare,
   MoreHorizontal,
+  Palette,
   Plus,
   PlayCircle,
   RefreshCw,
   Search,
+  ShieldCheck,
+  Sparkles,
   Settings,
   Upload,
+  Workflow,
+  Wrench,
   X
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import {
   joinFsPath,
   loadPreferredSkillRootId,
@@ -111,6 +126,9 @@ const PKULAW_MCP_ENDPOINTS = [
 ] as const
 const PKULAW_MCP_ENDPOINT_IDS = new Set(PKULAW_MCP_ENDPOINTS.map((endpoint) => endpoint.id))
 const YUANDIAN_MCP_GROUP_ID = 'yuandian'
+const ANYSEARCH_ID = 'anysearch'
+const IMA_KB_ID = 'ima-knowledge-base'
+type ImaConnectionStatus = 'valid' | 'expired' | 'unverified' | 'network_error' | 'not_configured'
 const YUANDIAN_MCP_ENDPOINTS = [
   { id: 'yuandian-law', url: 'https://open.chineselaw.com/mcp/law/stream' },
   { id: 'yuandian-case', url: 'https://open.chineselaw.com/mcp/case/stream' },
@@ -135,6 +153,24 @@ const CATEGORY_ORDER: PluginCategory[] = [
   'system',
   'other'
 ]
+
+const CATEGORY_ICONS: Record<PluginCategory, LucideIcon> = {
+  legal: BriefcaseBusiness,
+  data: Database,
+  coding: Code2,
+  frontend: LayoutTemplate,
+  browser: Globe2,
+  files: FolderOpen,
+  research: BookOpenText,
+  automation: Workflow,
+  communication: MessagesSquare,
+  media: Palette,
+  documents: FileText,
+  security: ShieldCheck,
+  productivity: Sparkles,
+  system: Wrench,
+  other: Blocks
+}
 
 const CATEGORY_SCORE_RULES: Array<{ category: PluginCategory; pattern: RegExp; weight?: number }> = [
   { category: 'legal', pattern: /\b(law|legal|case|court|contract|pkulaw|yuandian|clause)\b|法律|法规|案例|合同|诉讼|律师|法宝|元典/i, weight: 3 },
@@ -328,6 +364,26 @@ export function buildPkulawMcpConfig(token: string): JsonRecord {
       trustScope: 'user',
       timeoutMs: 30000
     }
+  }
+  return { servers }
+}
+
+function buildImaMcpConfig(_workspaceRoot: string, _apiKey: string): JsonRecord {
+  return { servers: {} }
+}
+
+function buildAnysearchMcpConfig(apiKey: string): JsonRecord {
+  const headers: JsonRecord = apiKey.trim()
+    ? { Authorization: `Bearer ${apiKey.trim()}` }
+    : {}
+  const servers: JsonRecord = {}
+  servers[ANYSEARCH_ID] = {
+    enabled: true,
+    transport: 'streamable-http',
+    url: 'https://api.anysearch.com/mcp',
+    headers,
+    trustScope: 'user',
+    timeoutMs: 30000
   }
   return { servers }
 }
@@ -577,6 +633,34 @@ function groupMarketplaceItemsByCategory(items: MarketplaceItem[]): Array<{ cate
   return [...groups.entries()]
     .sort(([left], [right]) => categoryRank(left) - categoryRank(right))
     .map(([category, groupedItems]) => ({ category, items: groupedItems }))
+}
+
+export function mergeMarketplaceCatalogItems(items: MarketplaceItem[]): MarketplaceItem[] {
+  const merged = new Map<string, MarketplaceItem>()
+  for (const item of items) {
+    const key = storageKey(item.kind, item.id)
+    const existing = merged.get(key)
+    if (!existing) {
+      merged.set(key, item)
+      continue
+    }
+
+    const catalogItem = existing.group === 'recommended' ? existing : item.group === 'recommended' ? item : existing
+    const discoveredItem = existing.group === 'personal' ? existing : item.group === 'personal' ? item : item
+    merged.set(key, {
+      ...catalogItem,
+      ...discoveredItem,
+      title: catalogItem.title ?? discoveredItem.title,
+      titleKey: catalogItem.titleKey ?? discoveredItem.titleKey,
+      description: discoveredItem.description ?? catalogItem.description,
+      descriptionKey: catalogItem.descriptionKey ?? discoveredItem.descriptionKey,
+      category: catalogItem.category ?? discoveredItem.category,
+      mcpConfig: catalogItem.mcpConfig ?? discoveredItem.mcpConfig,
+      systemManaged: catalogItem.systemManaged || discoveredItem.systemManaged,
+      configurable: catalogItem.configurable || discoveredItem.configurable
+    })
+  }
+  return sortMarketplaceItems([...merged.values()])
 }
 
 export function skillMarketplaceItemsFromDiscoveredSkills(
@@ -909,6 +993,24 @@ const RECOMMENDED_ITEMS: MarketplaceItem[] = [
     configurable: true
   },
   {
+    id: ANYSEARCH_ID,
+    kind: 'mcp',
+    titleKey: 'pluginMcpAnysearchTitle',
+    descriptionKey: 'pluginMcpAnysearchDesc',
+    group: 'recommended',
+    category: 'research',
+    configurable: true
+  },
+  {
+    id: IMA_KB_ID,
+    kind: 'mcp',
+    titleKey: 'pluginMcpImaTitle',
+    descriptionKey: 'pluginMcpImaDesc',
+    group: 'recommended',
+    category: 'research',
+    configurable: true
+  },
+  {
     id: 'code-review',
     kind: 'skill',
     titleKey: 'pluginSkillReviewTitle',
@@ -976,6 +1078,13 @@ export function PluginMarketplaceView({
   const [configuringItemId, setConfiguringItemId] = useState<string | null>(null)
   const [pkulawToken, setPkulawToken] = useState('')
   const [yuandianApiKey, setYuandianApiKey] = useState('')
+  const [anysearchApiKey, setAnysearchApiKey] = useState('')
+  const [imaLoggedIn, setImaLoggedIn] = useState(false)
+  const [imaConnectionStatus, setImaConnectionStatus] = useState<ImaConnectionStatus>('not_configured')
+  const [imaStatusMessage, setImaStatusMessage] = useState('')
+  const [imaKnowledgeBaseCount, setImaKnowledgeBaseCount] = useState(0)
+  const [imaLoggingIn, setImaLoggingIn] = useState(false)
+  const [imaReloggingIn, setImaReloggingIn] = useState(false)
   const [runtimeInfo, setRuntimeInfo] = useState<CoreRuntimeInfoJson | null>(null)
   const [toolDiagnostics, setToolDiagnostics] = useState<CoreRuntimeToolDiagnosticsJson | null>(null)
   const [runtimeOverlayLoading, setRuntimeOverlayLoading] = useState(false)
@@ -1228,7 +1337,12 @@ export function PluginMarketplaceView({
       })
   }, [activeKind, filter, isInstalled, marketplaceItems, query, t])
 
-  const builtInItems = visibleItems.filter((item) => item.systemManaged)
+  const mcpUninstalledItems = activeKind === 'mcp'
+    ? mergeMarketplaceCatalogItems(visibleItems).filter((item) => !item.systemManaged && !isInstalled(item))
+    : []
+  const mcpInstalledItems = activeKind === 'mcp'
+    ? mergeMarketplaceCatalogItems(visibleItems).filter((item) => !item.systemManaged && isInstalled(item))
+    : []
   const userInstalledItems = activeKind === 'skill'
     ? visibleItems.filter((item) => item.kind === 'skill' && item.userInstalled)
     : []
@@ -1275,6 +1389,19 @@ export function PluginMarketplaceView({
     setNotice({ tone: 'success', message: t('pluginMcpTokenUpdated', { path: result.path }) })
   }
 
+  const persistImaConnection = async (): Promise<boolean> => {
+    const mcpConfig = await window.dsGui.imaGetMcpConfig()
+    if ('error' in mcpConfig) {
+      setNotice({ tone: 'error', message: String(mcpConfig.error) })
+      return false
+    }
+    await upsertMcpConfig(IMA_KB_ID, mcpConfig as JsonRecord)
+    setConfiguringItemId(null)
+    setImaLoggedIn(true)
+    setNotice({ tone: 'success', message: t('pluginMcpImaConnected') })
+    return true
+  }
+
   useEffect(() => {
     if (activeKind !== 'mcp') return
     void refreshMcpRuntimeOverlay()
@@ -1308,6 +1435,39 @@ export function PluginMarketplaceView({
       } else if (item.id === YUANDIAN_MCP_GROUP_ID) {
         const existing = readTokenFromConfig(YUANDIAN_MCP_ENDPOINTS[0].url)
         setYuandianApiKey(existing)
+      } else if (item.id === ANYSEARCH_ID) {
+        const existing = readTokenFromConfig('https://api.anysearch.com/mcp')
+        setAnysearchApiKey(existing)
+      } else if (item.id === IMA_KB_ID) {
+        const cfg = await window.dsGui.imaGetConfig().catch(() => ({
+          loggedIn: false,
+          status: 'network_error' as const,
+          message: t('pluginMcpImaStatusNetworkError'),
+          knowledgeBaseCount: 0
+        }))
+        const loggedIn = Boolean(cfg.loggedIn)
+        setImaLoggedIn(loggedIn)
+        setImaConnectionStatus(cfg.status)
+        setImaStatusMessage(cfg.message || '')
+        setImaKnowledgeBaseCount(cfg.knowledgeBaseCount)
+        if (loggedIn) {
+          if (isInstalled(item)) {
+            setConfiguringItemId(item.id)
+            return
+          }
+          setBusyId(storageKey(item.kind, item.id))
+          setNotice(null)
+          try {
+            await persistImaConnection()
+          } catch (e) {
+            setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
+          } finally {
+            setBusyId(null)
+          }
+          return
+        }
+        setConfiguringItemId(item.id)
+        return
       }
       setConfiguringItemId(item.id)
       return
@@ -1402,6 +1562,68 @@ export function PluginMarketplaceView({
       setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
     } finally {
       setBusyId(null)
+    }
+  }
+
+  const addAnysearch = async (): Promise<void> => {
+    const apiKey = anysearchApiKey.trim()
+    setBusyId(storageKey('mcp', ANYSEARCH_ID))
+    setNotice(null)
+    try {
+      await upsertMcpConfig(ANYSEARCH_ID, buildAnysearchMcpConfig(apiKey))
+      setConfiguringItemId(null)
+      setAnysearchApiKey('')
+    } catch (e) {
+      setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const addIma = async (): Promise<void> => {
+    setImaLoggingIn(true)
+    setNotice(null)
+    try {
+      const status = await window.dsGui.imaGetConfig()
+      setImaConnectionStatus(status.status)
+      setImaStatusMessage(status.message || '')
+      setImaKnowledgeBaseCount(status.knowledgeBaseCount)
+      if (!status.loggedIn) {
+        const loginResult = status.status === 'expired'
+          ? await window.dsGui.imaRelogin()
+          : await window.dsGui.imaLogin()
+        if (!loginResult.ok) {
+          setNotice({ tone: 'error', message: loginResult.message || '登录失败' })
+          return
+        }
+        setImaConnectionStatus('valid')
+        setImaStatusMessage('')
+      }
+      await persistImaConnection()
+    } catch (e) {
+      setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setImaLoggingIn(false)
+    }
+  }
+
+  const reloginIma = async (): Promise<void> => {
+    setImaReloggingIn(true)
+    setNotice(null)
+    try {
+      const loginResult = await window.dsGui.imaRelogin()
+      if (!loginResult.ok) {
+        setNotice({ tone: 'error', message: loginResult.message || '重新登录失败' })
+        return
+      }
+      setImaLoggedIn(true)
+      setImaConnectionStatus('valid')
+      setImaStatusMessage('')
+      await persistImaConnection()
+    } catch (e) {
+      setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setImaReloggingIn(false)
     }
   }
 
@@ -1581,6 +1803,37 @@ export function PluginMarketplaceView({
         />
       )
     }
+    if (item.id === ANYSEARCH_ID) {
+      return (
+        <AnysearchConfigPanel
+          apiKey={anysearchApiKey}
+          onApiKeyChange={setAnysearchApiKey}
+          onAdd={() => void addAnysearch()}
+          onCancel={() => {
+            setConfiguringItemId(null)
+            setAnysearchApiKey('')
+          }}
+          busy={busyId === storageKey('mcp', ANYSEARCH_ID)}
+          t={t}
+        />
+      )
+    }
+    if (item.id === IMA_KB_ID) {
+      return (
+        <ImaConfigPanel
+          loggedIn={imaLoggedIn}
+          status={imaConnectionStatus}
+          statusMessage={imaStatusMessage}
+          knowledgeBaseCount={imaKnowledgeBaseCount}
+          loggingIn={imaLoggingIn}
+          reloggingIn={imaReloggingIn}
+          onLogin={() => void addIma()}
+          onRelogin={() => void reloginIma()}
+          onCancel={() => setConfiguringItemId(null)}
+          t={t}
+        />
+      )
+    }
     return null
   }
 
@@ -1603,8 +1856,8 @@ export function PluginMarketplaceView({
   }
 
   return (
-    <div className="ds-no-drag h-full min-h-0 overflow-y-auto px-6 py-7 md:px-10 lg:px-14">
-      <div className="mx-auto max-w-6xl">
+    <div className="ds-no-drag h-full min-h-0 overflow-y-auto px-5 py-6 font-sans md:px-8 lg:px-10">
+      <div className="mx-auto max-w-[1120px]">
         <div className="flex flex-wrap items-center justify-between gap-3">
             <AstryxSegmentedControl
               value={activeKind}
@@ -1614,17 +1867,17 @@ export function PluginMarketplaceView({
               ]}
               onChange={setActiveKind}
               ariaLabel={`${t('pluginTabMcp')} / ${t('pluginTabSkill')}`}
-              className="flex flex-row rounded-xl bg-ds-subtle p-1"
-              buttonClassName="inline-flex min-h-[32px] min-w-fit flex-1 items-center justify-center gap-1.5 rounded-[10px] px-3 text-left text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:focus-visible:ring-white/20"
-              indicatorClassName="rounded-[10px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:bg-white/[0.12] dark:shadow-[0_1px_4px_rgba(0,0,0,0.2)]"
+              className="flex flex-row rounded-[10px] border border-[#d2d7de] bg-[#f3f4f6] p-0.5 shadow-none dark:border-white/[0.12] dark:bg-white/[0.06]"
+              buttonClassName="inline-flex min-h-[32px] min-w-fit flex-1 items-center justify-center gap-1.5 rounded-[8px] px-3 text-left text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:focus-visible:ring-white/20"
+              indicatorClassName="rounded-[8px] border border-[#d9dde3] bg-white shadow-none dark:border-white/[0.10] dark:bg-white/[0.10]"
               activeClassName="font-semibold text-[#1f2937] dark:text-white"
               inactiveClassName="font-medium text-[#6b7280] hover:text-[#374151] dark:text-white/55 dark:hover:text-white/80"
             />
-          <div className="flex items-center gap-2">
+          <div data-control-hover-root className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => void openManageTarget()}
-              className="inline-flex items-center gap-2 rounded-xl bg-ds-subtle px-3 py-2 text-[13px] font-semibold text-ds-ink transition hover:bg-ds-hover"
+              className="inline-flex min-h-9 items-center gap-2 rounded-[9px] border border-ds-border bg-[var(--ds-card-soft)] px-3 text-[13px] font-medium text-ds-ink shadow-sm transition hover:bg-ds-hover"
             >
               <Settings className="h-4 w-4" strokeWidth={1.75} />
               {t('pluginManage')}
@@ -1632,7 +1885,7 @@ export function PluginMarketplaceView({
             <button
               type="button"
               onClick={() => setCustomOpen((value) => !value)}
-              className="inline-flex items-center gap-2 rounded-xl bg-ds-userbubble px-3 py-2 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90"
+              className="inline-flex min-h-9 items-center gap-2 rounded-[9px] bg-[var(--ds-accent)] px-3 text-[13px] font-semibold text-white shadow-[0_3px_10px_color-mix(in_srgb,var(--ds-accent)_18%,transparent)] transition hover:brightness-105"
             >
               <Plus className="h-4 w-4" strokeWidth={1.9} />
               {t('pluginCreate')}
@@ -1640,19 +1893,22 @@ export function PluginMarketplaceView({
           </div>
         </div>
 
-        <div className="mt-9 flex flex-col items-center text-center">
-          <h1 className="text-[32px] font-semibold text-ds-ink md:text-[40px]">
+        <div className="mt-8">
+          <h1 className="font-display text-[28px] font-semibold tracking-[-0.025em] text-ds-ink">
             {activeKind === 'mcp' ? t('pluginMcpTitle') : t('pluginSkillTitle')}
           </h1>
+          <p className="mt-1.5 max-w-2xl text-[14px] leading-6 text-ds-muted">
+            {activeKind === 'mcp' ? t('pluginMcpSubtitle') : t('pluginSkillSubtitle')}
+          </p>
         </div>
 
-        <div className="mt-9 flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="mt-6 flex flex-col gap-2 rounded-[var(--lg-radius-selection)] border border-ds-border bg-[var(--ds-card-soft)] p-1.5 shadow-sm md:flex-row md:items-center">
           <label className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ds-faint" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="h-11 w-full rounded-2xl border border-ds-border bg-ds-card pl-11 pr-4 text-[15px] text-ds-ink shadow-sm outline-none transition focus:border-accent/40 focus:ring-1 focus:ring-accent/30"
+              className="h-10 w-full rounded-[9px] border border-transparent bg-transparent pl-11 pr-4 text-[14px] text-ds-ink outline-none transition hover:bg-ds-hover/60 focus:border-ds-border focus:bg-[var(--ds-card-soft)] focus:ring-0"
               placeholder={activeKind === 'mcp' ? t('pluginSearchMcp') : t('pluginSearchSkill')}
             />
           </label>
@@ -1660,7 +1916,7 @@ export function PluginMarketplaceView({
             <select
               value={filter}
               onChange={(event) => setFilter(event.target.value as PluginFilter)}
-              className="h-11 w-full appearance-none rounded-2xl border border-ds-border bg-ds-card px-4 pr-9 text-[15px] font-medium text-ds-ink shadow-sm outline-none transition focus:border-accent/40 focus:ring-1 focus:ring-accent/30"
+              className="h-10 w-full appearance-none rounded-[9px] border border-transparent bg-transparent px-4 pr-9 text-[14px] font-medium text-ds-ink outline-none transition hover:bg-ds-hover/60 focus:border-ds-border focus:bg-[var(--ds-card-soft)] focus:ring-0"
             >
               <option value="all">{t('pluginFilterAll')}</option>
               <option value="recommended">{t('pluginFilterRecommended')}</option>
@@ -1671,7 +1927,7 @@ export function PluginMarketplaceView({
         </div>
 
         {activeKind === 'skill' ? (
-          <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-center">
+          <div data-control-hover-root className="mt-4 flex flex-col gap-2 md:flex-row md:items-center">
             <select
               value={selectedSkillRoot?.id ?? ''}
               onChange={(event) => setSkillRootId(event.target.value as SkillRootId)}
@@ -1754,18 +2010,32 @@ export function PluginMarketplaceView({
         {notice ? <NoticeView notice={notice} /> : null}
 
         {activeKind === 'mcp' ? (
-          <PluginSection
-            title={t('pluginBuiltIn')}
-            emptyText={t('pluginNoResults')}
-            items={builtInItems}
-            busyId={busyId}
-            isInstalled={isInstalled}
-            onAdd={addItem}
-            onPreview={(item) => void openSkillPreview(item)}
-            configuringItemId={configuringItemId}
-            renderConfig={renderConfigPanel}
-            t={t}
-          />
+          <>
+            <PluginSection
+              title={t('pluginRecommended')}
+              emptyText={t('pluginNoResults')}
+              items={mcpUninstalledItems}
+              busyId={busyId}
+              isInstalled={isInstalled}
+              onAdd={addItem}
+              onPreview={(item) => void openSkillPreview(item)}
+              configuringItemId={configuringItemId}
+              renderConfig={renderConfigPanel}
+              t={t}
+            />
+            <PluginSection
+              title={t('pluginPersonal')}
+              emptyText={t('pluginPersonalEmpty')}
+              items={mcpInstalledItems}
+              busyId={busyId}
+              isInstalled={isInstalled}
+              onAdd={addItem}
+              onPreview={(item) => void openSkillPreview(item)}
+              configuringItemId={configuringItemId}
+              renderConfig={renderConfigPanel}
+              t={t}
+            />
+          </>
         ) : null}
 
         {activeKind === 'skill' ? (
@@ -1783,31 +2053,35 @@ export function PluginMarketplaceView({
           />
         ) : null}
 
-        <PluginSection
-          title={t('pluginRecommended')}
-          emptyText={t('pluginNoResults')}
-          items={recommendedItems}
-          busyId={busyId}
-          isInstalled={isInstalled}
-          onAdd={addItem}
-          onPreview={(item) => void openSkillPreview(item)}
-          configuringItemId={configuringItemId}
-          renderConfig={renderConfigPanel}
-          t={t}
-        />
+        {activeKind === 'skill' ? (
+          <>
+            <PluginSection
+              title={t('pluginRecommended')}
+              emptyText={t('pluginNoResults')}
+              items={recommendedItems}
+              busyId={busyId}
+              isInstalled={isInstalled}
+              onAdd={addItem}
+              onPreview={(item) => void openSkillPreview(item)}
+              configuringItemId={configuringItemId}
+              renderConfig={renderConfigPanel}
+              t={t}
+            />
 
-        <PluginSection
-          title={t('pluginPersonal')}
-          emptyText={t('pluginPersonalEmpty')}
-          items={personalItems}
-          busyId={busyId}
-          isInstalled={isInstalled}
-          onAdd={addItem}
-          onPreview={(item) => void openSkillPreview(item)}
-          configuringItemId={configuringItemId}
-          renderConfig={renderConfigPanel}
-          t={t}
-        />
+            <PluginSection
+              title={t('pluginPersonal')}
+              emptyText={t('pluginPersonalEmpty')}
+              items={personalItems}
+              busyId={busyId}
+              isInstalled={isInstalled}
+              onAdd={addItem}
+              onPreview={(item) => void openSkillPreview(item)}
+              configuringItemId={configuringItemId}
+              renderConfig={renderConfigPanel}
+              t={t}
+            />
+          </>
+        ) : null}
 
         {activeKind === 'mcp' ? (
           <div className="mt-8 flex items-center gap-2 text-[12px] text-ds-faint">
@@ -1852,14 +2126,16 @@ function McpRuntimeOverlayPanel({
   const status = mcpRuntimeStatusLabel(overlay.status, t)
   const displayServerIds = groupedMcpServerIds(overlay.serverIds)
   return (
-    <section className="mt-4 rounded-lg border border-ds-border bg-ds-card px-4 py-3 shadow-sm">
+    <section className="mt-4 rounded-[var(--lg-radius-selection)] border border-ds-border bg-[var(--ds-card-soft)] px-4 py-3.5 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-ds-muted" strokeWidth={1.8} />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-[color-mix(in_srgb,var(--ds-accent)_7%,transparent)] text-[color-mix(in_srgb,var(--ds-accent)_68%,var(--ds-muted))]">
+            <Info className="h-[17px] w-[17px]" strokeWidth={1.8} />
+          </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[13px] font-semibold text-ds-ink">{t('pluginMcpRuntimeOverlay')}</span>
-              <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${mcpRuntimeStatusTone(overlay.status)}`}>
+              <span className="text-[14px] font-semibold text-ds-ink">{t('pluginMcpRuntimeOverlay')}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${mcpRuntimeStatusTone(overlay.status)}`}>
                 {status}
               </span>
             </div>
@@ -1882,7 +2158,7 @@ function McpRuntimeOverlayPanel({
                 {displayServerIds.map((id) => (
                   <span
                     key={id}
-                    className="rounded-md border border-ds-border-muted bg-ds-subtle px-2 py-0.5 font-mono text-[11px] text-ds-muted"
+                    className="rounded-full border border-ds-border-muted bg-ds-subtle/80 px-2.5 py-1 text-[11.5px] font-medium tracking-[-0.006em] text-ds-muted"
                   >
                     {id}
                   </span>
@@ -1900,7 +2176,7 @@ function McpRuntimeOverlayPanel({
           type="button"
           onClick={onRefresh}
           disabled={loading}
-          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-ds-border bg-ds-subtle px-3 text-[12px] font-semibold text-ds-ink transition hover:bg-ds-hover disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-[8px] border border-ds-border bg-[var(--ds-card-soft)] px-3 text-[11.5px] font-semibold text-ds-ink shadow-sm transition hover:bg-ds-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           {t('pluginMcpRuntimeRefresh')}
@@ -2010,32 +2286,63 @@ function PluginSection({
 }): ReactElement {
   const categoryGroups = groupMarketplaceItemsByCategory(items)
   return (
-    <section className="mt-8">
-      <h2 className="border-b border-ds-border-muted pb-3 text-[20px] font-semibold text-ds-ink">
-        {title}
-      </h2>
+    <section className="mt-7">
+      <div className="mb-3 flex items-center justify-between px-1">
+        <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-ds-ink">
+          {title}
+        </h2>
+        {items.length > 0 ? (
+          <span className="rounded-full bg-ds-subtle px-2.5 py-1 text-[11px] font-semibold text-ds-muted">
+            {t('pluginItemCount', { count: items.length })}
+          </span>
+        ) : null}
+      </div>
       {items.length === 0 ? (
-        <div className="py-8 text-[14px] text-ds-faint">{emptyText}</div>
+        <div className="rounded-[var(--lg-radius-selection)] border border-dashed border-ds-border bg-[var(--ds-card-soft)] px-5 py-10 text-center text-[14px] text-ds-faint">
+          {emptyText}
+        </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {categoryGroups.map((group) => (
-            <div key={group.category} className="pt-1">
-              <div className="mb-1 flex items-center gap-2">
-                <h3 className="text-[12px] font-semibold uppercase tracking-[0.04em] text-ds-faint">
-                  {marketplaceCategoryLabel(group.category, t)}
-                </h3>
-                <span className="rounded-full bg-ds-subtle px-2 py-0.5 text-[11px] font-medium text-ds-faint">
-                  {group.items.length}
-                </span>
+            <div
+              key={group.category}
+              className="rounded-[var(--lg-radius-selection)] border border-ds-border bg-[var(--ds-card-soft)] p-3 shadow-sm md:p-4"
+            >
+              <div className="mb-3 flex items-center gap-3 px-1">
+                {(() => {
+                  const CategoryIcon = CATEGORY_ICONS[group.category]
+                  return (
+                    <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[color-mix(in_srgb,var(--ds-accent)_6%,transparent)] text-[var(--ds-muted)]">
+                      <CategoryIcon className="h-[18px] w-[18px]" strokeWidth={1.8} />
+                    </span>
+                  )
+                })()}
+                <div className="min-w-0">
+                  <h3 className="text-[14px] font-semibold text-ds-ink">
+                    {marketplaceCategoryLabel(group.category, t)}
+                  </h3>
+                  <p className="text-[11.5px] text-ds-faint">
+                    {t('pluginCategoryItemCount', { count: group.items.length })}
+                  </p>
+                </div>
               </div>
-              <div className="grid gap-x-14 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2">
                 {group.items.map((item) => {
                   const itemKey = storageKey(item.kind, item.id)
                   const installed = isInstalled(item)
-                  const needsConfiguration = installed && item.configurable && (item.needsToken || item.id === 'pkulaw' || item.id === 'yuandian')
+                  const needsConfiguration = installed && item.configurable && (item.needsToken || item.id === 'pkulaw' || item.id === 'yuandian' || item.id === IMA_KB_ID)
                   const busy = busyId === itemKey
                   const configuring = configuringItemId === item.id
                   const previewable = item.kind === 'skill' && !!onPreview
+                  const statusLabel = item.sourceLabel ??
+                    (item.systemManaged ? t('pluginBuiltIn') : installed ? t('pluginAdded') : t('pluginRecommended'))
+                  const statusTone = item.sourceLabel
+                    ? marketplaceSourceTone(item.statusTone)
+                    : item.systemManaged
+                      ? 'bg-ds-subtle text-ds-muted'
+                      : installed
+                        ? 'bg-ds-success-soft text-ds-success'
+                        : 'bg-accent-soft text-accent'
                   return (
                     <div
                       key={itemKey}
@@ -2048,51 +2355,62 @@ function PluginSection({
                           onPreview(item)
                         }
                       } : undefined}
-                      className={`flex flex-wrap items-center gap-5 border-b border-ds-border-muted py-5 outline-none transition ${previewable ? 'cursor-pointer rounded-lg px-2 hover:bg-ds-subtle/70 focus-visible:ring-2 focus-visible:ring-accent/30' : ''} ${configuring ? 'col-span-full md:col-span-2' : 'min-h-[92px]'}`}
+                      className={`group flex min-h-[126px] flex-col rounded-[var(--lg-radius-selection)] border border-ds-border-muted bg-[color-mix(in_srgb,var(--ds-card-soft)_82%,transparent)] p-4 outline-none transition duration-150 hover:border-ds-border hover:bg-[var(--ds-card-soft)] hover:shadow-sm ${previewable ? 'cursor-pointer focus-visible:ring-2 focus-visible:ring-accent/30' : ''} ${configuring ? 'md:col-span-2' : ''}`}
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="truncate text-[17px] font-semibold text-ds-ink">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <span className="truncate text-[15px] font-semibold tracking-[-0.01em] text-ds-ink">
                             {itemTitle(item, t)}
-                          </span>
-                          {item.sourceLabel ? (
-                            <span
-                              className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${marketplaceSourceTone(item.statusTone)}`}
-                            >
-                              {item.sourceLabel}
                             </span>
-                          ) : null}
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${statusTone}`}
+                            >
+                              {statusLabel}
+                            </span>
+                          </div>
+                          <p className="mt-1.5 line-clamp-2 text-[13px] leading-5 text-ds-muted">
+                            {itemDescription(item, t)}
+                          </p>
                         </div>
-                        <p className="mt-1 line-clamp-2 text-[14px] leading-5 text-ds-muted">
-                          {itemDescription(item, t)}
-                        </p>
+                        <button
+                          type="button"
+                          disabled={(installed && !needsConfiguration) || busy}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void onAdd(item)
+                          }}
+                          title={needsConfiguration ? t('pluginConfigureToken') : installed ? t('pluginAdded') : t('pluginAdd')}
+                          className={`inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[8px] px-2.5 text-[11.5px] font-semibold transition ${
+                            needsConfiguration
+                              ? 'border border-ds-border bg-ds-card text-ds-ink shadow-sm hover:bg-ds-hover'
+                              : installed
+                                ? 'cursor-default bg-ds-success-soft text-ds-success'
+                                : 'bg-accent text-white shadow-[0_7px_16px_rgba(0,136,255,0.2)] hover:brightness-105 disabled:opacity-60'
+                          }`}
+                        >
+                          {busy ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+                          ) : needsConfiguration ? (
+                            <>
+                              <Settings className="h-3.5 w-3.5" strokeWidth={1.9} />
+                              <span>{t('pluginConfigure')}</span>
+                            </>
+                          ) : installed ? (
+                            <>
+                              <Check className="h-3.5 w-3.5" strokeWidth={2} />
+                              <span>{t('pluginAdded')}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                              <span>{t('pluginAdd')}</span>
+                            </>
+                          )}
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        disabled={(installed && !needsConfiguration) || busy}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          void onAdd(item)
-                        }}
-                        title={needsConfiguration ? t('pluginConfigureToken') : installed ? t('pluginAdded') : t('pluginAdd')}
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
-                          installed && !needsConfiguration
-                            ? 'text-ds-faint'
-                            : 'bg-ds-subtle text-ds-ink hover:bg-ds-hover disabled:opacity-60'
-                        }`}
-                      >
-                        {busy ? (
-                          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
-                        ) : needsConfiguration ? (
-                          <Settings className="h-4 w-4" strokeWidth={1.9} />
-                        ) : installed ? (
-                          <Check className="h-4 w-4" strokeWidth={2} />
-                        ) : (
-                          <Plus className="h-4 w-4" strokeWidth={2} />
-                        )}
-                      </button>
                       {configuring && renderConfig ? (
-                        <div className="mt-4 w-full">{renderConfig(item)}</div>
+                        <div className="mt-4 w-full border-t border-ds-border-muted pt-4">{renderConfig(item)}</div>
                       ) : null}
                     </div>
                   )
@@ -2169,15 +2487,16 @@ function SkillPreviewDialog({
                 <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${marketplaceSourceTone(item.statusTone)}`}>
                   {source}
                 </span>
-                <span className="rounded-md border border-ds-border-muted bg-ds-subtle px-2 py-0.5 font-mono text-[11px] text-ds-muted">
+                <span className="rounded-md border border-ds-border-muted bg-ds-subtle px-2 py-0.5 text-[11.5px] font-medium tracking-[-0.006em] text-ds-muted">
                   /skill:{item.id}
                 </span>
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div data-control-hover-root className="flex shrink-0 items-center gap-2">
             <button
               type="button"
+              data-control-hover-ignore
               onClick={installed ? undefined : onAdd}
               disabled={installed || busy}
               title={installed ? t('pluginAdded') : t('pluginAdd')}
@@ -2236,7 +2555,7 @@ function SkillPreviewDialog({
             <ExternalLink className="h-4 w-4" strokeWidth={1.8} />
             {t('pluginSkillPreviewOpenLocation')}
           </button>
-          <div className="flex items-center gap-2">
+          <div data-control-hover-root className="flex items-center gap-2">
             {!installed ? (
               <button
                 type="button"
@@ -2414,7 +2733,7 @@ function PkulawConfigPanel({
             {t('pluginMcpPkulawTokenHint')}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2 md:pt-5">
+        <div data-control-hover-root className="flex shrink-0 items-center gap-2 md:pt-5">
           <button
             type="button"
             onClick={onCancel}
@@ -2485,14 +2804,14 @@ function YuandianConfigPanel({
             {YUANDIAN_MCP_ENDPOINTS.map((endpoint) => (
               <span
                 key={endpoint.id}
-                className="rounded-md border border-ds-border-muted bg-ds-subtle px-2 py-0.5 font-mono text-[11px] text-ds-muted"
+                className="rounded-md border border-ds-border-muted bg-ds-subtle px-2 py-0.5 text-[11.5px] font-medium tracking-[-0.006em] text-ds-muted"
               >
                 {endpoint.id}
               </span>
             ))}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2 md:pt-5">
+        <div data-control-hover-root className="flex shrink-0 items-center gap-2 md:pt-5">
           <button
             type="button"
             onClick={onCancel}
@@ -2509,6 +2828,184 @@ function YuandianConfigPanel({
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Plus className="h-4 w-4" strokeWidth={2} />}
             {apiKey.trim() ? t('pluginMcpPkulawUpdate') : t('pluginMcpYuandianAdd')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AnysearchConfigPanel({
+  apiKey,
+  onApiKeyChange,
+  onAdd,
+  onCancel,
+  busy,
+  t
+}: {
+  apiKey: string
+  onApiKeyChange: (value: string) => void
+  onAdd: () => void
+  onCancel: () => void
+  busy: boolean
+  t: (key: string, values?: Record<string, unknown>) => string
+}): ReactElement {
+  const [showKey, setShowKey] = useState(false)
+  return (
+    <div className="rounded-2xl border border-ds-border bg-ds-card/95 p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start">
+        <div className="min-w-0 flex-1">
+          <label className="block text-[12px] font-semibold text-ds-muted">
+            {t('pluginMcpAnysearchKeyLabel')}
+          </label>
+          <div className="relative mt-1.5">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(event) => onApiKeyChange(event.target.value)}
+              placeholder={t('pluginMcpAnysearchKeyPlaceholder')}
+              autoComplete="off"
+              className="w-full rounded-xl border border-ds-border bg-ds-main/45 px-3 py-2 pr-20 text-[14px] text-ds-ink outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/30"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((value) => !value)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-[12px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
+            >
+              {showKey ? t('pluginMcpAnysearchKeyHide') : t('pluginMcpAnysearchKeyShow')}
+            </button>
+          </div>
+          <div className="mt-2 space-y-2 text-[12px] leading-5 text-ds-faint">
+            <p>
+              {t('pluginMcpAnysearchKeyHint')}
+            </p>
+            <p>
+              <a
+                href="https://anysearch.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent underline hover:opacity-80"
+              >
+                https://anysearch.com
+              </a>
+            </p>
+            <p>{t('pluginMcpAnysearchRegistrationHint')}</p>
+          </div>
+        </div>
+        <div data-control-hover-root className="flex shrink-0 items-center gap-2 md:pt-5">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[13px] font-medium text-ds-ink shadow-sm transition hover:bg-ds-hover disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {t('pluginMcpPkulawCancel')}
+          </button>
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ds-userbubble px-3 py-2 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Plus className="h-4 w-4" strokeWidth={2} />}
+            {apiKey.trim() ? t('pluginMcpPkulawUpdate') : t('pluginMcpAnysearchAdd')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function ImaConfigPanel({
+  loggedIn,
+  status = loggedIn ? 'valid' : 'not_configured',
+  statusMessage = '',
+  knowledgeBaseCount = 0,
+  loggingIn,
+  reloggingIn,
+  onLogin,
+  onRelogin,
+  onCancel,
+  t
+}: {
+  loggedIn: boolean
+  status?: ImaConnectionStatus
+  statusMessage?: string
+  knowledgeBaseCount?: number
+  loggingIn: boolean
+  reloggingIn: boolean
+  onLogin: () => void
+  onRelogin: () => void
+  onCancel: () => void
+  t: (key: string, values?: Record<string, unknown>) => string
+}): ReactElement {
+  return (
+    <div className="rounded-2xl border border-ds-border bg-ds-card/95 p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between">
+            <label className="block text-[12px] font-semibold text-ds-muted">
+              {t('pluginMcpImaTitle')}
+            </label>
+            {loggedIn ? (
+              <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                {t('pluginMcpImaLoggedIn')}
+              </span>
+            ) : status === 'expired' ? (
+              <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                {t('pluginMcpImaExpired')}
+              </span>
+            ) : status === 'network_error' ? (
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                {t('pluginMcpImaUnknown')}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-2 space-y-2 text-[12px] leading-5 text-ds-faint">
+            <p>{t('pluginMcpImaDesc')}</p>
+            <p>{t(loggedIn ? 'pluginMcpImaReloginHint' : 'pluginMcpImaLoginHint')}</p>
+            {loggedIn ? <p>{t('pluginMcpImaKnowledgeBaseCount', { count: knowledgeBaseCount })}</p> : null}
+            {statusMessage ? <p className="text-red-600 dark:text-red-400">{statusMessage}</p> : null}
+          </div>
+        </div>
+        <div data-control-hover-root className="flex shrink-0 items-center gap-2 md:pt-5">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loggingIn || reloggingIn}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[13px] font-medium text-ds-ink shadow-sm transition hover:bg-ds-hover disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {t('pluginMcpPkulawCancel')}
+          </button>
+          {loggedIn ? (
+            <button
+              type="button"
+              onClick={onRelogin}
+              disabled={loggingIn || reloggingIn}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[13px] font-medium text-ds-ink shadow-sm transition hover:bg-ds-hover disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              {reloggingIn ? (
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+              ) : (
+                <RefreshCw className="h-4 w-4" strokeWidth={1.9} />
+              )}
+              {t('pluginMcpImaRelogin')}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onLogin}
+            disabled={loggingIn || reloggingIn}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ds-userbubble px-3 py-2 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {loggingIn ? (
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+            ) : loggedIn ? (
+              <span className="flex h-4 w-4 items-center justify-center text-green-500">✓</span>
+            ) : (
+              <Plus className="h-4 w-4" strokeWidth={2} />
+            )}
+            {loggedIn ? t('pluginMcpImaReconnect') : t('pluginMcpImaLogin')}
           </button>
         </div>
       </div>
