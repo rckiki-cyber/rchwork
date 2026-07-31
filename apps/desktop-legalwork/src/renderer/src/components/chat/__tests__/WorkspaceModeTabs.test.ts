@@ -45,6 +45,20 @@ describe('WorkspaceModeTabs', () => {
     expect(html).not.toContain('flex-col')
   })
 
+  it('uses the concentric Apple indicator edge treatment', () => {
+    const html = renderToStaticMarkup(
+      createElement(WorkspaceModeTabs, {
+        activeView: 'dataCompliance',
+        onCodeOpen: vi.fn(),
+        onDataComplianceOpen: vi.fn()
+      })
+    )
+
+    expect(html).toContain('apple-mode-indicator')
+    expect(html).toContain('rounded-[16px]')
+    expect(html).toContain('rounded-[12px]')
+  })
+
   it('buttons use flex-1 for equal width instead of w-full', () => {
     const onCodeOpen = vi.fn()
     const onDataComplianceOpen = vi.fn()

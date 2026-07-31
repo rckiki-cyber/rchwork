@@ -19,7 +19,6 @@ import {
   legalworkThreadTurnsPath,
   legalworkThreadTurnPath
 } from '../../../../shared/legalwork-endpoints'
-import { getLegalworkRuntimeSettings } from '../../../../shared/app-settings'
 import { useChatStore } from '../../store/chat-store'
 import { AnimatedWorkLogo } from '../chat/AnimatedWorkLogo'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
@@ -178,7 +177,10 @@ function knowledgeFileChatTitle(fileName: string, question: string): string {
 function currentFileTextForPrompt(fileContent: FileContent | null): string {
   const directText = fileContent?.extractedText?.trim()
     || (fileContent?.encoding === 'utf8' ? fileContent.content.trim() : '')
-  return directText.slice(0, 16000)
+  // Cost guard: cap the injected file text. A legal document's full body is
+  // rarely needed verbatim for Q&A; the RAG retrieval provides the relevant
+  // excerpts. 4000 chars ≈ ~3000 tokens, down from 16000 chars previously.
+  return directText.slice(0, 4000)
 }
 
 // ── Document text extraction preview component ──
@@ -269,7 +271,6 @@ export function KnowledgeBaseFileView({
   const [activeChatThreadId, setActiveChatThreadId] = useState<string | null>(null)
   const [liveReasoning, setLiveReasoning] = useState('')
   const [liveAssistant, setLiveAssistant] = useState('')
-  const [runtimeModel, setRuntimeModel] = useState('')
   const [chatOpen, setChatOpen] = useState(true)
   const chatSidebarPresent = useKnowledgeChatSidebarPresence(chatOpen)
   const [chatWidth, setChatWidth] = useState(360)
@@ -510,24 +511,19 @@ export function KnowledgeBaseFileView({
   const setComposerModel = useChatStore((s) => s.setComposerModel)
   const loadComposerModels = useChatStore((s) => s.loadComposerModels)
   const activeModel = composerModel.trim() || 'auto'
+  // Knowledge-base Q&A is cost-sensitive: when the user has not explicitly
+  // picked a model, default to the cheap DeepSeek flash instead of falling
+  // back to the runtime model (which defaults to pro and costs ~3x more).
+  const KNOWLEDGE_BASE_DEFAULT_MODEL = 'deepseek-v4-flash'
   const effectiveModel =
     activeModel && activeModel !== 'auto'
       ? activeModel
-      : runtimeModel.trim() || activeModel
+      : KNOWLEDGE_BASE_DEFAULT_MODEL
   const modelBrand = brandForModel(effectiveModel, composerModelGroups)
 
   useEffect(() => {
     void loadComposerModels()
   }, [loadComposerModels])
-
-  useEffect(() => {
-    let cancelled = false
-    void window.dsGui.getSettings().then((settings) => {
-      if (cancelled) return
-      setRuntimeModel(getLegalworkRuntimeSettings(settings).model)
-    }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [])
 
   const pushOrUpdateToolMessage = useCallback((tool: KnowledgeToolMessageInput): void => {
     const id = `tool_${tool.itemId}`
@@ -614,7 +610,7 @@ export function KnowledgeBaseFileView({
     try {
       const retrievalQuery = `${question.trim()} ${node.name} ${node.path}`
       const retrieval = await requestJson<KnowledgeRetrievalResult>(
-        `${LEGALWORK_KNOWLEDGE_RETRIEVE_PATH}?q=${encodeURIComponent(retrievalQuery)}&max_chars=9000&exclude_expired=true`
+        `${LEGALWORK_KNOWLEDGE_RETRIEVE_PATH}?q=${encodeURIComponent(retrievalQuery)}&max_chars=3000&exclude_expired=true`
       ).catch((): KnowledgeRetrievalResult => ({
         contextText: '',
         sources: [],

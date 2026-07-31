@@ -51,6 +51,7 @@ import {
   knowledgeChatHistoryFromBlocks,
   stripRepeatedKnowledgeQuestionLead
 } from './knowledge-chat-history'
+import { scheduleKnowledgeUploadFeedbackDismiss } from './knowledge-upload-feedback'
 import { PdfJsPreview } from './PdfJsPreview'
 import {
   setKnowledgeSourceMap,
@@ -141,6 +142,7 @@ class KnowledgeFileViewErrorBoundary extends Component<FileViewBoundaryProps, Fi
 type UploadSummary = {
   done: number
   total: number
+  status: 'uploading' | 'success' | 'dismissing'
 }
 
 type KnowledgeUploadFile = File & {
@@ -567,10 +569,16 @@ export function KnowledgeBaseView({
   const folderInputRef = useRef<HTMLInputElement>(null)
   const newFolderInputRef = useRef<HTMLInputElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  const uploadFeedbackCancelRef = useRef<(() => void) | null>(null)
+  const uploadSequenceRef = useRef(0)
 
   useEffect(() => {
     folderInputRef.current?.setAttribute('webkitdirectory', '')
     folderInputRef.current?.setAttribute('directory', '')
+  }, [])
+
+  useEffect(() => {
+    return () => uploadFeedbackCancelRef.current?.()
   }, [])
 
   useEffect(() => {
@@ -626,7 +634,10 @@ export function KnowledgeBaseView({
 
   const uploadFiles = useCallback(async (files: KnowledgeUploadFile[]) => {
     if (files.length === 0) return
-    setUploading({ done: 0, total: files.length })
+    uploadFeedbackCancelRef.current?.()
+    uploadFeedbackCancelRef.current = null
+    const uploadSequence = ++uploadSequenceRef.current
+    setUploading({ done: 0, total: files.length, status: 'uploading' })
     setError(null)
     try {
       for (let i = 0; i < files.length; i += 1) {
@@ -634,16 +645,30 @@ export function KnowledgeBaseView({
         const relative = fileRelativePath(file)
         const result = await window.dsGui.uploadKnowledgeFile(file, joinKnowledgePath(currentPath, relative))
         if (!result.ok) throw new Error(result.message)
-        setUploading({ done: i + 1, total: files.length })
+        setUploading({ done: i + 1, total: files.length, status: 'uploading' })
       }
-      await loadTree()
-      await syncKnowledgeIndex(false)
-      setToast(`已上传 ${files.length} 个文件`)
-      window.setTimeout(() => setToast(null), 2200)
+      setUploading({ done: files.length, total: files.length, status: 'success' })
+      uploadFeedbackCancelRef.current = scheduleKnowledgeUploadFeedbackDismiss(
+        () => {
+          if (uploadSequenceRef.current !== uploadSequence) return
+          setUploading((current) => current?.status === 'success'
+            ? { ...current, status: 'dismissing' }
+            : current)
+        },
+        () => {
+          if (uploadSequenceRef.current !== uploadSequence) return
+          setUploading(null)
+          uploadFeedbackCancelRef.current = null
+        }
+      )
+
+      // File persistence is already complete. Refresh the tree and index in the
+      // background so they cannot keep a 100% upload notice on screen.
+      void Promise.all([loadTree(), syncKnowledgeIndex(false)])
     } catch (err) {
+      if (uploadSequenceRef.current === uploadSequence) setUploading(null)
       setError(err instanceof Error ? err.message : '上传失败')
     } finally {
-      setUploading(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       if (folderInputRef.current) folderInputRef.current.value = ''
     }
@@ -893,7 +918,7 @@ export function KnowledgeBaseView({
 
     try {
       const retrieval = await requestJson<KnowledgeRetrievalResult>(
-        `${LEGALWORK_KNOWLEDGE_RETRIEVE_PATH}?q=${encodeURIComponent(question.trim())}&max_chars=9000&exclude_expired=true`
+        `${LEGALWORK_KNOWLEDGE_RETRIEVE_PATH}?q=${encodeURIComponent(question.trim())}&max_chars=3000&exclude_expired=true`
       )
 
       // Save source-to-path mapping so [来源 N] links can navigate to the file.
@@ -929,8 +954,11 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
 
       // Reuse the active knowledge-chat thread if one exists; otherwise create a side thread.
       const workspace = await getWorkspaceRoot()
+      // Knowledge-base Q&A defaults to the cheap flash model. If the user has
+      // explicitly configured a model (e.g. pro), respect that choice.
       const settings = await window.dsGui.getSettings()
-      const threadModel = settings?.agents?.legalwork?.model || 'deepseek-v4-flash'
+      const configuredModel = settings?.agents?.legalwork?.model?.trim()
+      const threadModel = configuredModel || 'deepseek-v4-flash'
       let threadId = activeChatThreadId
       if (!threadId) {
         const threadResult = await requestJson<{ id: string }>(
@@ -1495,14 +1523,55 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
               </div>
             ) : null}
             {uploading ? (
-              <div className="absolute left-4 right-4 top-4 z-10 rounded-[8px] border border-ds-border bg-ds-card px-4 py-3 shadow-lg">
-                <div className="flex items-center justify-between text-[12px] text-[var(--ds-muted)]">
-                  <span>正在上传 {uploading.done}/{uploading.total}</span>
-                  <span>{Math.round((uploading.done / Math.max(uploading.total, 1)) * 100)}%</span>
+              <div
+                role="status"
+                aria-live="polite"
+                className={`knowledge-upload-feedback absolute left-4 right-4 top-4 z-[30] rounded-[16px] border px-4 py-3 backdrop-blur-xl ${
+                  uploading.status === 'uploading'
+                    ? 'border-ds-border'
+                    : 'knowledge-upload-feedback-success border-[color-mix(in_srgb,var(--ds-success)_28%,var(--ds-border))]'
+                } ${
+                  uploading.status === 'dismissing' ? 'knowledge-upload-feedback-exit' : ''
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3 text-[12px]">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    {uploading.status === 'uploading' ? (
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[var(--ds-accent)]" strokeWidth={1.9} />
+                    ) : (
+                      <span className="knowledge-upload-success-icon relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ds-success)] text-white">
+                        <Check className="h-4 w-4" strokeWidth={2.5} />
+                      </span>
+                    )}
+                    {uploading.status === 'uploading' ? (
+                      <span className="text-[var(--ds-muted)]">
+                        正在上传 {uploading.done}/{uploading.total}
+                      </span>
+                    ) : (
+                      <span className="flex min-w-0 flex-col">
+                        <span className="font-semibold leading-4 text-[var(--ds-ink)]">上传成功</span>
+                        <span className="mt-0.5 text-[11px] leading-4 text-[var(--ds-muted)]">
+                          已添加 {uploading.total} 个文件
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                  <span className={uploading.status === 'uploading'
+                    ? 'text-[var(--ds-muted)]'
+                    : 'font-medium text-[var(--ds-success)]'}
+                  >
+                    {uploading.status === 'uploading'
+                      ? `${Math.round((uploading.done / Math.max(uploading.total, 1)) * 100)}%`
+                      : '完成'}
+                  </span>
                 </div>
                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--ds-sidebar-field-bg)]">
                   <div
-                    className="h-full rounded-full bg-[var(--ds-accent)] transition-all"
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      uploading.status === 'uploading'
+                        ? 'bg-[var(--ds-accent)]'
+                        : 'knowledge-upload-success-progress bg-[var(--ds-success)]'
+                    }`}
                     style={{ width: `${(uploading.done / Math.max(uploading.total, 1)) * 100}%` }}
                   />
                 </div>

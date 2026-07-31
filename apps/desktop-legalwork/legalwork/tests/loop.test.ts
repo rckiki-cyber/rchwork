@@ -1708,11 +1708,21 @@ describe('AgentLoop', () => {
     expect(drifted.fingerprint).not.toBe(a.fingerprint)
   })
 
-  it('uses 1M context thresholds for DeepSeek v4 models and compatibility aliases', () => {
+  it('keeps a 1M context window but compacts DeepSeek history well below it', () => {
     const compactor = new ContextCompactor()
-    const items = [
+    // ~50K tokens (charsPerToken=4); above the 40K soft threshold.
+    const longItems = [
       makeUserItem({
         id: 'long_history',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: 'x'.repeat(200_000)
+      })
+    ]
+    // ~20K tokens; below the 40K soft threshold — ordinary turns stay uncompacted.
+    const moderateItems = [
+      makeUserItem({
+        id: 'moderate_history',
         turnId: 'turn_1',
         threadId: 'thr_1',
         text: 'x'.repeat(80_000)
@@ -1723,10 +1733,13 @@ describe('AgentLoop', () => {
     expect(resolveModelContextProfile('provider/deepseek-v4-flash')?.contextWindowTokens).toBe(1_000_000)
     expect(resolveModelContextProfile('deepseek-chat')?.canonicalModel).toBe('deepseek-v4-flash')
     expect(resolveModelContextProfile('deepseek-reasoner')?.canonicalModel).toBe('deepseek-v4-flash')
-    expect(compactor.shouldCompact(items)).toBe(true)
-    expect(compactor.shouldCompact(items, { model: 'deepseek-v4-pro' })).toBe(false)
-    expect(compactor.shouldCompact(items, { model: 'deepseek-v4-flash' })).toBe(false)
-    expect(compactor.hardCap('deepseek-v4-flash')).toBe(990_000)
+    // Long history (50K tokens) compacts for DeepSeek — much earlier than the
+    // previous 980K threshold — so runaway re-billing is bounded.
+    expect(compactor.shouldCompact(longItems, { model: 'deepseek-v4-pro' })).toBe(true)
+    expect(compactor.shouldCompact(longItems, { model: 'deepseek-v4-flash' })).toBe(true)
+    // Moderate history (20K tokens) stays uncompacted to avoid churn.
+    expect(compactor.shouldCompact(moderateItems, { model: 'deepseek-v4-flash' })).toBe(false)
+    expect(compactor.hardCap('deepseek-v4-flash')).toBe(60_000)
   })
 
   it('uses reported prompt tokens as a compaction pressure signal', () => {
@@ -2540,3 +2553,4 @@ describe('FileSessionStore', () => {
     expect(await sessionStore.highestSeq('thr_usage_compact')).toBe(7)
   })
 })
+

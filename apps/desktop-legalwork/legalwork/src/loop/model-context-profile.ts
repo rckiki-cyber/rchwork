@@ -76,8 +76,17 @@ export const DEFAULT_CONTEXT_THRESHOLDS: ModelContextThresholds = {
 }
 
 const DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS = 1_000_000
-const DEEPSEEK_V4_SOFT_THRESHOLD_RATIO = 0.98
-const DEEPSEEK_V4_HARD_THRESHOLD_RATIO = 0.99
+// Generic default compaction ratio used by other profiles (MIMO, LongCat)
+// and as a fallback when a profile does not specify thresholds.
+const DEFAULT_SOFT_THRESHOLD_RATIO = 0.98
+const DEFAULT_HARD_THRESHOLD_RATIO = 0.99
+// DeepSeek compaction thresholds are intentionally far below the 1M context
+// window. Folding at ~98% meant history grew (and was re-billed) almost
+// without bound before the loop ever compacted — the main driver of runaway
+// token costs. These values keep ordinary turns uncompacted while folding
+// longer agent / knowledge-base sessions before they get expensive.
+const DEEPSEEK_V4_SOFT_THRESHOLD = 40_000
+const DEEPSEEK_V4_HARD_THRESHOLD = 60_000
 const DEFAULT_MODEL_INPUT_MODALITIES: readonly ModelInputModality[] = ['text']
 const DEFAULT_MODEL_OUTPUT_MODALITIES: readonly ModelInputModality[] = ['text']
 const DEFAULT_MODEL_MESSAGE_PARTS: readonly ModelMessagePartSupport[] = ['text']
@@ -168,8 +177,8 @@ function deepseekV4Profile(
     canonicalModel,
     modelIds,
     contextWindowTokens: DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS,
-    softThreshold: Math.floor(DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS * DEEPSEEK_V4_SOFT_THRESHOLD_RATIO),
-    hardThreshold: Math.floor(DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS * DEEPSEEK_V4_HARD_THRESHOLD_RATIO),
+    softThreshold: DEEPSEEK_V4_SOFT_THRESHOLD,
+    hardThreshold: DEEPSEEK_V4_HARD_THRESHOLD,
     inputModalities: DEFAULT_MODEL_INPUT_MODALITIES,
     outputModalities: DEFAULT_MODEL_OUTPUT_MODALITIES,
     supportsToolCalling: true,
@@ -205,8 +214,8 @@ function mimoV25Profile(
     canonicalModel,
     modelIds,
     contextWindowTokens: MIMO_V25_CONTEXT_WINDOW_TOKENS,
-    softThreshold: Math.floor(MIMO_V25_CONTEXT_WINDOW_TOKENS * DEEPSEEK_V4_SOFT_THRESHOLD_RATIO),
-    hardThreshold: Math.floor(MIMO_V25_CONTEXT_WINDOW_TOKENS * DEEPSEEK_V4_HARD_THRESHOLD_RATIO),
+    softThreshold: Math.floor(MIMO_V25_CONTEXT_WINDOW_TOKENS * DEFAULT_SOFT_THRESHOLD_RATIO),
+    hardThreshold: Math.floor(MIMO_V25_CONTEXT_WINDOW_TOKENS * DEFAULT_HARD_THRESHOLD_RATIO),
     inputModalities: imageInput ? ['text', 'image'] : DEFAULT_MODEL_INPUT_MODALITIES,
     outputModalities: DEFAULT_MODEL_OUTPUT_MODALITIES,
     supportsToolCalling: true,
@@ -224,8 +233,8 @@ function longCatProfile(): ModelContextProfile {
     canonicalModel: 'LongCat-2.0',
     modelIds: ['longcat-2.0'],
     contextWindowTokens: LONGCAT_2_CONTEXT_WINDOW_TOKENS,
-    softThreshold: Math.floor(LONGCAT_2_CONTEXT_WINDOW_TOKENS * DEEPSEEK_V4_SOFT_THRESHOLD_RATIO),
-    hardThreshold: Math.floor(LONGCAT_2_CONTEXT_WINDOW_TOKENS * DEEPSEEK_V4_HARD_THRESHOLD_RATIO),
+    softThreshold: Math.floor(LONGCAT_2_CONTEXT_WINDOW_TOKENS * DEFAULT_SOFT_THRESHOLD_RATIO),
+    hardThreshold: Math.floor(LONGCAT_2_CONTEXT_WINDOW_TOKENS * DEFAULT_HARD_THRESHOLD_RATIO),
     inputModalities: DEFAULT_MODEL_INPUT_MODALITIES,
     outputModalities: DEFAULT_MODEL_OUTPUT_MODALITIES,
     supportsToolCalling: true,
@@ -245,7 +254,7 @@ function mergeModelContextProfile(
     ratio: compaction.softRatio ?? input.softRatio,
     fallbackRatio: current
       ? current.softThreshold / current.contextWindowTokens
-      : DEEPSEEK_V4_SOFT_THRESHOLD_RATIO,
+      : DEFAULT_SOFT_THRESHOLD_RATIO,
     fallbackThreshold: current?.softThreshold
   })
   const hardThreshold = compaction.hardThreshold ?? input.hardThreshold ?? thresholdFromWindow({
@@ -253,7 +262,7 @@ function mergeModelContextProfile(
     ratio: compaction.hardRatio ?? input.hardRatio,
     fallbackRatio: current
       ? current.hardThreshold / current.contextWindowTokens
-      : DEEPSEEK_V4_HARD_THRESHOLD_RATIO,
+      : DEFAULT_HARD_THRESHOLD_RATIO,
     fallbackThreshold: current?.hardThreshold
   })
   const contextWindowTokens =
@@ -261,9 +270,12 @@ function mergeModelContextProfile(
   if (!contextWindowTokens || !softThreshold || !hardThreshold) {
     throw new Error(`model context profile "${canonicalModel}" needs a context window or thresholds`)
   }
-  if (hardThreshold < softThreshold) {
-    throw new Error(`model context profile "${canonicalModel}" hard threshold must be >= soft threshold`)
-  }
+  // Guard against a user-supplied softThreshold that exceeds the default hard
+  // threshold: hard must always be >= soft. When hard was not explicitly set
+  // (it fell back to the default) and the resulting hard < soft, lift hard to
+  // just above soft so the profile stays valid.
+  const hardThresholdEffective =
+    hardThreshold < softThreshold ? softThreshold + 1 : hardThreshold
   const modelIds = uniqueModelIds([
     canonicalModel,
     ...(current?.modelIds ?? []),
@@ -274,7 +286,7 @@ function mergeModelContextProfile(
     modelIds,
     contextWindowTokens,
     softThreshold,
-    hardThreshold,
+    hardThreshold: hardThresholdEffective,
     inputModalities: uniqueModelCapabilityValues(input.inputModalities ?? current?.inputModalities ?? DEFAULT_MODEL_INPUT_MODALITIES),
     outputModalities: uniqueModelCapabilityValues(input.outputModalities ?? current?.outputModalities ?? DEFAULT_MODEL_OUTPUT_MODALITIES),
     supportsToolCalling: input.supportsToolCalling ?? current?.supportsToolCalling ?? true,

@@ -83,25 +83,25 @@ export async function resolveAutoModelRoute(input: {
 export function autoModelHeuristic(input: string, _currentModel = ''): typeof AUTO_MODEL_FLASH | typeof AUTO_MODEL_PRO {
   const len = [...input].length
   const lower = input.toLowerCase()
-  const complexKeywords = [
+  // Default to flash. pro costs ~3x and is only worth it for clearly complex,
+  // engineering-heavy tasks — not for ordinary or legal Q&A (which can be long
+  // without being complex enough to justify pro). Require BOTH a strong complex
+  // signal AND a long input before routing to pro.
+  const strongComplexKeywords = [
     'refactor',
     'architecture',
-    'design',
     'debug',
-    'security',
-    'review',
-    'audit',
     'migrate',
     'optimize',
     'rewrite',
     'implement',
-    'analyze'
+    'large codebase',
+    '整个项目',
+    '重构',
+    '架构设计'
   ]
-  if (complexKeywords.some((keyword) => lower.includes(keyword))) {
-    return AUTO_MODEL_PRO
-  }
-  if (len < 100) return AUTO_MODEL_FLASH
-  if (len > 500) return AUTO_MODEL_PRO
+  const hasStrongSignal = strongComplexKeywords.some((keyword) => lower.includes(keyword))
+  if (hasStrongSignal && len > 800) return AUTO_MODEL_PRO
   return AUTO_MODEL_FLASH
 }
 

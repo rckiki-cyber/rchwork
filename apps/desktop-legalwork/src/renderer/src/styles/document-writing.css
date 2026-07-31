@@ -211,6 +211,24 @@
   line-height: 1.5;
 }
 
+.document-writing-control.document-writing-control-preset,
+.document-writing-control::placeholder {
+  color: var(--text-placeholder);
+  opacity: 1;
+}
+
+.document-writing-control.document-writing-control-filled {
+  color: var(--ds-ink);
+}
+
+.document-writing-control option {
+  color: var(--ds-ink);
+}
+
+.document-writing-control option[value=''] {
+  color: var(--text-placeholder);
+}
+
 .document-writing-progress {
   height: 3px;
   overflow: hidden;

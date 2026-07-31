@@ -108,17 +108,19 @@ const LEGAL_DOCUMENT_CSS = `
   }
   .legal-document ul,
   .legal-document ol {
-    margin: 0;
-    padding: 0;
-    list-style: none;
+    margin: 6pt 0;
+    padding-left: 2em;
+    list-style-position: outside;
   }
   .legal-document li {
     margin: 6pt 0;
     text-align: justify;
     line-height: 1.5;
-    list-style: none;
   }
-  .legal-document li p { text-indent: 2em; }
+  .legal-document li p {
+    margin: 0;
+    text-indent: 0;
+  }
   .legal-document blockquote {
     margin: 6pt 0;
     padding: 0;
@@ -306,7 +308,11 @@ export function prepareLegalDocumentMarkdown(options: {
 
     const withoutBullet = line.replace(/^\s*[-*+]\s+(?=\S)/, '')
     const ordered = /^\s*(\d+[.)、])\s+(.+)$/.exec(withoutBullet)
-    if (ordered) return [`${ordered[1]} ${ordered[2]}`, '']
+    if (ordered) {
+      if (!isResearch) return [`${ordered[1]} ${ordered[2]}`, '']
+      const inlineMarker = (ordered[1] ?? '').replace(/[.)]/g, (punctuation) => `\\${punctuation}`)
+      return [`${inlineMarker} ${ordered[2]}`, '']
+    }
     return [withoutBullet]
   })
 
@@ -430,7 +436,7 @@ function replaceParagraphProperty(
   return `${properties.replace(pattern, '')}${replacement}`
 }
 
-function normalizeLegalParagraphs(xml: string): string {
+export function normalizeLegalParagraphs(xml: string): string {
   const tables: string[] = []
   const withoutTables = xml.replace(/<w:tbl>[\s\S]*?<\/w:tbl>/g, (table) => {
     const index = tables.push(table) - 1
@@ -445,6 +451,7 @@ function normalizeLegalParagraphs(xml: string): string {
     if (!text) return ''
 
     const style = content.match(/<w:pStyle w:val="([^"]+)"\/>/)?.[1]
+    const isNumbered = /<w:numPr>[\s\S]*?<\/w:numPr>/.test(content)
     const isSignature = /^(申请人|具状人|答辩人|上诉人|委托人|律师事务所|某.+律师事务所|经办律师|律师|日期|签署日期|立遗嘱人)[：:：]?/.test(text)
     const isNoIndent = /^(致[：:]|关于[：:]|事由[：:]|案由[：:]|编号[：:]|此致[！!。.]?$)/.test(text)
 
@@ -463,9 +470,11 @@ function normalizeLegalParagraphs(xml: string): string {
     properties = replaceParagraphProperty(
       properties,
       'w:ind',
-      style || isNoIndent || isSignature
-        ? '<w:ind w:firstLine="0" w:firstLineChars="0"/>'
-        : '<w:ind w:firstLine="480" w:firstLineChars="200"/>'
+      isNumbered
+        ? '<w:ind w:left="480" w:hanging="360"/>'
+        : style || isNoIndent || isSignature
+          ? '<w:ind w:firstLine="0" w:firstLineChars="0"/>'
+          : '<w:ind w:firstLine="480" w:firstLineChars="200"/>'
     )
     properties = replaceParagraphProperty(
       properties,

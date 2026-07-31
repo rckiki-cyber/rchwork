@@ -1,4 +1,7 @@
-import type { TemplateGenerateWithMaterialsRequest } from '../../../../shared/user-templates'
+import {
+  DOCUMENT_SUBJECT_FIELD_ID,
+  type TemplateGenerateWithMaterialsRequest
+} from '../../../../shared/user-templates'
 
 export type DocumentWritingStageId =
   | 'materials'
@@ -95,7 +98,7 @@ function fieldsForPrompt(request: TemplateGenerateWithMaterialsRequest): string 
   return request.template.fields
     .map((field) => {
       const value = request.fieldValues[field.id]?.trim()
-      return `- ${field.label}${field.required ? '（必填）' : ''}：${value || '（未填写）'}`
+      return `- ${field.label}：${value || '（未填写；有材料时由 Agent 主动提取，不代表该事实缺失）'}`
     })
     .join('\n')
 }
@@ -108,25 +111,38 @@ function materialsForPrompt(request: TemplateGenerateWithMaterialsRequest): stri
 }
 
 export function buildDocumentWritingAgentPrompt(request: TemplateGenerateWithMaterialsRequest): string {
+  const hasMaterials = Boolean(request.materials?.length)
+  const documentSubject = request.fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim()
   const legalBasis = request.template.legalBasis?.length
     ? request.template.legalBasis.map((item) => `- ${item}`).join('\n')
     : '（模板未预设法律依据，需根据事实自行核验。）'
   const hasUserTemplate =
     request.template.source === 'user' ||
-    request.template.id?.startsWith('custom-') ||
-    request.template.description.includes('用户上传模板')
+    request.template.id?.startsWith('custom-')
   const templatePriorityInstruction = hasUserTemplate
-    ? '本任务已提供用户上传模板，属于最高优先级。必须以该模板为主，不得调用或改用隐藏内置模板。'
+    ? '本任务已提供用户上传模板，属于最高优先级。必须以该模板为主，不得调用或改用隐藏内置模板；最终正文的段落、标题、表格单元格及签署区顺序应与模板逐项对应，避免随意增删结构，以便原位写回原 DOCX。'
     : '本任务没有用户上传模板。起草民事起诉状或民事答辩状时，必须先调用 resolve_legal_document_template；匹配成功则以内置模板为主，未匹配时才根据材料自主组织结构。'
+
+  const materialFactInstruction = hasMaterials
+    ? `用户已经上传案件材料。必须先完成“材料事实台账”，再开始写文书：
+- 判决书、裁定书等材料在当事人栏、审理查明、法院认为、裁判主文及落款中明确载明的姓名/名称、身份、法定代表人、地址、案号、法院、案由、诉讼请求、裁判结果和日期，均属于可以直接写入文书的材料记载事实；无需等待用户再次填写，也不得仅因尚未用营业执照等其他材料二次核验而拒绝填写。必要时可表述为“据判决书载明”。
+- 对每个界面空字段，必须逐一在全部材料中检索同义信息；字段为空只表示用户未手工填写，不表示材料没有该事实。
+- 只要材料中存在明确答案，就直接写入正文。严禁输出“待核实：请填写”“结合判决书请填写”“请与营业执照核对”等把材料分析工作退回用户的提示。
+- 只有全部材料都没有记载、无法由上下文唯一确定且该项对文书确有必要时，才可使用【待核实：具体缺失事项】；非必要的未知栏目应省略，不得成片保留模板占位语。
+- 材料间存在实质冲突时，列明具体冲突内容并标注待核实；不得把单一材料中已明确记载的信息误判为冲突。`
+    : '用户未上传案件材料。仅对现有字段也未提供且文书确有必要的信息使用【待核实：具体缺失事项】，不要输出泛泛的“请填写”。'
 
   return `你正在执行 LegalWork 文书写作任务。界面已收集用户的文书类型、字段和写作要求；不要再次要求用户填写偏好。
 
-1. 理解材料：先阅读全部材料，提取当事人、事实、时间线、证据、已知诉求与缺失信息；区分已证实事实、当事人主张和待核实信息。
+0. 确认立场：用户明确指定本次文书代表的主体为“${documentSubject || '（未确认）'}”。这是判断委托人、我方当事人、诉讼立场和行文视角的最高优先级依据；不得根据材料自行猜测用户代表哪一方。
+1. 理解材料：先阅读全部材料，提取当事人、事实、时间线、证据、已知诉求与真正缺失的信息；区分裁判文书记载事实、当事人主张和确实无法确认的信息。
 2. 归纳争议：列出文书必须回应的争议焦点、证明责任和需要补充的事实。
 3. 选择模板：${templatePriorityInstruction}
-4. 法律调研：调用可用的知识库工具寻找团队先例和写作参考；再主动调用可用的北大法宝（PKULaw）、元典以及其他已配置法律法规/案例工具。若某一来源不可用或失败，继续用国家法律法规数据库或其他可用权威来源完成核验，不能因单个工具失败而停止。
+4. 法律调研：调用可用的知识库工具寻找团队先例和写作参考；再主动调用可用的北大法宝（PKULaw）、元典以及其他已配置法律法规/案例工具。默认以北大法宝 MCP 作为法规和案例主来源。国家法律法规数据库仅在用户明确指定、商业库不可用/无结果或存在重大效力冲突时按需核验，不得为获取国家库链接反复重试或调用用户浏览器。
 5. 研究论证：核验法律效力状态、条文、案例要旨和适用关系。保留工具返回的完整来源 URL，绝不编造法规、案例、案号、链接或事实。
-6. 撰写文书：严格遵循最高优先级模板结构，以用户填写字段优先；冲突或缺失的信息必须以【待核实：…】标注。文书中的法律依据应尽可能带可核验链接；没有真实链接时明确标注“无可核验链接”。
+6. 撰写文书：严格遵循最高优先级模板结构。信息优先级为“用户填写字段 > 材料明确记载 > 可由材料唯一确定的事实 > 真正缺失的信息”。不得把界面空字段直接转换成待核实占位语。文书中的法律依据应尽可能带可核验链接；没有真实链接时明确标注“无可核验链接”。
+
+${materialFactInstruction}
 
 最终回复只能输出完整的 Markdown 文书正文，不要输出过程说明、调研摘要、步骤标题或代码块。工具调用和推理会由界面单独可视化。
 
@@ -140,6 +156,9 @@ ${legalBasis}
 
 ## 用户填写信息
 ${fieldsForPrompt(request)}
+
+## 用户确认的文书涉及主体（必须据此确定我方立场）
+${documentSubject || '（未确认；有材料时应在生成前阻止）'}
 
 ## 案件材料
 ${materialsForPrompt(request)}

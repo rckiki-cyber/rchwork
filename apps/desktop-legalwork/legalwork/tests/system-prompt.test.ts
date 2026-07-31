@@ -27,4 +27,11 @@ describe('LEGALWORK_SYSTEM_PROMPT', () => {
     expect(LEGALWORK_SYSTEM_PROMPT).toContain('Never store passwords, API keys')
     expect(LEGALWORK_SYSTEM_PROMPT).toContain('forget or change a memory')
   })
+
+  it('uses PKULaw first and keeps the national database optional and browser-free', () => {
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('use PKULaw as the primary legal database')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('Do not query 国家法律法规数据库 merely to duplicate')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain("Never open or control the user's browser")
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('国家法律法规数据库 and other official sites are optional fallbacks')
+  })
 })

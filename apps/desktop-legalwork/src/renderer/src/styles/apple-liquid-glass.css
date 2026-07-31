@@ -242,10 +242,13 @@
 /* The segmented control is a standard inset material inside the glass sidebar. */
 .apple-liquid-app .apple-mode-tabs {
   contain: layout paint;
-  border: 1px solid rgba(64, 80, 106, 0.085);
+  overflow: hidden;
+  border: 0;
+  background-clip: padding-box;
   background:
     linear-gradient(180deg, rgba(233, 238, 246, 0.82), rgba(238, 242, 248, 0.66));
   box-shadow:
+    inset 0 0 0 1px rgba(64, 80, 106, 0.075),
     inset 0 1px 2px rgba(52, 68, 92, 0.055),
     inset 0 1px 0 rgba(255, 255, 255, 0.58);
 }
@@ -254,6 +257,7 @@
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(253, 253, 255, 0.9));
   box-shadow:
+    inset 0 0 0 1px rgba(64, 80, 106, 0.07),
     0 1px 2px rgba(30, 45, 68, 0.075),
     0 4px 12px rgba(35, 50, 76, 0.055),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
@@ -282,9 +286,9 @@
 }
 
 [data-theme='dark'] .apple-liquid-app .apple-mode-tabs {
-  border-color: rgba(255, 255, 255, 0.07);
   background: rgba(255, 255, 255, 0.055);
   box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
     inset 0 1px 2px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
@@ -292,6 +296,7 @@
 [data-theme='dark'] .apple-liquid-app .apple-mode-indicator {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.095));
   box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
     0 1px 3px rgba(0, 0, 0, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.13);
 }
@@ -1047,6 +1052,167 @@
 
   to {
     opacity: 0;
+  }
+}
+
+/*
+ * Knowledge uploads separate persistence from background indexing. Once the
+ * files are safely written, the progress surface changes into a one-shot
+ * success confirmation and leaves after three seconds.
+ */
+.apple-liquid-app .knowledge-upload-feedback {
+  transform-origin: top center;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.08)),
+    color-mix(in srgb, var(--ds-surface-elevated) 88%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 14px 36px rgba(15, 23, 42, 0.12),
+    0 3px 10px rgba(15, 23, 42, 0.06);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  animation: knowledge-upload-feedback-enter 260ms var(--lg-ease-material) both;
+}
+
+.apple-liquid-app .knowledge-upload-feedback-success {
+  background:
+    linear-gradient(
+      112deg,
+      color-mix(in srgb, var(--ds-success-soft) 42%, transparent),
+      transparent 36%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.06)),
+    color-mix(in srgb, var(--ds-surface-elevated) 90%, transparent);
+}
+
+[data-theme='dark'] .apple-liquid-app .knowledge-upload-feedback {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.025)),
+    color-mix(in srgb, var(--ds-surface-elevated) 90%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 18px 44px rgba(0, 0, 0, 0.34),
+    0 3px 12px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme='dark'] .apple-liquid-app .knowledge-upload-feedback-success {
+  background:
+    linear-gradient(
+      112deg,
+      color-mix(in srgb, var(--ds-success-soft) 34%, transparent),
+      transparent 38%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+    color-mix(in srgb, var(--ds-surface-elevated) 92%, transparent);
+}
+
+.apple-liquid-app .knowledge-upload-success-icon {
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--ds-success) 24%, transparent);
+  animation: knowledge-upload-success-pop 520ms var(--lg-ease-spring) both;
+}
+
+.apple-liquid-app .knowledge-upload-success-icon::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 1px solid color-mix(in srgb, var(--ds-success) 34%, transparent);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: knowledge-upload-success-ring 760ms 80ms ease-out both;
+}
+
+.apple-liquid-app .knowledge-upload-success-progress {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ds-success) 22%, transparent);
+  animation: knowledge-upload-success-progress 620ms ease-out both;
+}
+
+.apple-liquid-app .knowledge-upload-feedback-exit {
+  pointer-events: none;
+  animation: knowledge-upload-feedback-exit 300ms ease-in both;
+}
+
+@keyframes knowledge-upload-feedback-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes knowledge-upload-success-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.68);
+  }
+
+  62% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes knowledge-upload-success-ring {
+  from {
+    opacity: 0.72;
+    transform: scale(0.78);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.42);
+  }
+}
+
+@keyframes knowledge-upload-success-progress {
+  from {
+    filter: brightness(1.35);
+    transform: scaleX(0.96);
+    transform-origin: left center;
+  }
+
+  to {
+    filter: brightness(1);
+    transform: scaleX(1);
+    transform-origin: left center;
+  }
+}
+
+@keyframes knowledge-upload-feedback-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apple-liquid-app .knowledge-upload-feedback,
+  .apple-liquid-app .knowledge-upload-success-icon,
+  .apple-liquid-app .knowledge-upload-success-progress {
+    animation: none;
+  }
+
+  .apple-liquid-app .knowledge-upload-success-icon::after {
+    display: none;
+    animation: none;
+  }
+
+  .apple-liquid-app .knowledge-upload-feedback-exit {
+    opacity: 0;
+    animation: none;
   }
 }
 

@@ -19,15 +19,16 @@ describe('legalExternalSearch', () => {
     vi.restoreAllMocks()
   })
 
-  it('prioritizes the NPC database for statute and article retrieval guidance', async () => {
+  it('presents the NPC database as an optional source without browser escalation', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ rows: [] }))
 
     const result = await legalExternalSearch('劳动合同法 第三十八条')
 
-    expect(result.summary).toContain('默认官方法规来源：国家法律法规数据库')
+    expect(result.summary).toContain('可选官方法规来源：国家法律法规数据库')
     expect(result.summary).toContain('https://flk.npc.gov.cn')
-    expect(result.summary).toContain('未指定北大法宝、元典 MCP 或其他商业库')
-    expect(result.summary).toContain('建议 web_search 查询：site:flk.npc.gov.cn 劳动合同法 第三十八条')
+    expect(result.summary).toContain('仅在用户明确指定、已配置商业库不可用/无结果或存在重大效力冲突时使用')
+    expect(result.summary).toContain('不构成必须逐一检索或交叉核验的要求')
+    expect(result.summary).not.toContain('建议 web_search 查询')
   })
 
   it('returns deduplicated and ranked NPC records with detail metadata', async () => {

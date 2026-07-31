@@ -111,18 +111,18 @@ const LAW_LEVEL_RANK: Record<string, number> = {
 
 const buildNpcSearchGuidance = (query: string): string =>
   [
-    `默认官方法规来源：${NPC_LAW_DATABASE.name}（${NPC_LAW_DATABASE.url}）`,
+    `可选官方法规来源：${NPC_LAW_DATABASE.name}（${NPC_LAW_DATABASE.url}）`,
     `适用：${NPC_LAW_DATABASE.defaultFor}`,
     '有效详情链接必须来自本次 API 核验通过的 records.path，格式为 https://flk.npc.gov.cn/detail?id=...；/index?... 是数据库首页或失效旧链接，不能作为法规详情页引用。',
     '',
-    '未指定北大法宝、元典 MCP 或其他商业库时，法条/法规原文检索默认动作：',
+    '仅在用户明确指定、已配置商业库不可用/无结果或存在重大效力冲突时使用：',
     '  1. 已知法规名称：标题精确检索；无结果再做标题模糊检索。',
     '  2. 主题找法：标题模糊检索 + 正文检索，按法源位阶筛选。',
     '  3. 具体法条：先定位法规详情，再抽取具体条、款、项并核对时效性。',
     '  4. 默认优先现行有效；历史沿革问题再扩展到已修改、已废止、尚未生效。',
     '  5. 输出必须标注法规名称、制定机关、公布/施行日期、时效性、条文原文、来源链接。',
     '',
-    `建议 web_search 查询：site:flk.npc.gov.cn ${query}`
+    `当前检索词：${query}`
   ].join('\n')
 
 const stripHtml = (value: string | undefined): string =>
@@ -625,7 +625,7 @@ export async function legalExternalSearch(query: string): Promise<{
   const npcSummary = npcError
     ? [
         `国家法律法规数据库 API 检索失败：${npcError}`,
-        '已保留官方来源和 web_search/web_fetch 回退建议。'
+        '本来源到此停止；请直接使用北大法宝、元典或其他已配置的非浏览器来源，不要为获取官方链接升级到浏览器自动化。'
       ].join('\n')
     : records.length
       ? [
@@ -652,8 +652,7 @@ export async function legalExternalSearch(query: string): Promise<{
     '建议查阅以下权威来源：',
     availableSources,
     '',
-    '系统已配置外部搜索能力（web_search / web_fetch），',
-    '执行深度法律检索时可调用 web_search 工具直接查询上述网站。'
+    '上述官方来源仅供按需选用，不构成必须逐一检索或交叉核验的要求。'
   ].join('\n')
 
   return { records, summary }

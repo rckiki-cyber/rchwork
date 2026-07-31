@@ -14,6 +14,7 @@ import {
   FileText,
   Globe2,
   LoaderCircle,
+  MessageSquareText,
   Scale,
   Search,
   ScrollText,
@@ -278,13 +279,18 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
   const lastRunningStep = runningSteps[runningSteps.length - 1]
   const runningSince = activeRecord?.status === 'running' ? clockNow - updatedAt : 0
   const hasActiveReport = Boolean(
-    activeRecord && (activeRecord.summary || activeRecord.editedSummary !== undefined)
+    activeRecord
+      && activeRecord.status !== 'running'
+      && (activeRecord.summary || activeRecord.editedSummary !== undefined)
   )
   const resolvedReport = activeRecord
     ? preprocessLegalResearchSummary(resolveLegalResearchMarkdown(activeRecord))
     : ''
   const keyActions = activeRecord?.reasoning ? extractKeyActions(activeRecord.reasoning) : []
-  const reportIsStreaming = activeRecord?.status === 'running'
+  const researchUpdates = activeRecord?.updates ?? []
+  const visibleResearchUpdates = activeRecord?.status === 'running'
+    ? researchUpdates
+    : researchUpdates.slice(0, -1)
 
   return (
     <div className="legal-research-stage ds-subfeature-controls flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ds-main)]">
@@ -450,6 +456,53 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
               </div>
             ) : null}
 
+            {visibleResearchUpdates.length > 0 ? (
+              <section className="overflow-hidden rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-soft)] shadow-sm">
+                <div className="flex items-center justify-between gap-3 border-b border-[var(--ds-border-muted)] px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <MessageSquareText className="h-4 w-4 text-[var(--ds-muted)]" strokeWidth={1.75} />
+                    <h3 className="text-[13px] font-semibold text-[var(--ds-ink)]">
+                      {t('legalResearchUpdatesTitle')}
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-[var(--ds-faint)]">
+                    {t('legalResearchUpdateCount', { count: visibleResearchUpdates.length })}
+                  </span>
+                </div>
+                <div className="divide-y divide-[var(--ds-border-muted)]">
+                  {visibleResearchUpdates.map((update, index) => {
+                    const isCurrent = activeRecord.status === 'running' && update.completed !== true
+                    return (
+                      <div key={update.id} className="legal-research-step flex gap-3 px-4 py-3">
+                        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--ds-border)] bg-[var(--ds-card-strong)] text-[11px] font-semibold text-[var(--ds-muted)]">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex items-center justify-between gap-3">
+                            <span className="text-[11px] font-medium text-[var(--ds-faint)]">
+                              {t('legalResearchUpdatesTitle')} {index + 1}
+                            </span>
+                            {isCurrent ? (
+                              <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-[var(--ds-accent)]">
+                                <LoaderCircle className="h-3 w-3 animate-spin" />
+                                {t('legalResearchUpdateStreaming')}
+                              </span>
+                            ) : (
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[var(--ds-success)]" />
+                            )}
+                          </div>
+                          <div className="ds-markdown max-w-none text-[13px] leading-6 text-[var(--ds-muted)] [overflow-wrap:anywhere]">
+                            <AssistantMarkdown text={update.text} streaming={isCurrent} />
+                            {isCurrent ? <span aria-hidden className="legal-research-stream-caret" /> : null}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            ) : null}
+
             {activeRecord.steps.length > 0 ? (
               <section className="overflow-hidden rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-soft)] shadow-sm">
                 <div className="flex items-center justify-between gap-3 border-b border-[var(--ds-border-muted)] px-4 py-3">
@@ -563,13 +616,10 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
               </section>
             ) : null}
 
-            {hasActiveReport || reportIsStreaming ? (
+            {hasActiveReport ? (
               <section
-                className={`legal-research-report overflow-hidden rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-soft)] shadow-sm ${
-                  reportIsStreaming ? 'is-streaming' : ''
-                }`}
+                className="legal-research-report overflow-hidden rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-soft)] shadow-sm"
                 aria-live="polite"
-                aria-busy={reportIsStreaming}
               >
                 <div className="flex items-center justify-between gap-3 border-b border-[var(--ds-border-muted)] px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -578,14 +628,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                       {t('legalResearchSummaryTitle')}
                     </h3>
                   </div>
-                  {reportIsStreaming ? (
-                    <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--ds-accent)]">
-                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                      <span className="ds-shiny-text">{t('legalResearchReportDrafting')}</span>
-                    </span>
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4 text-[var(--ds-success)]" strokeWidth={1.75} />
-                  )}
+                  <CheckCircle2 className="h-4 w-4 text-[var(--ds-success)]" strokeWidth={1.75} />
                 </div>
                 <div className="px-5 py-4">
                   {resolvedReport ? (
@@ -593,9 +636,8 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                       <AssistantMarkdown
                         key={`${activeRecord.id}:${activeRecord.reportRevision ?? 'generated'}`}
                         text={resolvedReport}
-                        streaming={reportIsStreaming}
+                        streaming={false}
                       />
-                      {reportIsStreaming ? <span aria-hidden className="legal-research-stream-caret" /> : null}
                     </div>
                   ) : (
                     <div className="legal-research-stream-placeholder py-2" aria-label={t('legalResearchReportDrafting')}>

@@ -19,9 +19,9 @@ import type {
 } from '../../shared/user-templates'
 
 const TIMEOUT_MS = 60_000
-const MAX_TOKENS = 4_096
+const MAX_TOKENS = 8_192
 
-function buildLearningPrompt(request: TemplateLearningRequest): {
+export function buildLearningPrompt(request: TemplateLearningRequest): {
   systemPrompt: string
   userPrompt: string
 } {
@@ -30,9 +30,10 @@ function buildLearningPrompt(request: TemplateLearningRequest): {
 要求：
 1. 仔细分析文档的格式、结构和常见法律文书要素
 2. 识别出文档中的变量部分（如当事人姓名、案号、金额、日期等），将它们替换为 {{字段名}} 占位符
-3. 生成一个结构清晰、可复用的模板内容（Markdown格式）
+3. 生成一个结构清晰、可复用的模板内容（Markdown格式）；保持原文的段落、标题、表格单元格和签署区顺序，不得改成通用报告
 4. 为每个占位符字段定义合适的字段信息（标识符、标签、类型）
 5. 识别文档类型并给出合适的模板名称和描述
+6. 不要省略固定文字；仅把确实会随案件变化的内容替换为占位符
 
 字段类型说明：
 - text: 短文本输入（如姓名、案号）
@@ -67,6 +68,33 @@ ${request.fileContent.slice(0, 30_000)}
   return { systemPrompt, userPrompt }
 }
 
+export function buildTemplateLearningRequestBody(
+  model: string,
+  request: TemplateLearningRequest
+): Record<string, unknown> {
+  const { systemPrompt, userPrompt } = buildLearningPrompt(request)
+  const isDeepSeek = model.toLowerCase().startsWith('deepseek')
+  return {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    max_tokens: MAX_TOKENS,
+    temperature: 0.2,
+    stream: false,
+    // DeepSeek V4 defaults to thinking mode. Template extraction is a bounded
+    // structured-output task; disabling thinking prevents the reasoning phase
+    // from consuming the entire output budget before message.content is emitted.
+    ...(isDeepSeek
+      ? {
+          thinking: { type: 'disabled' },
+          response_format: { type: 'json_object' }
+        }
+      : {})
+  }
+}
+
 export async function learnTemplate(
   settings: AppSettingsV1,
   request: TemplateLearningRequest
@@ -80,7 +108,6 @@ export async function learnTemplate(
   }
 
   const url = upstreamOpenAiChatCompletionsUrl(baseUrl)
-  const { systemPrompt, userPrompt } = buildLearningPrompt(request)
 
   try {
     const response = await fetch(url, {
@@ -90,16 +117,7 @@ export async function learnTemplate(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        max_tokens: MAX_TOKENS,
-        temperature: 0.3,
-        stream: false
-      }),
+      body: JSON.stringify(buildTemplateLearningRequestBody(model, request)),
       signal: AbortSignal.timeout(TIMEOUT_MS)
     })
 

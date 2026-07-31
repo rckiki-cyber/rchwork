@@ -750,8 +750,8 @@ describe('LegalworkRuntimeProvider', () => {
     expect(sink.onSeq).not.toHaveBeenCalledWith(3)
     expect(sink.onDeltas).toHaveBeenCalledTimes(1)
     expect(sink.onDeltas).toHaveBeenCalledWith([
-      { text: 'he', kind: 'agent_message', seq: 3 },
-      { text: 'llo', kind: 'agent_message', seq: 4 }
+      { text: 'he', kind: 'agent_message', itemId: 'item_text', seq: 3 },
+      { text: 'llo', kind: 'agent_message', itemId: 'item_text', seq: 4 }
     ])
   })
 
@@ -808,7 +808,7 @@ describe('LegalworkRuntimeProvider', () => {
     await task
 
     expect(sink.onDeltas).toHaveBeenCalledWith([
-      { text: 'thinking', kind: 'agent_reasoning', seq: 8 }
+      { text: 'thinking', kind: 'agent_reasoning', itemId: 'item_reasoning', seq: 8 }
     ])
     vi.useRealTimers()
   })

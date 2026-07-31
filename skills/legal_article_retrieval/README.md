@@ -38,7 +38,7 @@
 | 3 | 现行有效 |
 | 4 | 尚未生效 |
 
-> 以上规则参考 `ZongziForu/npc-law-db` 的国家法律法规数据库检索 workflow。LegalWork 不直接依赖该仓库脚本；它将 `flk.npc.gov.cn` 作为未指定商业库时的默认官方检索动作。
+> 国家法律法规数据库检索 workflow 仅作为可选官方核验能力保留。LegalWork 不直接依赖该仓库脚本；未指定来源时默认优先使用已配置的北大法宝 MCP，不会强制访问 `flk.npc.gov.cn`。
 
 ## 商业库 MCP
 

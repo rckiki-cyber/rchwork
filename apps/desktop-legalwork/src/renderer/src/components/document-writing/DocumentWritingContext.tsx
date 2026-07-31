@@ -7,7 +7,10 @@ import {
   withInferredTemplateFields
 } from './legal-templates'
 import type { DocumentHistoryRecord } from '../../../../shared/document-history'
-import type { UserTemplate } from '../../../../shared/user-templates'
+import {
+  DOCUMENT_SUBJECT_FIELD_ID,
+  type UserTemplate
+} from '../../../../shared/user-templates'
 import { getProvider } from '../../agent/registry'
 import type { ThreadDeltaEvent, ThreadEventSink, ToolEventPayload } from '../../agent/types'
 import { rendererRuntimeClient } from '../../agent/runtime-client'
@@ -19,8 +22,11 @@ import {
   createDocumentWritingStages,
   documentWritingStageForTool,
   updateDocumentWritingStages,
-  type DocumentWritingStage
+  type DocumentWritingStage,
+  type DocumentWritingStageStatus
 } from './document-writing-agent'
+
+export type { DocumentWritingStageStatus }
 
 export type UploadedMaterial = {
   id: string
@@ -89,6 +95,7 @@ type DocumentWritingContextValue = {
   handleUpload: (file: File) => Promise<void>
   handleRestoreHistory: (record: DocumentHistoryRecord) => void
   handleDeleteUserTemplate: (templateId: string) => Promise<void>
+  handleRetryTemplateLearning: (templateId: string) => Promise<void>
   handleAddMaterial: (file: File) => Promise<void>
   handleRemoveMaterial: (index: number) => void
   handleCategoryChange: (category: TemplateCategory | 'all') => void
@@ -110,7 +117,9 @@ function userTemplateToLegalTemplate(ut: UserTemplate): LegalTemplate {
     })),
     legalBasis: ut.legalBasis,
     icon: '📄',
-    learningStatus: (ut.learningStatus || 'idle') as LegalTemplate['learningStatus']
+    learningStatus: (ut.learningStatus || 'idle') as LegalTemplate['learningStatus'],
+    learningError: ut.learningError,
+    hasSourceDocument: Boolean(ut.sourceDocument)
   })
 }
 
@@ -307,15 +316,22 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
   const handleGenerate = useCallback(async () => {
     if (!activeTemplate) return
     const materials = loadedMaterials(uploadedMaterials)
-    const explicitMissing = explicitRequiredFieldMissing(activeTemplate, fieldValues)
-    if (explicitMissing.length > 0) {
-      setError(`请先选择必填身份/方向字段：${explicitMissing.join('、')}`)
+    const documentSubject = fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim()
+    if (materials.length > 0 && !documentSubject) {
+      setError('请先填写“文书涉及主体（我方/委托方）”，明确本次文书代表哪一方。')
       return
     }
-    const missing = missingRequiredFields(activeTemplate, fieldValues)
-    if (missing.length > 0 && materials.length === 0) {
-      setError(`请填写必填字段，或上传可供提取事实的案件材料：${missing.join('、')}`)
-      return
+    if (materials.length === 0) {
+      const explicitMissing = explicitRequiredFieldMissing(activeTemplate, fieldValues)
+      if (explicitMissing.length > 0) {
+        setError(`请先选择必填身份/方向字段：${explicitMissing.join('、')}`)
+        return
+      }
+      const missing = missingRequiredFields(activeTemplate, fieldValues)
+      if (missing.length > 0) {
+        setError(`请填写必填字段，或上传可供提取事实的案件材料：${missing.join('、')}`)
+        return
+      }
     }
 
     workflowAbortRef.current?.abort()
@@ -466,11 +482,78 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
     resetEditor()
   }, [resetEditor])
 
+  const runTemplateLearning = useCallback(
+    async (template: UserTemplate): Promise<void> => {
+      const analyzingTemplate: UserTemplate = {
+        ...template,
+        learningStatus: 'analyzing',
+        learningError: undefined,
+        updatedAt: new Date().toISOString()
+      }
+      await window.dsGui.saveUserTemplate(analyzingTemplate)
+      await loadUserTemplates()
+      try {
+        const result = await window.dsGui.learnTemplateFromFile({
+          fileContent: template.content,
+          fileName: template.sourceFile || `${template.name}.docx`,
+          suggestedName: template.name
+        })
+        if (!result.ok) {
+          await window.dsGui.saveUserTemplate({
+            ...analyzingTemplate,
+            learningStatus: 'failed',
+            learningError: result.message,
+            updatedAt: new Date().toISOString()
+          })
+          return
+        }
+        await window.dsGui.saveUserTemplate({
+          ...analyzingTemplate,
+          name: result.name || template.name,
+          description: result.description || template.description,
+          content: result.content || template.content,
+          fields: result.fields.map((field) => ({
+            ...field,
+            type: field.type as UserTemplate['fields'][number]['type']
+          })),
+          legalBasis: result.legalBasis,
+          learningStatus: 'done',
+          learningError: undefined,
+          updatedAt: new Date().toISOString()
+        })
+      } catch (error) {
+        await window.dsGui.saveUserTemplate({
+          ...analyzingTemplate,
+          learningStatus: 'failed',
+          learningError: error instanceof Error ? error.message : String(error),
+          updatedAt: new Date().toISOString()
+        })
+      } finally {
+        await loadUserTemplates()
+      }
+    },
+    [loadUserTemplates]
+  )
+
   const handleUpload = useCallback(
     async (file: File) => {
       const text = await extractTemplateText(file)
       const now = new Date().toISOString()
       const templateId = `custom-${Date.now()}`
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+      let sourceDocument: UserTemplate['sourceDocument']
+      if (ext === 'docx') {
+        const sourceResult = await window.dsGui.saveUserTemplateSource({
+          templateId,
+          fileName: file.name,
+          dataBase64: await fileToBase64(file)
+        })
+        if (!sourceResult.ok) throw new Error(sourceResult.message)
+        sourceDocument = {
+          storedFileName: sourceResult.storedFileName,
+          sha256: sourceResult.sha256
+        }
+      }
       const newTemplate: UserTemplate = {
         id: templateId,
         name: file.name.replace(/\.[^/.]+$/, ''),
@@ -487,6 +570,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
           }
         ],
         sourceFile: file.name,
+        sourceDocument,
         learningStatus: 'analyzing',
         createdAt: now,
         updatedAt: now
@@ -501,47 +585,19 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
         ...current.filter((template) => template.id !== templateId),
         userTemplateToLegalTemplate(newTemplate)
       ])
-      void loadUserTemplates()
-
-      // Background AI learning
-      window.dsGui.learnTemplateFromFile({
-        fileContent: text,
-        fileName: file.name
-      }).then((result) => {
-        if (!result.ok) {
-          // Update template with failed status
-          window.dsGui.saveUserTemplate({
-            ...newTemplate,
-            learningStatus: 'failed',
-            updatedAt: new Date().toISOString()
-          }).then(() => loadUserTemplates()).catch(() => {})
-          return
-        }
-        // Update template with learned fields
-        window.dsGui.saveUserTemplate({
-          ...newTemplate,
-          name: result.name || newTemplate.name,
-          description: result.description || newTemplate.description,
-          content: result.content || text,
-          fields: result.fields.map((f: { id: string; label: string; type: string; placeholder?: string; required?: boolean }) => ({
-            id: f.id,
-            label: f.label,
-            type: f.type as 'text' | 'textarea' | 'date' | 'select' | 'array',
-            placeholder: f.placeholder,
-            required: f.required
-          })),
-          learningStatus: 'done',
-          updatedAt: new Date().toISOString()
-        }).then(() => loadUserTemplates()).catch(() => {})
-      }).catch(() => {
-        window.dsGui.saveUserTemplate({
-          ...newTemplate,
-          learningStatus: 'failed',
-          updatedAt: new Date().toISOString()
-        }).then(() => loadUserTemplates()).catch(() => {})
-      })
+      void runTemplateLearning(newTemplate)
     },
-    [loadUserTemplates]
+    [runTemplateLearning]
+  )
+
+  const handleRetryTemplateLearning = useCallback(
+    async (templateId: string): Promise<void> => {
+      const templates = await window.dsGui.listUserTemplates()
+      const template = templates.find((item) => item.id === templateId)
+      if (!template) throw new Error('未找到需要重新分析的模板。')
+      await runTemplateLearning(template)
+    },
+    [runTemplateLearning]
   )
 
   const handleRestoreHistory = useCallback(
@@ -659,6 +715,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       handleUpload,
       handleRestoreHistory,
       handleDeleteUserTemplate,
+      handleRetryTemplateLearning,
       handleAddMaterial,
       handleRemoveMaterial,
       handleCategoryChange,
@@ -677,6 +734,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       handleAddMaterial,
       handleCategoryChange,
       handleDeleteUserTemplate,
+      handleRetryTemplateLearning,
       handleFieldChange,
       handleGeneratedContentChange,
       handleGenerate,

@@ -176,7 +176,7 @@ radius:
     topbar_dropdown: "2.5xl"
     composer: composer
     inline_code: sm
-    inset_control_group: "Outer radius uses --lg-radius-selection; inner controls subtract the full border-plus-padding inset so both curves remain concentric."
+    inset_control_group: "Use an inset outline that does not alter layout; subtract only the actual padding from the outer radius so the inner and outer curves remain concentric."
     icon_only_button: md
 
 # ---------- 5. Elevation (shadows + dark-mode shadows) ----------

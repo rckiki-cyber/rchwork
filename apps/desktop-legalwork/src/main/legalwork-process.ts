@@ -76,8 +76,8 @@ const DEFAULT_LEGALWORK_MODEL_PROFILES: Record<string, Record<string, unknown>> 
   'deepseek-v4-pro': {
     contextWindowTokens: 1_000_000,
     contextCompaction: {
-      softThreshold: 980_000,
-      hardThreshold: 990_000
+      softThreshold: 40_000,
+      hardThreshold: 60_000
     },
     inputModalities: ['text'],
     outputModalities: ['text'],
@@ -88,8 +88,8 @@ const DEFAULT_LEGALWORK_MODEL_PROFILES: Record<string, Record<string, unknown>> 
     aliases: ['deepseek-chat', 'deepseek-reasoner'],
     contextWindowTokens: 1_000_000,
     contextCompaction: {
-      softThreshold: 980_000,
-      hardThreshold: 990_000
+      softThreshold: 40_000,
+      hardThreshold: 60_000
     },
     inputModalities: ['text'],
     outputModalities: ['text'],
@@ -689,13 +689,22 @@ function modelConfigForRuntime(existing: Record<string, unknown>): Record<string
   for (const [modelId, profile] of Object.entries(existingProfiles)) {
     const defaultProfile = objectValue(DEFAULT_LEGALWORK_MODEL_PROFILES[modelId])
     const existingProfile = objectValue(profile)
+    const mergedCompaction = {
+      ...objectValue(defaultProfile.contextCompaction),
+      ...objectValue(existingProfile.contextCompaction)
+    }
+    // hardThreshold must stay >= softThreshold. When only soft is configured
+    // (hard falls back to the aggressive default, which may be smaller than a
+    // user-supplied soft), lift hard above soft so the config stays valid.
+    const soft = positiveIntegerValue(mergedCompaction.softThreshold)
+    const hard = positiveIntegerValue(mergedCompaction.hardThreshold)
+    if (soft !== undefined && hard !== undefined && hard < soft) {
+      mergedCompaction.hardThreshold = soft + 1
+    }
     profiles[modelId] = {
       ...defaultProfile,
       ...existingProfile,
-      contextCompaction: {
-        ...objectValue(defaultProfile.contextCompaction),
-        ...objectValue(existingProfile.contextCompaction)
-      }
+      contextCompaction: mergedCompaction
     }
   }
   return {

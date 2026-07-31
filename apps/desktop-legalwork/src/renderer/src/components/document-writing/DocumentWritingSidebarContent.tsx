@@ -64,6 +64,7 @@ export function DocumentWritingSidebarContent(): ReactElement {
               onCategoryChange={documentWriting.handleCategoryChange}
               onSearchQueryChange={documentWriting.setSearchQuery}
               onDeleteUserTemplate={(id) => void documentWriting.handleDeleteUserTemplate(id)}
+              onRetryUserTemplate={(id) => void documentWriting.handleRetryTemplateLearning(id)}
               deletingTemplateId={documentWriting.deletingTemplateId}
               loadingUserTemplates={documentWriting.loadingTemplates}
             />

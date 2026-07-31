@@ -36,11 +36,29 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
             ? args.layer as KnowledgeLayer
             : undefined
           const sources = await store.search({ query, limit, includeContent: true, layer })
+          // Cap the number of returned sources (in addition to per-source body
+          // truncation) so a large result set cannot balloon the tool result and
+          // defeat prefix-cache hits. The model can read full documents via
+          // knowledge_read_file when it needs more than these top sources.
+          const cappedSources = sources.slice(0, 8)
+          // Truncate the full chunk body so each tool result stays small. The
+          // snippet already carries the hit context; the truncated body is enough
+          // for most answers, and the model can call knowledge_read_file for the
+          // full document when it needs the complete text. Keeping results small
+          // is what lets DeepSeek's prefix cache hit on later tool-loop turns.
+          const truncatedSources = cappedSources.map((source) => ({
+            ...source,
+            ...(source.content && source.content.length > 500
+              ? {
+                  content: `${source.content.slice(0, 500)}\n…[截断，完整内容请用 knowledge_read_file 读取 ${source.relativePath}]`
+                }
+              : {})
+          }))
           return {
             output: {
               query,
               layer: layer ?? 'all',
-              sources
+              sources: truncatedSources
             }
           }
         }
@@ -67,11 +85,13 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
       }),
       LocalToolHost.defineTool({
         name: 'knowledge_read_file',
-        description: 'Read the full content of a specific file from the managed knowledge base by its relative path. Use this after knowledge_list_tree or knowledge_search to get the complete document text for detailed analysis, summarization, or citation.',
+        description: 'Read content from a specific file in the managed knowledge base by relative path. Returns at most the first 200 lines (or a page via offset/limit) to bound token cost; use offset to continue reading a large document page by page. Use after knowledge_list_tree or knowledge_search to get document text for analysis, summarization, or citation.',
         inputSchema: {
           type: 'object',
           properties: {
-            path: { type: 'string', description: 'Relative file path within the knowledge base (e.g. "contracts/NDA.md" or "法规/民法典.md")' }
+            path: { type: 'string', description: 'Relative file path within the knowledge base (e.g. "contracts/NDA.md" or "法规/民法典.md")' },
+            offset: { type: 'number', description: '1-based starting line. Default 1.' },
+            limit: { type: 'number', description: 'Max lines to return. Default 200, max 500.' }
           },
           required: ['path'],
           additionalProperties: false
@@ -82,7 +102,37 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
           if (!filePath) return { output: { error: 'path is required' }, isError: true }
           try {
             const result = await store.readFile(filePath)
-            return { output: result }
+            const raw = typeof result.content === 'string' ? result.content : String(result.content ?? '')
+            const allLines = raw.split('\n')
+            const offset = Math.max(1, Math.floor(Number(args.offset) || 1))
+            const limit = Math.max(1, Math.min(500, Math.floor(Number(args.limit) || 200)))
+            if (offset > allLines.length) {
+              return {
+                output: {
+                  path: result.path,
+                  error: `offset ${offset} is beyond the file's ${allLines.length} lines; use offset=${Math.max(1, allLines.length)} or lower.`,
+                  total_lines: allLines.length
+                },
+                isError: true
+              }
+            }
+            const selected = allLines.slice(offset - 1, offset - 1 + limit)
+            const content = selected.join('\n')
+            const endLine = Math.min(allLines.length, offset - 1 + selected.length)
+            const truncated = endLine < allLines.length
+            const output = {
+              path: result.path,
+              encoding: result.encoding,
+              content,
+              start_line: offset,
+              end_line: endLine,
+              total_lines: allLines.length,
+              truncated,
+              ...(truncated
+                ? { note: `[showing lines ${offset}-${endLine} of ${allLines.length}. Use offset=${endLine + 1} to continue reading.]` }
+                : {})
+            }
+            return { output }
           } catch (error) {
             return { output: { error: `failed to read file: ${error instanceof Error ? error.message : String(error)}` }, isError: true }
           }
@@ -284,7 +334,23 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
           const { KnowledgeRetrievalPipeline } = await import('../../knowledge/knowledge-retrieval-pipeline.js')
           const pipeline = new KnowledgeRetrievalPipeline(store)
           const result = await pipeline.retrieve(query, { excludeExpired, layer })
-          return { output: result }
+          // Cap source count (in addition to per-source body truncation) so a
+          // large result set stays small and keeps the DeepSeek prefix cache
+          // hitting on later tool-loop turns.
+          const cappedSources = result.sources.slice(0, 8)
+          // Trim per-source full content so each tool result stays small and the
+          // DeepSeek prefix cache can keep hitting on later tool-loop turns.
+          // contextText (already capped) carries the answerable context; the full
+          // document body is available via knowledge_read_file when needed.
+          const trimmedSources = cappedSources.map((source) => ({
+            ...source,
+            ...(source.content && source.content.length > 500
+              ? {
+                  content: `${source.content.slice(0, 500)}\n…[截断，完整内容请用 knowledge_read_file 读取]`
+                }
+              : {})
+          }))
+          return { output: { ...result, sources: trimmedSources } }
         }
       }),
       LocalToolHost.defineTool({

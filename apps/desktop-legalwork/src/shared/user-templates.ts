@@ -5,6 +5,9 @@
 
 import { z } from 'zod'
 
+/** User-confirmed party whose perspective the generated document must represent. */
+export const DOCUMENT_SUBJECT_FIELD_ID = '__documentSubject'
+
 /** Template field definition (same as LegalTemplateField in legal-templates.ts) */
 export interface UserTemplateField {
   id: string
@@ -33,8 +36,15 @@ export interface UserTemplate {
   legalBasis?: string[]
   /** Path to the original uploaded file (if any) */
   sourceFile?: string
+  /** Stored original DOCX used for format-preserving export. */
+  sourceDocument?: {
+    storedFileName: string
+    sha256: string
+  }
   /** AI learning status */
   learningStatus?: 'idle' | 'analyzing' | 'done' | 'failed'
+  /** Last template-learning failure shown to the user and retained for retry diagnostics. */
+  learningError?: string
   /** ISO timestamp of creation */
   createdAt: string
   /** ISO timestamp of last modification */
@@ -50,6 +60,24 @@ export interface TemplateLearningRequest {
   /** User-provided template name (optional, AI can suggest) */
   suggestedName?: string
 }
+
+/** Request to retain the original DOCX package for format-preserving export. */
+export interface TemplateSourceSaveRequest {
+  templateId: string
+  fileName: string
+  dataBase64: string
+}
+
+export type TemplateSourceSaveResult =
+  | {
+      ok: true
+      storedFileName: string
+      sha256: string
+    }
+  | {
+      ok: false
+      message: string
+    }
 
 /** Result of AI template learning */
 export type TemplateLearningResult =
@@ -127,7 +155,12 @@ export const userTemplateSchema = z.object({
   fields: z.array(userTemplateFieldSchema).max(200),
   legalBasis: z.array(z.string().max(1000)).max(50).optional(),
   sourceFile: z.string().max(1000).optional(),
+  sourceDocument: z.object({
+    storedFileName: z.string().min(1).max(500),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/)
+  }).strict().optional(),
   learningStatus: z.enum(['idle', 'analyzing', 'done', 'failed']).optional(),
+  learningError: z.string().max(4000).optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 })
@@ -137,6 +170,12 @@ export const templateLearningRequestSchema = z.object({
   fileName: z.string().min(1).max(500),
   suggestedName: z.string().max(200).optional()
 })
+
+export const templateSourceSaveRequestSchema = z.object({
+  templateId: z.string().min(1).max(200),
+  fileName: z.string().min(1).max(500),
+  dataBase64: z.string().min(1).max(16_000_000)
+}).strict()
 
 export const templateGenerateWithMaterialsRequestSchema = z.object({
   template: z.object({

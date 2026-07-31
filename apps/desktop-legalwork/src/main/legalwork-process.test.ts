@@ -192,6 +192,34 @@ describe('reclaimLegalworkPort', () => {
   })
 })
 
+describe('findAvailableLegalworkPort', () => {
+  it('returns the preferred port when it is free', async () => {
+    const module = await import('./legalwork-process')
+
+    const preferred = 28_999
+    await expect(module.findAvailableLegalworkPort(preferred)).resolves.toBe(preferred)
+  })
+
+  it('skips an occupied port and returns the next free port', async () => {
+    const server = createServer()
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', () => resolve())
+    })
+    try {
+      const address = server.address() as AddressInfo
+      const module = await import('./legalwork-process')
+
+      const found = await module.findAvailableLegalworkPort(address.port)
+      expect(found).toBeGreaterThan(address.port)
+      // The returned port must actually be free.
+      await expect(module.reclaimLegalworkPort(found)).resolves.toEqual({ ok: true })
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
+})
+
 describe('resolveLegalworkDataDir', () => {
   it('expands Windows-style home-relative data directories', async () => {
     const module = await import('./legalwork-process')
@@ -238,16 +266,16 @@ describe('syncGuiManagedLegalworkConfig', () => {
     expect(parsed.models.profiles['deepseek-v4-pro']).toMatchObject({
       contextWindowTokens: 1_000_000,
       contextCompaction: {
-        softThreshold: 980_000,
-        hardThreshold: 990_000
+        softThreshold: 40_000,
+        hardThreshold: 60_000
       }
     })
     expect(parsed.models.profiles['deepseek-v4-flash']).toMatchObject({
       aliases: ['deepseek-chat', 'deepseek-reasoner'],
       contextWindowTokens: 1_000_000,
       contextCompaction: {
-        softThreshold: 980_000,
-        hardThreshold: 990_000
+        softThreshold: 40_000,
+        hardThreshold: 60_000
       }
     })
     expect(parsed.runtime.toolStorm).toMatchObject({ enabled: true, windowSize: 8, threshold: 3 })
@@ -585,8 +613,11 @@ describe('syncGuiManagedLegalworkConfig', () => {
     expect(parsed.models.profiles['deepseek-v4-pro']).toMatchObject({
       contextWindowTokens: 1_000_000,
       contextCompaction: {
+        // User explicitly overrides softThreshold; hard is clamped to >= soft
+        // (970000+1) so the profile stays valid even though the new default
+        // hard (60K) is below the user's soft value.
         softThreshold: 970_000,
-        hardThreshold: 990_000
+        hardThreshold: 970_001
       }
     })
     expect(parsed.runtime.toolStorm).toMatchObject({

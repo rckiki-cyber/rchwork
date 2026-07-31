@@ -8,7 +8,8 @@ import {
   ScrollText,
   User,
   Trash2,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react'
 import type { LegalTemplate, TemplateCategory } from './legal-templates'
 import { AstryxSegmentedControl } from '../astryx/AstryxSegmentedControl'
@@ -23,6 +24,7 @@ type Props = {
   onCategoryChange: (category: TemplateCategory | 'all') => void
   onSearchQueryChange: (query: string) => void
   onDeleteUserTemplate?: (templateId: string) => void
+  onRetryUserTemplate?: (templateId: string) => void
   deletingTemplateId?: string | null
   loadingUserTemplates?: boolean
 }
@@ -43,6 +45,7 @@ export function DocumentTemplateLibrary({
   onCategoryChange,
   onSearchQueryChange,
   onDeleteUserTemplate,
+  onRetryUserTemplate,
   deletingTemplateId,
   loadingUserTemplates
 }: Props): ReactElement {
@@ -180,7 +183,10 @@ export function DocumentTemplateLibrary({
                       </span>
                     )}
                     {isCustom && tmpl.learningStatus === 'failed' && (
-                      <span className="mt-1 inline-flex items-center gap-1 text-[9.5px] text-red-400">
+                      <span
+                        className="mt-1 inline-flex items-center gap-1 text-[9.5px] text-red-400"
+                        title={tmpl.learningError || 'AI 分析失败，可重试'}
+                      >
                         AI 分析失败
                       </span>
                     )}
@@ -191,6 +197,21 @@ export function DocumentTemplateLibrary({
                       </span>
                     )}
                   </button>
+                  {isCustom && tmpl.learningStatus === 'failed' && onRetryUserTemplate && (
+                    <button
+                      type="button"
+                      data-control-hover-preserve
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onRetryUserTemplate(tmpl.id)
+                      }}
+                      className="absolute bottom-2 right-2 rounded-[7px] p-1 text-red-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                      title={tmpl.learningError ? `重新分析：${tmpl.learningError}` : '重新分析模板'}
+                      aria-label={`重新分析 ${tmpl.name}`}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.9} />
+                    </button>
+                  )}
                   {isCustom && onDeleteUserTemplate && (
                     <button
                       type="button"

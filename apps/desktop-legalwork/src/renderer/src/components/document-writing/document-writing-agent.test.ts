@@ -4,6 +4,7 @@ import {
   createDocumentWritingStages,
   documentWritingStageForTool
 } from './document-writing-agent'
+import { DOCUMENT_SUBJECT_FIELD_ID } from '../../../../shared/user-templates'
 
 describe('document-writing agent workflow', () => {
   it('requires legal research before drafting and preserves source safeguards', () => {
@@ -14,7 +15,10 @@ describe('document-writing agent workflow', () => {
         content: '# 民事起诉状',
         fields: [{ id: 'claim', label: '诉讼请求', type: 'textarea', required: true }]
       },
-      fieldValues: { claim: '请求返还借款。' },
+      fieldValues: {
+        claim: '请求返还借款。',
+        [DOCUMENT_SUBJECT_FIELD_ID]: '原告张某'
+      },
       materials: [{ fileName: '借条.txt', content: '借款发生于 2025 年。' }]
     })
 
@@ -22,6 +26,9 @@ describe('document-writing agent workflow', () => {
     expect(prompt.indexOf('法律调研')).toBeLessThan(prompt.indexOf('撰写文书'))
     expect(prompt).toContain('绝不编造法规、案例、案号、链接或事实')
     expect(prompt).toContain('必须先调用 resolve_legal_document_template')
+    expect(prompt).toContain('用户明确指定本次文书代表的主体为“原告张某”')
+    expect(prompt).toContain('只要材料中存在明确答案，就直接写入正文')
+    expect(prompt).toContain('严禁输出“待核实：请填写”')
   })
 
   it('keeps a user-uploaded template above hidden built-ins', () => {

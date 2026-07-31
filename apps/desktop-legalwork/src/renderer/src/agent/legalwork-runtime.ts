@@ -95,10 +95,20 @@ function deltaFromRuntimeEvent(event: CoreRuntimeEventJson): ThreadDeltaEvent | 
   const text = event.item?.text ?? ''
   if (!text) return null
   if (event.kind === 'assistant_text_delta') {
-    return { text, kind: 'agent_message', seq: event.seq }
+    return {
+      text,
+      kind: 'agent_message',
+      itemId: event.item?.id ?? event.itemId,
+      seq: event.seq
+    }
   }
   if (event.kind === 'assistant_reasoning_delta') {
-    return { text, kind: 'agent_reasoning', seq: event.seq }
+    return {
+      text,
+      kind: 'agent_reasoning',
+      itemId: event.item?.id ?? event.itemId,
+      seq: event.seq
+    }
   }
   return null
 }

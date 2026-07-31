@@ -17,6 +17,7 @@ import {
   WandSparkles,
   X
 } from 'lucide-react'
+import { DOCUMENT_SUBJECT_FIELD_ID } from '../../../../shared/user-templates'
 import type { LegalTemplate, LegalTemplateField } from './legal-templates'
 import { DocumentWritingEditorDialog } from './DocumentWritingEditorDialog'
 import '../../styles/document-writing.css'
@@ -56,8 +57,11 @@ function FieldInput({
   value: string
   onChange: (v: string) => void
 }): ReactElement {
+  const valueToneClassName = value.trim()
+    ? 'document-writing-control-filled'
+    : 'document-writing-control-preset'
   const controlClassName =
-    'document-writing-control w-full border-0 bg-transparent px-3.5 text-[13px] text-[var(--ds-ink)] placeholder-[var(--ds-faint)] outline-none'
+    `document-writing-control ${valueToneClassName} w-full border-0 bg-transparent px-3.5 text-[13px] outline-none`
 
   if (field.type === 'textarea') {
     return (
@@ -124,6 +128,26 @@ function FieldInput({
 }
 
 const MAX_FIELDS_VISIBLE = 15
+const MATERIAL_DOCUMENT_SUBJECT_FIELD: LegalTemplateField = {
+  id: DOCUMENT_SUBJECT_FIELD_ID,
+  label: '文书涉及主体（我方/委托方）',
+  type: 'text',
+  placeholder: '请输入本次代表的当事人，例如：被告某某公司',
+  required: true
+}
+
+export function canGenerateDocument(options: {
+  missingRequiredFieldCount: number
+  missingExplicitFieldCount: number
+  missingDocumentSubjectCount?: number
+  loadedMaterialCount: number
+}): boolean {
+  return (
+    (options.missingDocumentSubjectCount ?? 0) === 0 &&
+    options.missingExplicitFieldCount === 0 &&
+    (options.missingRequiredFieldCount === 0 || options.loadedMaterialCount > 0)
+  )
+}
 
 export function DocumentWritingEditor({
   template,
@@ -145,11 +169,16 @@ export function DocumentWritingEditor({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showAllFields, setShowAllFields] = useState(false)
   const [exportingFormat, setExportingFormat] = useState<'word' | 'markdown' | null>(null)
+  const [exportFeedback, setExportFeedback] = useState<{
+    tone: 'success' | 'warning' | 'error'
+    message: string
+  } | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
 
   const handleExportWord = useCallback(async (): Promise<void> => {
     if (!generatedContent || !template || typeof window.dsGui?.exportLegalResearchToWord !== 'function') return
     if (exportingFormat) return
+    setExportFeedback(null)
     setExportingFormat('word')
     try {
       const defaultName = template.name.replace(/[<>:"/\\|?*]/g, '_')
@@ -159,11 +188,21 @@ export function DocumentWritingEditor({
         templateName: template.name,
         defaultName
       })
-      if (!result.ok && !result.canceled) {
-        console.error('[document-writing] Word export failed:', result.message)
+      if (result.ok) {
+        setExportFeedback({
+          tone: result.warning ? 'warning' : 'success',
+          message: result.warning || (result.formatPreserved
+            ? '已基于原 DOCX 原位写入，保留原模板版式。'
+            : 'Word 文档已导出。')
+        })
+      } else if (!result.canceled) {
+        setExportFeedback({ tone: 'error', message: result.message })
       }
     } catch (error) {
-      console.error('[document-writing] Word export error:', error)
+      setExportFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Word 导出失败，请重试。'
+      })
     } finally {
       setExportingFormat(null)
     }
@@ -189,19 +228,31 @@ export function DocumentWritingEditor({
     }
   }, [exportingFormat, generatedContent, template])
 
+  const loadedMaterialCount = useMemo(
+    () => uploadedMaterials.filter((material) => material.loaded && material.content.trim()).length,
+    [uploadedMaterials]
+  )
+  const hasLoadedMaterials = loadedMaterialCount > 0
+  const documentSubjectMissing =
+    hasLoadedMaterials && !fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim()
+
   const missingRequiredFields = useMemo(() => {
     if (!template) return []
+    if (hasLoadedMaterials) {
+      return documentSubjectMissing ? [MATERIAL_DOCUMENT_SUBJECT_FIELD.label] : []
+    }
     return template.fields
       .filter((f) => f.required && !fieldValues[f.id]?.trim())
       .map((f) => f.label)
-  }, [template, fieldValues])
+  }, [documentSubjectMissing, fieldValues, hasLoadedMaterials, template])
 
   const missingExplicitFields = useMemo(() => {
     if (!template) return []
+    if (hasLoadedMaterials) return []
     return template.fields
       .filter((f) => f.required && f.type === 'select' && !fieldValues[f.id]?.trim())
       .map((f) => f.label)
-  }, [template, fieldValues])
+  }, [fieldValues, hasLoadedMaterials, template])
 
   const visibleFields = useMemo(() => {
     if (!template) return []
@@ -213,9 +264,18 @@ export function DocumentWritingEditor({
 
   const hiddenFieldCount = template ? template.fields.length - visibleFields.length : 0
   const completedFieldCount = useMemo(
-    () => template?.fields.filter((field) => fieldValues[field.id]?.trim()).length ?? 0,
-    [fieldValues, template]
+    () =>
+      (template?.fields.filter((field) => fieldValues[field.id]?.trim()).length ?? 0) +
+      (hasLoadedMaterials && fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim() ? 1 : 0),
+    [fieldValues, hasLoadedMaterials, template]
   )
+  const displayedFieldCount = (template?.fields.length ?? 0) + (hasLoadedMaterials ? 1 : 0)
+  const canGenerate = canGenerateDocument({
+    missingRequiredFieldCount: missingRequiredFields.length,
+    missingExplicitFieldCount: missingExplicitFields.length,
+    missingDocumentSubjectCount: documentSubjectMissing ? 1 : 0,
+    loadedMaterialCount
+  })
 
   if (!template) {
     return (
@@ -310,6 +370,30 @@ export function DocumentWritingEditor({
                       : t('documentWritingExportWord')}
                   </span>
                 </button>
+                <div className="mb-3 flex items-start gap-2 rounded-[10px] bg-[var(--ds-sidebar-field-bg)] px-3 py-2 text-[10.5px] leading-[1.5] text-[var(--ds-faint)]">
+                  {template.hasSourceDocument ? (
+                    <>
+                      <CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--ds-success)]" strokeWidth={1.9} />
+                      <span>已保留原始 DOCX；Word 导出会沿用原文件的页面、样式、表格及页眉页脚。</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+                      <span>当前模板没有原始 DOCX，Word 将使用标准法律文书格式。</span>
+                    </>
+                  )}
+                </div>
+                {exportFeedback && (
+                  <div className={`mb-3 rounded-[10px] px-3 py-2 text-[10.5px] leading-[1.5] ${
+                    exportFeedback.tone === 'error'
+                      ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'
+                      : exportFeedback.tone === 'warning'
+                        ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                        : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                  }`}>
+                    {exportFeedback.message}
+                  </div>
+                )}
                 <button
                   type="button"
                   disabled={exportingFormat !== null}
@@ -444,15 +528,31 @@ export function DocumentWritingEditor({
                     <p className="mt-0.5 text-[11.5px] text-[var(--ds-faint)]">填写关键信息，AI 会结合材料完成文书</p>
                   </div>
                   <span className="text-[11.5px] tabular-nums text-[var(--ds-faint)]">
-                    已填写 {completedFieldCount}/{template.fields.length}
+                    已填写 {completedFieldCount}/{displayedFieldCount}
                   </span>
                 </div>
 
                 <div className="document-writing-progress mx-5 mb-5" aria-hidden="true">
-                  <span style={{ width: `${template.fields.length > 0 ? (completedFieldCount / template.fields.length) * 100 : 0}%` }} />
+                  <span style={{ width: `${displayedFieldCount > 0 ? (completedFieldCount / displayedFieldCount) * 100 : 0}%` }} />
                 </div>
 
                 <div className="document-writing-fields px-5 pb-5">
+                  {hasLoadedMaterials && (
+                    <div className="document-writing-field-wide">
+                      <label className="mb-1.5 block text-[12px] font-medium text-[var(--ds-ink)]">
+                        {MATERIAL_DOCUMENT_SUBJECT_FIELD.label}
+                        <span className="ml-1 text-red-500">*</span>
+                      </label>
+                      <FieldInput
+                        field={MATERIAL_DOCUMENT_SUBJECT_FIELD}
+                        value={fieldValues[DOCUMENT_SUBJECT_FIELD_ID] ?? ''}
+                        onChange={(value) => onFieldChange(DOCUMENT_SUBJECT_FIELD_ID, value)}
+                      />
+                      <p className="mt-1.5 text-[10.5px] leading-4 text-[var(--ds-faint)]">
+                        请明确本次代表哪一方；其余空缺信息由 Agent 从已上传材料中提取。
+                      </p>
+                    </div>
+                  )}
                   {visibleFields.map((field) => (
                     <div
                       key={field.id}
@@ -460,7 +560,7 @@ export function DocumentWritingEditor({
                     >
                       <label className="mb-1.5 block text-[12px] font-medium text-[var(--ds-ink)]">
                         {field.label}
-                        {field.required && <span className="ml-1 text-red-500">*</span>}
+                        {!hasLoadedMaterials && field.required && <span className="ml-1 text-red-500">*</span>}
                       </label>
                       <FieldInput
                         field={field}
@@ -521,12 +621,12 @@ export function DocumentWritingEditor({
                   </div>
                   <div className="flex items-center justify-between text-[11.5px]">
                     <span className="text-[var(--ds-faint)]">已填信息</span>
-                    <span className="font-medium text-[var(--ds-ink)]">{completedFieldCount}/{template.fields.length}</span>
+                    <span className="font-medium text-[var(--ds-ink)]">{completedFieldCount}/{displayedFieldCount}</span>
                   </div>
                   <div className="flex items-center justify-between text-[11.5px]">
                     <span className="text-[var(--ds-faint)]">生成状态</span>
-                    <span className={missingExplicitFields.length > 0 ? 'font-medium text-amber-600 dark:text-amber-400' : 'font-medium text-[var(--ds-success)]'}>
-                      {missingExplicitFields.length > 0 ? '需要补充' : '可以生成'}
+                    <span className={canGenerate ? 'font-medium text-[var(--ds-success)]' : 'font-medium text-amber-600 dark:text-amber-400'}>
+                      {canGenerate ? '可以生成' : '需要补充'}
                     </span>
                   </div>
                 </div>
@@ -534,7 +634,7 @@ export function DocumentWritingEditor({
                 <button
                   type="button"
                   onClick={onGenerate}
-                  disabled={generating || missingExplicitFields.length > 0}
+                  disabled={generating || !canGenerate}
                   className="document-writing-primary-button w-full"
                 >
                   {generating ? (
@@ -545,19 +645,24 @@ export function DocumentWritingEditor({
                   <span>{generating ? t('documentWritingGenerating') : t('documentWritingGenerate')}</span>
                 </button>
 
-                {missingRequiredFields.length > 0 ? (
+                {documentSubjectMissing ? (
+                  <div className="mt-3 flex items-start gap-2 px-1 text-[11px] leading-[1.55] text-[var(--ds-faint)]">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+                    <span>请填写文书涉及主体，明确本次代表哪一方；其他字段由 Agent 从材料提取。</span>
+                  </div>
+                ) : missingRequiredFields.length > 0 ? (
                   <div className="mt-3 flex items-start gap-2 px-1 text-[11px] leading-[1.55] text-[var(--ds-faint)]">
                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
                     <span>
                       {missingExplicitFields.length > 0
                         ? `请先选择：${missingExplicitFields.join('、')}`
-                        : '未填写的内容可由 AI 尝试从上传材料中提取。'}
+                        : '请填写必填内容，或上传一份可读取的案件材料，由 Agent 自动提取并撰写。'}
                     </span>
                   </div>
                 ) : (
                   <div className="mt-3 flex items-center gap-2 px-1 text-[11px] text-[var(--ds-success)]">
                     <CircleCheck className="h-3.5 w-3.5" strokeWidth={1.9} />
-                    关键信息已就绪
+                    {hasLoadedMaterials ? '主体已确认，其余信息将从材料提取' : '关键信息已就绪'}
                   </div>
                 )}
               </div>

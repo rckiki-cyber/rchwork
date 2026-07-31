@@ -422,7 +422,15 @@ export class FileKnowledgeStore implements KnowledgeStore {
 
     let candidates = index.chunks
     if (filterByLayer) {
-      candidates = candidates.filter((chunk) => chunk.layer && targetLayers.has(chunk.layer))
+      // Layer filtering must NOT exclude unlabeled chunks: most user-uploaded
+      // documents carry no pyramid layer, and excluding them made retrieval
+      // return only the handful of labeled chunks (often one large file),
+      // drowning out the actually relevant documents. Unlabeled chunks are
+      // treated as universal and always remain candidates; labeled chunks are
+      // only included when they match a target layer.
+      candidates = candidates.filter(
+        (chunk) => !chunk.layer || targetLayers.has(chunk.layer)
+      )
     }
 
     const terms = queryTerms(query)
@@ -718,6 +726,14 @@ async function collectFiles(root: string, remaining: number): Promise<{ files: s
         }
         await visit(path)
       } else if (entry.isFile()) {
+        // Never index our own system files as knowledge documents: index.json
+        // is the search index itself and *.meta.json are sidecar metadata. Both
+        // are internal bookkeeping, not user content, and indexing them pollutes
+        // retrieval results with noise entries titled "index".
+        if (entry.name === 'index.json' || entry.name.endsWith('.meta.json')) {
+          skippedCount += 1
+          continue
+        }
         const ext = extname(entry.name).toLowerCase()
         if (TEXT_EXTENSIONS.has(ext) || EXTRACTABLE_EXTENSIONS.has(ext)) {
           files.push(path)

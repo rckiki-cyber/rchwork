@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildLegalDocumentHtml,
   legalDocumentMarkdownToDocx,
+  normalizeLegalParagraphs,
   prepareLegalDocumentMarkdown
 } from './legal-document-export-service'
 
@@ -87,6 +88,32 @@ describe('legal document Word export', () => {
     expect(markdown).not.toMatch(/^- /m)
   })
 
+  it('keeps research numbering inline instead of creating wide Word list indents', () => {
+    const source = [
+      '# 法律调研报告',
+      '',
+      '## 五、学术观点',
+      '',
+      '1. **第一篇论文**——核心观点。',
+      '',
+      '1. **第二篇论文**——核心观点。'
+    ].join('\n')
+    const markdown = prepareLegalDocumentMarkdown({
+      templateName: '法律调研报告',
+      markdown: source
+    })
+    const html = buildLegalDocumentHtml({
+      templateName: '法律调研报告',
+      markdown: source
+    })
+
+    expect(markdown).toContain('1\\. **第一篇论文**')
+    expect(markdown).toContain('1\\. **第二篇论文**')
+    expect(html).not.toContain('<ol>')
+    expect(html).not.toContain('<li>')
+    expect(html).toContain('>1. <strong>第一篇论文</strong>')
+  })
+
   it('writes the reference-report font and paragraph settings into DOCX OOXML', async () => {
     const buffer = await legalDocumentMarkdownToDocx({
       templateId: 'legal-opinion',
@@ -163,5 +190,18 @@ describe('legal document Word export', () => {
     expect(document).not.toContain('时效性')
     expect(relationships).toContain('Target="https://www.pkulaw.com/chl/example.html"')
     expect(relationships).toContain('TargetMode="External"')
+  })
+
+  it('uses a compact hanging indent when OOXML contains a real numbered paragraph', () => {
+    const normalized = normalizeLegalParagraphs([
+      '<w:document><w:body><w:p><w:pPr>',
+      '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>',
+      '<w:ind w:left="1440" w:hanging="720"/>',
+      '</w:pPr><w:r><w:t>第一项内容</w:t></w:r></w:p></w:body></w:document>'
+    ].join(''))
+
+    expect(normalized).toContain('<w:ind w:left="480" w:hanging="360"/>')
+    expect(normalized).not.toContain('w:left="1440"')
+    expect(normalized).not.toContain('w:firstLine="480"')
   })
 })

@@ -1,10 +1,79 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { InlineNoticeView } from './settings-controls'
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
 const FETCH_DEBOUNCE_MS = 800
+const MENU_GAP = 8
+const MENU_MARGIN = 12
+const MENU_MIN_HEIGHT = 220
+const MENU_MAX_HEIGHT = 372
+
+export type ModelListMenuPlacement = {
+  left: number
+  top: number
+  width: number
+  maxHeight: number
+}
+
+export function calculateModelListMenuPlacement({
+  anchorRect,
+  estimatedHeight,
+  viewportHeight,
+  viewportWidth,
+  coordinateScale = 1
+}: {
+  anchorRect: Pick<DOMRect, 'bottom' | 'left' | 'right' | 'top' | 'width'>
+  estimatedHeight: number
+  viewportHeight: number
+  viewportWidth: number
+  coordinateScale?: number
+}): ModelListMenuPlacement {
+  const scale = Number.isFinite(coordinateScale) && coordinateScale > 0 ? coordinateScale : 1
+  const anchor = {
+    bottom: anchorRect.bottom / scale,
+    left: anchorRect.left / scale,
+    right: anchorRect.right / scale,
+    top: anchorRect.top / scale,
+    width: anchorRect.width / scale
+  }
+  const normalizedViewportHeight = viewportHeight / scale
+  const normalizedViewportWidth = viewportWidth / scale
+  const width = Math.min(anchor.width, Math.max(0, normalizedViewportWidth - MENU_MARGIN * 2))
+  const left = Math.min(
+    Math.max(anchor.left, MENU_MARGIN),
+    Math.max(MENU_MARGIN, normalizedViewportWidth - MENU_MARGIN - width)
+  )
+  const spaceBelow = Math.max(
+    0,
+    normalizedViewportHeight - anchor.bottom - MENU_GAP - MENU_MARGIN
+  )
+  const spaceAbove = Math.max(0, anchor.top - MENU_GAP - MENU_MARGIN)
+  const targetHeight = Math.min(
+    MENU_MAX_HEIGHT,
+    Math.max(MENU_MIN_HEIGHT, estimatedHeight)
+  )
+  const openAbove = spaceBelow < targetHeight && spaceAbove > spaceBelow
+  const availableHeight = openAbove ? spaceAbove : spaceBelow
+  const maxHeight = Math.min(
+    targetHeight,
+    Math.max(Math.min(MENU_MIN_HEIGHT, availableHeight), availableHeight)
+  )
+  const top = openAbove
+    ? Math.max(MENU_MARGIN, anchor.top - MENU_GAP - maxHeight)
+    : anchor.bottom + MENU_GAP
+
+  return { left, top, width, maxHeight }
+}
+
+function currentBodyZoom(): number {
+  if (typeof window === 'undefined') return 1
+  const zoom = window.getComputedStyle(document.body).zoom
+  const parsed = Number.parseFloat(zoom)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
+}
 
 /**
  * Model picker for a model-provider profile: automatically fetches the
@@ -34,7 +103,9 @@ export function ModelListPicker({
   const [fetchedIds, setFetchedIds] = useState<string[]>([])
   const [filter, setFilter] = useState('')
   const [customId, setCustomId] = useState('')
+  const [menuPlacement, setMenuPlacement] = useState<ModelListMenuPlacement | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const requestSeq = useRef(0)
 
   const fetchModels = async (): Promise<void> => {
@@ -79,9 +150,9 @@ export function ModelListPicker({
   useEffect(() => {
     if (!open) return
     const onPointerDown = (event: MouseEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false)
-      }
+      const target = event.target as Node
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onPointerDown)
     return () => document.removeEventListener('mousedown', onPointerDown)
@@ -97,6 +168,43 @@ export function ModelListPicker({
     const query = filter.trim().toLowerCase()
     return query ? allIds.filter((id) => id.toLowerCase().includes(query)) : allIds
   }, [allIds, filter])
+
+  useEffect(() => {
+    if (!open) {
+      setMenuPlacement(null)
+      return
+    }
+
+    const updatePlacement = (): void => {
+      const root = rootRef.current
+      if (!root) return
+      const estimatedHeight = 128 + Math.min(Math.max(visibleIds.length, 1) * 36, 240)
+      setMenuPlacement(calculateModelListMenuPlacement({
+        anchorRect: root.getBoundingClientRect(),
+        estimatedHeight,
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth,
+        coordinateScale: currentBodyZoom()
+      }))
+    }
+
+    updatePlacement()
+    window.addEventListener('resize', updatePlacement)
+    window.addEventListener('scroll', updatePlacement, true)
+    return () => {
+      window.removeEventListener('resize', updatePlacement)
+      window.removeEventListener('scroll', updatePlacement, true)
+    }
+  }, [open, visibleIds.length])
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open])
 
   const toggleModel = (id: string): void => {
     const next = new Set(selected)
@@ -121,6 +229,8 @@ export function ModelListPicker({
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          aria-haspopup="menu"
           className="flex w-full items-center justify-between gap-2 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[14px] text-ds-ink shadow-sm transition hover:bg-ds-hover"
         >
           <span className="min-w-0 truncate">
@@ -147,21 +257,31 @@ export function ModelListPicker({
         </div>
       ) : null}
 
-      {open ? (
+      {open && menuPlacement && typeof document !== 'undefined' ? createPortal((
         <div
+          ref={menuRef}
+          role="menu"
           data-control-hover-root
           data-control-hover-layered
-          className="absolute z-20 mt-2 w-full rounded-xl border border-ds-border bg-ds-card shadow-lg"
+          data-control-hover-portal
+          className="ds-no-drag fixed z-50 flex flex-col overflow-hidden rounded-[16px] border border-ds-border bg-ds-elevated shadow-[0_18px_52px_rgba(15,23,42,0.18)] backdrop-blur-xl dark:shadow-[0_22px_58px_rgba(0,0,0,0.38)]"
+          style={{
+            left: `${menuPlacement.left}px`,
+            top: `${menuPlacement.top}px`,
+            width: `${menuPlacement.width}px`,
+            maxHeight: `${menuPlacement.maxHeight}px`
+          } satisfies CSSProperties}
         >
           <div className="border-b border-ds-border p-2">
             <input
-              className="w-full rounded-lg border border-ds-border bg-ds-main/60 px-2.5 py-1.5 text-[13px] text-ds-ink focus:border-accent/40 focus:outline-none"
+              autoFocus
+              className="w-full rounded-[12px] border border-ds-border bg-ds-main/60 px-2.5 py-1.5 text-[13px] text-ds-ink focus:border-accent/40 focus:outline-none"
               placeholder={t('modelListFilterPlaceholder')}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
           </div>
-          <div className="max-h-60 overflow-y-auto p-1.5">
+          <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {visibleIds.length === 0 ? (
               <p className="px-2 py-3 text-center text-[12.5px] text-ds-faint">
                 {loading ? t('modelListFetching') : t('modelListEmpty')}
@@ -173,8 +293,11 @@ export function ModelListPicker({
                   <button
                     key={id}
                     type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={checked}
+                    data-control-active={checked ? 'true' : undefined}
                     onClick={() => toggleModel(id)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] text-ds-ink transition hover:bg-ds-hover"
+                    className="flex w-full items-center gap-2 rounded-[12px] px-2 py-1.5 text-left text-[13px] text-ds-ink transition hover:bg-ds-hover"
                   >
                     <span
                       className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
@@ -191,7 +314,7 @@ export function ModelListPicker({
           </div>
           <div className="flex items-center gap-2 border-t border-ds-border p-2">
             <input
-              className="w-full rounded-lg border border-ds-border bg-ds-main/60 px-2.5 py-1.5 font-mono text-[12.5px] text-ds-ink focus:border-accent/40 focus:outline-none"
+              className="w-full rounded-[12px] border border-ds-border bg-ds-main/60 px-2.5 py-1.5 font-mono text-[12.5px] text-ds-ink focus:border-accent/40 focus:outline-none"
               placeholder={t('modelListAddPlaceholder')}
               value={customId}
               onChange={(e) => setCustomId(e.target.value)}
@@ -203,14 +326,14 @@ export function ModelListPicker({
               type="button"
               onClick={addCustomModel}
               disabled={!customId.trim()}
-              className="shrink-0 rounded-lg border border-ds-border bg-ds-card p-1.5 text-ds-ink transition hover:bg-ds-hover disabled:opacity-50"
+              className="shrink-0 rounded-[12px] border border-ds-border bg-ds-card p-1.5 text-ds-ink transition hover:bg-ds-hover disabled:opacity-50"
               title={t('modelListAdd')}
             >
               <Plus className="h-4 w-4" />
             </button>
           </div>
         </div>
-      ) : null}
+      ), document.body) : null}
     </div>
   )
 }

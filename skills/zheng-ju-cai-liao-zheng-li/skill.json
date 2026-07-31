@@ -1,0 +1,26 @@
+{
+  "id": "zheng-ju-cai-liao-zheng-li",
+  "name": "证据材料整理",
+  "description": "证据材料整理：接收案件相关文件（起诉状、证据材料），按固定模板格式生成证据清单 Word 文档，并将全部证据材料合并为一个带页码的 PDF 合集。触发场景：用户提供\"帮我整理证据材料\"、\"制作证据清单\"、\"把证据材料合集 PDF\"、\"生成证据目录\"等请求时使用。",
+  "version": "1.0.0",
+  "entry": "SKILL.md",
+  "triggers": {
+    "commands": [
+      "/evidencezheng"
+    ],
+    "promptPatterns": [
+      "证据材料整理|证据清单|证据目录|证据合集|整理证据|证据材料合集|制作证据"
+    ],
+    "fileTypes": [
+      ".pdf",
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".docx",
+      ".doc"
+    ]
+  },
+  "allowedTools": [],
+  "assets": [],
+  "priority": 0
+}

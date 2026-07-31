@@ -19,6 +19,7 @@ import type {
   TemplateGenerateWithMaterialsRequest,
   TemplateGenerateWithMaterialsResult
 } from '../../shared/user-templates'
+import { DOCUMENT_SUBJECT_FIELD_ID } from '../../shared/user-templates'
 import { legalDocumentFormatInstruction } from '../../shared/legal-document-format'
 
 const TIMEOUT_MS = 90_000
@@ -28,11 +29,12 @@ export function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequ
   systemPrompt: string
   userPrompt: string
 } {
+  const hasMaterials = Boolean(request.materials?.length)
+  const documentSubject = request.fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim()
   const fieldValuesText = request.template.fields
     .map((field) => {
       const value = request.fieldValues[field.id]?.trim()
-      const required = field.required ? '（必填）' : ''
-      return `- ${field.label}${required}：${value || '（未填写，请优先从参考材料提取；材料也没有的，使用【待核实：字段名】标注）'}`
+      return `- ${field.label}：${value || '（未填写；有材料时必须先从全部材料主动提取）'}`
     })
     .join('\n')
 
@@ -72,14 +74,17 @@ ${userTemplatePriority}
 4. 按照用户选择的模板类型生成相应的文书内容
 5. 使用专业、规范的法律语言
 6. 将用户填写的信息和参考材料中的相关内容自然地融入文书中
-7. 如果用户提供了参考材料，必须先从材料中提取当事人、案号、法院、请求、事实、证据等关键事实，再写入文书
+7. 如果用户提供了参考材料，必须先建立材料事实台账，逐项提取当事人、案号、法院、请求、事实、证据等关键事实，再写入文书
 8. 用户已填写字段的内容优先级高于参考材料；参考材料与填写字段冲突时，以用户填写字段为准，并在相应位置用【待核实：冲突信息】提示
-9. 对材料或字段均未提供的信息，不得编造；确需保留的必要信息用【待核实：字段名】标注
-10. 直接输出 Markdown 正文，不要包裹代码块，不要输出说明文字
-11. Markdown 只是存储语法：不得使用网页文章式横线、彩色提示框、引用块、装饰性粗体或随意项目符号
-12. 标题下不要重复一遍标题；文末不得添加“AI 生成”“仅供参考”等非文书内容
-13. 除文种确实要求逐项列明的请求、条款、附件外，禁止把连续叙事机械拆成 1、2、3、4 的有序列表
-14. 一级到四级层次必须遵循“一、”“（一）”“1.”“（1）”或该文种专用的章—条编号；同一层级不得混用
+9. 判决书、裁定书在当事人栏、审理查明、裁判主文和落款中明确载明的主体、身份、法定代表人、地址、案号、法院、案由、裁判结果和日期，可以直接采用；不得以“需要用户填写”或“需要营业执照二次核验”为由保留占位语
+10. 界面空字段只表示用户未手工填写，不代表材料中没有答案；必须检索全部材料，只要有明确答案就直接写入
+11. 只有字段和全部材料均未提供、无法唯一确定且文书确有必要的信息才使用【待核实：具体缺失事项】；禁止输出“待核实：请填写”“结合判决书请填写”等把分析工作退回用户的提示，非必要未知栏目应省略
+12. 直接输出 Markdown 正文，不要包裹代码块，不要输出说明文字
+13. Markdown 只是存储语法：不得使用网页文章式横线、彩色提示框、引用块、装饰性粗体或随意项目符号
+14. 标题下不要重复一遍标题；文末不得添加“AI 生成”“仅供参考”等非文书内容
+15. 除文种确实要求逐项列明的请求、条款、附件外，禁止把连续叙事机械拆成 1、2、3、4 的有序列表
+16. 一级到四级层次必须遵循“一、”“（一）”“1.”“（1）”或该文种专用的章—条编号；同一层级不得混用
+17. 用户上传模板的段落、标题、表格单元格和签署区顺序必须逐项对应，避免增删结构，以便将正文原位写回原 DOCX
 
 本类文书格式卡：
 ${formatInstruction}
@@ -97,7 +102,8 @@ ${formatInstruction}
   userPrompt += `\n\n字段信息：\n${fieldValuesText}`
 
   if (materialsText) {
-    userPrompt += `\n\n参考材料（请从中提取相关信息用于文书）：\n${materialsText}`
+    userPrompt += `\n\n用户确认的文书涉及主体（据此确定我方/委托方立场）：\n${documentSubject || '（未确认）'}`
+    userPrompt += `\n\n参考材料（必须逐项提取明确记载的信息并直接写入文书）：\n${materialsText}`
   }
 
   userPrompt += `\n\n模板结构参考：\n${request.template.content.slice(0, 3000)}`
@@ -106,7 +112,11 @@ ${formatInstruction}
     userPrompt += instructionsText
   }
 
-  userPrompt += `\n\n请生成完整、规范的法律文书。只输出文书 Markdown 正文。`
+  userPrompt += `\n\n请生成完整、规范的法律文书。只输出文书 Markdown 正文。${
+    hasMaterials
+      ? '生成前先在内部逐项核对空字段是否可由材料填写；不得在正文中展示核对过程。'
+      : ''
+  }`
 
   return { systemPrompt, userPrompt }
 }

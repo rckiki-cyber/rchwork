@@ -339,6 +339,7 @@ export type UserMessageEventPayload = {
 export type ThreadDeltaEvent = {
   text: string
   kind: 'agent_message' | 'agent_reasoning'
+  itemId?: string
   seq?: number
 }
 

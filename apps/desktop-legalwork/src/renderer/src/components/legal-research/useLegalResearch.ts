@@ -19,6 +19,13 @@ export interface ResearchStep {
   meta?: Record<string, unknown>
 }
 
+export interface ResearchUpdate {
+  id: string
+  text: string
+  createdAt: string
+  completed?: boolean
+}
+
 export interface ResearchRecord {
   id: string
   query: string
@@ -27,6 +34,7 @@ export interface ResearchRecord {
   status: 'running' | 'done' | 'error'
   blocks: ChatBlock[]
   steps: ResearchStep[]
+  updates: ResearchUpdate[]
   summary: string
   editedSummary?: string
   reportRevision?: number
@@ -60,7 +68,12 @@ function loadRecords(): ResearchRecord[] {
     if (!raw) return []
     const parsed = JSON.parse(raw) as ResearchRecord[]
     return Array.isArray(parsed)
-      ? parsed.map((record) => ({ ...record, blocks: record.blocks ?? [] }))
+      ? parsed.map((record) => ({
+          ...record,
+          blocks: record.blocks ?? [],
+          steps: record.steps ?? [],
+          updates: record.updates ?? []
+        }))
       : []
   } catch {
     return []
@@ -93,7 +106,7 @@ export function useLegalResearch() {
       t('legalResearchAgentPrompt', {
         query,
         defaultValue:
-          '请对以下法律问题进行多源调研：「{{query}}」。\n\n【重要要求】\n1. 你的所有思考过程、推理分析必须使用中文，不要使用英文。\n2. 主动调用可用的 skill 和 MCP 工具（如多引擎搜索、类案检索、学术文献、法规提取、网页内容抓取等）。\n3. 收集网络信息、裁判案例、学术文献、现行法规与权威解读。\n4. 如果检索工具提供原文链接，必须保留工具返回的完整 URL，不得自行拼接或猜测；引用国家法律法规数据库时，优先调用 `knowledge_legal_external_sources`，只使用该工具本次返回且经详情接口核验的 `records.path`（应为 `https://flk.npc.gov.cn/detail?id=...`），不得引用会打开数据库首页的 `https://flk.npc.gov.cn/index?...`。没有核验通过的详情记录时，改引官方公报 PDF、全国人大官网等权威页面，或明确标注无可核验链接。国家法律法规数据库检索/详情/下载接口可用时，不要把普通的前端页面抓取不完整概括为“反爬限制”；只有工具明确返回 403、验证码、WAF 或访问限制证据时，才说明访问受限。北大法宝 doc-link/链接增强工具可用时，使用它补全法规与案例的原文链接。\n5. 最终总结使用 Markdown 输出：如果链接前的文字已经写清楚法规名称、法条标题、案例名称、案号或网页标题，链接文本可简写为 `[国家法律法规数据库链接](完整URL)`、`[北大法宝链接](完整URL)`、`[原文链接](完整URL)`；如果前文没有说明标题，链接文本必须使用清楚的页面标题或资料名称。没有真实 URL 时只写名称并明确标注“无可核验链接”，不得生成虚假链接。\n6. 最后给出结构化的综合总结。\n7. 推理过程要简洁，只列出关键行动步骤，不要展开长篇大论。\n8. 【容错原则】如果某个工具调用失败或返回错误，不要停止，立即尝试其他工具或替代方法完成调研。一个途径不行就换另一个，确保最终给出完整结果。'
+          '请对以下法律问题进行多源调研：「{{query}}」。\n\n【重要要求】\n1. 所有可见过程播报与最终报告使用中文。\n2. 主动调用可用的 skill、知识库与法律数据库工具；已配置北大法宝 MCP 时，以北大法宝作为法规和案例的主检索来源，并使用其链接增强与引证核验工具。\n3. 国家法律法规数据库不是强制来源。仅在用户明确指定、北大法宝不可用/无结果或不同来源对效力状态存在重大冲突时按需使用；不得仅为取得官方链接而查询，也不得为访问国家库调用用户浏览器、Chrome 或 Playwright。\n4. 每完成一个检索阶段，可用一条简短消息说明“已完成什么、得到什么、下一步是什么”；不要把多个阶段压成一个长段落，也不要输出冗长的工具尝试日志。\n5. 某个可选来源失败时最多换用一个已配置的非浏览器来源；不要反复重试。资料仍无法核验时如实标注，不阻塞最终报告。\n6. 最终报告必须作为最后一条独立回复，以 Markdown 分级标题组织，至少区分：结论、法律依据、相关案例、分析与风险提示、来源。保留工具返回的完整真实 URL，不得自行拼接或猜测。\n7. 推理过程只保留关键行动，不展开长篇内部分析。'
       }),
     [t]
   )
@@ -134,6 +147,7 @@ export function useLegalResearch() {
           status: 'running',
           blocks: [],
           steps: [],
+          updates: [],
           summary: '',
           reasoning: '',
           threadId
@@ -151,7 +165,8 @@ export function useLegalResearch() {
           prev.map((r) => (r.id === recordId ? { ...r, turnId } : r))
         )
 
-        let assistantText = ''
+        const assistantSegments = new Map<string, ResearchUpdate>()
+        const assistantSegmentOrder: string[] = []
         let reasoningText = ''
         const toolSteps = new Map<string, ResearchStep>()
         const blockMap = new Map<string, ChatBlock>()
@@ -162,6 +177,23 @@ export function useLegalResearch() {
 
         function flushBlocks(): ChatBlock[] {
           return [...blockMap.values()]
+        }
+
+        function flushUpdates(): ResearchUpdate[] {
+          return assistantSegmentOrder
+            .map((id) => assistantSegments.get(id))
+            .filter((update): update is ResearchUpdate => Boolean(update?.text.trim()))
+        }
+
+        function latestAssistantText(): string {
+          const latestId = assistantSegmentOrder[assistantSegmentOrder.length - 1]
+          return latestId ? assistantSegments.get(latestId)?.text.trim() ?? '' : ''
+        }
+
+        function completeAssistantUpdates(): void {
+          for (const [id, update] of assistantSegments) {
+            assistantSegments.set(id, { ...update, completed: true })
+          }
         }
 
         function updateRecord(next: Partial<ResearchRecord>): void {
@@ -180,18 +212,27 @@ export function useLegalResearch() {
           onDeltas: (deltas: ThreadDeltaEvent[]) => {
             for (const delta of deltas) {
               if (delta.kind === 'agent_message') {
-                assistantText += delta.text
+                const segmentId = delta.itemId || 'assistant-current'
+                const existing = assistantSegments.get(segmentId)
+                if (!existing) {
+                  completeAssistantUpdates()
+                  assistantSegmentOrder.push(segmentId)
+                }
+                assistantSegments.set(segmentId, {
+                  id: segmentId,
+                  text: `${existing?.text ?? ''}${delta.text}`,
+                  createdAt: existing?.createdAt ?? new Date().toISOString(),
+                  completed: false
+                })
+                upsertBlock({
+                  kind: 'assistant',
+                  id: segmentId,
+                  createdAt: assistantSegments.get(segmentId)?.createdAt,
+                  text: assistantSegments.get(segmentId)?.text.trim() ?? ''
+                })
               } else if (delta.kind === 'agent_reasoning') {
                 reasoningText += delta.text
               }
-            }
-            if (assistantText.trim()) {
-              upsertBlock({
-                kind: 'assistant',
-                id: 'assistant',
-                createdAt: new Date().toISOString(),
-                text: assistantText.trim()
-              })
             }
             if (reasoningText.trim()) {
               upsertBlock({
@@ -201,7 +242,11 @@ export function useLegalResearch() {
                 text: reasoningText.trim()
               })
             }
-            updateRecord({ summary: assistantText.trim(), reasoning: reasoningText.trim() })
+            updateRecord({
+              updates: flushUpdates(),
+              summary: latestAssistantText(),
+              reasoning: reasoningText.trim()
+            })
           },
           onUserMessage: (ev) => {
             upsertBlock({
@@ -214,6 +259,7 @@ export function useLegalResearch() {
             updateRecord({})
           },
           onTool: (ev: ToolEventPayload) => {
+            completeAssistantUpdates()
             const existing = toolSteps.get(ev.itemId)
             const isError = ev.status === 'error'
             
@@ -250,7 +296,10 @@ export function useLegalResearch() {
               filePath: ev.filePath,
               meta: ev.meta
             })
-            updateRecord({})
+            updateRecord({
+              steps: [...toolSteps.values()],
+              updates: flushUpdates()
+            })
           },
           onCompaction: () => {},
           onApproval: () => {},
@@ -259,20 +308,24 @@ export function useLegalResearch() {
           onGoal: () => {},
           onTurnComplete: () => {
             terminalEventReceived = true
+            completeAssistantUpdates()
             // 只有真正成功完成时才标记为 done
             updateRecord({
               status: 'done',
-              summary: assistantText.trim() || t('legalResearchNoSummary'),
+              updates: flushUpdates(),
+              summary: latestAssistantText() || t('legalResearchNoSummary'),
               error: undefined // 清除之前的错误
             })
             setIsResearching(false)
           },
           onError: (err: Error) => {
             terminalEventReceived = true
+            completeAssistantUpdates()
             updateRecord({
               status: 'error',
               error: `调研连接中断：${err.message}`,
-              summary: assistantText.trim() || t('legalResearchNoSummary')
+              updates: flushUpdates(),
+              summary: latestAssistantText() || t('legalResearchNoSummary')
             })
             setIsResearching(false)
           }
@@ -283,7 +336,8 @@ export function useLegalResearch() {
           updateRecord({
             status: 'error',
             error: t('legalResearchStreamEnded'),
-            summary: assistantText.trim() || t('legalResearchNoSummary')
+            updates: flushUpdates(),
+            summary: latestAssistantText() || t('legalResearchNoSummary')
           })
           setIsResearching(false)
         }
@@ -303,6 +357,7 @@ export function useLegalResearch() {
               status: 'error',
               blocks: [],
               steps: [],
+              updates: [],
               summary: '',
               reasoning: '',
               threadId,

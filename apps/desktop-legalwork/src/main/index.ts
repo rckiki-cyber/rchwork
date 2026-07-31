@@ -17,6 +17,7 @@ import {
   mergeLearningIterationSettings,
   mergeModelProviderSettings,
   mergeScheduleSettings,
+  legalworkSettingsPatch,
   mergeWriteSettings,
   normalizeAppSettings,
   normalizeAppBehaviorSettings,
@@ -37,6 +38,7 @@ import {
   runtimeAuthHeaders,
   runtimeRequestViaHost
 } from './runtime/legalwork-adapter'
+import { findAvailableLegalworkPort } from './legalwork-process'
 import { configureLogger, logError, logWarn, pruneOnStartup } from './logger'
 import { createClawRuntime, type ClawRuntime } from './claw-runtime'
 import { createScheduleRuntime, type ScheduleRuntime } from './schedule-runtime'
@@ -650,7 +652,40 @@ async function ensureLegalworkRuntime(settings: AppSettingsV1): Promise<void> {
       if (threadApi.ok) return
       throw runtimeJsonError(threadApi.error, threadApi.message)
     }
-    throw runtimeJsonError('runtime_port_conflict', reclaim.message)
+    // The preferred port is taken by another process (common on shared machines:
+    // another Legalwork instance, a leftover serve process, or an unrelated app).
+    // Auto-select the next free port and persist it so the runtime and all
+    // health/thread probes use the same port. Only fail if no port is free.
+    const fallbackPort = await findAvailableLegalworkPort(runtime.port)
+    const patched = await store.patch({ agents: legalworkSettingsPatch({ port: fallbackPort }) })
+    const newRuntime = getLegalworkRuntimeSettings(patched)
+    console.warn(
+      `[legalwork] port ${runtime.port} is in use; falling back to ${newRuntime.port}`
+    )
+    const healthy2 = await waitForLegalworkHealth(patched, RUNTIME_PORT_CONFLICT_HEALTH_RECHECK_MS)
+    if (healthy2) {
+      const threadApi2 = await probeThreadApi(patched)
+      if (threadApi2.ok) return
+      throw runtimeJsonError(threadApi2.error, threadApi2.message)
+    }
+    try {
+      await adapter.ensureRunning(patched)
+    } catch (e) {
+      console.error('[legalwork] failed to start legalwork on fallback port:', e)
+      throw e
+    }
+    const started = await waitForLegalworkHealth(patched, 20_000)
+    if (!started) {
+      throw runtimeJsonError(
+        'runtime_unhealthy',
+        'Legalwork did not become healthy after launch.'
+      )
+    }
+    const threadApi3 = await probeThreadApi(patched)
+    if (!threadApi3.ok) {
+      throw runtimeJsonError(threadApi3.error, threadApi3.message)
+    }
+    return
   }
   try {
     await adapter.ensureRunning(settings)

@@ -54,6 +54,8 @@ import type {
   UserTemplate,
   TemplateLearningRequest,
   TemplateLearningResult,
+  TemplateSourceSaveRequest,
+  TemplateSourceSaveResult,
   TemplateGenerateWithMaterialsRequest,
   TemplateGenerateWithMaterialsResult
 } from './user-templates'
@@ -299,7 +301,7 @@ export type SseEndPayload = { streamId: string }
 export type SseErrorPayload = { streamId: string; status?: number; message?: string }
 
 export type LegalResearchExportResult =
-  | { ok: true; path: string }
+  | { ok: true; path: string; formatPreserved?: boolean; warning?: string }
   | { ok: false; canceled: true; message?: string }
   | { ok: false; canceled: false; message: string }
 
@@ -423,6 +425,10 @@ export type DsGuiApi = {
   listUserTemplates: () => Promise<UserTemplate[]>
   /** Save a user template (create or update) */
   saveUserTemplate: (template: UserTemplate) => Promise<{ ok: true } | { ok: false; message: string }>
+  /** Retain the original DOCX package for format-preserving export */
+  saveUserTemplateSource: (
+    payload: TemplateSourceSaveRequest
+  ) => Promise<TemplateSourceSaveResult>
   /** Delete a user template */
   deleteUserTemplate: (id: string) => Promise<{ ok: true } | { ok: false; message: string }>
   /** AI-learn from an uploaded document to create a template */

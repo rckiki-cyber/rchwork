@@ -74,8 +74,45 @@ describe('assistant stream mapping', () => {
     }, sink, async () => undefined)
 
     expect(deltas).toEqual([
-      { text: 'he', kind: 'agent_message', seq: 1 },
-      { text: 'llo', kind: 'agent_message', seq: 2 }
+      { text: 'he', kind: 'agent_message', itemId: 'item_answer', seq: 1 },
+      { text: 'llo', kind: 'agent_message', itemId: 'item_answer', seq: 2 }
+    ])
+  })
+
+  it('preserves assistant item boundaries across research stages', async () => {
+    const deltas: unknown[] = []
+    const sink: ThreadEventSink = {
+      ...makeSink(),
+      onDeltas: (events) => {
+        deltas.push(...events)
+      }
+    }
+
+    for (const [seq, id, text] of [
+      [1, 'item_stage_1', '已完成法规检索。'],
+      [2, 'item_stage_2', '已完成类案检索。'],
+      [3, 'item_report', '# 调研结论']
+    ] as const) {
+      await dispatchLegalworkRuntimeEvent({
+        kind: 'assistant_text_delta',
+        seq,
+        item: {
+          id,
+          turnId: 'turn_1',
+          threadId: 'thr_1',
+          role: 'assistant',
+          status: 'running',
+          createdAt: '2024-01-01T00:00:00.000Z',
+          kind: 'assistant_text',
+          text
+        }
+      }, sink, async () => undefined)
+    }
+
+    expect(deltas).toEqual([
+      { text: '已完成法规检索。', kind: 'agent_message', itemId: 'item_stage_1', seq: 1 },
+      { text: '已完成类案检索。', kind: 'agent_message', itemId: 'item_stage_2', seq: 2 },
+      { text: '# 调研结论', kind: 'agent_message', itemId: 'item_report', seq: 3 }
     ])
   })
 })

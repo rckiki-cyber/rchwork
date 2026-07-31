@@ -53,7 +53,7 @@ export function WorkspaceModeTabs({
       ariaLabel="work / 脱敏 / 合规"
       className="apple-mode-tabs flex flex-row rounded-[16px] bg-[#f1f5f9] p-1 dark:bg-white/[0.06]"
       buttonClassName="apple-mode-tab inline-flex min-h-[32px] min-w-fit flex-1 items-center justify-center gap-1.5 rounded-[12px] px-3 text-left text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:focus-visible:ring-white/20"
-      indicatorClassName="rounded-[12px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:bg-white/[0.12] dark:shadow-[0_1px_4px_rgba(0,0,0,0.2)]"
+      indicatorClassName="apple-mode-indicator rounded-[12px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:bg-white/[0.12] dark:shadow-[0_1px_4px_rgba(0,0,0,0.2)]"
       activeClassName="font-semibold text-[#1f2937] dark:text-white"
       inactiveClassName="font-medium text-[#6b7280] hover:text-[#374151] dark:text-white/55 dark:hover:text-white/80"
     />

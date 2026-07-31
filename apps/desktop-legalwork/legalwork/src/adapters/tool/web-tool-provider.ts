@@ -6,7 +6,10 @@ import { LocalToolHost } from './local-tool-host.js'
 import { AnysearchWebProvider } from './anysearch-web-provider.js'
 
 const DEFAULT_WEB_TIMEOUT_MS = 15_000
-const DEFAULT_WEB_MAX_BYTES = 1_000_000
+// Cap web_fetch at ~96KB (~24K tokens) instead of 1MB: a full page can
+// otherwise inject up to ~250K tokens into the context as a single tool
+// result and dominate turn cost, especially during research tool loops.
+const DEFAULT_WEB_MAX_BYTES = 96 * 1024
 const DEFAULT_SEARCH_LIMIT = 5
 const MAX_SEARCH_LIMIT = 10
 

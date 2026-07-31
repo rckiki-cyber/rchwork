@@ -396,6 +396,7 @@ export class AgentLoop {
   private readonly promptTokenPressure = new Map<string, { model: string; promptTokens: number }>()
   private readonly toolStormBreakers = new Map<string, ToolStormBreaker>()
   private readonly toolCatalogSnapshots = new Map<string, ToolCatalogSnapshot>()
+  private readonly retrievalLedgers = new Map<string, RetrievalLedger>()
 
   constructor(opts: AgentLoopOptions) {
     this.opts = opts
@@ -704,12 +705,17 @@ export class AgentLoop {
       toolSpecs.some((tool) => tool.name === CREATE_PLAN_TOOL_NAME)
         ? CREATE_PLAN_TOOL_NAME
         : undefined
+    // Disable IMA auto-routing for file-scoped knowledge-base Q&A threads
+    // ("知识库：<file> · ..."): the file content is already injected locally and
+    // an extra IMA cloud call would add cost with little benefit. Global
+    // knowledge-base Q&A ("知识库全局对话 · ...") keeps IMA routing.
+    const isFileKnowledgeThread = thread?.title?.startsWith('知识库：')
     const imaRouteAction = resolveImaRouteAction({
       prompt: turn?.prompt ?? '',
       tools: toolSpecs,
       items: healed.items,
       turnId,
-      enabled: !planTurnActive
+      enabled: !planTurnActive && !isFileKnowledgeThread
     })
     const requiredToolName = planRequiredToolName ?? imaRouteAction?.requiredToolName
     const requestToolSpecs = requiredToolName
@@ -1275,7 +1281,29 @@ export class AgentLoop {
       },
       async () => {
         try {
-          return await this.opts.toolHost.execute(input.call, input.context, async (item) => {
+          // Deduplicate repeated knowledge retrieval calls within a turn: if the
+          // model asks for the same search query / file again, return a cached
+          // pointer instead of re-running the tool (re-running re-bills the full
+          // result as cache-miss and adds nothing new).
+          const duplicate = this.retrievalDuplicateFor(input.threadId, input.call)
+          if (duplicate) {
+            const dedupItem = makeToolResultItem({
+              id: `item_${input.call.callId}_dedup`,
+              turnId: input.turnId,
+              threadId: input.threadId,
+              callId: input.call.callId,
+              toolName: input.call.toolName,
+              toolKind: input.call.toolKind ?? 'tool_call',
+              output: {
+                _dedup: true,
+                note: `This knowledge retrieval was already performed earlier in this thread (key: ${duplicate}). Use the already-returned content; do not search the same query again.`
+              }
+            })
+            return { item: dedupItem, approved: true }
+          }
+          // Record into the ledger only AFTER the tool succeeds, so a failed
+          // call (or an exception) does not block a retry of the same query.
+          const result = await this.opts.toolHost.execute(input.call, input.context, async (item) => {
             const existing = await this.opts.turns.updateItem(input.threadId, item.id, {
               output: item.kind === 'tool_result' ? item.output : undefined,
               isError: item.kind === 'tool_result' ? item.isError : undefined,
@@ -1284,6 +1312,10 @@ export class AgentLoop {
             if (existing) return
             await this.opts.turns.applyItem(input.threadId, item)
           })
+          if (result.item.kind === 'tool_result' && !result.item.isError) {
+            this.ledgerFor(input.threadId).record(input.call.toolName, input.call.arguments)
+          }
+          return result
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           return {
@@ -1830,6 +1862,24 @@ export class AgentLoop {
     return 'allow'
   }
 
+  private ledgerFor(threadId: string): RetrievalLedger {
+    let ledger = this.retrievalLedgers.get(threadId)
+    if (!ledger) {
+      ledger = new RetrievalLedger()
+      this.retrievalLedgers.set(threadId, ledger)
+    }
+    return ledger
+  }
+
+  private retrievalDuplicateFor(threadId: string, call: ToolCallLike): string | null {
+    const toolName = call.toolName
+    // Only dedupe knowledge retrieval tools that pull bulk content into history.
+    if (!DEDUP_TOOL_NAMES.has(toolName)) return null
+    const ledger = this.retrievalLedgers.get(threadId)
+    if (!ledger) return null
+    return ledger.duplicateKey(toolName, call.arguments)
+  }
+
   private consumePromptPressure(
     threadId: string,
     model: string
@@ -2261,5 +2311,70 @@ function prefixVolatilityStageDetails(
     prefixVolatileTokenKinds: kinds,
     prefixVolatileFields: fields,
     noRegexDetector: true
+  }
+}
+
+/**
+ * Tools whose results are large and re-billed as cache-miss on every call.
+ * Re-running the same query / reading the same file twice in one turn adds
+ * nothing but token cost, so duplicate calls are short-circuited.
+ */
+// Only dedupe tools whose result is deterministic for a given input (same
+// query → same content). knowledge_list_tree / knowledge_diagnostics reflect
+// live filesystem/runtime state and legitimately change between calls, so
+// they must NOT be short-circuited.
+const DEDUP_TOOL_NAMES = new Set([
+  'knowledge_search',
+  'knowledge_auto_retrieve',
+  'knowledge_read_file'
+])
+
+/** Which argument key is the "subject" used to detect a repeated retrieval. */
+function retrievalKeyFor(toolName: string, args: Record<string, unknown>): string {
+  switch (toolName) {
+    case 'knowledge_search':
+    case 'knowledge_auto_retrieve':
+      return String(args?.query ?? '')
+    case 'knowledge_read_file':
+      // Include the page offset so legitimately paginated reads of the same
+      // file (offset=1, offset=201, …) are NOT treated as duplicates — that
+      // would break the paged-reading cost control.
+      return `${String(args?.path ?? '')}@${Math.max(1, Math.floor(Number(args?.offset) || 1))}`
+    default:
+      return ''
+  }
+}
+
+/**
+ * Per-thread record of knowledge retrieval calls already made, so a repeated
+ * query/file read can be short-circuited instead of re-run (re-running re-bills
+ * the whole result as cache-miss). Only tools with deterministic results
+ * (knowledge_search / knowledge_auto_retrieve / knowledge_read_file per page)
+ * are tracked, so live-state tools (list_tree / diagnostics) are never blocked.
+ * Keys are normalized (lowercased, whitespace-collapsed) to catch
+ * near-identical rephrasings.
+ */
+class RetrievalLedger {
+  private readonly seen = new Set<string>()
+
+  record(toolName: string, args: Record<string, unknown>): void {
+    const key = retrievalKeyFor(toolName, args ?? {})
+    if (key) this.seen.add(this.normalize(toolName, key))
+  }
+
+  duplicateKey(toolName: string, args: Record<string, unknown>): string | null {
+    const raw = retrievalKeyFor(toolName, args ?? {})
+    if (!raw) return null
+    const normalized = this.normalize(toolName, raw)
+    if (this.seen.has(normalized)) return normalized
+    return null
+  }
+
+  private normalize(toolName: string, key: string): string {
+    const collapsed = key.trim().toLowerCase().replace(/\s+/g, ' ')
+    if (toolName === 'knowledge_list_tree' || toolName === 'knowledge_diagnostics') {
+      return `${toolName}:*`
+    }
+    return `${toolName}:${collapsed}`
   }
 }

@@ -9,13 +9,14 @@
 </p>
 
 <p align="center">
-  <img alt="Skill library" src="https://img.shields.io/badge/%E6%8A%80%E8%83%BD%E6%80%BB%E5%BA%93-1345-111827?style=flat-square">
-  <img alt="Core legal AI skills" src="https://img.shields.io/badge/%E6%A0%B8%E5%BF%83%E6%B3%95%E5%BE%8B%E6%8A%80%E8%83%BD-75-2563eb?style=flat-square">
-  <img alt="Extended skill store" src="https://img.shields.io/badge/%E6%89%A9%E5%B1%95%E6%8A%80%E8%83%BD%E5%95%86%E5%BA%97-1252-9333ea?style=flat-square">
+  <img alt="Skill library" src="https://img.shields.io/badge/%E6%8A%80%E8%83%BD%E6%80%BB%E5%BA%93-1260-111827?style=flat-square">
+  <img alt="Core legal AI skills" src="https://img.shields.io/badge/%E6%A0%B8%E5%BF%83%E6%B3%95%E5%BE%8B%E6%8A%80%E8%83%BD-79-2563eb?style=flat-square">
+  <img alt="Extended skill store" src="https://img.shields.io/badge/%E6%89%A9%E5%B1%95%E6%8A%80%E8%83%BD%E5%95%86%E5%BA%97-1182-9333ea?style=flat-square">
   <img alt="Knowledge base files" src="https://img.shields.io/badge/%E6%B3%95%E8%A7%84%E7%9F%A5%E8%AF%86%E5%BA%93-326%20files-16a34a?style=flat-square">
   <img alt="OCR engines" src="https://img.shields.io/badge/OCR-PaddleOCR%20%2B%20Tesseract-f97316?style=flat-square">
   <img alt="Redaction" src="https://img.shields.io/badge/PDF%E8%84%B1%E6%95%8F-%E5%83%8F%E7%B4%A0%E7%BA%A7%E6%B6%82%E9%BB%91-7c3aed?style=flat-square">
-  <img alt="External law source" src="https://img.shields.io/badge/%E6%9D%83%E5%A8%81%E6%B3%95%E6%BA%90-flk.npc.gov.cn-b91c1c?style=flat-square">
+  <img alt="External law source" src="https://img.shields.io/badge/%E6%9D%83%E5%A8%81%E6%B3%95%E6%BA%90-flk.npc.gov.cn%20%2B%20%E5%8C%97%E5%A4%A7%E6%B3%95%E5%AE%9D%20%2B%20%E5%85%83%E5%85%B8-b91c1c?style=flat-square">
+  <img alt="IMA knowledge base" src="https://img.shields.io/badge/IMA%E4%BA%91%E7%9F%A5%E8%AF%86%E5%BA%93-%E4%B8%A4%E7%BA%A7%E6%A3%80%E7%B4%A2-0ea5e9?style=flat-square">
   <img alt="Desktop app" src="https://img.shields.io/badge/%E6%A1%8C%E9%9D%A2%E7%AB%AF-Electron%20%2B%20React-0ea5e9?style=flat-square">
   <img alt="Agent runtime" src="https://img.shields.io/badge/Agent%E8%BF%90%E8%A1%8C%E6%97%B6-HTTP%2FSSE%20%2B%20MCP-475569?style=flat-square">
   <img alt="Platforms" src="https://img.shields.io/badge/%E5%8F%91%E5%B8%83-macOS%20%7C%20Windows%20%7C%20Linux-111827?style=flat-square">
@@ -27,6 +28,110 @@
 
 > 🏛️ 面向法律专业人士的 AI 赋能平台<br>
 > 集成 OCR 文档识别、敏感信息脱敏、智能案情分析、法律检索、文书生成、合规审查等完整法律 AI 能力
+
+## 🆕 0.3.9 功能更新
+
+### 💰 模型成本优化（大幅降低 token 消耗）
+
+- **默认模型改为 flash**：用户未显式选择模型时，主对话、功能调用、知识库问答统一默认使用 DeepSeek `v4-flash`（pro 成本约 3 倍，仅显式选择时使用），显著降低默认开销。
+- **压缩阈值调整**：DeepSeek 上下文折叠阈值从 98 万 token 降至 4 万/6 万 token，长对话历史及时折叠，避免无限重放累积 token。
+- **知识库工具结果瘦身**：`knowledge_search` / `knowledge_auto_retrieve` 返回结果截断到前 500 字符并限制来源条数（≤8），完整内容按需用 `knowledge_read_file` 分页读取；`web_fetch` 抓取上限从 1MB 降至 96KB。
+- **工具调用去重**：同一线程内重复的知识库检索自动短路，避免重复搜索同内容。
+- **多轮对话利用 DeepSeek 前缀缓存**：稳定前缀 + 追加新内容，缓存命中率大幅提升（实测复杂任务命中率可达 99%，成本约 0.2 分/次）。
+
+### 🔍 知识库检索正确性修复
+
+- **层过滤不再误杀文档**：修复金字塔层过滤把无层级标记的文档全部排除的问题，检索正确率大幅提升（实测 5/5 正确命中相关文件）。
+- **索引文件不再污染检索**：同步时排除 `index.json` / `*.meta.json` 等系统文件，检索结果更干净。
+
+### 🐛 Bug 修复
+
+- **环境安装 EPERM 修复**：Windows 重装 Python 环境时 DLL 被占用导致安装失败，改为先终止占用进程再重试删除。
+- **端口冲突自动回退**：运行时端口被占用时自动切换到空闲端口，不再报 `port is in use`。
+- **模板写入原子化**：模板源文件改为临时文件 + rename 原子写，避免崩溃留下损坏文件。
+
+### 📝 文书写作与模板增强
+
+- 文书写作模板库、材料参与生成、模板学习与格式导出链路增强。
+
+## 🆕 0.3.8 功能更新
+
+### IMA 云知识库集成
+
+- **两级检索架构**：LegalWork 对 IMA 返回的目录元数据执行轻量目录级 RAG 选库，再调用 IMA 问答接口由 IMA 对库内全文完成最终检索与生成，不复制云端全文、不建立第二套全文索引。
+- **`research_ima` 统一工具**：将「读取目录、自动选库、全文问答」封装为一次调用；运行时对知识密集型法律任务执行确定性路由，模型未调用时自动补发同一只读调用。
+- **约束与降级**：尊重「不要使用 IMA」及「只使用指定来源」等用户约束；IMA 未连接、认证过期或无匹配时，自动降级到国家法律法规数据库、北大法宝、元典或本地知识库，不阻断其他权威法源。
+- **IMA 认证管理**：内置认证管理器，支持扫码登录与登录态持久化。
+
+### 内置法律文书模板
+
+- **内嵌民事起诉状 / 民事答辩状模板库**：按案由组织隐藏式内置模板（`embedded-legal-document-templates`）。
+- **`resolve_legal_document_template` 工具**：Agent 起草文书前自动解析内置模板结构；用户已上传或显式指定的自定义模板优先级更高，不会被覆盖。
+
+### AnySearch 网页搜索
+
+- **新增 AnySearch 搜索提供器**：通过 JSON-RPC 2.0 接入 AnySearch MCP API，支持匿名访问（较低限额）与 API Key 两种模式，提供搜索与网页正文提取能力。
+
+### 图片附件自动 OCR
+
+- **对话图片自动识别**：对话中上传的图片附件自动走 OCR 提取文字并注入上下文，支持 DeepSeek 等模型直接消费图片内容，减少手动转写。
+
+### DOCX 格式修复工具
+
+- **`tools/docx_format_fix/`**：新增 .NET 工具，基于 OpenXML 规范化 DOCX 排版（中文字体、字号、间距），用于修复 AI 生成文书的格式问题。
+
+### 文书导出升级
+
+- **多格式导出**：文书导出支持 Markdown / DOCX / HTML，DOCX 导出自动做字体排版规范化（`legal-document-export-service`）。
+- **Markdown 导出服务**：新增 `markdown-export-service`，文档导出更稳定。
+- **模板生成服务**：新增 `template-generation-service`，模板渲染与生成更可靠。
+
+### 知识库增强
+
+- **DOCX 预览**：知识库文件预览新增 `DocxPreview`，支持直接预览 .docx 文件。
+- **知识库视图重构**：文件浏览、AI 对话、侧边栏布局重构，交互更顺滑。
+
+### 学习迭代视图升级
+
+- **学习迭代报告**：`LearningIterationView` 重构，支持学习任务列表、进度跟踪、历史报告查看、取消与回滚。
+- **运行稳定性**：修复学习迭代中断在途 LLM 轮次、空闲等待判断等问题，学习迭代按计划模式执行。
+
+### 插件市场大改版
+
+- **插件市场重构**：`PluginMarketplaceView` 全面重构，MCP / Skill 分类标签切换更流畅。
+- **详情与安装体验**：插件详情、启动状态、切换动画优化。
+
+### 法律研究面板升级
+
+- **法律研究面板重构**：研究报告生成、编辑、侧边栏布局全面升级。
+
+### UI / 排版
+
+- **Apple 液态玻璃样式**：新增 `apple-liquid-glass.css` 液态玻璃视觉样式。
+- **字体排版**：全局字体切换为苹果系统字体体系（SF Pro / PingFang SC / SF Mono），中文显示苹方，正文 17px 行距 1.7。
+
+## 🆕 0.3.7 功能更新
+
+### 文书写作
+
+- **文书格式规范 Skill 增强**：`legal_document_formatting` 新增学术写作规范（`academic-writing.md`）、表格与证据形式（`tables-evidence-forms.md`）、DOCX 格式审计脚本（`audit_docx_format.py`）。
+- **文书导出优化**：`legal-document-export-service` 支持更多导出格式，排版更规范。
+
+### 文档识别优化
+
+- **扫描件识别更顺畅**：`document/ocr/router.py` 优化，扫描件和图片材料的处理更稳定。
+
+### 知识库
+
+- **PDF 预览优化**：`PdfJsPreview` 改进，PDF 显示兼容性提升。
+
+### 北大法宝兜底凭证 CI 化
+
+- **加密兜底 Token 入仓**：北大法宝加密兜底凭证随仓库提交，保证 CI 构建产物内置兜底能力；`generate-pkulaw-fallback` 脚本负责生成与维护。
+
+### 更新检查镜像回退
+
+- **GitHub 镜像回退**：中国地区更新检查失败时自动切换到 GitHub 镜像源，保证更新可用。
 
 ## 🆕 0.3.6 功能更新
 
@@ -98,9 +203,9 @@
 
 ## ✨ 功能全景
 
-### 🧠 75 项核心法律 AI 技能 + 1252 项扩展技能
+### 🧠 79 项核心法律 AI 技能 + 1182 项扩展技能
 
-LegalWork 根目录内置 75 项覆盖法律工作全流程的核心技能，并通过 `skills/awesome-legal-aiagent-skills/` 扩展 1252 项可选技能包。核心法律技能按领域分类：
+LegalWork 根目录内置 79 项覆盖法律工作全流程的核心技能，并通过 `skills/awesome-legal-aiagent-skills/` 扩展 26 个法律领域、1182 项可选技能包（覆盖并购、仲裁、破产、资本市场、劳动、知识产权、税务、数据合规等专业方向）；另通过 `skills/8203/` 内置「类案纠纷案例库加强版」，提供人民法院案例库提炼的 257 个案由纠纷普通人问答技能。技能采用 agent 按需发现机制：对话中模型可通过 `search_skills` 按任务描述检索技能、`load_skill` 加载选中技能全文（不受注入预算限制）。核心法律技能按领域分类：
 
 #### 📊 案件分析与推理
 | 技能 | 说明 |
@@ -119,8 +224,10 @@ LegalWork 根目录内置 75 项覆盖法律工作全流程的核心技能，并
 | `legal_abductive_reasoning` | 法律溯因推理 |
 | `systematic_interpretation` | 体系解释分析 |
 | `teleological_interpretation` | 目的解释分析 |
+| `legal_interpretation_argument` | 法律解释论证 |
 | `normative_meaning_argumentation` | 规范意义论证 |
 | `judicial_value_judgment` | 司法价值判断分析 |
+| `administrative_value_judgment` | 行政价值判断与裁量 |
 | `formal_legal_consequence` | 形式法律后果分析 |
 
 #### ⚖️ 裁判预测与评估
@@ -191,12 +298,17 @@ LegalWork 根目录内置 75 项覆盖法律工作全流程的核心技能，并
 | `structured_element_extraction` | 结构化要素提取 |
 | `multi_document_summarization` | 多文档摘要 |
 | `wps-case-file-organizer` | WPS 案件材料整理 |
+| `zheng-ju-cai-liao-zheng-li` | 证据材料整理（证据清单 Word + 带页码证据材料 PDF 合集） |
+| `litigation-prep` | 诉讼准备（案由识别、请求权基础、证据清单） |
 
 #### 🛠️ 平台工具
 | 技能 | 说明 |
 |------|------|
 | `ocr_extraction` | OCR 文字提取 |
 | `redaction` | 文件脱敏 |
+| `watch` | 视频分析与内容提取 |
+| `web-access` | 网页访问与浏览器自动化 |
+| `deep-research` | 深度研究（GPT Researcher 方法论） |
 
 ### 📄 OCR 智能文档识别
 
@@ -209,6 +321,7 @@ LegalWork 根目录内置 75 项覆盖法律工作全流程的核心技能，并
 - **LDIR 结构化输出**：统一的法律文档中间表示（Legal Document IR）
 - **语义增强**：实体提取、条款层级解析、语义分块
 - **坐标级输出**：返回文本块坐标（bbox）
+- **对话图片附件自动 OCR**：对话中上传的图片附件自动走 OCR 提取文字并注入 Agent 上下文（`attachment-ocr`），DeepSeek 等模型可直接消费图片内容
 
 ```bash
 python3 ocr_agent.py scan 扫描合同.pdf
@@ -258,9 +371,33 @@ result = pipeline.process_text(
 - **Flask API**：`flask_api.py` RESTful 案件管理接口
 - **可扩展**：支持自定义案件字段和状态流转
 
+### 📝 文书生成工作台
+
+桌面端内置完整的文书生成链路：
+
+- **模板库 + 历史 + 知识库联动**：文书生成的模板库、历史记录、知识库面板拆分展示，可一边选模板、一边查团队资料和历史文书。
+- **案件材料直接参与生成**：生成文书时可上传 `txt / md / docx / pdf` 等材料自动提取正文，扫描版 PDF 走 OCR。
+- **模板字段智能补全**：模板占位符自动转可填写字段，常见诉讼地位、案号、法院、文书类型给出贴合法律场景的输入方式。
+- **内置法律文书模板**：内嵌民事起诉状 / 民事答辩状结构化模板，Agent 起草前自动解析（`resolve_legal_document_template`）。
+- **多格式导出**：生成结果可导出 Markdown / DOCX / HTML，DOCX 自动规范化中文字体排版；支持 Word 导出（SimSun 字体）。
+- **历史侧边栏**：生成历史自动保存并刷新列表。
+
+### 🔍 法律研究与学习迭代
+
+- **法律研究面板**：研究报告生成、编辑、侧边栏布局完整流程（`LegalResearchPanel`）。
+- **深度研究技能**：内置 `deep-research` 技能（零依赖，GPT Researcher 方法论），支持多源检索与引证报告。
+- **学习迭代**：以 Agent 多轮迭代方式对主题深度分析，生成学习报告，支持任务队列、进度跟踪、历史报告、取消与回滚（`learning-iteration-runtime`）。
+
 ### 📚 知识库系统
 
-知识库分为「内置法规数据」与「可托管知识库」两层，后者提供完整的文件管理 + 语义检索 + 自动分类能力，并以 13 个 AI 工具的形式开放给 Agent 直接调用。
+知识库分为「内置法规数据」「可托管知识库」「IMA 云知识库」三层。可托管知识库提供完整的文件管理 + 语义检索 + 自动分类能力，并以 AI 工具的形式开放给 Agent 直接调用。
+
+#### IMA 云知识库
+
+- **云端知识库接入**：集成 [腾讯 IMA](https://ima.qq.com) 云知识库，支持扫码登录与登录态持久化（`ima-auth-manager`）。
+- **两级检索**：LegalWork 先对 IMA 目录元数据执行轻量目录级 RAG 选库，再由 IMA 对选中库全文执行检索与生成——不复制云端全文、不建立第二套全文索引（ADR-0001）。
+- **`research_ima` 统一工具**：将「读目录 → 自动选库 → 全文问答」封装为一次调用，模型漏调用时运行时自动补发。
+- **自动降级**：IMA 不可用时自动回退到国家法律法规数据库、北大法宝、元典或本地知识库。
 
 #### 内置法规数据
 
@@ -293,11 +430,13 @@ result = pipeline.process_text(
 #### 外部权威法律源
 
 - **国家法律法规数据库实时检索**：`legal-external-search` 接入 [国家法律法规数据库](https://flk.npc.gov.cn)，支持多策略查询、法规详情抓取与正文 docx 下载解析。
+- **北大法宝 / 元典 MCP**：内置 MCP 工具连接北大法宝与元典法律数据库，并提供加密兜底凭证，Token 失效时自动切换，用户无感知。
 - **权威来源清单**：`knowledge_legal_external_sources` 返回官方政府网站、司法数据库、学术法律平台等权威外部来源，用于查阅本地知识库之外的最新法规与案例。
 
 #### 团队写作风格库
 
 - `knowledge_writing_style` 提供团队写作风格指南：法律三段论结构、论证节奏、引注要求，以及起诉状、答辩状、法律意见书、代理意见等文书模板与风险提示模板，确保文书风格一致。
+- **内置法律文书模板**：内嵌民事起诉状 / 民事答辩状模板库，`resolve_legal_document_template` 工具在起草前自动解析模板结构（用户自定义模板优先）。
 
 ### 🧪 评估系统
 
@@ -321,15 +460,19 @@ result = pipeline.process_text(
 
 - **本地 HTTP/SSE 服务**：`legalwork serve` 启动本地服务
 - **线程管理**：创建、管理、fork 对话线程
-- **模型集成**：支持 DeepSeek 等 API 兼容模型
-- **MCP 协议支持**：集成 MCP 工具服务器
+- **模型集成**：支持 DeepSeek 等 API 兼容模型（模型列表自动拉取、多提供方切换）
+- **MCP 协议支持**：集成 MCP 工具服务器，含北大法宝 / 元典 / IMA / Studio 等
 - **缓存优化**：Cache-first 架构，LRU/TTL 缓存
-- **技能集成**：支持调用上述 75 项核心法律 AI 技能，并可接入 1252 项扩展技能包
+- **技能集成**：支持调用上述 79 项核心法律 AI 技能，并可接入 1182 项扩展技能包
 - **记忆系统**：长期记忆存储与检索
-- **知识检索**：RAG 知识库检索
-- **附件处理**：图片上传与处理
-- **Web 搜索**：内置网页抓取与搜索
+- **知识检索**：RAG 知识库检索 + IMA 云知识库两级检索
+- **附件处理**：图片上传自动 OCR 提取
+- **Web 搜索**：内置网页抓取与搜索，含 AnySearch 搜索提供器
 - **子代理**：任务委派与并行执行
+- **上下文压缩**：Agent 自主调用 `compress_context` 工具压缩长对话上下文
+- **对话工具**：`thread_list` / `thread_read` 读取历史对话、`SEND_FILE` 标记发送文件
+- **学习迭代**：多轮深度分析生成学习报告
+- **插件市场**：内置插件市场，浏览 / 安装 / 管理 Skill 与 MCP 插件
 
 详见 `apps/desktop-legalwork/README.md`。
 
@@ -414,19 +557,31 @@ legalwork/
 │   ├── document_drafting/    #   文书起草
 │   ├── legal_research/       #   法律研究
 │   ├── compliance_review/    #   合规审查
-│   ├── awesome-legal-aiagent-skills/
-│   ├── ...                   #   核心 75 项，扩展 1252 项
+│   ├── legal_document_formatting/  # 文书格式规范化
+│   ├── awesome-legal-aiagent-skills/  # 26 领域扩展
+│   ├── ...                   #   核心 79 项，扩展 1182 项
 │
-├── case_system/              # 案件管理系统
+├── case_system/              # 案件管理系统（检索 + 编排 + Flask API）
+│
+├── document/                 # 文档处理流水线（OCR / LDIR / 语义）
+│
+├── redaction/                # 脱敏系统（检测 / 策略 / 渲染）
 │
 ├── evals/                    # 评估框架
 │
 ├── projects/                 # 专业项目模块
 │   └── compliance/           #   数据合规（含法规知识库）
 │
+├── research/                 # 深度研究模块
+│
 ├── knowledge-base/           # 知识库
 │
 ├── plans/                    # 产品与技术规划
+│
+├── tools/                    # 工具集
+│   └── docx_format_fix/      #   DOCX 格式修复（.NET OpenXML）
+│
+├── scripts/                  # 运维 / 部署脚本
 │
 ├── tests/                    # 测试
 │
@@ -442,10 +597,14 @@ legalwork/
 |---|------|
 | AI 引擎 | DeepSeek API / OpenAI API 兼容 |
 | OCR | PaddleOCR, Tesseract, PyMuPDF |
-| 文档处理 | python-docx, mammoth, pdf-parse |
+| 文档处理 | python-docx, mammoth, pdf-parse, OpenXML (.NET) |
 | 脱敏 | 正则 + NER + 策略引擎 |
 | 桌面端 | Electron, TypeScript, React |
 | 数据存储 | SQLite, JSONL |
+| 云知识库 | 腾讯 IMA（MCP 接入，目录级 RAG 路由） |
+| 外部法源 | 国家法律法规数据库 / 北大法宝 / 元典（MCP） |
+| 网页搜索 | 内置抓取 + AnySearch MCP |
+| 文档导出 | Markdown / DOCX / HTML（字体规范化） |
 | 协议 | HTTP/SSE, MCP |
 
 ---
@@ -453,6 +612,92 @@ legalwork/
 ## 🔄 更新记录
 
 > 每次代码更新在此追加条目，正式发布 release 时以对应版本号归档。
+
+### v0.3.9
+
+- **默认模型改为 flash**：未显式选择时统一使用 DeepSeek v4-flash，大幅降低默认成本。
+- **压缩阈值 98万→4万/6万**：长对话历史及时折叠，避免 token 无限累积。
+- **知识库工具结果瘦身**：search/auto_retrieve 截断到 500 字符 + 来源条数上限，web_fetch 上限降至 96KB。
+- **工具调用去重**：重复知识库检索自动短路。
+- **多轮对话利用前缀缓存**：缓存命中率大幅提升（复杂任务实测 99%）。
+- **检索正确性修复**：层过滤不再误杀无标记文档，检索正确率大幅提升；排除 index.json/meta.json 污染。
+- **Bug 修复**：EPERM 安装失败、端口冲突自动回退、模板原子写入。
+- **文书写作与模板增强**：模板库、材料参与、模板学习与格式导出链路增强。
+
+### v0.3.8
+
+- **IMA 云知识库集成**：目录级 RAG 路由 + IMA 全文问答，`research_ima` 统一工具，运行时自动路由，支持扫码登录与降级。
+- **内置法律文书模板**：内嵌民事起诉状 / 答辩状模板库，`resolve_legal_document_template` 工具自动解析模板结构。
+- **AnySearch 网页搜索**：新增 AnySearch 搜索提供器（JSON-RPC 2.0 接入 MCP API，支持匿名与 API Key）。
+- **图片附件自动 OCR**：对话图片附件自动提取文字注入上下文。
+- **DOCX 格式修复工具**：新增 .NET 工具基于 OpenXML 规范化 DOCX 排版。
+- **文书导出升级**：支持 Markdown / DOCX / HTML 多格式导出，DOCX 字体排版规范化。
+- **知识库 DOCX 预览**：新增 `DocxPreview` 支持直接预览 .docx 文件。
+- **学习迭代视图升级**：学习任务列表、进度跟踪、历史报告、取消与回滚。
+- **插件市场重构**：MCP / Skill 分类切换与安装体验升级。
+- **法律研究面板重构**：研究报告生成、编辑、侧边栏布局全面升级。
+- **Apple 液态玻璃 UI**：新增液态玻璃视觉样式与苹果字体体系。
+
+### v0.3.7
+
+- **文书格式规范 Skill 增强**：`legal_document_formatting` 新增学术写作规范、表格证据形式、DOCX 格式审计脚本。
+- **文书导出优化**：`legal-document-export-service` 支持更多导出格式，排版更规范。
+- **扫描件识别优化**：`document/ocr/router.py` 优化扫描件与图片处理。
+- **北大法宝兜底凭证 CI 化**：加密兜底 Token 随仓库提交，保证 CI 构建产物内置兜底能力。
+- **更新检查镜像回退**：中国地区更新检查失败自动切换 GitHub 镜像源。
+
+### v0.3.6
+
+- **上下文压缩工具**：`compress_context` 工具，Agent 主动压缩长对话上下文，减少 token 消耗。
+- **北大法宝 MCP 兜底凭证**：Token 失效时自动切换加密兜底凭据，用户无感知。
+- **插件市场体验优化**：MCP/Skill 切换动画、异步初始化不阻塞、状态自动刷新。
+- **修复**：MCP 重连、凭据脱敏、候选凭证切换、timeoutMs 等多项修复。
+
+### v0.3.5
+
+- **苹果字体排版**：全局字体切换为 SF Pro / PingFang SC / SF Mono，中文苹方显示。
+- **阅读体验**：对话正文 13px → 17px，行距 1.7。
+- **CJK 渲染修复**：修复 Chromium 字体合成导致的汉字字形损坏。
+
+### v0.3.4
+
+- **PDF 预览修复**：修复 ResizeObserver 导致的预览闪屏循环。
+- **知识库 AI 对话**：模型跟随主 Agent 当前选择，不再硬编码 deepseek-chat。
+- **AI 侧边栏宽度自适应**：最大宽度提升至 580px。
+
+### v0.3.3
+
+- **学习迭代稳定性**：修复 isBusy 中断在途 LLM 轮次、forceRun 重试空转等问题，学习迭代按计划模式执行。
+- **文书生成修复**：修复模板为空时崩溃。
+- **消息模型标签**：修复模型标签显示 'auto' 的问题，正确回退到线程模型。
+
+### v0.3.2
+
+- **金字塔知识库**：5 层知识结构（原则→架构→标准→实现→经验）、层级路由、层级感知检索。
+- **引用准确性优化**：GB/T 7714 引注引擎、引用校验工具、防幻觉提示。
+- **深研技能**：新增 `deep-research` 技能（零依赖，GPT Researcher 方法论）。
+- **Word 导出按钮**：AI 生成文书支持 Word 导出（SimSun 字体）。
+- **对话工具**：`thread_list` / `thread_read` 访问历史对话、`SEND_FILE` 标记发送文件。
+- **学习迭代**：手动触发跳过空闲等待。
+
+### v0.3.1
+
+- **修复优化**：版本准备与稳定性修复。
+
+### v0.3.0
+
+- **文书生成工作台**：模板、历史、知识库三方联动；案件材料直接参与生成；模板字段智能补全；Markdown 渲染。
+- **模型与插件配置**：模型列表自动拉取、多模型提供方切换、Skill 预览、MCP 配置更可靠。
+- **知识库、法律研究、材料阅读优化**：Markdown 更规范、工作区路径处理增强。
+- **OCR 与脱敏**：OCR 排版重组更可读、PDF 脱敏预览文本、法律规范不再误当主体、中英文主体识别增强。
+- **发布更新**：更新说明过滤构建信息、macOS/Windows 更新元数据更稳、版本号同步 0.3.0。
+
+### v0.2.9
+
+- **OfficeCLI 集成**：打包自动恢复原生 binary，运行时注入 OfficeCLI MCP server。
+- **Agent 附件本地路径引用**：附件支持 `localFilePath`，文件类任务处理更精准。
+- **数据合规本地引擎优化**：依赖拆分、安装标记、启动提速、任务中断状态标记。
+- **脱敏主体识别增强**：法定代表人、委托诉讼代理人、律所、公司/机构等更多识别规则。
 
 ### v0.2.8
 

@@ -974,7 +974,12 @@ export const userTemplateSchema = z
       .max(200),
     legalBasis: z.array(z.string().max(1000)).max(50).optional(),
     sourceFile: z.string().max(1000).optional(),
+    sourceDocument: z.object({
+      storedFileName: z.string().min(1).max(500),
+      sha256: z.string().regex(/^[a-f0-9]{64}$/)
+    }).strict().optional(),
     learningStatus: z.enum(['idle', 'analyzing', 'done', 'failed']).optional(),
+    learningError: z.string().max(4000).optional(),
     createdAt: z.string(),
     updatedAt: z.string()
   })
@@ -985,6 +990,14 @@ export const templateLearningRequestSchema = z
     fileContent: z.string().min(1).max(100_000),
     fileName: z.string().min(1).max(500),
     suggestedName: z.string().max(200).optional()
+  })
+  .strict()
+
+export const templateSourceSaveRequestSchema = z
+  .object({
+    templateId: z.string().min(1).max(200),
+    fileName: z.string().min(1).max(500),
+    dataBase64: z.string().min(1).max(16_000_000)
   })
   .strict()
 

@@ -1,7 +1,7 @@
 import { app, dialog, ipcMain, shell, type BrowserWindow, type WebContents } from 'electron'
 import { watch, type FSWatcher } from 'node:fs'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { spawn } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { dirname, extname, join } from 'node:path'
 import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
@@ -80,6 +80,7 @@ import {
   workspaceRootSchema,
   userTemplateSchema,
   templateLearningRequestSchema,
+  templateSourceSaveRequestSchema,
   templateGenerateWithMaterialsRequestSchema,
   documentMaterialExtractionPayloadSchema,
   documentHistoryRecordSchema
@@ -123,7 +124,10 @@ import { generateFromTemplate } from '../services/template-generation-service'
 import { extractDocumentMaterial } from '../services/document-material-service'
 import {
   listTemplates,
+  getTemplate,
   saveTemplate,
+  saveTemplateSource,
+  readTemplateSource,
   deleteTemplate,
   setTemplatesBaseDir
 } from '../services/template-store-service'
@@ -137,6 +141,7 @@ import {
 } from '../services/document-history-service'
 import { copyWriteDocumentAsRichText, exportWriteDocument } from '../services/write-export-service'
 import { legalDocumentMarkdownToDocx } from '../services/legal-document-export-service'
+import { fillDocxTemplateWithMarkdown } from '../services/template-docx-export-service'
 import { exportMarkdownDocument } from '../services/markdown-export-service'
 import { importGuiSkillFromPath, listGuiSkills, readGuiSkillFile } from '../services/skill-service'
 import {
@@ -571,7 +576,9 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       // 2. Create venv if needed
       if (existsSync(venvPython) && !(await isSupportedPythonExecutable(venvPython))) {
         sendProgress({ step: 'venv', percent: 34, message: '检测到旧版 Python 虚拟环境，正在重建…' })
-        rmSync(venvDir, { recursive: true, force: true })
+        // The venv python.exe may still be referenced on Windows; kill first, then retry removal.
+        killProcessesUsingDirectory(venvDir)
+        await rmPathWithRetry(venvDir)
       }
       if (!existsSync(venvPython)) {
         sendProgress({ step: 'venv', percent: 35, message: '正在创建 Python 虚拟环境…' })
@@ -775,6 +782,85 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     }
   }
 
+  /**
+   * Force-kill any process whose command line references the given directory.
+   *
+   * On Windows, python-build-standalone DLLs (e.g. DLLs\libcrypto-*.dll) are
+   * locked while a data-compliance Python subprocess is alive; rmSync then fails
+   * with EPERM when we try to reinstall Python. Kill those processes first so
+   * the directory can be removed. Non-fatal on macOS/Linux (same lock semantics
+   * apply for loaded shared objects, but pgrep covers the common cases).
+   */
+  function killProcessesUsingDirectory(dirPath: string): void {
+    try {
+      // Escape the path so it cannot break out of the string literal / pattern
+      // (defense against command injection and over-broad matches). The data
+      // dir is user-configurable, so treat it as untrusted input.
+      if (process.platform === 'win32') {
+        // PowerShell single-quote escaping: '' inside a single-quoted literal.
+        const escaped = dirPath.replace(/'/g, "''")
+        // ExecutablePath may be empty for some processes; CommandLine matches the
+        // python.exe path even when launched via pythonw or a venv shim.
+        const script =
+          `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${escaped}*' } ` +
+          `| ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+        execSync(`powershell -NoProfile -NonInteractive -Command "${script}"`, {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+          timeout: 20_000
+        })
+      } else {
+        // Escape double quotes and backslashes for the shell, and match the
+        // python interpreter path (python3/python) under the target directory to
+        // avoid killing unrelated processes whose command line merely contains
+        // the data dir as a substring.
+        const escaped = dirPath.replace(/["\\$`]/g, '\\$&')
+        const pids = execSync(`pgrep -f "${escaped}/python"`, {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore']
+        })
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+        for (const pid of pids) {
+          try {
+            process.kill(Number(pid), 'SIGKILL')
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch {
+      // No process matched (or pgrep not available); nothing to kill.
+    }
+  }
+
+  /**
+   * Remove a directory tree, retrying on Windows file-lock errors.
+   *
+   * EPERM/EBUSY on win32 usually means a DLL or executable is still referenced
+   * (antivirus scanning or a briefly held handle), which resolves within a few
+   * hundred ms to seconds. Retry with backoff before surfacing the error.
+   */
+  async function rmPathWithRetry(targetPath: string, maxAttempts = 8, delayMs = 500): Promise<void> {
+    let lastError: unknown
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        rmSync(targetPath, { recursive: true, force: true })
+        return
+      } catch (error) {
+        lastError = error
+        const code = (error as NodeJS.ErrnoException)?.code
+        if (code === 'EPERM' || code === 'EBUSY' || code === 'ENOTEMPTY') {
+          await new Promise((resolve) => setTimeout(resolve, delayMs * attempt))
+          continue
+        }
+        throw error
+      }
+    }
+    throw lastError
+  }
+
   async function downloadAndInstallPythonBuildStandalone(
     sendProgress: (progress: DataComplianceInstallProgress) => void,
     platformLabel: string
@@ -814,17 +900,19 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       }
     }
 
-    // Clean any previous extraction and extract.
+    // Stop any running data-compliance subprocess that may lock the DLLs
+    // (Windows EPERM on unlink), then clean the previous extraction.
     sendProgress({ step: 'detecting', percent: 32, message: '正在解压 Python…' })
+    killProcessesUsingDirectory(installDir)
     if (existsSync(installDir)) {
-      rmSync(installDir, { recursive: true, force: true })
+      await rmPathWithRetry(installDir)
     }
     try {
       await extractTarGz(tarPath, installDir)
     } catch (error) {
       // Clean up broken extraction so retry can start fresh.
       try {
-        rmSync(installDir, { recursive: true, force: true })
+        await rmPathWithRetry(installDir)
       } catch {
         // ignore
       }
@@ -1523,12 +1611,28 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         ? result.filePath
         : `${result.filePath}.docx`
       let buffer: Buffer
+      let formatPreserved = false
+      let warning: string | undefined
       if (markdown) {
-        buffer = await legalDocumentMarkdownToDocx({
-          markdown,
-          templateId,
-          templateName: templateName || defaultName
-        })
+        const userTemplate = templateId ? await getTemplate(templateId) : null
+        const templateSource = userTemplate ? await readTemplateSource(userTemplate) : null
+        if (userTemplate?.sourceDocument && !templateSource) {
+          throw new Error('未找到模板原文件，请重新上传 DOCX 模板后再导出。')
+        }
+        if (templateSource) {
+          const filled = await fillDocxTemplateWithMarkdown(templateSource, markdown)
+          buffer = filled.buffer
+          formatPreserved = true
+        } else {
+          buffer = await legalDocumentMarkdownToDocx({
+            markdown,
+            templateId,
+            templateName: templateName || defaultName
+          })
+          if (userTemplate) {
+            warning = '该模板未保留原始 DOCX，已按 LegalWork 标准法律文书格式导出。重新上传 DOCX 后可保留原版式。'
+          }
+        }
       } else {
         const { createRequire } = await import('node:module')
         const require = createRequire(import.meta.url)
@@ -1554,7 +1658,7 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         }
       }
       await writeFile(targetPath, buffer)
-      return { ok: true, path: targetPath }
+      return { ok: true, path: targetPath, formatPreserved, warning }
     } catch (error) {
       return {
         ok: false,
@@ -1608,6 +1712,15 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
   ipcMain.handle('templates:save', async (_, payload: unknown) => {
     const template = parseIpcPayload('templates:save', userTemplateSchema, payload)
     return saveTemplate(template)
+  })
+
+  ipcMain.handle('templates:save-source', async (_, payload: unknown) => {
+    const request = parseIpcPayload(
+      'templates:save-source',
+      templateSourceSaveRequestSchema,
+      payload
+    )
+    return saveTemplateSource(request)
   })
 
   ipcMain.handle('templates:delete', async (_, id: unknown) => {

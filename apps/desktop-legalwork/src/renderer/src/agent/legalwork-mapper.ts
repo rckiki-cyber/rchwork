@@ -846,7 +846,12 @@ function emitDelta(
 ): void {
   const text = event.item?.text ?? ''
   if (!text) return
-  sink.onDeltas([{ text, kind, seq: event.seq }])
+  sink.onDeltas([{
+    text,
+    kind,
+    itemId: event.item?.id ?? event.itemId,
+    seq: event.seq
+  }])
 }
 
 function compactionFromEvent(

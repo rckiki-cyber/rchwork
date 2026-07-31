@@ -45,6 +45,10 @@ export interface LegalTemplate {
   icon: string
   /** AI 学习状态 */
   learningStatus?: 'idle' | 'analyzing' | 'done' | 'failed'
+  /** 最近一次 AI 分析失败原因 */
+  learningError?: string
+  /** 是否保留了原始 DOCX，可按原版式导出 */
+  hasSourceDocument?: boolean
 }
 
 const inferredFieldDefaults: Record<string, Omit<LegalTemplateField, 'id'>> = {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DOCUMENT_SUBJECT_FIELD_ID } from '../../shared/user-templates'
 import { buildGenerationPrompt } from './template-generation-service'
 
 describe('template generation legal formatting prompt', () => {
@@ -52,5 +53,32 @@ describe('template generation legal formatting prompt', () => {
 
     expect(systemPrompt).toContain('当前模板为用户上传模板，具有最高优先级')
     expect(systemPrompt).toContain('不能用通用结构替换')
+  })
+
+  it('treats empty fields as material extraction targets and preserves the user-confirmed side', () => {
+    const { systemPrompt, userPrompt } = buildGenerationPrompt({
+      template: {
+        id: 'authorization',
+        name: '授权委托书',
+        description: '诉讼授权',
+        content: '# 授权委托书',
+        fields: [
+          { id: 'representative', label: '法定代表人', type: 'text', required: true },
+          { id: 'address', label: '住所', type: 'text', required: true }
+        ]
+      },
+      fieldValues: {
+        [DOCUMENT_SUBJECT_FIELD_ID]: '被告蓝尚宝商贸有限公司'
+      },
+      materials: [{
+        fileName: '判决书.txt',
+        content: '被告蓝尚宝商贸有限公司，法定代表人陈某。'
+      }]
+    })
+
+    expect(userPrompt).toContain('被告蓝尚宝商贸有限公司')
+    expect(userPrompt).toContain('未填写；有材料时必须先从全部材料主动提取')
+    expect(systemPrompt).toContain('只要有明确答案就直接写入')
+    expect(systemPrompt).toContain('禁止输出“待核实：请填写”')
   })
 })

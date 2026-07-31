@@ -124,6 +124,8 @@ const api = {
     ipcRenderer.invoke('templates:list'),
   saveUserTemplate: (template) =>
     ipcRenderer.invoke('templates:save', template),
+  saveUserTemplateSource: (payload) =>
+    ipcRenderer.invoke('templates:save-source', payload),
   deleteUserTemplate: (id) =>
     ipcRenderer.invoke('templates:delete', id),
   learnTemplateFromFile: (payload) =>

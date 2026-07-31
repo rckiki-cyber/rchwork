@@ -21,11 +21,16 @@ describe('auto model router', () => {
     expect(parseAutoRouteRecommendation('not json')).toBeNull()
   })
 
-  it('falls back to the DeepSeek TUI heuristic shape', () => {
+  it('defaults to flash unless input is strongly complex AND long', () => {
     expect(autoModelHeuristic('hello')).toBe('deepseek-v4-flash')
-    expect(autoModelHeuristic('please debug this failing migration')).toBe('deepseek-v4-pro')
-    expect(autoModelHeuristic('x'.repeat(501))).toBe('deepseek-v4-pro')
-    expect(autoModelHeuristic('x'.repeat(200))).toBe('deepseek-v4-flash')
+    // Strong complex keyword alone is not enough (short input).
+    expect(autoModelHeuristic('please debug this failing migration')).toBe('deepseek-v4-flash')
+    // Long but not strongly complex (e.g. a legal question) stays on flash.
+    expect(autoModelHeuristic('x'.repeat(501))).toBe('deepseek-v4-flash')
+    // Strong signal + clearly long input routes to pro.
+    expect(autoModelHeuristic(`${'x'.repeat(850)} debug the architecture migration`)).toBe('deepseek-v4-pro')
+    // Chinese strong signal + long input.
+    expect(autoModelHeuristic(`${'x'.repeat(850)} 重构整个项目的架构设计`)).toBe('deepseek-v4-pro')
   })
 
   it('builds recent context without the active turn', () => {
