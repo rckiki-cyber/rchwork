@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-01T14:04:55.394Z",
+  "generated_at": "2026-08-01T14:17:34.778Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
@@ -10,11 +10,11 @@
       "prerelease": false,
       "summary": "本次发布带来功能和稳定性改进，安装最新版后即可体验。",
       "highlights": [
-        "使用体验更新：v0.3.10 更新内容",
-        "🆕 新增",
-        "设置新增「模型配置」独立子项：认证方式（API Key / ChatGPT 账号）、模型供应商、API Key、Base URL、接口协议、模型列表、当前模型统一管理，从「通用」与「AI 助手」中抽出集中展示。",
-        "现在支持： ChatGPT 账号认证：设置里可选「ChatGPT 账号」登录（走 ChatGPT 订阅，无需 API Key），主页模型自动联动账号可用模型。",
-        "使用体验更新：中转站（Relay）适配：接口协议可选 OpenAI Chat Completions / OpenAI Responses / Anthropic Messages；thinking 字段按 host 收敛，仅官方 DeepSeek 域名自动注入；费用估算按 host 收敛。"
+        "使用体验更新：本次更新亮点",
+        "使用体验更新：🆕 新功能",
+        "使用体验更新：模型设置更清晰好用了",
+        "设置里新增独立的「模型配置」入口，把\"用哪个模型服务、怎么认证、填哪个 Key、连哪个地址、用什么模型\"全部集中到一个页面，不用再去「通用」和「AI 助手」两个地方翻。",
+        "使用体验更新：认证方式可选「API Key」或「ChatGPT 账号」：选 ChatGPT 账号后直接用 ChatGPT 订阅额度，无需另外填 API Key，主页选模型也会自动跟随账号可用的模型。"
       ],
       "categories": [
         "版本发布"
