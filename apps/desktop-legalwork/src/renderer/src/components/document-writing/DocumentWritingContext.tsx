@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   builtInTemplates,
   type LegalTemplate,
@@ -197,6 +198,7 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 export function DocumentWritingProvider({ children }: { children: ReactNode }): ReactElement {
+  const { t } = useTranslation('common')
   const [leftTab, setLeftTab] = useState<'templates' | 'history'>('templates')
   const [historyRefreshSignal, setHistoryRefreshSignal] = useState(0)
   const [activeCategory, setActiveCategory] = useState<TemplateCategory | 'all'>('all')
@@ -319,6 +321,10 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
     const documentSubject = fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim()
     if (materials.length > 0 && !documentSubject) {
       setError('请先填写“文书涉及主体（我方/委托方）”，明确本次文书代表哪一方。')
+      return
+    }
+    if (materials.length > 0 && !instruction.trim()) {
+      setError(t('documentWritingSupplementalRequirementsValidation'))
       return
     }
     if (materials.length === 0) {
@@ -475,7 +481,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
         workflowAbortRef.current = null
       }
     }
-  }, [activeTemplate, fieldValues, instruction, saveCurrentToHistory, uploadedMaterials])
+  }, [activeTemplate, fieldValues, instruction, saveCurrentToHistory, t, uploadedMaterials])
 
   const handleNewDocument = useCallback(() => {
     setActiveTemplateId(null)

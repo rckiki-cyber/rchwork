@@ -3,9 +3,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useTranslation } from 'react-i18next'
-import { Check, ChevronDown, ChevronRight, Copy, FileEdit, FileText, ImageIcon, Loader2, MessageSquareQuote, PencilLine, Terminal, Wrench } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy, FileEdit, ImageIcon, Loader2, MessageSquareQuote, PencilLine, Terminal, Wrench } from 'lucide-react'
 import type { AttachmentReference, ChatBlock, RuntimeDisclosureMetadata, ToolBlock, UserInputAnswer, UserInputQuestion } from '../../agent/types'
 import { extractUnifiedDiffText } from '../../lib/diff-stats'
+import { FileTypeIcon, fileTypeLabel } from '../../lib/file-type-icon'
 import { useChatStore } from '../../store/chat-store'
 import { getProvider } from '../../agent/registry'
 import { parseClawUserPromptForDisplay, type ClawUserPromptDisplay } from '@shared/app-settings'
@@ -419,15 +420,20 @@ function UserAttachmentPreviews({
               title={title}
             >
               {showImage ? (
-                <img
-                  src={previewUrl}
-                  alt={title}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                />
+                <span className="relative block h-full w-full">
+                  <img
+                    src={previewUrl}
+                    alt={title}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                  <span className="absolute bottom-1 right-1 shrink-0 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white/90 backdrop-blur-sm">
+                    {attachmentTypeLabel(attachment)}
+                  </span>
+                </span>
               ) : !isImageAttachment(attachment) ? (
                 <>
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-ds-faint" strokeWidth={1.7} />
+                  <FileTypeIcon name={title} className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{title}</span>
                   <span className="shrink-0 rounded bg-ds-subtle px-1.5 py-0.5 text-[10px] font-semibold leading-none text-ds-faint">
                     {attachmentTypeLabel(attachment)}
@@ -451,10 +457,10 @@ function isImageAttachment(attachment: AttachmentReference): boolean {
 }
 
 function attachmentTypeLabel(attachment: AttachmentReference): string {
+  const name = attachment.name?.trim()
+  if (name) return fileTypeLabel(name)
   const mimeType = attachment.mimeType?.trim().toLowerCase() ?? ''
   if (mimeType === 'application/pdf') return 'PDF'
-  const extension = attachment.name?.split('.').pop()?.trim().toUpperCase()
-  if (extension && extension !== attachment.name?.toUpperCase()) return extension
   if (mimeType.includes('/')) {
     const subtype = mimeType.split('/').pop()?.split(/[.+-]/)[0]?.toUpperCase()
     if (subtype) return subtype

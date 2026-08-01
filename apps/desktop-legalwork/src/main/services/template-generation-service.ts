@@ -49,7 +49,7 @@ export function buildGenerationPrompt(request: TemplateGenerateWithMaterialsRequ
       : ''
 
   const instructionsText = request.instructions
-    ? `\n\n用户特别要求：\n${request.instructions}`
+    ? `\n\n用户补充要求（立场、倾向、目标与重点；必须优先落实）：\n${request.instructions}`
     : ''
   const formatInstruction = legalDocumentFormatInstruction(
     request.template.id,
@@ -85,6 +85,7 @@ ${userTemplatePriority}
 15. 除文种确实要求逐项列明的请求、条款、附件外，禁止把连续叙事机械拆成 1、2、3、4 的有序列表
 16. 一级到四级层次必须遵循“一、”“（一）”“1.”“（1）”或该文种专用的章—条编号；同一层级不得混用
 17. 用户上传模板的段落、标题、表格单元格和签署区顺序必须逐项对应，避免增删结构，以便将正文原位写回原 DOCX
+18. 将用户补充要求作为确定诉讼目标、表达倾向、论证重点和行文取舍的高优先级依据，不得写出与用户明确倾向相反的立场；但不得据此篡改事实、法律或材料原意
 
 本类文书格式卡：
 ${formatInstruction}

@@ -45,4 +45,37 @@ describe('ToolStormBreaker', () => {
     ).toBe(false)
     expect(breaker.inspect(call({ path: 'src/a.ts' })).suppress).toBe(false)
   })
+
+  it('suppresses the first unchanged retry after an OfficeCLI error', () => {
+    const breaker = new ToolStormBreaker()
+    const officeCall: ToolCallLike = {
+      callId: 'office-1',
+      toolName: 'mcp_officecli_officecli',
+      arguments: { command: ['set', '/tmp/report.docx', '/footer'] }
+    }
+
+    expect(breaker.inspect(officeCall).suppress).toBe(false)
+    breaker.observeResult(officeCall, true)
+
+    const retry = breaker.inspect({ ...officeCall, callId: 'office-2' })
+    expect(retry.suppress).toBe(true)
+    expect(retry.reason).toContain('already failed with identical arguments')
+  })
+
+  it('allows a corrected OfficeCLI command after an error', () => {
+    const breaker = new ToolStormBreaker()
+    const failed: ToolCallLike = {
+      callId: 'office-1',
+      toolName: 'mcp_officecli_officecli',
+      arguments: { command: ['set', '/tmp/report.docx', '/footer'] }
+    }
+    breaker.inspect(failed)
+    breaker.observeResult(failed, true)
+
+    expect(breaker.inspect({
+      ...failed,
+      callId: 'office-2',
+      arguments: { command: ['add', '/tmp/report.docx', '/body', '--type', 'footer'] }
+    }).suppress).toBe(false)
+  })
 })

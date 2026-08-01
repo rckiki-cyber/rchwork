@@ -75,6 +75,16 @@ function computeCost(
   )
 }
 
+function isDeepSeekHost(baseUrl: string | undefined): boolean {
+  if (baseUrl === undefined) return true
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase()
+    return host === 'api.deepseek.com' || host.endsWith('.deepseek.com')
+  } catch {
+    return false
+  }
+}
+
 export function estimateDeepseekCost(input: {
   model: string
   providerHost?: string
@@ -82,6 +92,11 @@ export function estimateDeepseekCost(input: {
   cacheMissTokens: number
   outputTokens: number
 }): DeepseekCurrencyCosts | null {
+  // Official list prices only apply on the official DeepSeek host. When a
+  // relay station / OpenAI-compat proxy is configured, do not guess a cost
+  // from list prices — the caller falls back to provider-reported cost or
+  // no cost at all.
+  if (!isDeepSeekHost(input.providerHost)) return null
   const tier = pricingTierForModel(input.model)
   if (!tier) return null
   const prices = DEEPSEEK_V4_PRICES[tier]
@@ -105,8 +120,12 @@ export function estimateDeepseekInputTokenCost(input: {
 
 export function estimateDeepseekCacheSavings(input: {
   model: string
+  providerHost?: string
   cacheHitTokens: number
 }): DeepseekCurrencyCosts | null {
+  // Same host gate as estimateDeepseekCost: relay stations do not price
+  // cache hits at official list prices, so omit the savings figure.
+  if (!isDeepSeekHost(input.providerHost)) return null
   const tier = pricingTierForModel(input.model)
   if (!tier) return null
   const prices = DEEPSEEK_V4_PRICES[tier]

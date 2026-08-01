@@ -108,6 +108,58 @@ describe('initializeGuiUpdater', () => {
       repo: 'legalwork'
     })
   })
+
+  it('removes the installed pending update package but keeps the macOS differential cache', async () => {
+    const fixtureDir = mkdtempSync(join(tmpdir(), 'legalwork-updater-cleanup-test-'))
+    const cacheDir = join(fixtureDir, '__update__')
+    const pendingDir = join(cacheDir, 'pending')
+    const pendingZip = join(pendingDir, 'legalwork-0.1.0-mac-arm64.zip')
+    const differentialZip = join(cacheDir, 'update.zip')
+    mockUserDataPath = fixtureDir
+
+    try {
+      mkdirSync(pendingDir, { recursive: true })
+      writeFileSync(pendingZip, 'installed update')
+      writeFileSync(
+        join(pendingDir, 'update-info.json'),
+        JSON.stringify({ fileName: basename(pendingZip), sha512: 'test' }),
+        'utf8'
+      )
+      writeFileSync(differentialZip, 'differential cache')
+
+      const module = await import('./gui-updater')
+      module.initializeGuiUpdater(() => null, () => 'stable')
+
+      expect(existsSync(pendingDir)).toBe(false)
+      expect(readFileSync(differentialZip, 'utf8')).toBe('differential cache')
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps a pending package when it belongs to a newer version', async () => {
+    const fixtureDir = mkdtempSync(join(tmpdir(), 'legalwork-updater-pending-test-'))
+    const pendingDir = join(fixtureDir, '__update__', 'pending')
+    const pendingZip = join(pendingDir, 'legalwork-0.2.0-mac-arm64.zip')
+    mockUserDataPath = fixtureDir
+
+    try {
+      mkdirSync(pendingDir, { recursive: true })
+      writeFileSync(pendingZip, 'future update')
+      writeFileSync(
+        join(pendingDir, 'update-info.json'),
+        JSON.stringify({ fileName: basename(pendingZip), sha512: 'test' }),
+        'utf8'
+      )
+
+      const module = await import('./gui-updater')
+      module.initializeGuiUpdater(() => null, () => 'stable')
+
+      expect(readFileSync(pendingZip, 'utf8')).toBe('future update')
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('downloadGuiUpdate', () => {

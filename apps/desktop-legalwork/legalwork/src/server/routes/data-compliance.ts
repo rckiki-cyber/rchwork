@@ -56,7 +56,8 @@ type JsonCreateTaskBody = {
   inputText?: string
   reviewType?: 'document' | 'code'
   outputDir?: string
-  outputFormat?: 'md' | 'docx' | 'txt'
+  outputFormat?: 'md' | 'docx' | 'pdf' | 'txt'
+  redactionMode?: 'standard' | 'agent_enhanced'
   file?: { name: string; type?: string; dataBase64?: string; filePath?: string }
   files?: Array<{ name: string; type?: string; dataBase64?: string; filePath?: string }>
 }
@@ -66,8 +67,8 @@ function normalizeCreateTaskInput(
   body: JsonCreateTaskBody
 ): Parameters<DataComplianceTaskService['createTask']>[0] {
   const format = body.outputFormat
-  const normalizedFormat: 'md' | 'docx' | 'txt' | undefined =
-    format === 'md' || format === 'docx' || format === 'txt' ? format : undefined
+  const normalizedFormat: 'md' | 'docx' | 'pdf' | 'txt' | undefined =
+    format === 'md' || format === 'docx' || format === 'pdf' || format === 'txt' ? format : undefined
   return {
     mode,
     documentName: body.documentName,
@@ -75,6 +76,7 @@ function normalizeCreateTaskInput(
     reviewType: body.reviewType === 'code' ? 'code' : 'document',
     outputDir: body.outputDir,
     outputFormat: normalizedFormat,
+    redactionMode: body.redactionMode === 'agent_enhanced' ? 'agent_enhanced' : 'standard',
     file: body.file
       ? {
           name: body.file.name,
@@ -111,8 +113,10 @@ export async function createDataComplianceTask(
       const { fields, file } = await readMultipartBody(request)
       mode = fields.mode === 'desensitize' ? 'desensitize' : 'review'
       const rawFormat = fields.output_format
-      const normalizedFormat: 'md' | 'docx' | 'txt' | undefined =
-        rawFormat === 'md' || rawFormat === 'docx' || rawFormat === 'txt' ? rawFormat : undefined
+      const normalizedFormat: 'md' | 'docx' | 'pdf' | 'txt' | undefined =
+        rawFormat === 'md' || rawFormat === 'docx' || rawFormat === 'pdf' || rawFormat === 'txt'
+          ? rawFormat
+          : undefined
       input = {
         mode,
         documentName: fields.document_name,
@@ -120,6 +124,7 @@ export async function createDataComplianceTask(
         reviewType: fields.review_type === 'code' ? 'code' : 'document',
         outputDir: fields.output_dir,
         outputFormat: normalizedFormat,
+        redactionMode: fields.redaction_mode === 'agent_enhanced' ? 'agent_enhanced' : 'standard',
         file: file
           ? {
               name: file.name,

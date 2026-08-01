@@ -679,3 +679,18 @@ describe('write inline completion runtime config', () => {
     expect(resolveWriteInlineCompletionModel(state)).toBe('deepseek-chat')
   })
 })
+
+describe('authMode switching', () => {
+  it('allows switching back from chatgpt to api_key', () => {
+    const current = mergeLegalworkRuntimeSettings(defaultLegalworkRuntimeSettings(), { authMode: 'chatgpt' })
+    expect(current.authMode).toBe('chatgpt')
+    const back = mergeLegalworkRuntimeSettings(current, { authMode: 'api_key' })
+    expect(back.authMode).toBe('api_key')
+  })
+
+  it('keeps chatgpt when no authMode patch is given', () => {
+    const current = mergeLegalworkRuntimeSettings(defaultLegalworkRuntimeSettings(), { authMode: 'chatgpt' })
+    const untouched = mergeLegalworkRuntimeSettings(current, { model: 'gpt-4.1' })
+    expect(untouched.authMode).toBe('chatgpt')
+  })
+})

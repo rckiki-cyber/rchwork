@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { FileText, Loader2 } from 'lucide-react'
+import { FileText, Highlighter, Loader2, MessageSquareText } from 'lucide-react'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
 
@@ -18,14 +18,38 @@ type PdfRenderedPage = {
   viewport: ReturnType<pdfjsLib.PDFPageProxy['getViewport']>
 }
 
+type PdfHighlightRect = {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+type PdfPageSelection = {
+  text: string
+  rects: PdfHighlightRect[]
+  toolbarLeft: number
+  toolbarTop: number
+}
+
+export type PdfTextSelection = {
+  text: string
+  pageNumber: number
+}
+
 function PdfSelectablePage({
   page,
-  fileName
+  fileName,
+  onAskAI
 }: {
   page: PdfRenderedPage
   fileName: string
+  onAskAI?: (selection: PdfTextSelection) => void
 }): ReactElement {
+  const pageRef = useRef<HTMLDivElement>(null)
   const textLayerRef = useRef<HTMLDivElement>(null)
+  const [selection, setSelection] = useState<PdfPageSelection | null>(null)
+  const [highlights, setHighlights] = useState<Array<{ id: number; rects: PdfHighlightRect[] }>>([])
 
   useEffect(() => {
     const container = textLayerRef.current
@@ -44,11 +68,81 @@ function PdfSelectablePage({
     }
   }, [page])
 
+  const captureSelection = (): void => {
+    window.setTimeout(() => {
+      const browserSelection = window.getSelection()
+      const pageElement = pageRef.current
+      const textLayer = textLayerRef.current
+      if (!browserSelection || browserSelection.isCollapsed || !pageElement || !textLayer) {
+        setSelection(null)
+        return
+      }
+      const anchorInside = Boolean(browserSelection.anchorNode && textLayer.contains(browserSelection.anchorNode))
+      const focusInside = Boolean(browserSelection.focusNode && textLayer.contains(browserSelection.focusNode))
+      if (!anchorInside || !focusInside || browserSelection.rangeCount === 0) return
+
+      const text = browserSelection.toString().replace(/\s+/g, ' ').trim()
+      if (!text) {
+        setSelection(null)
+        return
+      }
+
+      const pageRect = pageElement.getBoundingClientRect()
+      const clientRects = Array.from(browserSelection.getRangeAt(0).getClientRects())
+        .filter((rect) => rect.width > 0.5 && rect.height > 0.5)
+      if (clientRects.length === 0) return
+
+      const rects = clientRects.map((rect) => ({
+        left: Math.max(0, rect.left - pageRect.left),
+        top: Math.max(0, rect.top - pageRect.top),
+        width: Math.min(pageRect.width, rect.width),
+        height: Math.min(pageRect.height, rect.height)
+      }))
+      const bounds = browserSelection.getRangeAt(0).getBoundingClientRect()
+      const toolbarWidth = onAskAI ? 150 : 78
+      const centeredLeft = bounds.left - pageRect.left + (bounds.width - toolbarWidth) / 2
+      const toolbarLeft = Math.max(8, Math.min(pageRect.width - toolbarWidth - 8, centeredLeft))
+      const above = bounds.top - pageRect.top - 42
+      const toolbarTop = above >= 8
+        ? above
+        : Math.min(pageRect.height - 40, bounds.bottom - pageRect.top + 8)
+
+      setSelection({
+        text: text.slice(0, 6000),
+        rects,
+        toolbarLeft,
+        toolbarTop
+      })
+    }, 0)
+  }
+
+  const clearBrowserSelection = (): void => {
+    window.getSelection()?.removeAllRanges()
+    setSelection(null)
+  }
+
+  const addHighlight = (): void => {
+    if (!selection) return
+    setHighlights((current) => [
+      ...current,
+      { id: Date.now(), rects: selection.rects }
+    ])
+    clearBrowserSelection()
+  }
+
+  const askAI = (): void => {
+    if (!selection || !onAskAI) return
+    onAskAI({ text: selection.text, pageNumber: page.pageNumber })
+    clearBrowserSelection()
+  }
+
   return (
     <figure className="w-full">
       <div
+        ref={pageRef}
         className="relative mx-auto overflow-hidden rounded-[4px] bg-white shadow-sm"
         style={{ width: page.width, height: page.height, maxWidth: '100%' }}
+        onMouseUp={captureSelection}
       >
         <img
           src={page.dataUrl}
@@ -56,7 +150,45 @@ function PdfSelectablePage({
           className="block h-full w-full select-none"
           draggable={false}
         />
+        <div className="pointer-events-none absolute inset-0 z-[1]" aria-hidden="true">
+          {highlights.flatMap((highlight) => highlight.rects.map((rect, index) => (
+            <span
+              key={`${highlight.id}_${index}`}
+              className="pdfjs-persistent-highlight absolute rounded-[2px] mix-blend-multiply"
+              style={rect}
+            />
+          )))}
+        </div>
         <div ref={textLayerRef} className="textLayer pdfjs-text-layer" />
+        {selection ? (
+          <div
+            data-pdf-selection-toolbar
+            className="absolute z-[5] flex h-8 items-center gap-1 rounded-[12px] border border-ds-border bg-[var(--ds-elevated)] p-1 text-[11px] text-[var(--ds-ink)] shadow-[var(--ds-shadow-dropdown)] backdrop-blur-xl"
+            style={{ left: selection.toolbarLeft, top: selection.toolbarTop }}
+            onMouseDown={(event) => event.preventDefault()}
+          >
+            <button
+              type="button"
+              onClick={addHighlight}
+              className="flex h-6 items-center gap-1 rounded-[8px] px-2 font-medium transition hover:bg-ds-hover active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-accent)]"
+              title="高亮选中文字"
+            >
+              <Highlighter className="h-3.5 w-3.5" strokeWidth={1.8} />
+              高亮
+            </button>
+            {onAskAI ? (
+              <button
+                type="button"
+                onClick={askAI}
+                className="flex h-6 items-center gap-1 rounded-[8px] px-2 font-medium text-[var(--ds-accent)] transition hover:bg-[var(--ds-accent-soft)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-accent)]"
+                title="引用选中文字询问 AI"
+              >
+                <MessageSquareText className="h-3.5 w-3.5" strokeWidth={1.8} />
+                询问 AI
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <figcaption className="mt-2 text-center text-[11px] text-[var(--ds-muted)]">
         第 {page.pageNumber} 页
@@ -130,9 +262,10 @@ export async function extractPdfTextFromBase64(base64Content: string, maxChars =
 type Props = {
   base64Content: string
   fileName: string
+  onAskAI?: (selection: PdfTextSelection) => void
 }
 
-export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
+export function PdfJsPreview({ base64Content, fileName, onAskAI }: Props): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   const renderKeyRef = useRef<string>('')
   const renderWidthRef = useRef(480)
@@ -269,7 +402,12 @@ export function PdfJsPreview({ base64Content, fileName }: Props): ReactElement {
       {pages.length > 0 ? (
         <div className="flex flex-col items-center gap-4 p-4">
           {pages.map((page) => (
-            <PdfSelectablePage key={page.pageNumber} page={page} fileName={fileName} />
+            <PdfSelectablePage
+              key={page.pageNumber}
+              page={page}
+              fileName={fileName}
+              onAskAI={onAskAI}
+            />
           ))}
           {renderingMore ? (
             <div className="flex items-center gap-2 pb-4 text-[12px] text-[var(--ds-muted)]">

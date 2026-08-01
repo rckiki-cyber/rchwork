@@ -24,6 +24,7 @@ import {
   deleteWorkspaceEntry,
   listWorkspaceDirectory,
   readClipboardImage,
+  readWorkspaceBinary,
   readWorkspaceImage,
   readWorkspaceFile,
   renameWorkspaceEntry,
@@ -267,6 +268,20 @@ describe('workspace-service boundary checks', () => {
     expect(result.path).toBe(await realpath(imagePath))
     expect(result.mimeType).toBe('image/png')
     expect(result.dataUrl).toBe('data:image/png;base64,iVBORw==')
+  })
+
+  it('reads DOCX bytes for faithful in-app preview', async () => {
+    const docxPath = join(workspaceRoot, 'pleading.docx')
+    const bytes = Buffer.from([0x50, 0x4b, 0x03, 0x04])
+    await writeFile(docxPath, bytes)
+
+    const result = await readWorkspaceBinary({ path: 'pleading.docx', workspaceRoot })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.path).toBe(await realpath(docxPath))
+    expect(result.mimeType).toContain('wordprocessingml')
+    expect(result.dataBase64).toBe(bytes.toString('base64'))
   })
 
   it('renames files within the selected workspace', async () => {

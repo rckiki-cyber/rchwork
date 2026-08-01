@@ -52,6 +52,8 @@ describe('data compliance task creation', () => {
     const { taskId } = await service.createTask({
       mode: 'desensitize',
       documentName: 'batch',
+      outputFormat: 'pdf',
+      redactionMode: 'agent_enhanced',
       files: [
         { name: 'a.txt', filePath: first },
         { name: 'a.txt', filePath: second }
@@ -60,6 +62,8 @@ describe('data compliance task creation', () => {
 
     const task = await service.getTask(taskId)
     expect(task?.input_type).toBe('batch')
+    expect(task?.output_format).toBe('pdf')
+    expect(task?.redaction_mode).toBe('agent_enhanced')
     expect(task?.input_files).toHaveLength(2)
     expect(task?.input_files?.[0].stored_filename).toBe('a.txt')
     expect(task?.input_files?.[1].stored_filename).toBe('a_2.txt')

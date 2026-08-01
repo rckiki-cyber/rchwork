@@ -30,6 +30,7 @@ export class KnowledgeRetrievalPipeline {
     includeExternal?: boolean
     layer?: KnowledgeLayer
     layers?: KnowledgeLayer[]
+    pathPrefix?: string
   }): Promise<KnowledgeRetrievalResult> {
     const startedAt = Date.now()
     const maxChars = options?.maxChars ?? MAX_CONTEXT_CHARS
@@ -40,12 +41,16 @@ export class KnowledgeRetrievalPipeline {
     const targetLayers = options?.layers ?? (options?.layer ? [options.layer] : undefined) ?? routeResult.targetLayers
 
     // 1. Search local knowledge base (with layer filter if applicable)
-    const hits = await this.store.search({
+    const rawHits = await this.store.search({
       query,
       limit: MAX_SOURCES,
       includeContent: true,
+      ...(options?.pathPrefix ? { pathPrefix: options.pathPrefix } : {}),
       ...(targetLayers.length > 0 ? { layers: targetLayers } : {})
     })
+    const hits = rawHits.filter((hit, index) =>
+      rawHits.findIndex((candidate) => candidate.relativePath === hit.relativePath) === index
+    )
 
     // 2. Filter by expiry and deprecation if requested
     const filtered = excludeExpired

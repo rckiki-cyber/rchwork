@@ -21,7 +21,7 @@ import {
 } from '../lib/thread-fork-registry'
 import { workspaceLabelFromPath } from '../lib/workspace-label'
 import { isInternalTemporaryWorkspace, normalizeWorkspaceRoot } from '../lib/workspace-path'
-import { buildClawRuntimePrompt, getActiveAgentApiKey, resolveModelProviderApiKey } from '@shared/app-settings'
+import { buildClawRuntimePrompt, isLegalworkModelAuthConfigured } from '@shared/app-settings'
 import type { ChatState, ChatStoreGet, ChatStoreSet } from './chat-store-types'
 import {
   activeClawChannel,
@@ -212,8 +212,7 @@ export function createNavigationActions(
         const settings = await rendererRuntimeClient.getSettings({ forceRefresh: true })
         const workspaceRoot = normalizeWorkspaceRoot(settings.workspaceRoot)
         const codeWorkspaceRoots = rememberCodeWorkspaceRoots(readCodeWorkspaceRoots(), [workspaceRoot])
-        const needsInitialSetup =
-          !getActiveAgentApiKey(settings).trim() && !resolveModelProviderApiKey(settings).trim()
+        const needsInitialSetup = !isLegalworkModelAuthConfigured(settings)
         applyTheme(settings.theme)
         applyUiFontScale(settings.uiFontScale)
         await get().applyI18nFromSettings(settings.locale)

@@ -11,12 +11,8 @@ import {
 } from 'react'
 import {
   Archive,
-  AudioLines,
   BarChart3,
   File as FileIcon,
-  FileArchive,
-  FileCode2,
-  FileSpreadsheet,
   FileText,
   GitFork,
   ListTodo,
@@ -82,6 +78,7 @@ import {
 } from './FloatingComposerQueuedMessages'
 import { useComposerDraft } from './use-composer-draft'
 import type { ComposerSkillSelection } from './composer-skill-selection'
+import { FileTypeIcon, fileTypeBadgeClass, fileTypeLabel } from '../../lib/file-type-icon'
 
 export type { ComposerFileReference } from '../../lib/composer-file-references'
 
@@ -207,57 +204,6 @@ function imageMimeTypeFromFileName(name: string | undefined): string | undefined
   if (lower.endsWith('.heic')) return 'image/heic'
   if (lower.endsWith('.heif')) return 'image/heif'
   return undefined
-}
-
-function fileTypeLabelForComposer(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase() || ''
-  if (!ext) return '文件'
-  if (ext === 'doc' || ext === 'docx') return 'WORD'
-  if (ext === 'ppt' || ext === 'pptx') return 'PPT'
-  if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') return 'EXCEL'
-  if (ext === 'pdf') return 'PDF'
-  if (['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg'].includes(ext)) return '音频'
-  if (['zip', 'rar', '7z'].includes(ext)) return '压缩包'
-  if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)) return '图片'
-  if (['txt', 'md', 'markdown', 'json', 'jsonl', 'csv', 'tsv', 'yaml', 'yml', 'html', 'xml'].includes(ext)) return '文本'
-  return ext.toUpperCase()
-}
-
-function fileTypeBadgeClassForComposer(label: string): string {
-  const map: Record<string, string> = {
-    WORD: 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/20',
-    PPT: 'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/20',
-    EXCEL: 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/20',
-    PDF: 'bg-red-50 text-red-700 border-red-100 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/20',
-    音频: 'bg-cyan-50 text-cyan-700 border-cyan-100 dark:bg-cyan-500/15 dark:text-cyan-400 dark:border-cyan-500/20',
-    压缩包: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-500/15 dark:text-slate-400 dark:border-slate-500/20',
-    图片: 'bg-purple-50 text-purple-700 border-purple-100 dark:bg-purple-500/15 dark:text-purple-400 dark:border-purple-500/20',
-    文本: 'bg-slate-50 text-slate-600 border-slate-100 dark:bg-slate-500/15 dark:text-slate-400 dark:border-slate-500/20'
-  }
-  return map[label] || 'bg-slate-50 text-slate-600 border-slate-100 dark:bg-slate-500/15 dark:text-slate-400 dark:border-slate-500/20'
-}
-
-function FileTypeIconForComposer({ name, className = 'h-4 w-4' }: { name: string; className?: string }): ReactElement {
-  const ext = name.split('.').pop()?.toLowerCase() || ''
-  if (['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg'].includes(ext)) {
-    return <AudioLines className={`${className} text-cyan-500`} strokeWidth={1.7} />
-  }
-  if (['doc', 'docx', 'pdf', 'txt', 'md', 'markdown'].includes(ext)) {
-    return <FileText className={`${className} text-slate-400`} strokeWidth={1.6} />
-  }
-  if (['xls', 'xlsx', 'csv'].includes(ext)) {
-    return <FileSpreadsheet className={`${className} text-emerald-500`} strokeWidth={1.6} />
-  }
-  if (['ppt', 'pptx'].includes(ext)) {
-    return <FileCode2 className={`${className} text-amber-500`} strokeWidth={1.6} />
-  }
-  if (['zip', 'rar', '7z'].includes(ext)) {
-    return <FileArchive className={`${className} text-amber-500`} strokeWidth={1.6} />
-  }
-  if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)) {
-    return <FileCode2 className={`${className} text-purple-500`} strokeWidth={1.6} />
-  }
-  return <FileIcon className={`${className} text-slate-300`} strokeWidth={1.6} />
 }
 
 function filesFromTransfer(source: ComposerImageTransferSource | null | undefined): File[] {
@@ -1890,10 +1836,10 @@ export function FloatingComposer({
                     className="ds-no-drag inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-ds-border-muted bg-ds-card/80 px-2 text-[12px] font-medium text-ds-muted"
                     title={attachment.name || attachment.id}
                   >
-                    <FileTypeIconForComposer name={attachment.name || attachment.id} className="h-4 w-4 shrink-0" />
+                    <FileTypeIcon name={attachment.name || attachment.id} className="h-4 w-4 shrink-0" />
                     <span className="max-w-40 truncate">{attachment.name || attachment.id}</span>
-                    <span className={`inline-flex items-center rounded-[4px] border px-1.5 py-0 text-[10px] font-semibold ${fileTypeBadgeClassForComposer(fileTypeLabelForComposer(attachment.name || attachment.id))}`}>
-                      {fileTypeLabelForComposer(attachment.name || attachment.id)}
+                    <span className={`inline-flex items-center rounded-[4px] border px-1.5 py-0 text-[10px] font-semibold ${fileTypeBadgeClass(fileTypeLabel(attachment.name || attachment.id))}`}>
+                      {fileTypeLabel(attachment.name || attachment.id)}
                     </span>
                     {onRemoveAttachment ? (
                       <button

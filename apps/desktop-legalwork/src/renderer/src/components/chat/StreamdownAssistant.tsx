@@ -52,6 +52,12 @@ export function isExternalMarkdownHref(href: string | undefined): boolean {
   }
 }
 
+export function knowledgeSourceRefFromHref(href: string | undefined): string | null {
+  if (!href) return null
+  const match = href.match(/^#knowledge-source-(\d+)$/)
+  return match?.[1] ?? null
+}
+
 function StreamdownLink({
   href,
   children,
@@ -62,6 +68,7 @@ function StreamdownLink({
   const fileTarget = parseFileReferenceHref(href)
   const validation = useValidatedFileReference(fileTarget, workspaceRoot)
   const isExternal = isExternalMarkdownHref(href)
+  const knowledgeSourceRef = knowledgeSourceRefFromHref(href)
   const cleanClassName = className?.replace(/\bds-file-reference-link\b/g, '').trim()
 
   if (fileTarget && validation.status !== 'valid') {
@@ -78,11 +85,12 @@ function StreamdownLink({
       : null
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>): void => {
-    // source:// links — knowledge base citation [来源 N] click navigation
-    if (href?.startsWith('source://')) {
+    // Safe hash links — knowledge base citation [来源 N] click navigation.
+    // A normal fragment survives the Markdown security pass; custom source://
+    // protocols are intentionally rejected there and used to render [blocked].
+    if (knowledgeSourceRef) {
       event.preventDefault()
-      const ref = href.replace('source://', '')
-      const path = getKnowledgeSourcePath(ref)
+      const path = getKnowledgeSourcePath(knowledgeSourceRef)
       if (path) {
         const handler = getKnowledgeOpenFileHandler()
         if (handler) handler(path)
@@ -121,6 +129,7 @@ function StreamdownLink({
       title={title}
       className={[
         resolvedFileTarget ? 'ds-file-reference-link' : '',
+        knowledgeSourceRef ? 'ds-knowledge-source-link' : '',
         isExternal ? 'ds-external-link' : '',
         cleanClassName
       ]

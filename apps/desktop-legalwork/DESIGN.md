@@ -183,6 +183,7 @@ radius:
 elevation:
   light:
     chip: "inset 0 1px 0 rgba(255,255,255,0.78)"
+    segmented_selection: "Crisp 1px inset edge only; never use an outward blurred shadow that doubles the surrounding track curve."
     card_soft: "0 10px 28px rgba(15,23,42,0.06)"
     card_strong: "0 14px 36px rgba(15,23,42,0.09)"
     panel: "0 16px 44px rgba(15,23,42,0.06)"
@@ -192,6 +193,7 @@ elevation:
     topbar: "0 16px 42px rgba(15,23,42,0.05), inset 0 1px 0 rgba(255,255,255,0.64)"
   dark:
     chip: "inset 0 1px 0 rgba(255,255,255,0.045)"
+    segmented_selection: "Crisp low-contrast inset edge only; no outward blur."
     card_soft: "0 16px 42px rgba(0,0,0,0.22)"
     card_strong: "0 22px 56px rgba(0,0,0,0.30)"
     panel: "0 22px 58px rgba(0,0,0,0.35)"
@@ -230,9 +232,12 @@ motion:
 knowledge_base:
   pdf_preview:
     selection: "Use the PDF.js TextLayer aligned to the rendered viewport for precise selectable text; do not approximate glyph positions manually."
+    selection_toolbar: "After a mouse selection, show one compact 12px-radius contextual toolbar anchored inside the page with Highlighter and Ask AI actions."
+    highlights: "Persistent highlights sit between the PDF canvas and selectable TextLayer, use the warning-soft semantic, and remain visible for the current preview session."
+    ai_quote: "Ask AI places the selected passage in a distinct source-labelled quote card above the file-chat input; the user's typed question remains a separate text region and the sent bubble preserves both parts."
   docx_preview:
     fidelity: "Render DOCX from its OOXML package so page size, margins, paragraph spacing, indentation, alignment, lists, tables, headers, footers, notes, and explicit page breaks remain faithful to Word."
-    font: "Preserve document sizing, weight, emphasis, color, and decoration, but replace embedded and document-specified font families with the LegalWork Apple UI font stack."
+    font: "Preserve document-specified and embedded font families, sizing, weight, emphasis, color, and decoration so legal documents match their native Word appearance; use the LegalWork Apple UI stack only as a missing-font fallback."
   ai_chat:
     surface: "Global KB chat and file-specific chat share one compact Apple inspector chrome, empty state, message bubble, and composer language."
     composer: "No persistent blue focus frame; liquid pointer light appears only while the mouse is inside the composer surface."
@@ -252,7 +257,8 @@ z_index:
 window:
   app_region: drag           # html/body/-webkit-app-region
   no_drag_class: ds-no-drag  # add to anything clickable in the title bar
-  macos_top_inset_px: 42     # safe area for traffic-light controls
+  macos_top_inset_px: 46     # compact safe area; keeps 10px below the 22px-positioned traffic lights
+  macos_top_inset_background: "Matches the main stage's top color; no separate titlebar band"
   app_icon: src/asset/img/legalwork.png
   secondary_logos: [deepseek.svg]
 
@@ -291,6 +297,11 @@ components:
     reading_order: "Question, live status, research activity, reasoning summary, streamed report"
     iconography: "Lucide only; never emoji"
     streaming: "Render incomplete Markdown in streaming mode, with a restrained live rail, one-shot entry motion, and a terminal caret. Disable decorative movement for reduced-motion users."
+  compliance_history:
+    navigation: "Compliance and desensitization history live as expandable child rows in the left sidebar; never render the full task archive in the main stage."
+    detail: "Selecting one history row loads only that task and renders its result in the right stage. Opening an output folder is always an explicit detail action."
+    performance: "Cache completed task results for repeat viewing and avoid redundant service-status checks before every detail request."
+    parity: "Compliance and desensitization use the same history hierarchy, selected-row treatment, loading state, deletion action, and detail flow."
   composer_model_menu:
     panel_radius: "22px — shared elevated control-group radius"
     row_radius: "12px — identical to sidebar selectable rows"
@@ -306,6 +317,10 @@ components:
     base: "rounded-md bg-ds-inline-code-bg px-1.5 py-0.5 font-mono text-[12px] text-ds-ink"
   code_block:
     base: "rounded-xl border border-ds-border-muted bg-ds-pre-bg p-3 font-mono text-[12px] leading-5 text-ds-ink"
+  mermaid_diagram:
+    base: "Render Mermaid fences—and Mermaid source accidentally fenced as text or left unlabeled—as a bordered content-plane diagram card, never as raw code when parsing succeeds. Keep wide legal workflows legible with horizontal scroll instead of shrinking every node into a single viewport."
+    controls: "Provide source copy, SVG download, fullscreen, zoom, and reset controls; incomplete streaming fences wait for completion and invalid diagrams retain an inspectable source fallback."
+    labels: "CJK and fallback-font labels must remain fully visible at every UI and diagram zoom level. Isolate Mermaid label typography from chat prose rules and preserve a small overflow safety area inside the node padding."
   status_dot:
     base: "h-2 w-2 rounded-full bg-accent animate-pulse"
   kbd:

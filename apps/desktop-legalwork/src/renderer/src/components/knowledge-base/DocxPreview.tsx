@@ -35,6 +35,7 @@ export function DocxPreview({
     const renderVersion = renderVersionRef.current + 1
     renderVersionRef.current = renderVersion
     let cancelled = false
+    let resizeObserver: ResizeObserver | null = null
     setLoading(true)
     setError(null)
 
@@ -49,7 +50,7 @@ export function DocxPreview({
           inWrapper: true,
           ignoreWidth: false,
           ignoreHeight: false,
-          ignoreFonts: true,
+          ignoreFonts: false,
           breakPages: true,
           ignoreLastRenderedPageBreak: false,
           experimental: true,
@@ -68,6 +69,21 @@ export function DocxPreview({
           ...Array.from(stagedStyles.childNodes),
           ...Array.from(stagedBody.childNodes)
         )
+
+        const pages = Array.from(
+          previewContainer.querySelectorAll<HTMLElement>('section.legalwork-docx')
+        )
+        const fitPagesToPanel = (): void => {
+          if (!pages.length) return
+          for (const page of pages) page.style.zoom = '1'
+          const naturalWidth = pages[0]?.offsetWidth ?? 0
+          const availableWidth = Math.max(280, previewContainer.clientWidth - 48)
+          const zoom = naturalWidth > 0 ? Math.min(1, availableWidth / naturalWidth) : 1
+          for (const page of pages) page.style.zoom = String(zoom)
+        }
+        fitPagesToPanel()
+        resizeObserver = new ResizeObserver(fitPagesToPanel)
+        resizeObserver.observe(previewContainer)
       } catch (renderError) {
         if (cancelled || renderVersionRef.current !== renderVersion) return
         previewContainer.replaceChildren()
@@ -82,6 +98,7 @@ export function DocxPreview({
     void renderDocument()
     return () => {
       cancelled = true
+      resizeObserver?.disconnect()
       if (renderVersionRef.current === renderVersion) {
         renderVersionRef.current += 1
       }

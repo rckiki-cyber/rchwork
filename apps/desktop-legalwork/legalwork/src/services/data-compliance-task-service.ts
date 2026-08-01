@@ -16,7 +16,7 @@ import { dirname, extname, isAbsolute, join, normalize, relative as pathRelative
 import { Readable } from 'node:stream'
 
 const DATA_COMPLIANCE_VENV_DIR_NAME = 'python-venv'
-const DATA_COMPLIANCE_CORE_DEPENDENCY_MARKER = '.legalwork-core-deps-installed'
+const DATA_COMPLIANCE_CORE_DEPENDENCY_MARKER = '.legalwork-core-deps-v2-installed'
 const MIN_DATA_COMPLIANCE_PYTHON = { major: 3, minor: 10 }
 const MAX_DATA_COMPLIANCE_PYTHON = { major: 3, minor: 12 }
 const PYTHON_IMPORT_TIMEOUT_MS = 8_000
@@ -63,7 +63,8 @@ export type DataComplianceTask = {
   original_filename?: string
   stored_filename?: string
   output_dir?: string
-  output_format?: 'md' | 'docx' | 'txt'
+  output_format?: 'md' | 'docx' | 'pdf' | 'txt'
+  redaction_mode?: 'standard' | 'agent_enhanced'
   status: DataComplianceTaskStatus
   created_at: string
   completed_at?: string
@@ -88,7 +89,8 @@ export type DataComplianceCreateTaskInput = {
   inputText?: string
   reviewType?: 'document' | 'code'
   outputDir?: string
-  outputFormat?: 'md' | 'docx' | 'txt'
+  outputFormat?: 'md' | 'docx' | 'pdf' | 'txt'
+  redactionMode?: 'standard' | 'agent_enhanced'
   file?: {
     name: string
     type?: string
@@ -134,7 +136,10 @@ const CORE_REQUIRED_PYTHON_PACKAGES = [
   'flask',
   'docx',
   'fitz',
+  'openai',
   'openpyxl',
+  'paddle',
+  'paddleocr',
   'pptx',
   'pypdf',
   'pandas',
@@ -144,8 +149,6 @@ const CORE_REQUIRED_PYTHON_PACKAGES = [
 ]
 
 const OPTIONAL_OCR_PYTHON_PACKAGES = [
-  'paddle',
-  'paddleocr',
   'pytesseract'
 ]
 
@@ -639,6 +642,7 @@ export class DataComplianceTaskService {
       stored_filename: storedFilename,
       output_dir: input.outputDir?.trim() || undefined,
       output_format: input.outputFormat,
+      redaction_mode: input.redactionMode ?? 'standard',
       status: 'pending',
       created_at: nowIso(),
       progress: {
@@ -681,7 +685,8 @@ export class DataComplianceTaskService {
       input_type: task.input_type,
       review_type: task.review_type ?? 'document',
       output_dir: task.output_dir,
-      output_format: task.output_format
+      output_format: task.output_format,
+      redaction_mode: task.redaction_mode ?? 'standard'
     }
     const payloadPath = join(taskDir, 'worker_input.json')
     await writeFile(payloadPath, JSON.stringify(payload, null, 2), 'utf-8')
@@ -713,7 +718,9 @@ export class DataComplianceTaskService {
           COMPLIANCEAI_PYTHON: python,
           COMPLIANCEAI_LOG_PATH: logPath,
           LEGALWORK_API_KEY: process.env.LEGALWORK_API_KEY ?? '',
-          DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? ''
+          DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? '',
+          LEGALWORK_BASE_URL: process.env.LEGALWORK_BASE_URL ?? '',
+          LEGALWORK_MODEL: process.env.LEGALWORK_MODEL ?? ''
         },
         stdio: ['ignore', 'pipe', 'pipe']
       }

@@ -171,6 +171,24 @@
   text-decoration: underline;
 }
 
+.ds-markdown .ds-knowledge-source-link {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--ds-accent) 18%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ds-accent) 8%, transparent);
+  padding: 0.02em 0.32em;
+  font-size: 0.9em;
+  font-weight: 600;
+  line-height: 1.35;
+  vertical-align: 0.04em;
+}
+
+.ds-markdown .ds-knowledge-source-link:hover {
+  background: var(--ds-accent-soft);
+  text-decoration: none;
+}
+
 .ds-markdown blockquote {
   border-left: 2px solid color-mix(in srgb, var(--ds-accent) 36%, transparent);
   padding-left: 0.85rem;
@@ -277,6 +295,319 @@
   border-radius: 14px;
   background: var(--ds-pre-bg);
   box-sizing: border-box;
+}
+
+.ds-markdown .ds-mermaid-block {
+  margin: 0.55rem 0 0.72rem;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--ds-border);
+  border-radius: 16px;
+  background: var(--ds-card-strong);
+  box-shadow: var(--ds-shadow-card-soft);
+}
+
+.ds-markdown .ds-mermaid-header,
+.ds-mermaid-fullscreen-header {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--ds-border-muted);
+  background: color-mix(in srgb, var(--ds-card-muted) 92%, transparent);
+  padding: 0.36rem 0.48rem 0.36rem 0.72rem;
+}
+
+.ds-markdown .ds-mermaid-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ds-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.ds-markdown .ds-mermaid-title-mark {
+  width: 3px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--ds-accent);
+}
+
+.ds-markdown .ds-mermaid-format {
+  color: var(--ds-text-faint);
+  font-family: 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.ds-markdown .ds-mermaid-actions,
+.ds-mermaid-fullscreen-header > div,
+.ds-mermaid-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.18rem;
+}
+
+.ds-mermaid-action {
+  display: inline-flex;
+  width: 1.65rem;
+  height: 1.65rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ds-text-muted);
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 90ms ease;
+}
+
+.ds-mermaid-action:hover {
+  background: var(--ds-surface-hover);
+  color: var(--ds-text);
+}
+
+.ds-mermaid-action:active {
+  transform: scale(0.95);
+}
+
+.ds-mermaid-action:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 1px;
+}
+
+.ds-mermaid-action:disabled {
+  cursor: default;
+  opacity: 0.35;
+  transform: none;
+}
+
+.ds-markdown .ds-mermaid-status {
+  display: flex;
+  min-height: 12rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--ds-text-muted);
+  font-size: 12px;
+}
+
+.ds-markdown .ds-mermaid-spinner {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid color-mix(in srgb, var(--ds-text-muted) 24%, transparent);
+  border-top-color: var(--ds-accent);
+  border-radius: 50%;
+  animation: ds-mermaid-spin 760ms linear infinite;
+}
+
+@keyframes ds-mermaid-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ds-mermaid-viewport {
+  position: relative;
+  min-height: 14rem;
+  overflow: hidden;
+  background:
+    linear-gradient(var(--ds-border-muted) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ds-border-muted) 1px, transparent 1px),
+    var(--ds-bg-canvas);
+  background-size: 24px 24px;
+}
+
+.ds-mermaid-scroll {
+  width: 100%;
+  min-height: 14rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2.9rem 1.25rem 1.35rem;
+  box-sizing: border-box;
+}
+
+.ds-mermaid-canvas {
+  min-height: 9rem;
+  margin: 0 auto;
+  transition: width 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ds-mermaid-canvas svg {
+  display: block;
+  width: 100% !important;
+  max-width: none !important;
+  height: auto !important;
+  margin: 0 auto;
+}
+
+/* Mermaid measures labels in a temporary document before the SVG enters the
+   chat typography context. CJK fallback fonts can be a few fractional pixels
+   wider than that measurement, so keep the label viewport from clipping the
+   final glyph and isolate it from prose spacing rules. */
+.ds-mermaid-canvas foreignObject {
+  overflow: visible;
+}
+
+.ds-mermaid-canvas foreignObject > div,
+.ds-mermaid-canvas .nodeLabel,
+.ds-mermaid-canvas .edgeLabel {
+  overflow: visible !important;
+  font-family: var(--font-apple-ui) !important;
+  letter-spacing: 0 !important;
+}
+
+.ds-markdown .ds-mermaid-canvas .nodeLabel p,
+.ds-markdown .ds-mermaid-canvas .edgeLabel p {
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: inherit;
+  line-height: 1.5 !important;
+}
+
+.ds-mermaid-zoom-controls {
+  position: absolute;
+  top: 0.58rem;
+  left: 0.58rem;
+  z-index: 2;
+  min-height: 1.9rem;
+  border: 1px solid var(--ds-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ds-card-strong) 88%, transparent);
+  padding: 0.12rem;
+  box-shadow: var(--ds-shadow-chip);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+.ds-mermaid-zoom-controls .ds-mermaid-action {
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 7px;
+}
+
+.ds-mermaid-zoom-value {
+  min-width: 2.8rem;
+  color: var(--ds-text-faint);
+  font-family: 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-markdown .ds-mermaid-error {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem 0.75rem;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--ds-danger-soft) 50%, var(--ds-bg-canvas));
+  color: var(--ds-text);
+  font-size: 12px;
+}
+
+.ds-markdown .ds-mermaid-error strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ds-markdown .ds-mermaid-error p {
+  margin: 0.2rem 0 0;
+  color: var(--ds-text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.ds-markdown .ds-mermaid-error > button {
+  align-self: start;
+  border: 1px solid var(--ds-border);
+  border-radius: 8px;
+  background: var(--ds-card-strong);
+  padding: 0.28rem 0.62rem;
+  color: var(--ds-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ds-markdown .ds-mermaid-error details {
+  grid-column: 1 / -1;
+  color: var(--ds-text-muted);
+}
+
+.ds-markdown .ds-mermaid-error summary {
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.ds-markdown .ds-mermaid-error pre {
+  margin: 0.5rem 0 0;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.ds-mermaid-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--ds-bg-canvas);
+  color: var(--ds-text);
+}
+
+.ds-mermaid-fullscreen-header {
+  flex: 0 0 auto;
+  min-height: 3rem;
+  padding-inline: 1rem 0.75rem;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ds-mermaid-viewport.is-fullscreen {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.ds-mermaid-viewport.is-fullscreen .ds-mermaid-scroll {
+  height: 100%;
+  padding: 4.5rem 2.5rem 2.5rem;
+}
+
+.ds-mermaid-viewport.is-fullscreen .ds-mermaid-zoom-controls {
+  top: 1rem;
+  left: 1rem;
+}
+
+@media (max-width: 640px) {
+  .ds-mermaid-scroll {
+    padding-inline: 0.75rem;
+  }
+
+  .ds-markdown .ds-mermaid-format {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-mermaid-canvas,
+  .ds-mermaid-action {
+    transition: none;
+  }
+
+  .ds-markdown .ds-mermaid-spinner {
+    animation-duration: 1.6s;
+  }
 }
 
 .ds-markdown .ds-plain-text-block {
@@ -773,13 +1104,6 @@ html[data-theme='dark'] .ds-file-preview-code-html > pre span {
   box-shadow:
     0 0 0 1px rgba(15, 23, 42, 0.08),
     0 12px 32px rgba(15, 23, 42, 0.12) !important;
-}
-
-.docx-layout-preview .legalwork-docx,
-.docx-layout-preview .legalwork-docx *,
-.docx-layout-preview .legalwork-docx *::before,
-.docx-layout-preview .legalwork-docx *::after {
-  font-family: var(--font-apple-ui) !important;
 }
 
 .docx-preview h1 { font-size: 1.5rem; font-weight: 700; margin: 1rem 0 0.5rem; }

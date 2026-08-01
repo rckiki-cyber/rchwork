@@ -44,6 +44,7 @@ import { isLegalworkHealthResponseBody } from './legalwork-health'
 import { appendManagedLogLine } from './logger'
 import { guiSkillRootsForRuntime, normalizeSkillRootPath } from './services/skill-service'
 import { buildOcrRuntimeEnvironment } from './data-compliance-runtime'
+import { resolveCodexBinaryPath } from './codex-auth-manager'
 
 let child: ChildProcess | null = null
 let childLogCapture: LegalworkChildLogCapture | null = null
@@ -59,6 +60,7 @@ const STDERR_TAIL_MAX_CHARS = 4_000
 const LEGALWORK_SCHEDULE_MCP_TIMEOUT_MS = 5_000
 const LEGALWORK_OFFICECLI_MCP_TIMEOUT_MS = 30_000
 const LEGALWORK_OFFICECLI_MCP_SERVER_NAME = 'officecli'
+const LEGALWORK_IMA_MCP_SERVER_NAME = 'ima-knowledge-base'
 const GUI_ATTACHMENT_ALLOWED_MIME_TYPES = [
   'image/*',
   'text/*',
@@ -244,9 +246,16 @@ export async function startLegalworkChild(settings: AppSettingsV1): Promise<void
 async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
   const runtime = resolveLegalworkRuntimeSettings(settings)
   if (!runtime.autoStart) return
+  const codexBinaryPath = runtime.authMode === 'chatgpt'
+    ? resolveCodexBinaryPath(runtime.codexBinaryPath)
+    : null
+  if (runtime.authMode === 'chatgpt' && !codexBinaryPath) {
+    throw new Error('Codex executable was not found. Configure its path in Settings > Agents.')
+  }
   const root = appRoot()
   const resolution = resolveLegalworkExecutable(root, runtime.binaryPath)
   const dataDir = resolveLegalworkDataDir(runtime)
+  const legalworkCodexHome = join(app.getPath('userData'), 'codex-auth')
   const configChanged = await syncGuiManagedLegalworkConfig(dataDir, runtime, {
     scheduleMcp: {
       settings,
@@ -257,6 +266,10 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
       }
     },
     officecli: {
+      appPath: app.getAppPath(),
+      isPackaged: app.isPackaged
+    },
+    ima: {
       appPath: app.getAppPath(),
       isPackaged: app.isPackaged
     }
@@ -282,6 +295,8 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
     host: '127.0.0.1',
     port: runtime.port,
     dataDir,
+    authMode: runtime.authMode,
+    codexBinaryPath: codexBinaryPath ?? runtime.codexBinaryPath,
     baseUrl: runtime.baseUrl,
     endpointFormat: runtime.endpointFormat,
     model: runtime.model,
@@ -319,7 +334,13 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
       PATH: runtimePath,
       ELECTRON_RUN_AS_NODE: '1',
       LEGALWORK_RUNTIME_TOKEN: runtime.runtimeToken,
+      LEGALWORK_AUTH_MODE: runtime.authMode,
+      LEGALWORK_CODEX_BINARY: (codexBinaryPath ?? runtime.codexBinaryPath) || process.env.LEGALWORK_CODEX_BINARY || '',
+      LEGALWORK_CODEX_HOME: legalworkCodexHome,
       LEGALWORK_COMPLIANCE_WEB_ROOT: webRoot,
+      LEGALWORK_API_KEY: runtime.apiKey || process.env.LEGALWORK_API_KEY || '',
+      LEGALWORK_BASE_URL: runtime.baseUrl || process.env.LEGALWORK_BASE_URL || '',
+      LEGALWORK_MODEL: runtime.model || process.env.LEGALWORK_MODEL || '',
       ...(existsSync(ocrAgentPath) ? { LEGALWORK_OCR_AGENT_PATH: ocrAgentPath } : {}),
       ...(ocrPython ? { LEGALWORK_OCR_PYTHON: ocrPython } : {}),
       DEEPSEEK_API_KEY: runtime.apiKey || process.env.DEEPSEEK_API_KEY || '',
@@ -379,6 +400,10 @@ export async function syncGuiManagedLegalworkConfig(
       appPath: string
       isPackaged: boolean
     }
+    ima?: {
+      appPath: string
+      isPackaged: boolean
+    }
     mcpConfigPath?: string
   }
 ): Promise<boolean> {
@@ -406,6 +431,30 @@ export async function syncGuiManagedLegalworkConfig(
   const storage = storageConfigForRuntime(runtime.storage)
   const mcpSearch = runtime.mcpSearch
   const skillCapability = await skillCapabilityConfigForRuntime(skills, options?.scheduleMcp?.settings)
+  const mergedMcpServers = {
+    ...objectValue(mcp.servers),
+    ...importedMcpServers,
+    ...(options?.scheduleMcp
+      ? {
+          [LEGALWORK_SCHEDULE_MCP_SERVER_NAME]: buildGuiScheduleLegalworkMcpServer(
+            options.scheduleMcp.settings,
+            options.scheduleMcp.launch
+          )
+        }
+      : {}),
+    ...(options?.officecli
+      ? {
+          [LEGALWORK_OFFICECLI_MCP_SERVER_NAME]: buildOfficeCliLegalworkMcpServer(
+            options.officecli.appPath,
+            options.officecli.isPackaged
+          )
+        }
+      : {})
+  }
+  const runtimeMcpServers = rebindBundledImaMcpServer(
+    mergedMcpServers,
+    options?.ima
+  )
   const next = {
     serve: {
       ...serve,
@@ -441,26 +490,7 @@ export async function syncGuiManagedLegalworkConfig(
         ...(options?.scheduleMcp || mcpSearch.enabled || hasImportedEnabledMcpServer
           ? { enabled: mcp.enabled === false ? false : true }
           : {}),
-        servers: {
-          ...objectValue(mcp.servers),
-          ...importedMcpServers,
-          ...(options?.scheduleMcp
-          ? {
-              [LEGALWORK_SCHEDULE_MCP_SERVER_NAME]: buildGuiScheduleLegalworkMcpServer(
-                options.scheduleMcp.settings,
-                options.scheduleMcp.launch
-              )
-            }
-          : {}),
-          ...(options?.officecli
-          ? {
-              [LEGALWORK_OFFICECLI_MCP_SERVER_NAME]: buildOfficeCliLegalworkMcpServer(
-                options.officecli.appPath,
-                options.officecli.isPackaged
-              )
-            }
-          : {})
-        },
+        servers: runtimeMcpServers,
         search: {
           ...search,
           enabled: mcpSearch.enabled,
@@ -484,6 +514,31 @@ export async function syncGuiManagedLegalworkConfig(
   await mkdir(dirname(configPath), { recursive: true })
   await writeFile(configPath, nextText, 'utf8')
   return true
+}
+
+export function resolveBundledImaMcpScriptPath(
+  appPath: string,
+  isPackaged: boolean
+): string {
+  return isPackaged
+    ? join(appPath, '..', 'scripts', 'ima-mcp-server.py')
+    : join(appPath, 'scripts', 'ima-mcp-server.py')
+}
+
+function rebindBundledImaMcpServer(
+  servers: Record<string, unknown>,
+  currentApp?: { appPath: string; isPackaged: boolean }
+): Record<string, unknown> {
+  if (!currentApp) return servers
+  const existing = objectValue(servers[LEGALWORK_IMA_MCP_SERVER_NAME])
+  if (Object.keys(existing).length === 0) return servers
+  return {
+    ...servers,
+    [LEGALWORK_IMA_MCP_SERVER_NAME]: {
+      ...existing,
+      args: [resolveBundledImaMcpScriptPath(currentApp.appPath, currentApp.isPackaged)]
+    }
+  }
 }
 
 function buildGuiScheduleLegalworkMcpServer(
@@ -796,7 +851,10 @@ function mergeGuiManagedAttachmentMimeTypes(existing: unknown): string[] {
     ? existing.filter((mimeType): mimeType is string => typeof mimeType === 'string' && mimeType.trim().length > 0)
     : []
   if (current.some((mimeType) => mimeType === '*/*')) return current
-  return [...new Set([...current, ...GUI_ATTACHMENT_ALLOWED_MIME_TYPES])]
+  // GUI-managed attachments accept every file type. `*/*` overrides the
+  // convenience list so unknown MIME types (e.g. application/octet-stream)
+  // are never rejected by the runtime's attachment validation.
+  return ['*/*', ...new Set([...current, ...GUI_ATTACHMENT_ALLOWED_MIME_TYPES])]
 }
 
 async function readJsonObjectIfExists(path: string): Promise<Record<string, unknown> | null> {

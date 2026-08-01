@@ -1,10 +1,13 @@
-import type { ChangeEvent, DragEvent as ReactDragEvent, MouseEvent, ReactElement } from 'react'
+import type { ChangeEvent, DragEvent as ReactDragEvent, ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { create } from 'zustand'
 import {
   AlertCircle,
   AudioLines,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Download,
   File,
   FileArchive,
@@ -18,6 +21,7 @@ import {
   Minimize2,
   RefreshCw,
   ScanEye,
+  Sparkles,
   ShieldCheck,
   Trash2,
   Upload,
@@ -34,7 +38,7 @@ import { AstryxSegmentedControl } from '../astryx/AstryxSegmentedControl'
 import { SidebarCommandRow } from '../sidebar/SidebarPrimitives'
 
 export type DataComplianceSection = 'review' | 'desensitize' | 'history' | 'results'
-export type DesensitizeSection = 'material' | 'history'
+export type DesensitizeSection = 'material' | 'history' | 'results'
 
 type ComplianceTask = {
   id?: string
@@ -76,6 +80,7 @@ type ComplianceResult = {
 type SubmitMode = 'review' | 'desensitize'
 type DesensitizeKind = 'info' | 'material'
 type ReviewType = 'document' | 'code'
+type RedactionMode = 'standard' | 'agent_enhanced'
 type Notice = { tone: 'info' | 'error' | 'success'; text: string }
 type DataComplianceFilePayload = NonNullable<DataComplianceSubmitPayload['file']>
 
@@ -103,6 +108,71 @@ function isDesensitizeTask(task: ComplianceTask): boolean {
   if (productType) return productType === 'desensitize'
   return !task.review_type
 }
+
+type ComplianceHistoryState = {
+  reviewTasks: ComplianceTask[]
+  desensitizeTasks: ComplianceTask[]
+  reviewBusy: boolean
+  desensitizeBusy: boolean
+  reviewError: string
+  desensitizeError: string
+  selectedReviewTaskId: string
+  selectedDesensitizeTaskId: string
+  refresh: (mode: SubmitMode) => Promise<void>
+  select: (mode: SubmitMode, taskId: string) => void
+  remove: (mode: SubmitMode, taskId: string) => void
+}
+
+const complianceResultCache = new Map<string, ComplianceResult>()
+
+const useComplianceHistoryStore = create<ComplianceHistoryState>((set) => ({
+  reviewTasks: [],
+  desensitizeTasks: [],
+  reviewBusy: false,
+  desensitizeBusy: false,
+  reviewError: '',
+  desensitizeError: '',
+  selectedReviewTaskId: '',
+  selectedDesensitizeTaskId: '',
+  refresh: async (mode) => {
+    set(mode === 'desensitize'
+      ? { desensitizeBusy: true, desensitizeError: '' }
+      : { reviewBusy: true, reviewError: '' })
+    try {
+      const payload = await requestJson<{ items?: ComplianceTask[] }>('/data-compliance/tasks')
+      const items = Array.isArray(payload.items) ? payload.items : []
+      set(mode === 'desensitize'
+        ? { desensitizeTasks: items.filter(isDesensitizeTask) }
+        : { reviewTasks: items.filter(isReviewTask) })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '历史读取失败。'
+      set(mode === 'desensitize'
+        ? { desensitizeError: message }
+        : { reviewError: message })
+      throw error
+    } finally {
+      set(mode === 'desensitize'
+        ? { desensitizeBusy: false }
+        : { reviewBusy: false })
+    }
+  },
+  select: (mode, taskId) => set(mode === 'desensitize'
+    ? { selectedDesensitizeTaskId: taskId }
+    : { selectedReviewTaskId: taskId }),
+  remove: (mode, taskId) => set((state) => mode === 'desensitize'
+    ? {
+        desensitizeTasks: state.desensitizeTasks.filter((task) => taskIdOf(task) !== taskId),
+        selectedDesensitizeTaskId: state.selectedDesensitizeTaskId === taskId
+          ? ''
+          : state.selectedDesensitizeTaskId
+      }
+    : {
+        reviewTasks: state.reviewTasks.filter((task) => taskIdOf(task) !== taskId),
+        selectedReviewTaskId: state.selectedReviewTaskId === taskId
+          ? ''
+          : state.selectedReviewTaskId
+      })
+}))
 
 function statusTone(status: string | undefined): string {
   const value = (status ?? '').toLowerCase()
@@ -209,23 +279,13 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(chunks.join(''))
 }
 
-function inferOutputFormats(file: File | null): Array<{ value: 'md' | 'docx' | 'txt'; label: string }> {
-  if (!file) return []
-  const ext = file.name.split('.').pop()?.toLowerCase() || ''
-  if (ext === 'docx' || ext === 'doc') {
-    return [
-      { value: 'docx', label: 'Word 文档 (.docx)' },
-      { value: 'md', label: 'Markdown (.md)' }
-    ]
-  }
-  if (ext === 'pdf') {
-    return [
-      { value: 'txt', label: '纯文本 (.txt)' },
-      { value: 'md', label: 'Markdown (.md)' },
-      { value: 'docx', label: 'Word 文档 (.docx)' }
-    ]
-  }
-  return []
+function inferOutputFormats(): Array<{ value: 'md' | 'docx' | 'pdf' | 'txt'; label: string }> {
+  return [
+    { value: 'docx', label: 'Word 文档 (.docx)' },
+    { value: 'pdf', label: 'PDF 文档 (.pdf)' },
+    { value: 'md', label: 'Markdown (.md)' },
+    { value: 'txt', label: '纯文本 (.txt)' }
+  ]
 }
 
 function fileTypeLabelForFile(fileName: string): string {
@@ -520,7 +580,7 @@ function ProgressModal({ state, onDismiss, modeScope = 'review' }: { state: Prog
         : '请稍候，系统正在分析文档合规性'
   const actionLabel = running ? '后台运行' : '关闭'
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
       <div className="relative w-full max-w-md rounded-[18px] border border-ds-border bg-ds-card p-6 shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
         <button
           type="button"
@@ -540,7 +600,7 @@ function ProgressModal({ state, onDismiss, modeScope = 'review' }: { state: Prog
                 ? 'bg-emerald-500/12 text-emerald-500'
                 : 'bg-[var(--ds-accent-soft)] text-[var(--ds-accent)]'
           }`}>
-            {failed ? <AlertCircle className="h-5 w-5" /> : completed ? <CheckCircle2 className="h-5 w-5" /> : <Loader2 className="h-5 w-5 animate-spin" />}
+            {failed ? <AlertCircle className="h-5 w-5" /> : completed ? <CheckCircle2 className="h-5 w-5" /> : <Loader2 className="ds-progress-spinner h-5 w-5" />}
           </div>
           <div>
             <h3 className="text-[15px] font-semibold text-ds-ink">{title}</h3>
@@ -675,6 +735,47 @@ function StatCards({ stats }: { stats: Record<string, unknown> | null }): ReactE
     ['maintained', '维持判断']
   ]
     .map(([key, label]) => [label, stringifyShort(stats[key]).trim()] as const)
+    .filter(([, value]) => value)
+  if (items.length === 0) return null
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      {items.map(([label, value]) => (
+        <div key={label} className="rounded-[12px] border border-ds-border-muted bg-ds-card px-3 py-2">
+          <div className="text-[11px] text-ds-faint">{label}</div>
+          <div className="mt-1 text-[18px] font-semibold text-ds-ink">{value}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const REDACTION_ENTITY_LABELS: Record<string, string> = {
+  person_name: '自然人姓名',
+  company_name: '企业名称',
+  law_firm: '律师事务所',
+  PERSON: '自然人姓名',
+  ORGANIZATION: '机构名称',
+  ADDRESS: '地址',
+  PHONE_NUMBER: '电话号码',
+  ID_CARD: '身份证号',
+  ID_NUMBER: '证件号码',
+  BANK_CARD: '银行卡号',
+  EMAIL_ADDRESS: '电子邮箱',
+  ACCOUNT: '账号',
+  BIRTH_DATE: '出生日期',
+  IP_ADDRESS: 'IP 地址',
+  OTHER_IDENTIFIER: '其他身份标识'
+}
+
+function redactionEntityLabel(value: unknown): string {
+  const type = stringifyShort(value).trim()
+  return REDACTION_ENTITY_LABELS[type] || type
+}
+
+function DesensitizeStatCards({ stats }: { stats: Record<string, unknown> | null }): ReactElement | null {
+  if (!stats) return null
+  const items = Object.entries(stats)
+    .map(([key, value]) => [redactionEntityLabel(key), stringifyShort(value).trim()] as const)
     .filter(([, value]) => value)
   if (items.length === 0) return null
   return (
@@ -938,7 +1039,7 @@ function DesensitizeReport({ result }: { result: ComplianceResult }): ReactEleme
   const warnings = stringArray(report.warnings)
   return (
     <div className="space-y-4">
-      <StatCards stats={asRecord(summary?.entity_counts)} />
+      <DesensitizeStatCards stats={asRecord(summary?.entity_counts)} />
       {warnings.length > 0 ? (
         <section className="rounded-[14px] border border-amber-500/20 bg-amber-500/8 p-4">
           <h3 className="text-[15px] font-semibold text-amber-700 dark:text-amber-200">处理说明</h3>
@@ -963,7 +1064,7 @@ function DesensitizeReport({ result }: { result: ComplianceResult }): ReactEleme
             {findings.map((finding, index) => (
               <div key={`${firstText(finding, ['entity_type'])}-${index}`} className="rounded-[12px] border border-ds-border bg-ds-card p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[13px] font-semibold text-ds-ink">{firstText(finding, ['entity_type']) || `命中 ${index + 1}`}</span>
+                  <span className="text-[13px] font-semibold text-ds-ink">{redactionEntityLabel(firstText(finding, ['entity_type'])) || `命中 ${index + 1}`}</span>
                   <span className="rounded-full bg-ds-subtle px-2 py-0.5 text-[11px] text-ds-muted">置信度 {firstText(finding, ['score'])}</span>
                 </div>
                 <div className="mt-2 grid gap-2 text-[12px] lg:grid-cols-3">
@@ -1172,6 +1273,159 @@ function EmbeddedComplianceReport({
   )
 }
 
+function historyStatusDot(status: string | undefined): string {
+  const normalized = (status ?? '').toLowerCase()
+  if (normalized === 'completed') return 'bg-emerald-500'
+  if (normalized === 'failed' || normalized === 'error') return 'bg-red-500'
+  if (normalized === 'running' || normalized === 'processing' || normalized === 'pending') {
+    return 'bg-amber-500'
+  }
+  return 'bg-ds-faint'
+}
+
+function ComplianceHistorySidebarGroup({
+  mode,
+  label,
+  active,
+  onHistoryOpen,
+  onTaskOpen
+}: {
+  mode: SubmitMode
+  label: string
+  active: boolean
+  onHistoryOpen: () => void
+  onTaskOpen: () => void
+}): ReactElement {
+  const tasks = useComplianceHistoryStore((state) => mode === 'desensitize'
+    ? state.desensitizeTasks
+    : state.reviewTasks)
+  const busy = useComplianceHistoryStore((state) => mode === 'desensitize'
+    ? state.desensitizeBusy
+    : state.reviewBusy)
+  const error = useComplianceHistoryStore((state) => mode === 'desensitize'
+    ? state.desensitizeError
+    : state.reviewError)
+  const selectedTaskId = useComplianceHistoryStore((state) => mode === 'desensitize'
+    ? state.selectedDesensitizeTaskId
+    : state.selectedReviewTaskId)
+  const refresh = useComplianceHistoryStore((state) => state.refresh)
+  const select = useComplianceHistoryStore((state) => state.select)
+  const remove = useComplianceHistoryStore((state) => state.remove)
+  const [expanded, setExpanded] = useState(active)
+
+  useEffect(() => {
+    if (active) setExpanded(true)
+  }, [active])
+
+  const deleteTask = useCallback(async (taskId: string): Promise<void> => {
+    if (!taskId) return
+    await requestJson<{ ok?: boolean }>(`/data-compliance/tasks/${encodeURIComponent(taskId)}`, 'DELETE')
+    complianceResultCache.delete(taskId)
+    remove(mode, taskId)
+  }, [mode, remove])
+
+  return (
+    <div className="min-h-0">
+      <SidebarCommandRow
+        icon={<History className="h-4 w-4" strokeWidth={1.8} />}
+        label={label}
+        active={active}
+        trailing={expanded
+          ? <ChevronDown className="h-3.5 w-3.5 text-ds-faint" strokeWidth={1.8} />
+          : <ChevronRight className="h-3.5 w-3.5 text-ds-faint" strokeWidth={1.8} />}
+        onClick={() => {
+          setExpanded((current) => active ? !current : true)
+          onHistoryOpen()
+        }}
+      />
+
+      {expanded ? (
+        <div className="ml-3 mt-1 border-l border-[var(--ds-sidebar-divider)] pl-2">
+          <div className="flex items-center justify-between gap-2 px-2 pb-1.5 pt-1">
+            <span className="text-[10.5px] text-ds-faint">{busy ? '同步中…' : `${tasks.length} 项任务`}</span>
+            <button
+              type="button"
+              onClick={() => {
+                void refresh(mode).catch((refreshError: unknown) => {
+                  console.error('[ComplianceHistorySidebarGroup] refresh failed:', refreshError)
+                })
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-[8px] text-ds-faint transition hover:bg-[var(--ds-sidebar-row-hover)] hover:text-ds-ink"
+              title="刷新历史任务"
+              aria-label="刷新历史任务"
+            >
+              {busy
+                ? <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.8} />
+                : <RefreshCw className="h-3 w-3" strokeWidth={1.8} />}
+            </button>
+          </div>
+
+          {error && tasks.length === 0 ? (
+            <div className="px-2 py-2 text-[10.5px] leading-4 text-red-500">{error}</div>
+          ) : null}
+
+          <div className="max-h-[min(52vh,480px)] space-y-0.5 overflow-y-auto pr-1">
+            {!busy && tasks.length === 0 && !error ? (
+              <div className="px-2 py-3 text-[11px] text-ds-faint">暂无历史任务</div>
+            ) : null}
+            {tasks.map((task) => {
+              const id = taskIdOf(task)
+              const selected = active && selectedTaskId === id
+              return (
+                <div
+                  key={id || task.document_name}
+                  data-sidebar-hover-target
+                  data-sidebar-active={selected ? 'true' : undefined}
+                  className="group relative rounded-[10px] [contain-intrinsic-size:42px] [content-visibility:auto]"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!id) return
+                      select(mode, id)
+                      onTaskOpen()
+                    }}
+                    className={`flex min-h-[42px] w-full items-start gap-2 rounded-[10px] py-1.5 pl-2 pr-8 text-left transition ${
+                      selected ? 'text-ds-ink' : 'text-ds-muted hover:text-ds-ink'
+                    }`}
+                    title={task.document_name || id}
+                  >
+                    <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${historyStatusDot(task.status)}`} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] font-medium leading-5">
+                        {task.document_name || id || '未命名任务'}
+                      </span>
+                      <span className="block truncate text-[10px] leading-4 text-ds-faint">
+                        {task.created_at ? new Date(task.created_at).toLocaleString() : id}
+                      </span>
+                    </span>
+                  </button>
+                  {id ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void deleteTask(id).catch((deleteError: unknown) => {
+                          console.error('[ComplianceHistorySidebarGroup] delete failed:', deleteError)
+                        })
+                      }}
+                      className="absolute right-1.5 top-2 flex h-6 w-6 items-center justify-center rounded-[8px] text-ds-faint opacity-0 transition hover:bg-red-500/10 hover:text-red-600 group-hover:opacity-100"
+                      title="删除历史任务"
+                      aria-label="删除历史任务"
+                    >
+                      <Trash2 className="h-3 w-3" strokeWidth={1.8} />
+                    </button>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function DataComplianceSidebarNav({
   activeSection,
   onSectionChange
@@ -1179,31 +1433,44 @@ export function DataComplianceSidebarNav({
   activeSection: DataComplianceSection
   onSectionChange: (section: DataComplianceSection) => void
 }): ReactElement {
-  const items: Array<{ section: DataComplianceSection; label: string; icon: ReactElement }> = [
-    { section: 'review', label: '合规审查', icon: <ShieldCheck className="h-4 w-4" strokeWidth={1.8} /> },
-    { section: 'desensitize', label: '数据脱敏', icon: <ScanEye className="h-4 w-4" strokeWidth={1.8} /> },
-    { section: 'history', label: '历史任务', icon: <History className="h-4 w-4" strokeWidth={1.8} /> },
-    { section: 'results', label: '结果中心', icon: <FileSearch className="h-4 w-4" strokeWidth={1.8} /> }
-  ]
+  const selectedTaskId = useComplianceHistoryStore((state) => state.selectedReviewTaskId)
+  const select = useComplianceHistoryStore((state) => state.select)
+  const historyActive = activeSection === 'history' || (activeSection === 'results' && Boolean(selectedTaskId))
 
   return (
     <div className="ds-no-drag flex min-h-0 flex-1 flex-col px-2 pt-1">
       <div className="mb-2 px-1">
         <div className="text-[13px] font-semibold text-ds-muted">数据合规</div>
       </div>
-      <div className="space-y-1">
-        {items.map((item) => {
-          const active = activeSection === item.section
-          return (
-            <SidebarCommandRow
-              key={item.section}
-              icon={item.icon}
-              label={item.label}
-              active={active}
-              onClick={() => onSectionChange(item.section)}
-            />
-          )
-        })}
+      <div className="min-h-0 space-y-1 overflow-y-auto">
+        <SidebarCommandRow
+          icon={<ShieldCheck className="h-4 w-4" strokeWidth={1.8} />}
+          label="合规审查"
+          active={activeSection === 'review'}
+          onClick={() => onSectionChange('review')}
+        />
+        <SidebarCommandRow
+          icon={<ScanEye className="h-4 w-4" strokeWidth={1.8} />}
+          label="数据脱敏"
+          active={activeSection === 'desensitize'}
+          onClick={() => onSectionChange('desensitize')}
+        />
+        <ComplianceHistorySidebarGroup
+          mode="review"
+          label="历史任务"
+          active={historyActive}
+          onHistoryOpen={() => onSectionChange('history')}
+          onTaskOpen={() => onSectionChange('results')}
+        />
+        <SidebarCommandRow
+          icon={<FileSearch className="h-4 w-4" strokeWidth={1.8} />}
+          label="结果查询"
+          active={activeSection === 'results' && !selectedTaskId}
+          onClick={() => {
+            select('review', '')
+            onSectionChange('results')
+          }}
+        />
       </div>
     </div>
   )
@@ -1216,29 +1483,25 @@ export function DesensitizeSidebarNav({
   activeSection: DesensitizeSection
   onSectionChange: (section: DesensitizeSection) => void
 }): ReactElement {
-  const items: Array<{ section: DesensitizeSection; label: string; icon: ReactElement }> = [
-    { section: 'material', label: '材料脱敏', icon: <FileText className="h-4 w-4" strokeWidth={1.8} /> },
-    { section: 'history', label: '脱敏记录', icon: <History className="h-4 w-4" strokeWidth={1.8} /> }
-  ]
-
   return (
     <div className="ds-no-drag flex min-h-0 flex-1 flex-col px-2 pt-1">
       <div className="mb-2 px-1">
         <div className="text-[13px] font-semibold text-ds-muted">脱敏</div>
       </div>
-      <div className="space-y-1">
-        {items.map((item) => {
-          const active = activeSection === item.section
-          return (
-            <SidebarCommandRow
-              key={item.section}
-              icon={item.icon}
-              label={item.label}
-              active={active}
-              onClick={() => onSectionChange(item.section)}
-            />
-          )
-        })}
+      <div className="min-h-0 space-y-1 overflow-y-auto">
+        <SidebarCommandRow
+          icon={<FileText className="h-4 w-4" strokeWidth={1.8} />}
+          label="材料脱敏"
+          active={activeSection === 'material'}
+          onClick={() => onSectionChange('material')}
+        />
+        <ComplianceHistorySidebarGroup
+          mode="desensitize"
+          label="脱敏记录"
+          active={activeSection === 'history' || activeSection === 'results'}
+          onHistoryOpen={() => onSectionChange('history')}
+          onTaskOpen={() => onSectionChange('results')}
+        />
       </div>
     </div>
   )
@@ -1265,11 +1528,19 @@ export function DataCompliancePanel({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
-  const [taskId, setTaskId] = useState('')
-  const [history, setHistory] = useState<ComplianceTask[]>([])
-  const [historyBusy, setHistoryBusy] = useState(false)
+  const sharedSelectedTaskId = useComplianceHistoryStore((state) => modeScope === 'desensitize'
+    ? state.selectedDesensitizeTaskId
+    : state.selectedReviewTaskId)
+  const historyBusy = useComplianceHistoryStore((state) => modeScope === 'desensitize'
+    ? state.desensitizeBusy
+    : state.reviewBusy)
+  const refreshHistoryStore = useComplianceHistoryStore((state) => state.refresh)
+  const selectHistoryTask = useComplianceHistoryStore((state) => state.select)
+  const [taskId, setTaskId] = useState(sharedSelectedTaskId)
   const [resultBusy, setResultBusy] = useState(false)
   const [result, setResult] = useState<ComplianceResult | null>(null)
+  const resultRequestSequenceRef = useRef(0)
+  const previousSharedSelectedTaskIdRef = useRef(sharedSelectedTaskId)
   const [progressTaskId, setProgressTaskId] = useState('')
   const [submissionProgress, setSubmissionProgress] = useState<ProgressState>({ kind: 'idle' })
   const [serverStatus, setServerStatus] = useState<DataComplianceStatus | null>({
@@ -1279,7 +1550,8 @@ export function DataCompliancePanel({
   const [statusBusy, setStatusBusy] = useState(false)
   const [outputDir, setOutputDir] = useState('')
   const [outputDirTouched, setOutputDirTouched] = useState(false)
-  const [outputFormat, setOutputFormat] = useState<'md' | 'docx' | 'txt' | ''>('')
+  const [outputFormat, setOutputFormat] = useState<'md' | 'docx' | 'pdf' | 'txt'>('docx')
+  const [redactionMode, setRedactionMode] = useState<RedactionMode>('standard')
   const [installProgress, setInstallProgress] = useState<InstallProgressState>({ kind: 'idle' })
 
   const ensureServer = useCallback(async (): Promise<DataComplianceStatus | null> => {
@@ -1362,6 +1634,8 @@ export function DataCompliancePanel({
   const meta = modeScope === 'desensitize'
     ? resolvedActiveSection === 'history'
       ? { title: '脱敏记录', kicker: '查看材料脱敏任务' }
+      : resolvedActiveSection === 'results'
+        ? { title: '脱敏结果', kicker: '查看当前选中任务的处理结果与输出文件' }
       : effectiveDesensitizeKind === 'material'
         ? { title: '材料脱敏', kicker: '文档材料批量脱敏处理' }
         : { title: '数据脱敏', kicker: '敏感数据识别、替换与脱敏报告' }
@@ -1401,21 +1675,16 @@ export function DataCompliancePanel({
   }, [serverStatus])
 
   const refreshHistory = useCallback(async (): Promise<void> => {
-    setHistoryBusy(true)
     try {
       await ensureServer()
-      const payload = await requestJson<{ items?: ComplianceTask[] }>('/data-compliance/tasks')
-      const items = Array.isArray(payload.items) ? payload.items : []
-      setHistory(items.filter(modeScope === 'desensitize' ? isDesensitizeTask : isReviewTask))
+      await refreshHistoryStore(modeScope)
     } catch (error) {
       setNotice({
         tone: 'error',
         text: error instanceof Error ? `历史读取失败：${error.message}` : '历史读取失败。'
       })
-    } finally {
-      setHistoryBusy(false)
     }
-  }, [ensureServer, modeScope])
+  }, [ensureServer, modeScope, refreshHistoryStore])
 
   const loadResult = useCallback(async (id = selectedTaskId, options: { quiet?: boolean; navigate?: boolean } = {}): Promise<ComplianceResult | null> => {
     const targetId = id.trim()
@@ -1423,23 +1692,38 @@ export function DataCompliancePanel({
       setNotice({ tone: 'error', text: '请输入任务编号。' })
       return null
     }
+    const requestSequence = ++resultRequestSequenceRef.current
+    const cachedResult = complianceResultCache.get(targetId)
+    if (cachedResult) {
+      setResultBusy(false)
+      setTaskId(targetId)
+      setResult(cachedResult)
+      selectHistoryTask(modeScope, targetId)
+      if (options.navigate !== false) onSectionChange('results')
+      return cachedResult
+    }
+
     setResultBusy(true)
     if (!options.quiet) setNotice(null)
     try {
-      await ensureServer()
+      if (!serverStatus?.ok) await ensureServer()
       const payload = await requestJson<ComplianceResult>(`/data-compliance/tasks/${encodeURIComponent(targetId)}`)
+      if (requestSequence !== resultRequestSequenceRef.current) return null
       if (payload.error) throw new Error(payload.error)
       setTaskId(targetId)
       setResult(payload)
+      selectHistoryTask(modeScope, targetId)
       const status = (payload.status ?? '').toLowerCase()
       if (status === 'pending' || status === 'running' || status === 'processing') {
         setProgressTaskId(targetId)
       } else {
+        complianceResultCache.set(targetId, payload)
         setProgressTaskId((current) => (current === targetId ? '' : current))
       }
       if (options.navigate !== false) onSectionChange('results')
       return payload
     } catch (error) {
+      if (requestSequence !== resultRequestSequenceRef.current) return null
       if (!options.quiet) {
         setNotice({
           tone: 'error',
@@ -1448,9 +1732,31 @@ export function DataCompliancePanel({
       }
       return null
     } finally {
-      setResultBusy(false)
+      if (requestSequence === resultRequestSequenceRef.current) setResultBusy(false)
     }
-  }, [ensureServer, onSectionChange, selectedTaskId])
+  }, [ensureServer, modeScope, onSectionChange, selectHistoryTask, selectedTaskId, serverStatus?.ok])
+
+  useEffect(() => {
+    const previousTaskId = previousSharedSelectedTaskIdRef.current
+    previousSharedSelectedTaskIdRef.current = sharedSelectedTaskId
+    if (!previousTaskId || sharedSelectedTaskId) return
+
+    resultRequestSequenceRef.current += 1
+    setTaskId('')
+    setResult(null)
+    setResultBusy(false)
+  }, [sharedSelectedTaskId])
+
+  useEffect(() => {
+    if (resolvedActiveSection !== 'results' || !sharedSelectedTaskId) return
+    if (result?.task_id === sharedSelectedTaskId) return
+
+    setTaskId(sharedSelectedTaskId)
+    setResult(null)
+    void loadResult(sharedSelectedTaskId, { navigate: false }).catch((error: unknown) => {
+      console.error('[DataCompliancePanel] load selected history result failed:', error)
+    })
+  }, [loadResult, resolvedActiveSection, result?.task_id, sharedSelectedTaskId])
 
   useEffect(() => {
     void refreshHistory().catch((error: unknown) => {
@@ -1474,8 +1780,7 @@ export function DataCompliancePanel({
         : `批量材料 ${nextFiles.length} 个文件`
       )
     }
-    const formats = inferOutputFormats(nextFiles.length === 1 ? nextFiles[0] : null)
-    setOutputFormat(formats[0]?.value ?? '')
+    setOutputFormat('docx')
     if (!outputDirTouched) {
       const parentDir = localFileParentDirectory(nextFiles[0])
       if (parentDir) setOutputDir(parentDir)
@@ -1575,15 +1880,17 @@ export function DataCompliancePanel({
         ...(filePayloads.length === 1 ? { file: filePayloads[0] } : {}),
         ...(filePayloads.length > 1 ? { files: filePayloads } : {})
       }
-      if (mode === 'desensitize' && effectiveDesensitizeKind === 'material') {
-        payload.outputDir = outputDir.trim() || workspaceRoot
-        if (outputFormat.trim()) {
-          payload.outputFormat = outputFormat.trim() as 'md' | 'docx' | 'txt'
+      if (mode === 'desensitize') {
+        payload.redactionMode = redactionMode
+        if (effectiveDesensitizeKind === 'material') {
+          payload.outputDir = outputDir.trim() || workspaceRoot
+          payload.outputFormat = outputFormat
         }
       }
       const submitted = await submitComplianceTask(payload)
       const nextTaskId = submitted.task_id ?? ''
       setTaskId(nextTaskId)
+      selectHistoryTask(mode, nextTaskId)
       setProgressTaskId(nextTaskId)
       setSubmissionProgress(
         progressDismissedRef.current
@@ -1618,25 +1925,6 @@ export function DataCompliancePanel({
     }
   }
 
-  const deleteHistoryTask = async (id: string, event: MouseEvent<HTMLButtonElement>): Promise<void> => {
-    event.stopPropagation()
-    if (!id) return
-    try {
-      await requestJson<{ ok?: boolean }>(`/data-compliance/tasks/${encodeURIComponent(id)}`, 'DELETE')
-      setHistory((items) => items.filter((item) => taskIdOf(item) !== id))
-      if (selectedTaskId === id) {
-        setTaskId('')
-        setResult(null)
-      }
-      setProgressTaskId((current) => (current === id ? '' : current))
-    } catch (error) {
-      setNotice({
-        tone: 'error',
-        text: error instanceof Error ? `删除失败：${error.message}` : '删除失败。'
-      })
-    }
-  }
-
   const openLocalPath = useCallback(async (targetPath: string): Promise<boolean> => {
     const normalizedPath = targetPath.trim()
     if (!normalizedPath) {
@@ -1654,24 +1942,6 @@ export function DataCompliancePanel({
     }
     return true
   }, [])
-
-  const openHistoryTask = useCallback(async (task: ComplianceTask): Promise<void> => {
-    const id = taskIdOf(task)
-    if (!id) return
-    const shouldOpenOutputDir = modeScope === 'desensitize' && (task.status ?? '').toLowerCase() === 'completed'
-    const payload = await loadResult(id, {
-      quiet: shouldOpenOutputDir,
-      navigate: !shouldOpenOutputDir
-    })
-    if (!shouldOpenOutputDir) return
-    if (payload?.output_dir) {
-      const opened = await openLocalPath(payload.output_dir)
-      if (opened) setNotice({ tone: 'success', text: `已打开输出目录：${payload.output_dir}` })
-      return
-    }
-    onSectionChange('results')
-    setNotice({ tone: 'error', text: '该脱敏任务没有记录输出目录，请在结果页下载脱敏文件。' })
-  }, [loadResult, modeScope, onSectionChange, openLocalPath])
 
   const downloadComplianceFile = async (taskId: string, fileKey: string): Promise<void> => {
     if (typeof window.dsGui?.downloadDataComplianceFile !== 'function') {
@@ -1720,8 +1990,7 @@ export function DataCompliancePanel({
       : effectiveDesensitizeKind === 'material'
         ? '粘贴待脱敏的合同、证据材料或业务文档...'
         : '粘贴待脱敏的个人信息、业务数据或结构化文本...'
-    const primaryFile = files[0] ?? null
-    const outputFormatOptions = inferOutputFormats(files.length === 1 ? primaryFile : null)
+    const outputFormatOptions = inferOutputFormats()
 
     return (
       <section className="rounded-[16px] border border-ds-border bg-ds-card p-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
@@ -1759,6 +2028,72 @@ export function DataCompliancePanel({
       </div>
 
       <div className="mt-4 space-y-3">
+        {mode === 'desensitize' ? (
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[12px] font-medium text-ds-muted">脱敏模式</span>
+              <span className="text-[11.5px] text-ds-faint">提交前选择，处理过程全自动完成</span>
+            </div>
+            <div className="mt-1.5 grid gap-2.5 md:grid-cols-2">
+              <button
+                type="button"
+                aria-pressed={redactionMode === 'standard'}
+                onClick={() => setRedactionMode('standard')}
+                disabled={busy || statusBusy}
+                className={`rounded-[12px] border p-3 text-left transition ${
+                  redactionMode === 'standard'
+                    ? 'border-[var(--ds-accent)] bg-[color-mix(in_srgb,var(--ds-accent)_7%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--ds-accent)_20%,transparent)]'
+                    : 'border-ds-border bg-ds-card hover:bg-ds-subtle'
+                } disabled:opacity-55`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] ${
+                    redactionMode === 'standard' ? 'bg-[var(--ds-accent)] text-white' : 'bg-ds-subtle text-ds-muted'
+                  }`}>
+                    <ShieldCheck className="h-4 w-4" strokeWidth={1.8} />
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-semibold text-ds-ink">标准脱敏</div>
+                    <p className="mt-1 text-[11.5px] leading-5 text-ds-muted">
+                      规则识别为主；必要时仅对预脱敏、裁剪后的局部片段作受限智能判断，不读取完整原文。
+                    </p>
+                  </div>
+                </div>
+              </button>
+              <button
+                type="button"
+                aria-pressed={redactionMode === 'agent_enhanced'}
+                onClick={() => setRedactionMode('agent_enhanced')}
+                disabled={busy || statusBusy}
+                className={`rounded-[12px] border p-3 text-left transition ${
+                  redactionMode === 'agent_enhanced'
+                    ? 'border-[var(--ds-accent)] bg-[color-mix(in_srgb,var(--ds-accent)_7%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--ds-accent)_20%,transparent)]'
+                    : 'border-ds-border bg-ds-card hover:bg-ds-subtle'
+                } disabled:opacity-55`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] ${
+                    redactionMode === 'agent_enhanced' ? 'bg-[var(--ds-accent)] text-white' : 'bg-ds-subtle text-ds-muted'
+                  }`}>
+                    <Sparkles className="h-4 w-4" strokeWidth={1.8} />
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-semibold text-ds-ink">Agent 增强</div>
+                    <p className="mt-1 text-[11.5px] leading-5 text-ds-muted">
+                      深度理解主体、别名和上下文，以识别效果与全文一致性为优先。
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
+            {redactionMode === 'agent_enhanced' ? (
+              <div className="mt-2 flex items-start gap-2 rounded-[10px] border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-[11.5px] leading-5 text-amber-800 dark:text-amber-200">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+                <span>Agent 将完整读取材料并深度参与脱敏；模型可能会获取、阅读文件全部内容。</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <label className="block">
           <span className="text-[12px] font-medium text-ds-muted">材料名称</span>
           <input
@@ -1868,20 +2203,16 @@ export function DataCompliancePanel({
               <span className="text-[12px] font-medium text-ds-muted">输出格式</span>
               <select
                 value={outputFormat}
-                onChange={(event) => setOutputFormat(event.target.value as 'md' | 'docx' | 'txt' | '')}
-                disabled={busy || statusBusy || installProgress.kind === 'installing' || outputFormatOptions.length === 0}
+                onChange={(event) => setOutputFormat(event.target.value as 'md' | 'docx' | 'pdf' | 'txt')}
+                disabled={busy || statusBusy || installProgress.kind === 'installing'}
                 className="mt-1.5 w-full rounded-[12px] border border-ds-border bg-ds-card px-3 py-2 text-[13.5px] text-ds-ink outline-none transition focus:border-accent/40 focus:ring-2 focus:ring-accent/15 disabled:opacity-55"
               >
-                {outputFormatOptions.length === 0 ? (
-                  <option value="">按原格式输出</option>
-                ) : (
-                  outputFormatOptions.map((fmt) => (
-                    <option key={fmt.value} value={fmt.value}>{fmt.label}</option>
-                  ))
-                )}
+                {outputFormatOptions.map((fmt) => (
+                  <option key={fmt.value} value={fmt.value}>{fmt.label}</option>
+                ))}
               </select>
               <p className="mt-1.5 text-[11.5px] text-ds-faint">
-                单个 Word 或 PDF 材料可指定输出格式；批量材料默认按各自类型输出。
+                所有材料先统一提取文字或 OCR，再按法律文档规范重新排版输出。
               </p>
             </label>
             <label className="block">
@@ -1930,7 +2261,7 @@ export function DataCompliancePanel({
           className="inline-flex items-center gap-2 rounded-full bg-[var(--ds-accent)] px-4 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-          {mode === 'review' ? '开始审查' : '开始脱敏'}
+          {mode === 'review' ? '开始审查' : redactionMode === 'agent_enhanced' ? '开始增强脱敏' : '开始脱敏'}
         </button>
       </div>
       </section>
@@ -1994,68 +2325,17 @@ export function DataCompliancePanel({
           {resolvedActiveSection === 'desensitize' ? renderSubmitForm('desensitize') : null}
 
           {resolvedActiveSection === 'history' ? (
-            <section className="rounded-[16px] border border-ds-border bg-ds-card p-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-[16px] font-semibold text-ds-ink">历史任务</h2>
-                <button
-                  type="button"
-                  onClick={() => {
-                    refreshHistory().catch((error: unknown) => {
-                      console.error('[DataCompliancePanel] refreshHistory failed:', error)
-                    })
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full border border-ds-border bg-ds-card px-3 py-1.5 text-[12px] font-medium text-ds-muted hover:bg-ds-hover hover:text-ds-ink"
-                >
-                  {historyBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  刷新
-                </button>
-              </div>
-              <div data-control-hover-root className="mt-4 divide-y divide-ds-border-muted overflow-hidden rounded-[12px] border border-ds-border-muted">
-                {history.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-[13px] text-ds-faint">暂无历史任务。</div>
-                ) : history.map((task) => {
-                  const id = taskIdOf(task)
-                  return (
-                    <button
-                      key={id || task.document_name}
-                      type="button"
-                      onClick={() => {
-                        if (id) {
-                          openHistoryTask(task).catch((error: unknown) => {
-                            console.error('[DataCompliancePanel] openHistoryTask failed:', error)
-                          })
-                        }
-                      }}
-                      className="flex w-full items-center justify-between gap-3 bg-ds-card px-4 py-3 text-left transition hover:bg-ds-hover"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-[13.5px] font-medium text-ds-ink">{task.document_name || id || '未命名任务'}</div>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11.5px] text-ds-faint">
-                          <span>{id}</span>
-                          {task.created_at ? <span>{new Date(task.created_at).toLocaleString()}</span> : null}
-                          {task.review_type ? <span>{task.review_type}</span> : null}
-                          {task.product_type ? <span>{task.product_type}</span> : null}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className={`rounded-full px-2.5 py-1 text-[11.5px] font-medium ${statusTone(task.status)}`}>
-                          {labelStatus(task.status, task.product_type === 'desensitize')}
-                        </span>
-                        {id ? (
-                          <button
-                            type="button"
-                            data-control-hover-preserve
-                            onClick={(event) => void deleteHistoryTask(id, event)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ds-faint transition hover:bg-red-500/10 hover:text-red-600"
-                            aria-label="删除历史任务"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        ) : null}
-                      </div>
-                    </button>
-                  )
-                })}
+            <section className="flex min-h-[360px] items-center justify-center rounded-[16px] border border-ds-border bg-ds-card p-8 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
+              <div className="max-w-sm text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[14px] border border-ds-border bg-ds-subtle text-ds-muted">
+                  <History className="h-5 w-5" strokeWidth={1.7} />
+                </div>
+                <h2 className="mt-4 text-[16px] font-semibold text-ds-ink">
+                  {modeScope === 'desensitize' ? '从左侧选择脱敏记录' : '从左侧选择历史任务'}
+                </h2>
+                <p className="mt-2 text-[13px] leading-6 text-ds-muted">
+                  历史任务已移到左侧侧边栏。展开列表并点击具体任务后，结果会在这里按需加载。
+                </p>
               </div>
             </section>
           ) : null}
@@ -2064,9 +2344,16 @@ export function DataCompliancePanel({
             <section className="rounded-[16px] border border-ds-border bg-ds-card p-4 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <h2 className="text-[16px] font-semibold text-ds-ink">结果查询</h2>
-                  <p className="mt-1 text-[12.5px] text-ds-muted">输入任务编号，读取结构化报告。</p>
+                  <h2 className="text-[16px] font-semibold text-ds-ink">
+                    {sharedSelectedTaskId ? '任务结果' : '结果查询'}
+                  </h2>
+                  <p className="mt-1 text-[12.5px] text-ds-muted">
+                    {sharedSelectedTaskId
+                      ? '仅加载当前选中任务的结构化结果。'
+                      : '输入任务编号，读取结构化报告。'}
+                  </p>
                 </div>
+                {!sharedSelectedTaskId ? (
                 <div className="flex min-w-[280px] max-w-md flex-1 items-center gap-2">
                   <input
                     value={taskId}
@@ -2088,6 +2375,7 @@ export function DataCompliancePanel({
                     查询
                   </button>
                 </div>
+                ) : null}
               </div>
 
               {result ? (
@@ -2190,6 +2478,13 @@ export function DataCompliancePanel({
                   </div>
                   <EmbeddedComplianceReport result={result} resultSummary={resultSummary} />
                 </div>
+              ) : resultBusy ? (
+                <div className="mt-5 flex min-h-[240px] items-center justify-center rounded-[14px] border border-ds-border-muted bg-ds-subtle">
+                  <div className="flex items-center gap-2 text-[13px] text-ds-muted">
+                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.8} />
+                    正在读取当前任务结果…
+                  </div>
+                </div>
               ) : (
                 <div className="mt-5 rounded-[14px] border border-ds-border-muted bg-ds-subtle px-4 py-8 text-center text-[13px] text-ds-faint">
                   选择历史任务或输入任务编号后，这里会显示结果摘要。
@@ -2211,13 +2506,18 @@ export function DesensitizationPanel({
   activeSection: DesensitizeSection
   onSectionChange: (section: DesensitizeSection) => void
 }): ReactElement {
-  const panelSection: DataComplianceSection = activeSection === 'history' ? 'history' : 'review'
+  const panelSection: DataComplianceSection = activeSection === 'history'
+    ? 'history'
+    : activeSection === 'results'
+      ? 'results'
+      : 'review'
 
   return (
     <DataCompliancePanel
       activeSection={panelSection}
       onSectionChange={(section) => {
         if (section === 'history') onSectionChange('history')
+        if (section === 'results') onSectionChange('results')
       }}
       modeScope="desensitize"
       desensitizeKind="material"

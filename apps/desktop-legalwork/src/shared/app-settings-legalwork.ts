@@ -92,6 +92,8 @@ export function defaultLegalworkRuntimeSettings(
     binaryPath: '',
     port,
     autoStart: true,
+    authMode: 'api_key',
+    codexBinaryPath: '',
     apiKey: '',
     baseUrl: '',
     providerId: '',
@@ -257,9 +259,19 @@ export function mergeLegalworkRuntimeSettings(
   const restrictFileAccessToWorkspace = typeof patch?.restrictFileAccessToWorkspace === 'boolean'
     ? patch.restrictFileAccessToWorkspace
     : current.restrictFileAccessToWorkspace === true
+  const authMode =
+    patch?.authMode === 'api_key' || patch?.authMode === 'chatgpt'
+      ? patch.authMode
+      : current.authMode === 'chatgpt'
+        ? 'chatgpt'
+        : 'api_key'
   return {
     ...current,
     ...(patch ?? {}),
+    authMode,
+    codexBinaryPath: typeof patch?.codexBinaryPath === 'string'
+      ? patch.codexBinaryPath.trim()
+      : current.codexBinaryPath ?? '',
     restrictFileAccessToWorkspace,
     sandboxMode: effectiveSandboxModeForFileAccess(restrictFileAccessToWorkspace),
     tokenEconomyMode: nextTokenEconomy.enabled,
@@ -417,6 +429,11 @@ export function isLegalworkRuntimeInsecure(runtime: Pick<LegalworkRuntimeSetting
 
 export function getActiveAgentApiKey(settings: AppSettingsV1): string {
   return resolveLegalworkRuntimeSettings(settings).apiKey?.trim() ?? ''
+}
+
+export function isLegalworkModelAuthConfigured(settings: AppSettingsV1): boolean {
+  const runtime = resolveLegalworkRuntimeSettings(settings)
+  return runtime.authMode === 'chatgpt' || Boolean(runtime.apiKey?.trim())
 }
 
 export function mergeAgentRuntimeSettings(

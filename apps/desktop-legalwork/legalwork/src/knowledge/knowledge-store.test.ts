@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { FileKnowledgeStore } from './knowledge-store.js'
+import { KnowledgeRetrievalPipeline } from './knowledge-retrieval-pipeline.js'
 import type { ModelClient, ModelRequest, ModelStreamChunk } from '../ports/model-client.js'
 
 class StaticClassifierModel implements ModelClient {
@@ -55,6 +56,101 @@ describe('FileKnowledgeStore', () => {
 
       const diagnostics = await store.diagnostics()
       expect(diagnostics.lastSelectedIds).toEqual([hits[0]?.documentId])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('limits retrieval candidates to the selected knowledge folder', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-scope-'))
+    const indexRoot = join(root, 'index')
+    try {
+      const store = new FileKnowledgeStore({
+        rootDir: indexRoot,
+        sourceRoots: [],
+        nowIso: () => '2026-06-13T00:00:00.000Z'
+      })
+
+      await store.writeFile({
+        path: '论文/行政法研究.md',
+        content: '数字行政法研究关注算法行政与行政程序正当性。',
+        encoding: 'utf8'
+      })
+      await store.writeFile({
+        path: '经验分享/行政法办案.md',
+        content: '数字行政法研究也会涉及律师办案经验与客户沟通。',
+        encoding: 'utf8'
+      })
+      await store.sync()
+
+      const hits = await store.search({
+        query: '数字行政法研究',
+        limit: 5,
+        includeContent: true,
+        pathPrefix: '论文'
+      })
+
+      expect(hits.length).toBeGreaterThan(0)
+      expect(hits.every((hit) => hit.relativePath.startsWith('论文/'))).toBe(true)
+      expect(hits.some((hit) => hit.relativePath.startsWith('经验分享/'))).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('indexes managed files once and keeps paths relative to the managed root', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-managed-root-'))
+    const indexRoot = join(root, 'knowledge')
+    try {
+      const store = new FileKnowledgeStore({
+        rootDir: indexRoot,
+        sourceRoots: [indexRoot],
+        nowIso: () => '2026-06-13T00:00:00.000Z'
+      })
+      await store.writeFile({
+        path: '论文/行政法.md',
+        content: '行政法论文讨论数字政府的程序正当性。',
+        encoding: 'utf8'
+      })
+
+      const sync = await store.sync()
+      const hits = await store.search({
+        query: '数字政府 程序正当性',
+        limit: 5,
+        includeContent: true,
+        pathPrefix: '论文'
+      })
+
+      expect(sync.documentCount).toBe(1)
+      expect(hits).toHaveLength(1)
+      expect(hits[0]?.relativePath).toBe('论文/行政法.md')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('returns one citation source when several chunks match the same file', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-source-dedupe-'))
+    const indexRoot = join(root, 'index')
+    try {
+      const store = new FileKnowledgeStore({
+        rootDir: indexRoot,
+        sourceRoots: [],
+        nowIso: () => '2026-06-13T00:00:00.000Z'
+      })
+      await store.writeFile({
+        path: '论文/长篇行政法研究.md',
+        content: '算法行政应当遵守正当程序。\n'.repeat(500),
+        encoding: 'utf8'
+      })
+      await store.sync()
+
+      const result = await new KnowledgeRetrievalPipeline(store).retrieve('算法行政 正当程序', {
+        pathPrefix: '论文'
+      })
+
+      expect(result.sources).toHaveLength(1)
+      expect(result.sources[0]?.path).toBe('论文/长篇行政法研究.md')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

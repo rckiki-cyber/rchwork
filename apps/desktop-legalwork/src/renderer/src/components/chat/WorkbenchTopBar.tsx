@@ -11,6 +11,7 @@ import {
   Download,
   ExternalLink,
   FileEdit,
+  Files,
   FolderOpen,
   Globe2,
   ListTodo,
@@ -22,7 +23,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { readPreferredEditorId, writePreferredEditorId } from '../../lib/editor-preferences'
 
-export type RightPanelMode = 'todo' | 'changes' | 'browser' | 'file' | 'plan' | null
+export type RightPanelMode = 'files' | 'todo' | 'changes' | 'browser' | 'file' | 'plan' | null
 
 type Props = {
   rightPanelMode: RightPanelMode
@@ -33,6 +34,9 @@ type Props = {
   sideChatOpen?: boolean
   sideChatEnabled?: boolean
   onOpenSideChat?: () => void
+  conversationFileCount?: number
+  filesFloatingOpen?: boolean
+  onToggleFilesFloating?: () => void
 }
 
 export function WorkbenchTopBar({
@@ -43,7 +47,10 @@ export function WorkbenchTopBar({
   sideChatRunningCount = 0,
   sideChatOpen = false,
   sideChatEnabled = true,
-  onOpenSideChat
+  onOpenSideChat,
+  conversationFileCount = 0,
+  filesFloatingOpen = false,
+  onToggleFilesFloating
 }: Props): ReactElement {
   const { t } = useTranslation(['common', 'settings'])
   const [editors, setEditors] = useState<EditorInfo[]>([])
@@ -54,6 +61,7 @@ export function WorkbenchTopBar({
   const [applyingGuiUpdate, setApplyingGuiUpdate] = useState(false)
   const editorMenuRef = useRef<HTMLDivElement>(null)
   const items = [
+    { mode: 'files' as const, label: t('rightPanelFiles'), icon: Files },
     { mode: 'todo' as const, label: t('rightPanelTodo'), icon: ListTodo },
     ...(planPanelEnabled ? [{ mode: 'plan' as const, label: t('rightPanelPlan'), icon: ClipboardList }] : []),
     { mode: 'changes' as const, label: t('rightPanelChanges'), icon: FileEdit },
@@ -343,14 +351,22 @@ export function WorkbenchTopBar({
       ) : null}
 
       {items.map((item) => {
-        const active = rightPanelMode === item.mode
+        const active = item.mode === 'files'
+          ? filesFloatingOpen || rightPanelMode === item.mode
+          : rightPanelMode === item.mode
         const Icon = item.icon
         return (
           <button
             key={item.mode}
             type="button"
-            onClick={() => onToggleRightPanelMode(item.mode)}
-            className={`rounded-full border px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] transition dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ${
+            onClick={() => {
+              if (item.mode === 'files' && onToggleFilesFloating) {
+                onToggleFilesFloating()
+                return
+              }
+              onToggleRightPanelMode(item.mode)
+            }}
+            className={`relative rounded-full border px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] transition dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ${
               active
                 ? 'border-ds-border-strong bg-white/70 text-ds-ink dark:bg-white/10'
                 : 'border-transparent bg-white/38 text-ds-faint opacity-90 hover:border-ds-border-muted hover:bg-white/55 hover:text-ds-ink hover:opacity-100 dark:bg-white/4 dark:hover:bg-white/8'
@@ -360,6 +376,11 @@ export function WorkbenchTopBar({
             title={item.label}
           >
             <Icon className="h-4 w-4" strokeWidth={1.75} />
+            {item.mode === 'files' && conversationFileCount > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-none text-white">
+                {Math.min(conversationFileCount, 99)}
+              </span>
+            ) : null}
           </button>
         )
       })}

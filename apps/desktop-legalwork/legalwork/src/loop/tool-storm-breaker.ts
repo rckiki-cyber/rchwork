@@ -15,6 +15,8 @@ const DEFAULT_WINDOW_SIZE = 8
 const DEFAULT_THRESHOLD = 3
 const MUTATING_TOOL_NAMES = new Set(['write', 'edit', 'edit_diff', 'apply_patch', 'delete', 'move'])
 const STORM_EXEMPT_TOOL_NAMES = new Set(['request_user_input', 'user_input'])
+const FAILED_DUPLICATE_TOOL_NAMES = new Set(['mcp_officecli_officecli'])
+const READ_ONLY_OFFICECLI_VERBS = new Set(['get', 'query', 'view', 'validate', 'help'])
 
 /**
  * Prevents repeated identical tool calls from inflating dynamic history
@@ -25,6 +27,7 @@ export class ToolStormBreaker {
   private readonly windowSize: number
   private readonly threshold: number
   private readonly recent: RecentToolCall[] = []
+  private readonly failedCalls = new Set<string>()
 
   constructor(options: ToolStormBreakerOptions = {}) {
     this.windowSize = Math.max(1, Math.floor(options.windowSize ?? DEFAULT_WINDOW_SIZE))
@@ -35,7 +38,17 @@ export class ToolStormBreaker {
     if (STORM_EXEMPT_TOOL_NAMES.has(call.toolName)) return { suppress: false }
     const name = call.toolName
     const args = stableStringify(call.arguments)
+    const callKey = toolCallKey(name, args)
     const readOnly = !isMutatingToolCall(call)
+
+    if (FAILED_DUPLICATE_TOOL_NAMES.has(name) && this.failedCalls.has(callKey)) {
+      return {
+        suppress: true,
+        reason:
+          `${name} already failed with identical arguments in this turn; ` +
+          'repeat-loop guard suppressed the unchanged retry. Correct the command shape or retry only the failed batch items.'
+      }
+    }
 
     if (!readOnly) {
       this.clearReadOnlyEntries()
@@ -61,6 +74,14 @@ export class ToolStormBreaker {
 
   reset(): void {
     this.recent.length = 0
+    this.failedCalls.clear()
+  }
+
+  observeResult(call: ToolCallLike, isError: boolean): void {
+    if (!FAILED_DUPLICATE_TOOL_NAMES.has(call.toolName)) return
+    const callKey = toolCallKey(call.toolName, stableStringify(call.arguments))
+    if (isError) this.failedCalls.add(callKey)
+    else this.failedCalls.delete(callKey)
   }
 
   private clearReadOnlyEntries(): void {
@@ -72,7 +93,25 @@ export class ToolStormBreaker {
 
 function isMutatingToolCall(call: ToolCallLike): boolean {
   if (call.toolKind === 'file_change') return true
+  if (call.toolName === 'mcp_officecli_officecli') {
+    const verb = officeCliVerb(call.arguments.command)
+    return verb !== '' && !READ_ONLY_OFFICECLI_VERBS.has(verb)
+  }
   return MUTATING_TOOL_NAMES.has(call.toolName)
+}
+
+function officeCliVerb(command: unknown): string {
+  const parts = Array.isArray(command)
+    ? command.filter((part): part is string => typeof part === 'string')
+    : typeof command === 'string'
+      ? command.trim().split(/\s+/)
+      : []
+  const offset = parts[0]?.toLowerCase() === 'officecli' ? 1 : 0
+  return parts[offset]?.toLowerCase() ?? ''
+}
+
+function toolCallKey(name: string, args: string): string {
+  return `${name}\u0000${args}`
 }
 
 function stableStringify(value: unknown): string {

@@ -27,6 +27,7 @@ import type {
   WorkspaceFileCreatePayload,
   WorkspaceFileCreateResult,
   WorkspaceFileReadResult,
+  WorkspaceBinaryReadResult,
   WorkspaceFileResolveResult,
   WorkspaceFileTarget,
   WorkspaceFileWritePayload,
@@ -50,6 +51,7 @@ import { isDocxPath, plainTextToDocxBuffer } from './plain-text-docx'
 
 const MAX_FILE_PREVIEW_BYTES = 1_500_000
 const MAX_IMAGE_PREVIEW_BYTES = 12 * 1024 * 1024
+const MAX_BINARY_PREVIEW_BYTES = 100 * 1024 * 1024
 const WORKSPACE_IMAGE_DIR = 'img'
 
 const WORKSPACE_IMAGE_MIME_BY_EXT = new Map([
@@ -61,6 +63,21 @@ const WORKSPACE_IMAGE_MIME_BY_EXT = new Map([
   ['.bmp', 'image/bmp'],
   ['.avif', 'image/avif'],
   ['.ico', 'image/x-icon']
+])
+
+const WORKSPACE_BINARY_MIME_BY_EXT = new Map([
+  ...WORKSPACE_IMAGE_MIME_BY_EXT,
+  ['.pdf', 'application/pdf'],
+  ['.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  ['.doc', 'application/msword'],
+  ['.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  ['.xls', 'application/vnd.ms-excel'],
+  ['.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+  ['.ppt', 'application/vnd.ms-powerpoint'],
+  ['.mp3', 'audio/mpeg'],
+  ['.wav', 'audio/wav'],
+  ['.m4a', 'audio/mp4'],
+  ['.mp4', 'video/mp4']
 ])
 
 async function writeWorkspaceTextContent(targetPath: string, content: string, options: { exclusive?: boolean } = {}): Promise<void> {
@@ -129,6 +146,37 @@ export async function readWorkspaceFile(payload: WorkspaceFileTarget): Promise<W
       }
     } finally {
       await handle.close()
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+export async function readWorkspaceBinary(
+  payload: WorkspaceFileTarget
+): Promise<WorkspaceBinaryReadResult> {
+  try {
+    const targetPath = await resolveOpenTargetPath(payload.path, payload.workspaceRoot)
+    const fileInfo = await stat(targetPath)
+    if (fileInfo.isDirectory()) {
+      return { ok: false, message: 'Cannot preview a directory.' }
+    }
+    if (fileInfo.size > MAX_BINARY_PREVIEW_BYTES) {
+      return { ok: false, message: 'This file is too large to preview.' }
+    }
+
+    const ext = extensionFromName(targetPath).toLowerCase()
+    const mimeType = WORKSPACE_BINARY_MIME_BY_EXT.get(ext) ?? 'application/octet-stream'
+    const bytes = await readFile(targetPath)
+    return {
+      ok: true,
+      path: targetPath,
+      dataBase64: bytes.toString('base64'),
+      mimeType,
+      size: fileInfo.size
     }
   } catch (error) {
     return {

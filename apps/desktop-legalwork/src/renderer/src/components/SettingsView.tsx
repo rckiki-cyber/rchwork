@@ -7,6 +7,7 @@ import {
   getActiveAgentApiKey,
   getLegalworkRuntimeSettings,
   getModelProviderSettings,
+  isLegalworkModelAuthConfigured,
   isLegalworkRuntimeInsecure,
   type AppSettingsV1,
 } from '@shared/app-settings'
@@ -45,10 +46,11 @@ import {
   GeneralSettingsSection,
   GuiUpdateSettingsSection,
   KeyboardShortcutsSettingsSection,
-  MemorySettingsSection
+  MemorySettingsSection,
+  ModelSettingsSection
 } from './settings-sections'
 
-type SettingsCategory = 'general' | 'agents' | 'memory' | 'claw' | 'shortcuts' | 'guiUpdate'
+type SettingsCategory = 'general' | 'model' | 'agents' | 'memory' | 'claw' | 'shortcuts' | 'guiUpdate'
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 type SettingsPatch = AppSettingsPatch
 type SkillRootOption = {
@@ -167,7 +169,7 @@ export function SettingsView(): ReactElement {
   useEffect(() => {
     if (!form || initializedCategory.current) return
     initializedCategory.current = true
-    if (!getActiveAgentApiKey(form).trim()) {
+    if (!isLegalworkModelAuthConfigured(form)) {
       setCategory('general')
     }
   }, [form])
@@ -552,6 +554,7 @@ export function SettingsView(): ReactElement {
   const legalwork = getLegalworkRuntimeSettings(form)
   const provider = getModelProviderSettings(form)
   const activeApiKey = getActiveAgentApiKey(form)
+  const modelAuthConfigured = isLegalworkModelAuthConfigured(form)
 
   const update = (partial: SettingsPatch): void => {
     const next = mergeSettings(form, partial)
@@ -697,7 +700,7 @@ export function SettingsView(): ReactElement {
 
       <div className="ds-no-drag min-h-0 min-w-0 flex-1 overflow-y-auto px-10 py-10">
         <div className="mx-auto max-w-3xl">
-          {!activeApiKey.trim() ? (
+          {!modelAuthConfigured ? (
             <div className="mb-6 rounded-2xl border border-amber-300/80 bg-amber-50/95 px-5 py-4 text-amber-950 shadow-sm dark:border-amber-700/60 dark:bg-amber-950/35 dark:text-amber-100">
               <div className="text-[15px] font-semibold">{t('apiKeyRequiredTitle')}</div>
               <p className="mt-1 text-[13px] leading-6 text-amber-900/90 dark:text-amber-100/90">
@@ -736,6 +739,7 @@ export function SettingsView(): ReactElement {
           </div>
 
           {category === 'general' ? <GeneralSettingsSection ctx={settingsSectionContext} /> : null}
+          {category === 'model' ? <ModelSettingsSection ctx={settingsSectionContext} /> : null}
           {category === 'agents' ? <AgentsSettingsSection ctx={settingsSectionContext} /> : null}
           {category === 'memory' ? (
             <MemorySettingsSection workspace={normalizeWorkspaceRoot(formWorkspaceRoot)} />

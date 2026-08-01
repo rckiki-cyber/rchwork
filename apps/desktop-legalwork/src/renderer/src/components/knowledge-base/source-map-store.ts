@@ -2,7 +2,8 @@
  * Module-level store for knowledge base source reference maps.
  *
  * When the knowledge base AI chat sends a message, it writes a mapping from
- * [来源 N] → source file path. When the user clicks a rendered [来源 N](source://N)
+ * [来源 N] → source file path. When the user clicks a rendered
+ * [来源 N](#knowledge-source-N)
  * link, StreamdownLink reads the path from here and navigates to the file.
  *
  * Only one mapping is active at a time (the most recent knowledge chat query).

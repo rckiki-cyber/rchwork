@@ -1,79 +1,73 @@
 import type { ReactElement } from 'react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  BookOpenText,
   BrainCircuit,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   CircleAlert,
-  FileSearch,
   FileDown,
   FilePenLine,
   FileText,
-  Globe2,
   LoaderCircle,
   MessageSquareText,
   Scale,
   Search,
-  ScrollText,
   Square
 } from 'lucide-react'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
-import type { ResearchStep, ReturnUseLegalResearch } from './useLegalResearch'
+import type { ReturnUseLegalResearch } from './useLegalResearch'
 import {
   preprocessLegalResearchSummary,
   resolveLegalResearchMarkdown
 } from './legal-research-markdown'
+import { shouldStartLegalResearchFromKeyboard } from './legal-research-keyboard'
+import { extractResearchPlanItems, extractStageNumber, formatResearchPlanIndex } from './legal-research-plan'
 import { LegalResearchEditorDialog } from './LegalResearchEditorDialog'
+
+const StableAssistantMarkdown = memo(AssistantMarkdown)
 
 export type LegalResearchPanelProps = {
   legalResearch: ReturnUseLegalResearch
 }
 
-function ResearchToolIcon({ step }: { step: ResearchStep }): ReactElement {
-  const tool = `${step.icon} ${step.tool} ${String(step.meta?.toolName ?? '')}`.toLowerCase()
-  const iconClassName = 'h-4 w-4'
-  if (tool.includes('case') || tool.includes('案例') || tool.includes('判例')) {
-    return <Scale className={iconClassName} strokeWidth={1.75} />
-  }
-  if (
-    tool.includes('paper')
-    || tool.includes('literature')
-    || tool.includes('文献')
-    || tool.includes('cnki')
-    || tool.includes('academic')
-  ) {
-    return <BookOpenText className={iconClassName} strokeWidth={1.75} />
-  }
-  if (
-    tool.includes('web')
-    || tool.includes('fetch')
-    || tool.includes('网页')
-    || tool.includes('提取')
-  ) {
-    return <Globe2 className={iconClassName} strokeWidth={1.75} />
-  }
-  if (
-    tool.includes('regulation')
-    || tool.includes('法规')
-    || tool.includes('条文')
-    || tool.includes('summary')
-  ) {
-    return <ScrollText className={iconClassName} strokeWidth={1.75} />
-  }
-  return <FileSearch className={iconClassName} strokeWidth={1.75} />
+export function scrollLegalResearchToLatest(element: HTMLDivElement | null): void {
+  if (!element) return
+  element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight)
+}
+
+export function nextSmoothResearchScrollTop(
+  current: number,
+  target: number,
+  elapsedMs = 1000 / 60
+): number {
+  const distance = target - current
+  if (Math.abs(distance) <= 0.75) return target
+  const boundedElapsed = Math.max(1, Math.min(elapsedMs, 50))
+  const interpolation = 1 - Math.exp(-boundedElapsed / 90)
+  return current + distance * interpolation
+}
+
+export function shouldFollowLatestResearchContent(
+  element: Pick<HTMLDivElement, 'clientHeight' | 'scrollHeight' | 'scrollTop'>,
+  threshold = 12
+): boolean {
+  const distanceFromLatest = element.scrollHeight - element.scrollTop - element.clientHeight
+  return distanceFromLatest <= threshold
 }
 
 export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): ReactElement {
   const { t } = useTranslation('common')
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const composingRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const stickToBottomRef = useRef(true)
-  const [reasoningExpanded, setReasoningExpanded] = useState(false)
+  const scrollContentRef = useRef<HTMLDivElement>(null)
+  const followLatestRef = useRef(true)
+  const smoothScrollFrameRef = useRef<number | null>(null)
+  const smoothScrollTargetRef = useRef(0)
+  const lastSmoothScrollFrameRef = useRef<number | null>(null)
+  const autoScrollingRef = useRef(false)
+  const scrollbarPointerRef = useRef(false)
   const [clockNow, setClockNow] = useState(Date.now())
   const [exportFormat, setExportFormat] = useState<'word' | 'markdown' | null>(null)
   const [exportNotice, setExportNotice] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
@@ -97,31 +91,121 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     return () => window.clearInterval(timer)
   }, [activeRecord?.id, activeRecord?.status, isResearching])
 
-  useLayoutEffect(() => {
-    stickToBottomRef.current = true
-    const frame = window.requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ block: 'end' })
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [activeRecord?.id])
-
   useEffect(() => {
     setEditingRecordId(null)
   }, [activeRecord?.id])
 
+  const cancelSmoothFollow = useCallback(() => {
+    if (smoothScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(smoothScrollFrameRef.current)
+      smoothScrollFrameRef.current = null
+    }
+    lastSmoothScrollFrameRef.current = null
+    autoScrollingRef.current = false
+  }, [])
+
+  const refreshSmoothFollowTarget = useCallback(() => {
+    const element = scrollRef.current
+    if (!element) return
+    smoothScrollTargetRef.current = Math.max(0, element.scrollHeight - element.clientHeight)
+  }, [])
+
+  const startSmoothFollow = useCallback(() => {
+    refreshSmoothFollowTarget()
+    if (smoothScrollFrameRef.current !== null || !followLatestRef.current) return
+    const element = scrollRef.current
+    if (!element) return
+
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      scrollLegalResearchToLatest(element)
+      refreshSmoothFollowTarget()
+      return
+    }
+
+    autoScrollingRef.current = true
+    const step = (timestamp: number): void => {
+      const currentElement = scrollRef.current
+      if (!currentElement || !followLatestRef.current) {
+        smoothScrollFrameRef.current = null
+        lastSmoothScrollFrameRef.current = null
+        autoScrollingRef.current = false
+        return
+      }
+
+      const previousTimestamp = lastSmoothScrollFrameRef.current ?? timestamp - 1000 / 60
+      lastSmoothScrollFrameRef.current = timestamp
+      const target = smoothScrollTargetRef.current
+      const next = nextSmoothResearchScrollTop(
+        currentElement.scrollTop,
+        target,
+        timestamp - previousTimestamp
+      )
+      currentElement.scrollTop = next
+
+      if (next === target) {
+        smoothScrollFrameRef.current = null
+        lastSmoothScrollFrameRef.current = null
+        autoScrollingRef.current = false
+        return
+      }
+      smoothScrollFrameRef.current = window.requestAnimationFrame(step)
+    }
+
+    smoothScrollFrameRef.current = window.requestAnimationFrame(step)
+  }, [refreshSmoothFollowTarget])
+
+  useLayoutEffect(() => {
+    cancelSmoothFollow()
+    followLatestRef.current = true
+    scrollLegalResearchToLatest(scrollRef.current)
+    refreshSmoothFollowTarget()
+  }, [activeRecord?.id, cancelSmoothFollow, refreshSmoothFollowTarget])
+
   useEffect(() => {
-    if (!isResearching || !stickToBottomRef.current) return
-    const frame = window.requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ block: 'end' })
+    const viewport = scrollRef.current
+    const content = scrollContentRef.current
+    if (!viewport || !content || typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver(() => {
+      refreshSmoothFollowTarget()
+      if (followLatestRef.current) startSmoothFollow()
     })
-    return () => window.cancelAnimationFrame(frame)
-  }, [activeRecord?.steps, activeRecord?.reasoning, activeRecord?.summary, activeRecord?.error, clockNow, isResearching])
+    observer.observe(viewport)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [activeRecord?.id, refreshSmoothFollowTarget, startSmoothFollow])
+
+  useEffect(() => cancelSmoothFollow, [cancelSmoothFollow])
 
   const handleResultsScroll = useCallback(() => {
     const element = scrollRef.current
     if (!element) return
-    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight
-    stickToBottomRef.current = distanceFromBottom < 140
+    if (autoScrollingRef.current && !scrollbarPointerRef.current) return
+    if (scrollbarPointerRef.current) cancelSmoothFollow()
+    const shouldFollow = shouldFollowLatestResearchContent(element)
+    followLatestRef.current = shouldFollow
+    if (shouldFollow) {
+      refreshSmoothFollowTarget()
+      startSmoothFollow()
+    }
+  }, [cancelSmoothFollow, refreshSmoothFollowTarget, startSmoothFollow])
+
+  const handleResultsWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (event.deltaY >= 0) return
+    cancelSmoothFollow()
+    followLatestRef.current = false
+  }, [cancelSmoothFollow])
+
+  const handleResultsPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const element = scrollRef.current
+    if (!element) return
+    const scrollbarWidth = Math.max(0, element.offsetWidth - element.clientWidth)
+    const scrollbarStart = element.getBoundingClientRect().right - scrollbarWidth - 4
+    scrollbarPointerRef.current = event.pointerType === 'touch' || event.clientX >= scrollbarStart
+  }, [])
+
+  const handleResultsPointerEnd = useCallback(() => {
+    scrollbarPointerRef.current = false
   }, [])
 
   const handleStart = useCallback(() => {
@@ -132,7 +216,13 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') handleStart()
+      if (!shouldStartLegalResearchFromKeyboard({
+        key: e.key,
+        isComposing: e.nativeEvent.isComposing,
+        keyCode: e.keyCode
+      }, composingRef.current)) return
+      e.preventDefault()
+      handleStart()
     },
     [handleStart]
   )
@@ -221,49 +311,6 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     [activeRecord, editingRecordId, saveEditedSummary, t]
   )
 
-  // Extract key actions from reasoning text
-  const extractKeyActions = (reasoning: string): string[] => {
-    const actions: string[] = []
-    const lines = reasoning.split('\n')
-    
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed) continue
-      
-      // Match patterns like "1. Search for...", "Let me...", "I'll...", "I need to..."
-      if (
-        /^\d+\./.test(trimmed) ||
-        /^(Let me|I'll|I need to|I should|Now I|Next I|First|Then|Finally|I will|I am going to)/i.test(trimmed) ||
-        /^(搜索|查找|检索|调用|使用|开始|现在|接下来|首先|然后|最后)/i.test(trimmed)
-      ) {
-        // Truncate long lines
-        const short = trimmed.length > 120 ? trimmed.slice(0, 120) + '...' : trimmed
-        actions.push(short)
-      }
-    }
-    
-    return actions.slice(0, 8) // Limit to 8 key actions
-  }
-
-  // Split reasoning text into sentences for readable multi-line display
-  const splitSentences = (text: string): string[] => {
-    if (!text.trim()) return []
-    // Split by Chinese/English sentence terminators, keeping the delimiter
-    const raw = text.split(/(?<=[。！？.!?])\s*/).filter(Boolean)
-    // Merge very short fragments (< 6 chars) with the previous sentence
-    const merged: string[] = []
-    for (const part of raw) {
-      const trimmed = part.trim()
-      if (!trimmed) continue
-      if (merged.length > 0 && trimmed.length < 6) {
-        merged[merged.length - 1] += ' ' + trimmed
-      } else {
-        merged.push(trimmed)
-      }
-    }
-    return merged
-  }
-
   const formatDuration = (milliseconds: number): string => {
     const seconds = Math.max(0, Math.floor(milliseconds / 1000))
     if (seconds < 60) return `${seconds}s`
@@ -275,22 +322,30 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
   }
 
   const updatedAt = activeRecord?.updatedAt ?? Date.now()
-  const runningSteps = activeRecord?.steps.filter((step) => step.status === 'running') ?? []
-  const lastRunningStep = runningSteps[runningSteps.length - 1]
   const runningSince = activeRecord?.status === 'running' ? clockNow - updatedAt : 0
   const hasActiveReport = Boolean(
     activeRecord
       && activeRecord.status !== 'running'
       && (activeRecord.summary || activeRecord.editedSummary !== undefined)
   )
-  const resolvedReport = activeRecord
-    ? preprocessLegalResearchSummary(resolveLegalResearchMarkdown(activeRecord))
-    : ''
-  const keyActions = activeRecord?.reasoning ? extractKeyActions(activeRecord.reasoning) : []
+  const resolvedReport = useMemo(
+    () => hasActiveReport && activeRecord
+      ? preprocessLegalResearchSummary(resolveLegalResearchMarkdown(activeRecord))
+      : '',
+    [activeRecord, hasActiveReport]
+  )
+  const researchPlanItems = useMemo(
+    () => activeRecord?.reasoning
+      ? extractResearchPlanItems(activeRecord.reasoning)
+      : [],
+    [activeRecord?.reasoning]
+  )
   const researchUpdates = activeRecord?.updates ?? []
   const visibleResearchUpdates = activeRecord?.status === 'running'
     ? researchUpdates
     : researchUpdates.slice(0, -1)
+  const showResearchPlan = activeRecord?.status === 'running' || Boolean(activeRecord?.reasoning)
+  const isResearchPlanStreaming = activeRecord?.status === 'running' && visibleResearchUpdates.length === 0
 
   return (
     <div className="legal-research-stage ds-subfeature-controls flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ds-main)]">
@@ -313,6 +368,12 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                 type="text"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                onCompositionStart={() => {
+                  composingRef.current = true
+                }}
+                onCompositionEnd={() => {
+                  composingRef.current = false
+                }}
                 onKeyDown={handleKeyDown}
                 placeholder={t('legalResearchPlaceholder')}
                 disabled={isResearching}
@@ -392,6 +453,10 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
       <div
         ref={scrollRef}
         onScroll={handleResultsScroll}
+        onWheel={handleResultsWheel}
+        onPointerDown={handleResultsPointerDown}
+        onPointerUp={handleResultsPointerEnd}
+        onPointerCancel={handleResultsPointerEnd}
         className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-6 py-5"
       >
         {!activeRecord ? (
@@ -403,7 +468,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
             <p className="mt-1 text-[12px] text-[var(--ds-faint)]">{t('legalResearchEmptyStateHint')}</p>
           </div>
         ) : (
-          <div className="mx-auto max-w-5xl space-y-4">
+          <div ref={scrollContentRef} className="mx-auto max-w-5xl space-y-4">
             <section className="rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-soft)] px-5 py-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
@@ -439,7 +504,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
             </section>
 
             {activeRecord.status === 'running' ? (
-              <div className="legal-research-live-strip sticky top-0 z-10 overflow-hidden rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-strong)] px-4 py-3 shadow-sm backdrop-blur">
+              <div className="legal-research-live-strip sticky top-0 z-10 overflow-hidden rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-strong)] px-4 py-3 shadow-sm">
                 <div className="relative z-[1] flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[var(--ds-muted)]">
                   <span className="flex items-center gap-2 font-medium text-[var(--ds-ink)]">
                     <span className="relative flex h-2.5 w-2.5">
@@ -450,10 +515,67 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                   </span>
                   <span>{t('legalResearchLastUpdate', { time: formatDuration(runningSince) })}</span>
                   <span className="min-w-0 truncate text-[var(--ds-faint)]">
-                    {lastRunningStep?.tool || t('legalResearchWaitingForUpdate')}
+                    {t('legalResearchWaitingForUpdate')}
                   </span>
                 </div>
               </div>
+            ) : null}
+
+            {showResearchPlan && activeRecord ? (
+              <section
+                className="overflow-hidden rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-soft)] shadow-sm"
+                aria-live="polite"
+                aria-busy={isResearchPlanStreaming}
+              >
+                <div className="flex items-center justify-between gap-4 border-b border-[var(--ds-border-muted)] px-4 py-3.5">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--ds-accent-soft)] text-[var(--ds-accent)]">
+                      <BrainCircuit className="h-4 w-4" strokeWidth={1.75} />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="text-[13px] font-semibold text-[var(--ds-ink)]">{t('legalResearchReasoning')}</h3>
+                      <p className="mt-0.5 text-[11px] text-[var(--ds-faint)]">{t('legalResearchPlanHint')}</p>
+                    </div>
+                  </div>
+                  <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-medium ${
+                    isResearchPlanStreaming
+                      ? 'bg-[var(--ds-accent-soft)] text-[var(--ds-accent)]'
+                      : 'bg-[var(--ds-success-soft)] text-[var(--ds-success)]'
+                  }`}>
+                    {isResearchPlanStreaming ? (
+                      <LoaderCircle className="h-3 w-3 animate-spin" strokeWidth={1.9} />
+                    ) : (
+                      <CheckCircle2 className="h-3 w-3" strokeWidth={1.9} />
+                    )}
+                    {isResearchPlanStreaming ? t('legalResearchPlanStreaming') : t('legalResearchPlanReady')}
+                  </span>
+                </div>
+                <div className="px-4 py-2.5">
+                  {researchPlanItems.length > 0 ? (
+                    <div className="divide-y divide-[var(--ds-border-muted)]">
+                      {researchPlanItems.map((item, index) => {
+                        const isStreamingItem = isResearchPlanStreaming && index === researchPlanItems.length - 1
+                        return (
+                          <div key={formatResearchPlanIndex(index)} className="flex items-start gap-3 py-3 first:pt-2 last:pb-2">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] border border-[var(--ds-accent)]/15 bg-[var(--ds-accent-soft)] text-[10px] font-semibold tabular-nums text-[var(--ds-accent)]">
+                              {formatResearchPlanIndex(index)}
+                            </span>
+                            <p className="min-w-0 flex-1 pt-0.5 text-[13px] leading-6 text-[var(--ds-muted)] [overflow-wrap:anywhere]">
+                              {item}
+                              {isStreamingItem ? <span aria-hidden className="legal-research-stream-caret ml-0.5" /> : null}
+                            </p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 py-2 text-[12px] text-[var(--ds-faint)]">
+                      <LoaderCircle className="h-3.5 w-3.5 animate-spin text-[var(--ds-accent)]" strokeWidth={1.8} />
+                      <span>{t('legalResearchReasoningProcessing')}</span>
+                    </div>
+                  )}
+                </div>
+              </section>
             ) : null}
 
             {visibleResearchUpdates.length > 0 ? (
@@ -472,15 +594,19 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                 <div className="divide-y divide-[var(--ds-border-muted)]">
                   {visibleResearchUpdates.map((update, index) => {
                     const isCurrent = activeRecord.status === 'running' && update.completed !== true
+                    // Use the stage number the model wrote in its own
+                    // announcement when present (阶段四/第5阶段), falling back
+                    // to the sequential index otherwise.
+                    const stageNumber = extractStageNumber(update.text) ?? index + 1
                     return (
                       <div key={update.id} className="legal-research-step flex gap-3 px-4 py-3">
                         <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--ds-border)] bg-[var(--ds-card-strong)] text-[11px] font-semibold text-[var(--ds-muted)]">
-                          {index + 1}
+                          {stageNumber}
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="mb-1 flex items-center justify-between gap-3">
                             <span className="text-[11px] font-medium text-[var(--ds-faint)]">
-                              {t('legalResearchUpdatesTitle')} {index + 1}
+                              {t('legalResearchUpdatesTitle')} {stageNumber}
                             </span>
                             {isCurrent ? (
                               <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-[var(--ds-accent)]">
@@ -492,126 +618,13 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                             )}
                           </div>
                           <div className="ds-markdown max-w-none text-[13px] leading-6 text-[var(--ds-muted)] [overflow-wrap:anywhere]">
-                            <AssistantMarkdown text={update.text} streaming={isCurrent} />
+                            <StableAssistantMarkdown text={update.text} streaming={isCurrent} />
                             {isCurrent ? <span aria-hidden className="legal-research-stream-caret" /> : null}
                           </div>
                         </div>
                       </div>
                     )
                   })}
-                </div>
-              </section>
-            ) : null}
-
-            {activeRecord.steps.length > 0 ? (
-              <section className="overflow-hidden rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-soft)] shadow-sm">
-                <div className="flex items-center justify-between gap-3 border-b border-[var(--ds-border-muted)] px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <FileSearch className="h-4 w-4 text-[var(--ds-muted)]" strokeWidth={1.75} />
-                    <h3 className="text-[13px] font-semibold text-[var(--ds-ink)]">
-                      {t('legalResearchProgressTitle')}
-                    </h3>
-                  </div>
-                  <span className="text-[11px] text-[var(--ds-faint)]">
-                    {t('legalResearchStepCount', { count: activeRecord.steps.length })}
-                  </span>
-                </div>
-                <div className="divide-y divide-[var(--ds-border-muted)]">
-                  {activeRecord.steps.map((step) => (
-                    <div key={step.id} className="legal-research-step flex gap-3 px-4 py-3">
-                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-[var(--ds-border)] bg-[var(--ds-card-strong)] text-[var(--ds-muted)]">
-                        <ResearchToolIcon step={step} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-3">
-                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--ds-ink)]">
-                            {step.tool}
-                          </span>
-                          <span
-                            className={`inline-flex shrink-0 items-center gap-1 text-[11px] ${
-                              step.status === 'running'
-                                ? 'text-[var(--ds-accent)]'
-                                : step.status === 'done'
-                                  ? 'text-[var(--ds-success)]'
-                                  : step.status === 'error'
-                                    ? 'text-[var(--ds-danger)]'
-                                    : 'text-[var(--ds-faint)]'
-                            }`}
-                          >
-                            {step.status === 'running' ? (
-                              <LoaderCircle className="h-3 w-3 animate-spin" />
-                            ) : step.status === 'done' ? (
-                              <CheckCircle2 className="h-3 w-3" />
-                            ) : step.status === 'error' ? (
-                              <CircleAlert className="h-3 w-3" />
-                            ) : null}
-                            {step.status === 'running'
-                              ? t('legalResearchStepRunning')
-                              : step.status === 'done'
-                                ? t('legalResearchStepDone')
-                                : step.status === 'error'
-                                  ? t('legalResearchStepError')
-                                  : null}
-                          </span>
-                        </div>
-                        {step.output ? (
-                          <p className="mt-1 text-[12px] leading-5 text-[var(--ds-muted)] [overflow-wrap:anywhere]">
-                            {step.output}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            {activeRecord.reasoning ? (
-              <section className="overflow-hidden rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-soft)] shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => setReasoningExpanded(!reasoningExpanded)}
-                  aria-expanded={reasoningExpanded}
-                  className="flex w-full items-center gap-2 rounded-[12px] px-4 py-3 text-left transition hover:bg-[var(--ds-sidebar-row-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ds-accent)]/30"
-                >
-                  <BrainCircuit className="h-4 w-4 text-[var(--ds-muted)]" strokeWidth={1.75} />
-                  <span className="text-[13px] font-semibold text-[var(--ds-ink)]">{t('legalResearchReasoning')}</span>
-                  {activeRecord.status === 'running' ? (
-                    <span className="ds-shiny-text text-[11px]">{t('legalResearchReasoningProcessing')}</span>
-                  ) : null}
-                  <span className="ml-auto text-[11px] text-[var(--ds-faint)]">
-                    {reasoningExpanded ? t('legalResearchCollapse') : t('legalResearchExpand')}
-                  </span>
-                  {reasoningExpanded ? (
-                    <ChevronDown className="h-3.5 w-3.5 text-[var(--ds-faint)]" strokeWidth={1.75} />
-                  ) : (
-                    <ChevronRight className="h-3.5 w-3.5 text-[var(--ds-faint)]" strokeWidth={1.75} />
-                  )}
-                </button>
-                <div className="border-t border-[var(--ds-border-muted)] px-4 py-3">
-                  {!reasoningExpanded ? (
-                    <div className="space-y-2">
-                      {keyActions.map((action, index) => (
-                        <div key={`${index}-${action}`} className="flex items-start gap-2.5 text-[12px] text-[var(--ds-muted)]">
-                          <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--ds-accent)]" />
-                          <span className="leading-5">{action}</span>
-                        </div>
-                      ))}
-                      {keyActions.length === 0 ? (
-                        <p className="text-[12px] italic text-[var(--ds-faint)]">
-                          {t('legalResearchReasoningProcessing')}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {splitSentences(activeRecord.reasoning).map((sentence, index) => (
-                        <p key={`${index}-${sentence}`} className="text-[13px] leading-6 text-[var(--ds-muted)]">
-                          {sentence}
-                        </p>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </section>
             ) : null}
@@ -633,7 +646,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                 <div className="px-5 py-4">
                   {resolvedReport ? (
                     <div className="ds-markdown ds-chat-answer max-w-none text-[15px] leading-relaxed text-[var(--ds-ink)] [overflow-wrap:anywhere]">
-                      <AssistantMarkdown
+                      <StableAssistantMarkdown
                         key={`${activeRecord.id}:${activeRecord.reportRevision ?? 'generated'}`}
                         text={resolvedReport}
                         streaming={false}
@@ -656,7 +669,6 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                 <p className="text-[13px] leading-5 text-[var(--ds-danger)]">{activeRecord.error}</p>
               </div>
             ) : null}
-            <div ref={bottomRef} aria-hidden="true" />
           </div>
         )}
       </div>

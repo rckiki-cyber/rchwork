@@ -62,7 +62,8 @@ export function createPkulawConnectionCandidates(
   const userToken = bearerToken(userAuthorization)
   const fallbackServer = withAuthorization(server, `Bearer ${normalizedFallback}`)
 
-  if (!userToken || userToken === normalizedFallback) return [server, fallbackServer]
+  if (!userToken) return [fallbackServer]
+  if (userToken === normalizedFallback) return [server]
   return [server, fallbackServer]
 }
 

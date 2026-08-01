@@ -177,6 +177,8 @@ export const LegalworkServeConfigSchema = z
     port: z.number().int().min(0).max(65_535).optional(),
     dataDir: z.string().min(1).optional(),
     runtimeToken: z.string().optional(),
+    authMode: z.enum(['api_key', 'chatgpt']).optional(),
+    codexBinaryPath: z.string().optional(),
     apiKey: z.string().optional(),
     baseUrl: z.string().optional(),
     endpointFormat: z.preprocess(

@@ -140,13 +140,24 @@ export function canGenerateDocument(options: {
   missingRequiredFieldCount: number
   missingExplicitFieldCount: number
   missingDocumentSubjectCount?: number
+  missingInstructionCount?: number
   loadedMaterialCount: number
 }): boolean {
   return (
     (options.missingDocumentSubjectCount ?? 0) === 0 &&
+    (options.missingInstructionCount ?? 0) === 0 &&
     options.missingExplicitFieldCount === 0 &&
     (options.missingRequiredFieldCount === 0 || options.loadedMaterialCount > 0)
   )
+}
+
+export function getDocumentWordExportSuccessMessage(result: {
+  formatPreserved?: boolean
+  warning?: string
+}): string {
+  return result.formatPreserved
+    ? '已基于原 DOCX 原位写入，保留原模板版式。'
+    : 'Word 文档已导出。'
 }
 
 export function DocumentWritingEditor({
@@ -170,7 +181,7 @@ export function DocumentWritingEditor({
   const [showAllFields, setShowAllFields] = useState(false)
   const [exportingFormat, setExportingFormat] = useState<'word' | 'markdown' | null>(null)
   const [exportFeedback, setExportFeedback] = useState<{
-    tone: 'success' | 'warning' | 'error'
+    tone: 'success' | 'error'
     message: string
   } | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
@@ -190,10 +201,8 @@ export function DocumentWritingEditor({
       })
       if (result.ok) {
         setExportFeedback({
-          tone: result.warning ? 'warning' : 'success',
-          message: result.warning || (result.formatPreserved
-            ? '已基于原 DOCX 原位写入，保留原模板版式。'
-            : 'Word 文档已导出。')
+          tone: 'success',
+          message: getDocumentWordExportSuccessMessage(result)
         })
       } else if (!result.canceled) {
         setExportFeedback({ tone: 'error', message: result.message })
@@ -235,6 +244,7 @@ export function DocumentWritingEditor({
   const hasLoadedMaterials = loadedMaterialCount > 0
   const documentSubjectMissing =
     hasLoadedMaterials && !fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim()
+  const instructionMissing = hasLoadedMaterials && !instruction.trim()
 
   const missingRequiredFields = useMemo(() => {
     if (!template) return []
@@ -266,14 +276,16 @@ export function DocumentWritingEditor({
   const completedFieldCount = useMemo(
     () =>
       (template?.fields.filter((field) => fieldValues[field.id]?.trim()).length ?? 0) +
-      (hasLoadedMaterials && fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim() ? 1 : 0),
-    [fieldValues, hasLoadedMaterials, template]
+      (hasLoadedMaterials && fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim() ? 1 : 0) +
+      (hasLoadedMaterials && instruction.trim() ? 1 : 0),
+    [fieldValues, hasLoadedMaterials, instruction, template]
   )
-  const displayedFieldCount = (template?.fields.length ?? 0) + (hasLoadedMaterials ? 1 : 0)
+  const displayedFieldCount = (template?.fields.length ?? 0) + (hasLoadedMaterials ? 2 : 0)
   const canGenerate = canGenerateDocument({
     missingRequiredFieldCount: missingRequiredFields.length,
     missingExplicitFieldCount: missingExplicitFields.length,
     missingDocumentSubjectCount: documentSubjectMissing ? 1 : 0,
+    missingInstructionCount: instructionMissing ? 1 : 0,
     loadedMaterialCount
   })
 
@@ -387,9 +399,7 @@ export function DocumentWritingEditor({
                   <div className={`mb-3 rounded-[10px] px-3 py-2 text-[10.5px] leading-[1.5] ${
                     exportFeedback.tone === 'error'
                       ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'
-                      : exportFeedback.tone === 'warning'
-                        ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
-                        : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                      : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
                   }`}>
                     {exportFeedback.message}
                   </div>
@@ -538,20 +548,46 @@ export function DocumentWritingEditor({
 
                 <div className="document-writing-fields px-5 pb-5">
                   {hasLoadedMaterials && (
-                    <div className="document-writing-field-wide">
-                      <label className="mb-1.5 block text-[12px] font-medium text-[var(--ds-ink)]">
-                        {MATERIAL_DOCUMENT_SUBJECT_FIELD.label}
-                        <span className="ml-1 text-red-500">*</span>
-                      </label>
-                      <FieldInput
-                        field={MATERIAL_DOCUMENT_SUBJECT_FIELD}
-                        value={fieldValues[DOCUMENT_SUBJECT_FIELD_ID] ?? ''}
-                        onChange={(value) => onFieldChange(DOCUMENT_SUBJECT_FIELD_ID, value)}
-                      />
-                      <p className="mt-1.5 text-[10.5px] leading-4 text-[var(--ds-faint)]">
-                        请明确本次代表哪一方；其余空缺信息由 Agent 从已上传材料中提取。
-                      </p>
-                    </div>
+                    <>
+                      <div className="document-writing-field-wide">
+                        <label className="mb-1.5 block text-[12px] font-medium text-[var(--ds-ink)]">
+                          {MATERIAL_DOCUMENT_SUBJECT_FIELD.label}
+                          <span className="ml-1 text-red-500">*</span>
+                        </label>
+                        <FieldInput
+                          field={MATERIAL_DOCUMENT_SUBJECT_FIELD}
+                          value={fieldValues[DOCUMENT_SUBJECT_FIELD_ID] ?? ''}
+                          onChange={(value) => onFieldChange(DOCUMENT_SUBJECT_FIELD_ID, value)}
+                        />
+                        <p className="mt-1.5 text-[10.5px] leading-4 text-[var(--ds-faint)]">
+                          请明确本次代表哪一方；其余空缺信息由 Agent 从已上传材料中提取。
+                        </p>
+                      </div>
+
+                      {onUpdateInstruction && (
+                        <div className="document-writing-field-wide">
+                          <label className="mb-1.5 block text-[12px] font-medium text-[var(--ds-ink)]">
+                            {t('documentWritingSupplementalRequirements')}
+                            <span className="ml-1 text-red-500">*</span>
+                          </label>
+                          <div className="document-writing-control-shell min-h-[96px]">
+                            <textarea
+                              value={instruction}
+                              onChange={(event) => onUpdateInstruction(event.target.value)}
+                              placeholder={t('documentWritingSupplementalRequirementsPlaceholder')}
+                              rows={3}
+                              maxLength={5000}
+                              required
+                              aria-required="true"
+                              className="document-writing-control min-h-[94px] w-full resize-none border-0 bg-transparent px-3.5 py-3 text-[13px] text-[var(--ds-ink)] placeholder-[var(--ds-faint)] outline-none"
+                            />
+                          </div>
+                          <p className="mt-1.5 text-[10.5px] leading-4 text-[var(--ds-faint)]">
+                            {t('documentWritingSupplementalRequirementsHint')}
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
                   {visibleFields.map((field) => (
                     <div
@@ -583,7 +619,7 @@ export function DocumentWritingEditor({
                 )}
               </section>
 
-              {onUpdateInstruction && (
+              {onUpdateInstruction && !hasLoadedMaterials && (
                 <section className="document-writing-card p-5">
                   <label className="mb-3 block">
                     <span className="block text-[14px] font-semibold text-[var(--ds-ink)]">补充要求</span>
@@ -650,6 +686,11 @@ export function DocumentWritingEditor({
                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
                     <span>请填写文书涉及主体，明确本次代表哪一方；其他字段由 Agent 从材料提取。</span>
                   </div>
+                ) : instructionMissing ? (
+                  <div className="mt-3 flex items-start gap-2 px-1 text-[11px] leading-[1.55] text-[var(--ds-faint)]">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+                    <span>{t('documentWritingSupplementalRequirementsMissing')}</span>
+                  </div>
                 ) : missingRequiredFields.length > 0 ? (
                   <div className="mt-3 flex items-start gap-2 px-1 text-[11px] leading-[1.55] text-[var(--ds-faint)]">
                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
@@ -662,7 +703,7 @@ export function DocumentWritingEditor({
                 ) : (
                   <div className="mt-3 flex items-center gap-2 px-1 text-[11px] text-[var(--ds-success)]">
                     <CircleCheck className="h-3.5 w-3.5" strokeWidth={1.9} />
-                    {hasLoadedMaterials ? '主体已确认，其余信息将从材料提取' : '关键信息已就绪'}
+                    {hasLoadedMaterials ? t('documentWritingMaterialGuidanceReady') : '关键信息已就绪'}
                   </div>
                 )}
               </div>

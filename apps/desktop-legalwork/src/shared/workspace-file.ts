@@ -90,6 +90,16 @@ export type WorkspaceImageReadResult =
     }
   | { ok: false; message: string }
 
+export type WorkspaceBinaryReadResult =
+  | {
+      ok: true
+      path: string
+      dataBase64: string
+      mimeType: string
+      size: number
+    }
+  | { ok: false; message: string }
+
 export type WorkspaceFileResolveResult =
   | {
       ok: true

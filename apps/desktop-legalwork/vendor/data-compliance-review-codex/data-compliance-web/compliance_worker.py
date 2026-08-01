@@ -174,6 +174,7 @@ def main() -> int:
     review_type = payload.get('review_type') or 'document'
     output_dir_raw = payload.get('output_dir') or ''
     output_format = payload.get('output_format') or None
+    redaction_mode = 'agent_enhanced' if payload.get('redaction_mode') == 'agent_enhanced' else 'standard'
 
     # worker_core stores task_state.json under OUTPUT_FOLDER / task_id.
     # The CLI receives the per-task directory, so pass its parent as the root.
@@ -202,6 +203,7 @@ def main() -> int:
         'input_files': input_files or existing_task.get('input_files'),
         'output_dir': output_dir_raw or existing_task.get('output_dir'),
         'output_format': output_format or existing_task.get('output_format'),
+        'redaction_mode': redaction_mode,
         'status': 'running',
         'created_at': existing_task.get('created_at') or datetime.now().isoformat(),
     }
@@ -230,6 +232,7 @@ def main() -> int:
                     False,
                     validated_output_dir,
                     output_format=output_format,
+                    redaction_mode=redaction_mode,
                 )
             else:
                 core.run_desensitize_pipeline(
@@ -239,6 +242,7 @@ def main() -> int:
                     is_text,
                     validated_output_dir,
                     output_format=output_format,
+                    redaction_mode=redaction_mode,
                 )
         log(f'compliance_worker completed: task={task_id} command={args.command}')
         return 0

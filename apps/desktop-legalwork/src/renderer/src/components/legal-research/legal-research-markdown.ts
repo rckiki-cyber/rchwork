@@ -29,10 +29,30 @@ function normalizePlainLine(line: string): string {
     .trimEnd()
 }
 
+const NON_REPORT_HEADINGS = [
+  /^#\s*调研规划/i,
+  /^#\s*[一二三四五六七八九十\d]+[.)、：:]?\s*(?:阶段|检索|播报)/i,
+  // Only a bare "规划" heading — not "# 规划建议" style report sections.
+  /^#\s*规划\s*$/i,
+  /^#\s*阶段播报/i
+]
+
+function finalReportOnly(text: string): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const reportHeadingIndex = lines.findIndex((line) => {
+    if (!/^#\s+\S/.test(line)) return false
+    // Skip plan/stage headings — the final report starts at the conclusion
+    // or the report title, not at a planning section.
+    return !NON_REPORT_HEADINGS.some((re) => re.test(line))
+  })
+  if (reportHeadingIndex <= 0) return text
+  return lines.slice(reportHeadingIndex).join('\n')
+}
+
 export function preprocessLegalResearchSummary(text: string): string {
   if (!text) return ''
 
-  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const lines = finalReportOnly(text).replace(/\r\n/g, '\n').split('\n')
   const out: string[] = []
   let inFence = false
   let index = 0

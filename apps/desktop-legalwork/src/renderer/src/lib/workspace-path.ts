@@ -21,6 +21,16 @@ export function workspaceRootIdentityKey(path?: string): string {
   return normalized
 }
 
+/** Dedicated workspace for legal-research threads. Kept out of the main
+ * "code" thread list (isCodeThread) so research turns never surface in the
+ * home agent conversation. */
+export function isLegalworkResearchWorkspace(path?: string): boolean {
+  const trimmed = path?.trim() ?? ''
+  if (!trimmed) return false
+  const normalized = normalizePathForMatch(trimmed)
+  return normalized.includes('/.legalwork/research-workspace')
+}
+
 export function isInternalTemporaryWorkspace(path?: string): boolean {
   const trimmed = path?.trim() ?? ''
   if (!trimmed) return false
@@ -34,6 +44,7 @@ export function isInternalTemporaryWorkspace(path?: string): boolean {
     || /^\/var\/folders\/[^/]+\/[^/]+\/t(?:\/|$)/.test(normalized)
     || /^\/private\/var\/folders\/[^/]+\/[^/]+\/t(?:\/|$)/.test(normalized)
     || /\/appdata\/local\/temp(?:\/|$)/.test(normalized)
+    || isLegalworkResearchWorkspace(path)
   )
 }
 

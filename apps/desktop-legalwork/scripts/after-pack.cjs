@@ -1,5 +1,5 @@
 const { execFileSync } = require('node:child_process')
-const { chmodSync, cpSync, existsSync, readdirSync, rmSync, statSync } = require('node:fs')
+const { chmodSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, statSync } = require('node:fs')
 const { join } = require('node:path')
 
 const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
@@ -32,6 +32,8 @@ const DOCUMENT_OCR_REQUIRED_PATHS = [
   'document/intake/router.py',
   'document/ocr/router.py'
 ]
+
+const IMA_MCP_SCRIPT_RELATIVE_PATH = 'scripts/ima-mcp-server.py'
 
 // legalwork 不使用相机 / 麦克风 / 蓝牙 / 相册。Electron 框架默认在 Info.plist 里塞了这些
 // 权限用途串，会导致 macOS 在相关 API 被触达时弹出无谓的权限请求（如相册访问）。
@@ -165,6 +167,19 @@ function validateBundledDocumentOcrRuntime(context) {
   assertExists(join(root, 'ocr-runtime'), 'ocr-runtime')
 }
 
+function validateBundledImaMcpServer(context) {
+  const relativePath = IMA_MCP_SCRIPT_RELATIVE_PATH
+  const sourcePath = join(projectDir(context), relativePath)
+  const bundledPath = join(packedResourcesDir(context), relativePath)
+  assertExists(sourcePath, 'IMA MCP source script')
+  assertExists(bundledPath, 'bundled IMA MCP script')
+  if (!readFileSync(sourcePath).equals(readFileSync(bundledPath))) {
+    throw new Error(
+      `[after-pack] Bundled IMA MCP script is stale and does not match the release source: ${bundledPath}`
+    )
+  }
+}
+
 function maybeAdhocSignMacApp(context) {
   if (normalizePlatform(context.electronPlatformName) !== 'darwin') {
     return
@@ -256,6 +271,7 @@ async function afterPack(context) {
   validateBundledLegalworkRuntime(context)
   validateBundledDataComplianceRuntime(context)
   validateBundledDocumentOcrRuntime(context)
+  validateBundledImaMcpServer(context)
   stripUnnecessaryMacPermissions(context)
   maybeAdhocSignMacApp(context)
 }
@@ -264,6 +280,7 @@ exports.LEGALWORK_RUNTIME_REQUIRED_PATHS = LEGALWORK_RUNTIME_REQUIRED_PATHS
 exports.DATA_COMPLIANCE_REQUIRED_PATHS = DATA_COMPLIANCE_REQUIRED_PATHS
 exports.DATA_COMPLIANCE_OPTIONAL_PATHS = DATA_COMPLIANCE_OPTIONAL_PATHS
 exports.DOCUMENT_OCR_REQUIRED_PATHS = DOCUMENT_OCR_REQUIRED_PATHS
+exports.IMA_MCP_SCRIPT_RELATIVE_PATH = IMA_MCP_SCRIPT_RELATIVE_PATH
 exports._internals = {
   appBundlePath,
   packedResourcesDir,
@@ -276,6 +293,7 @@ exports._internals = {
   validateBundledLegalworkRuntime,
   validateBundledDataComplianceRuntime,
   validateBundledDocumentOcrRuntime,
+  validateBundledImaMcpServer,
   stripUnnecessaryMacPermissions
 }
 exports.default = afterPack

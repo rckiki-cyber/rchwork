@@ -35,5 +35,65 @@ class ImaQuestionPreparationTest(unittest.TestCase):
         self.assertEqual(self.server._prepare_ima_question(prepared), prepared)
 
 
+class ImaSseParsingTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.server = load_server_module()
+
+    def test_extracts_current_text_message_shape(self):
+        event = {
+            "Id": "answer-1",
+            "Type": "text_message",
+            "Data": {"text_message": {"Text": "数字行政法研究结论"}},
+        }
+        answers = []
+        refs = []
+        diagnostics = {"codes": set(), "shapes": set()}
+
+        self.server._collect_qa_event(event, answers, refs, diagnostics)
+
+        self.assertEqual(answers, ["数字行政法研究结论"])
+
+    def test_collects_files_from_current_file_list_shape(self):
+        event = {
+            "Id": "files-1",
+            "Type": "tool_result",
+            "Data": {
+                "file_list": {
+                    "status": 0,
+                    "files": [
+                        {"title": "数字行政处罚研究.pdf"},
+                        {"fileName": "数字行政法论文.docx"},
+                    ],
+                }
+            },
+        }
+        answers = []
+        refs = []
+        diagnostics = {"codes": set(), "shapes": set()}
+
+        self.server._collect_qa_event(event, answers, refs, diagnostics)
+
+        self.assertEqual(
+            refs,
+            ["数字行政处罚研究.pdf", "数字行政法论文.docx"],
+        )
+
+    def test_protocol_error_answer_is_an_mcp_error(self):
+        result = {
+            "answer": (
+                "【IMA 自动选库：⚖️法律法规库】\n\n"
+                "IMA_PROTOCOL_ERROR: HTTP 200 但未解析到回答。"
+            )
+        }
+
+        self.assertTrue(self.server._is_tool_result_error(result))
+
+    def test_normal_answer_is_not_an_mcp_error(self):
+        self.assertFalse(
+            self.server._is_tool_result_error({"answer": "这是正常回答"})
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

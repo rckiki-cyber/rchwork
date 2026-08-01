@@ -1,6 +1,7 @@
 :root {
   --ds-window-controls-safe-block: 0px;
   --ds-window-controls-safe-inset: 0px;
+  --ds-window-titlebar-bg: #fbfcfe;
   --ds-write-titlebar-extra-inset: 0px;
   --ds-ui-scale: 1;
   --bg-app: #f8f9fa;
@@ -92,14 +93,15 @@
 }
 
 :root[data-platform='darwin'] {
-  --ds-window-controls-safe-block: 50px;
+  --ds-window-controls-safe-block: 46px;
   --ds-window-controls-safe-inset: 62px;
   --ds-write-titlebar-extra-inset: 20px;
 }
 
-/* macOS titlebar safe area: push the shell content below native traffic lights */
+/* Keep the macOS traffic-light safe area visually continuous with the main stage. */
 :root[data-platform='darwin'] .apple-liquid-app {
   padding-top: var(--ds-window-controls-safe-block);
+  background: var(--ds-window-titlebar-bg);
 }
 
 :root[data-platform='win32'],
@@ -108,6 +110,7 @@
 }
 
 [data-theme='dark'] {
+  --ds-window-titlebar-bg: #1d1d1d;
   --bg-app: #101010;
   --bg-sidebar: #141414;
   --bg-canvas: #181818;
@@ -741,6 +744,11 @@ pre {
 
 .pdfjs-text-layer.selecting .endOfContent {
   top: 0;
+}
+
+.pdfjs-persistent-highlight {
+  background: var(--ds-warning-soft);
+  box-shadow: inset 0 0 0 1px var(--ds-warning-soft);
 }
 
 .ds-transition {

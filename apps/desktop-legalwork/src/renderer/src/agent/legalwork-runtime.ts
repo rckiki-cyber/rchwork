@@ -861,9 +861,7 @@ export class LegalworkRuntimeProvider implements AgentProvider {
         signal.removeEventListener('abort', onAbort)
         void Promise.allSettled([...pendingDispatches]).then(() => resolve())
       }
-      const offData = rendererRuntimeClient.onSseEvent(({ streamId: sid, data }) => {
-        if (sid !== streamId) return
-        const event = data && typeof data === 'object' ? (data as CoreRuntimeEventJson) : {}
+      const handleSseEvent = (event: CoreRuntimeEventJson): void => {
         const delta = deltaFromRuntimeEvent(event)
         if (delta) {
           pendingDeltas.push(delta)
@@ -881,6 +879,19 @@ export class LegalworkRuntimeProvider implements AgentProvider {
           pendingDispatches.delete(task)
         })
         pendingDispatches.add(task)
+      }
+      const offData = rendererRuntimeClient.onSseEvent(({ streamId: sid, data }) => {
+        if (sid !== streamId) return
+        if (Array.isArray(data)) {
+          // Main-process bridge batches backlog events to avoid an IPC burst
+          // that saturates the renderer and drops the tail of a long stream.
+          for (const item of data) {
+            if (item && typeof item === 'object') handleSseEvent(item as CoreRuntimeEventJson)
+          }
+          return
+        }
+        const event = data && typeof data === 'object' ? (data as CoreRuntimeEventJson) : {}
+        handleSseEvent(event)
       })
       const offErr = rendererRuntimeClient.onSseError(({ streamId: sid, message, status }) => {
         if (sid !== streamId) return

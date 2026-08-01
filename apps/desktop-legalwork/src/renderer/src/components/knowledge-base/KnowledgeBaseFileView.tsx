@@ -32,9 +32,11 @@ import {
   findKnowledgeFileForChatContext,
   KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION,
   knowledgeChatHistoryFromBlocks,
-  stripRepeatedKnowledgeQuestionLead
+  markKnowledgeSourceReferences,
+  stripRepeatedKnowledgeQuestionLead,
+  type KnowledgeChatQuote
 } from './knowledge-chat-history'
-import { extractPdfTextFromBase64, PdfJsPreview } from './PdfJsPreview'
+import { extractPdfTextFromBase64, PdfJsPreview, type PdfTextSelection } from './PdfJsPreview'
 import { setKnowledgeSourceMap, setKnowledgeOpenFileHandler } from './source-map-store'
 import { KnowledgeFileIcon, KnowledgeFileTypeBadge } from './KnowledgeFileIcon'
 import { DocxPreview } from './DocxPreview'
@@ -43,6 +45,7 @@ import {
   KnowledgeChatEmptyState,
   KnowledgeChatHeader,
   KnowledgeChatMessage,
+  KnowledgeSelectionQuote,
   useKnowledgeChatSidebarPresence
 } from './KnowledgeChatUI'
 import { KnowledgeAssistantContent } from './KnowledgeReasoningBlock'
@@ -145,6 +148,7 @@ type ChatMessage = {
   role: 'user' | 'assistant' | 'reasoning' | 'tool'
   content: string
   reasoning?: string
+  quote?: KnowledgeChatQuote
   timestamp: number
   status?: string
 }
@@ -271,6 +275,7 @@ export function KnowledgeBaseFileView({
   const [activeChatThreadId, setActiveChatThreadId] = useState<string | null>(null)
   const [liveReasoning, setLiveReasoning] = useState('')
   const [liveAssistant, setLiveAssistant] = useState('')
+  const [pendingQuote, setPendingQuote] = useState<KnowledgeChatQuote | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const chatSidebarPresent = useKnowledgeChatSidebarPresence(chatOpen)
   const [chatWidth, setChatWidth] = useState(360)
@@ -333,6 +338,14 @@ export function KnowledgeBaseFileView({
   const toggleChat = useCallback((): void => {
     setChatOpen((prev) => !prev)
   }, [])
+
+  const quotePdfSelectionForAI = useCallback((selection: PdfTextSelection): void => {
+    setPendingQuote({
+      text: selection.text,
+      label: `${node.name} · 第 ${selection.pageNumber} 页`
+    })
+    setChatOpen(true)
+  }, [node.name])
 
   // Load file content on mount
   useEffect(() => {
@@ -591,6 +604,7 @@ export function KnowledgeBaseFileView({
 
   const sendMessage = useCallback(async (question: string): Promise<void> => {
     if (!question.trim() || sending) return
+    const selectedQuote = pendingQuote
     chatAbortRef.current?.abort()
     const abort = new AbortController()
     chatAbortRef.current = abort
@@ -598,9 +612,11 @@ export function KnowledgeBaseFileView({
       id: `user_${Date.now()}`,
       role: 'user',
       content: question.trim(),
+      ...(selectedQuote ? { quote: selectedQuote } : {}),
       timestamp: Date.now()
     }
     setMessages((prev) => [...prev, userMsg])
+    setPendingQuote(null)
     setInput('')
     setSending(true)
     setChatError(null)
@@ -639,6 +655,10 @@ export function KnowledgeBaseFileView({
           .join('\n')
         : '无'
 
+      const selectionContext = selectedQuote
+        ? `## PDF 划选引用\n来源：${node.name}\n页码：${selectedQuote.label.split(' · ').at(-1) ?? ''}\n正文：\n<<<PDF_SELECTION>>>\n${selectedQuote.text}\n<<<END_PDF_SELECTION>>>\n\n回答时应优先分析这段划选内容，并将它与用户自行输入的问题区分开。`
+        : ''
+
       const prompt = `你是一个专业的法律知识助手。请基于以下检索到的相关内容回答用户的问题。
 
 ## 当前文件
@@ -648,6 +668,8 @@ ${node.name}（${fileTypeLabel(node)}）
 ${node.path}
 
 ${currentFileContext}
+
+${selectionContext}
 
 ${retrievalContext}
 
@@ -758,14 +780,10 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
       // after SSE closes so final persisted text can fill any missed early deltas.
       const assistantMsg = await pollTurnCompletion(threadId, turnId)
 
-      // Convert [来源 N] references to clickable source://N markdown links
-      const markedUp = stripRepeatedKnowledgeQuestionLead(
+      const markedUp = markKnowledgeSourceReferences(stripRepeatedKnowledgeQuestionLead(
         assistantMsg || streamedAssistant,
         question
-      ).replace(
-        /\[来源\s*(\d+)\]/g,
-        (_match, n) => `[来源 ${n}](source://${n})`
-      )
+      ))
 
       const finalReasoning = streamedReasoning.trim()
       const finalContent = markedUp || '（AI 未返回任何内容）'
@@ -788,7 +806,7 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
       if (chatAbortRef.current === abort) chatAbortRef.current = null
       setSending(false)
     }
-  }, [effectiveModel, fileContent, node, pollTurnCompletion, pushOrUpdateToolMessage, sending, activeChatThreadId, onChatThreadsChange])
+  }, [effectiveModel, fileContent, node, pendingQuote, pollTurnCompletion, pushOrUpdateToolMessage, sending, activeChatThreadId, onChatThreadsChange])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -804,6 +822,7 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
     setChatError(null)
     setLiveReasoning('')
     setLiveAssistant('')
+    setPendingQuote(null)
     setSending(false)
     setActiveChatThreadId(null)
     onSelectThread?.(null)
@@ -895,6 +914,7 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
                 <PdfJsPreview
                   base64Content={fileContent.content}
                   fileName={node.name}
+                  onAskAI={quotePdfSelectionForAI}
                 />
               ) : fileContent.type === 'image' && fileContent.objectUrl ? (
                 <div className="flex h-full items-center justify-center p-4">
@@ -1041,7 +1061,10 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
                       <span className="min-w-0 flex-1 break-words">{msg.content}</span>
                     </div>
                   ) : (
-                    <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                    <div>
+                      {msg.quote ? <KnowledgeSelectionQuote quote={msg.quote} /> : null}
+                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                    </div>
                   )}
                 </KnowledgeChatMessage>
               ))}
@@ -1098,6 +1121,8 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
             value={input}
             placeholder="输入关于文件的问题..."
             disabled={sending}
+            quote={pendingQuote}
+            onRemoveQuote={() => setPendingQuote(null)}
             onChange={setInput}
             onKeyDown={handleKeyDown}
             onSend={() => void sendMessage(input)}

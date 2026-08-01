@@ -1,7 +1,7 @@
 import type { Dispatch, ReactElement, SetStateAction } from 'react'
-import { Bot, Brain, ChevronLeft, Globe, Keyboard, RefreshCw, Settings, Smartphone } from 'lucide-react'
+import { Bot, Brain, ChevronLeft, Cpu, Globe, Keyboard, RefreshCw, Settings, Smartphone } from 'lucide-react'
 
-type SettingsCategory = 'general' | 'agents' | 'memory' | 'claw' | 'shortcuts' | 'guiUpdate'
+type SettingsCategory = 'general' | 'model' | 'agents' | 'memory' | 'claw' | 'shortcuts' | 'guiUpdate'
 
 export function SettingsSidebar({
   category,
@@ -43,6 +43,10 @@ export function SettingsSidebar({
         <button type="button" data-sidebar-hover-target data-sidebar-active={category === 'general' ? 'true' : undefined} className={catCls('general')} onClick={() => setCategory('general')}>
           <Globe className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />
           {t('general')}
+        </button>
+        <button type="button" data-sidebar-hover-target data-sidebar-active={category === 'model' ? 'true' : undefined} className={catCls('model')} onClick={() => setCategory('model')}>
+          <Cpu className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />
+          {t('modelConfig')}
         </button>
         <button type="button" data-sidebar-hover-target data-sidebar-active={category === 'agents' ? 'true' : undefined} className={catCls('agents')} onClick={() => setCategory('agents')}>
           <Bot className="h-4 w-4 shrink-0 opacity-70" strokeWidth={1.75} />

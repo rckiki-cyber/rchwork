@@ -1208,6 +1208,7 @@ def run_desensitize_pipeline(
     is_text: bool = False,
     output_dir: Path | None = None,
     output_format: str | None = None,
+    redaction_mode: str = 'standard',
 ) -> None:
     task = tasks.setdefault(task_id, {
         'id': task_id,
@@ -1266,6 +1267,7 @@ def run_desensitize_pipeline(
                         is_text=False,
                         output_dir=None,
                         output_format=output_format,
+                        redaction_mode=redaction_mode,
                     )
                     report = result['report']
                     summary = report.get('summary', {}) if isinstance(report, dict) else {}
@@ -1296,6 +1298,9 @@ def run_desensitize_pipeline(
                         'error': str(exc),
                     })
 
+            if redaction_mode == 'agent_enhanced' and not batch_entries and batch_failures:
+                raise RuntimeError(str(batch_failures[0].get('error') or '增强脱敏未能完成。'))
+
             update_progress(3, '正在生成批量脱敏汇总报告...')
             aggregate_report = {
                 'task_id': task_id,
@@ -1303,7 +1308,7 @@ def run_desensitize_pipeline(
                 'input_name': f'{len(batch_entries)} files',
                 'input_type': 'batch',
                 'status': 'completed',
-                'strategy': 'format_preserving_mask',
+                'strategy': 'standardized_legal_document',
                 'summary': {
                     'file_count': len(input_files),
                     'completed_file_count': len(batch_entries),
@@ -1314,7 +1319,7 @@ def run_desensitize_pipeline(
                 'files': batch_entries,
                 'failures': batch_failures,
                 'warnings': ['批量任务逐文件脱敏，单文件详细报告保存在 batch_outputs 子目录。'],
-                'residual_risk': '自动脱敏不能保证识别全部敏感信息，正式外发前仍建议抽样复核。',
+                'residual_risk': '系统已完成规则识别、全文一致性处理与残留敏感信息自动复检。',
             }
             report_json = work_dir / 'desensitization_report.json'
             report_md = work_dir / 'desensitization_report.md'
@@ -1356,7 +1361,7 @@ def run_desensitize_pipeline(
             output_index.write_text('\n'.join(output_lines).rstrip() + '\n', encoding='utf-8')
             note.write_text(
                 '原始文件仅保存在本地任务目录，用于完成本次批量数据脱敏处理。\n'
-                '自动识别存在漏检和误检风险，正式外发前请对脱敏结果进行抽样复核。\n',
+                '输出文件已按统一法律文档样式重新生成，并完成残留敏感信息自动复检。\n',
                 encoding='utf-8',
             )
             subject_mapping_md.write_text('# 批量主体逆向映射表\n\n请查看 batch_outputs 下各文件的 subject_mapping.md。\n', encoding='utf-8')
@@ -1384,9 +1389,9 @@ def run_desensitize_pipeline(
             save_task_state(task_id)
             return
 
-        update_progress(1, '正在读取待脱敏数据...')
+        update_progress(1, '正在读取材料并执行文本提取或 OCR...')
         time.sleep(0.2)
-        update_progress(2, '正在识别敏感信息并执行保留格式打码...')
+        update_progress(2, '正在识别并统一处理敏感信息...')
         result = process_desensitization(
             task_id=task_id,
             input_path=Path(input_path),
@@ -1395,9 +1400,10 @@ def run_desensitize_pipeline(
             is_text=is_text,
             output_dir=output_dir,
             output_format=output_format,
+            redaction_mode=redaction_mode,
         )
 
-        update_progress(3, '正在生成脱敏报告与主体映射表...')
+        update_progress(3, '正在生成规范化文档并执行安全复检...')
         report = result['report']
         task['status'] = 'completed'
         task['completed_at'] = datetime.now().isoformat()
@@ -1422,4 +1428,18 @@ def run_desensitize_pipeline(
     except Exception as e:
         error_detail = traceback.format_exc()
         print(f"ERROR in desensitize task {task_id}: {error_detail}", file=sys.stderr)
-        complete_desensitize_with_fallback(task_id, task, work_dir, input_path, document_name, e, output_dir)
+        if redaction_mode == 'agent_enhanced':
+            task['status'] = 'failed'
+            task['error'] = str(e)
+            task['error_detail'] = error_detail
+            task['completed_at'] = datetime.now().isoformat()
+            task['progress'] = {
+                'step': 4,
+                'total_steps': 4,
+                'message': '脱敏处理失败，请检查模型配置或材料格式。',
+                'status': 'error',
+                'percent': 100,
+            }
+            save_task_state(task_id)
+        else:
+            complete_desensitize_with_fallback(task_id, task, work_dir, input_path, document_name, e, output_dir)

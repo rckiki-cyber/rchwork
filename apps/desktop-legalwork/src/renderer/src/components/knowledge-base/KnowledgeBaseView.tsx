@@ -49,6 +49,7 @@ import {
   findKnowledgeFileForChatContext,
   KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION,
   knowledgeChatHistoryFromBlocks,
+  markKnowledgeSourceReferences,
   stripRepeatedKnowledgeQuestionLead
 } from './knowledge-chat-history'
 import { scheduleKnowledgeUploadFeedbackDismiss } from './knowledge-upload-feedback'
@@ -550,7 +551,7 @@ export function KnowledgeBaseView({
 
   useEffect(() => {
     if (!selectedThreadId || chatContextThreadId !== selectedThreadId) return
-    if (chatContext.kind === 'global') {
+    if (chatContext.kind !== 'file') {
       setViewingFile(null)
       return
     }
@@ -564,6 +565,19 @@ export function KnowledgeBaseView({
     setViewingFile(null)
     setChatError(`未找到这条对话对应的文件“${chatContext.fileName}”，文件可能已被移动、重命名或删除。`)
   }, [chatContext, chatContextThreadId, loading, selectedThreadId, tree])
+
+  useEffect(() => {
+    if (selectedThreadId) return
+    if (!currentPath) {
+      setChatContext({ kind: 'global' })
+      return
+    }
+    setChatContext({
+      kind: 'folder',
+      folderPath: currentPath,
+      folderName: currentPath.split('/').filter(Boolean).at(-1) ?? currentPath
+    })
+  }, [currentPath, selectedThreadId])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -899,6 +913,8 @@ export function KnowledgeBaseView({
 
   const sendKnowledgeChatMessage = useCallback(async (question: string): Promise<void> => {
     if (!question.trim() || chatSending) return
+    const scopePath = currentPath.trim()
+    const scopeName = scopePath.split('/').filter(Boolean).at(-1) ?? scopePath
     chatAbortRef.current?.abort()
     const abort = new AbortController()
     chatAbortRef.current = abort
@@ -909,7 +925,9 @@ export function KnowledgeBaseView({
       timestamp: Date.now()
     }
     setChatMessages((prev) => [...prev, userMsg])
-    setChatContext({ kind: 'global' })
+    setChatContext(scopePath
+      ? { kind: 'folder', folderPath: scopePath, folderName: scopeName }
+      : { kind: 'global' })
     setChatInput('')
     setChatSending(true)
     setChatError(null)
@@ -918,7 +936,7 @@ export function KnowledgeBaseView({
 
     try {
       const retrieval = await requestJson<KnowledgeRetrievalResult>(
-        `${LEGALWORK_KNOWLEDGE_RETRIEVE_PATH}?q=${encodeURIComponent(question.trim())}&max_chars=3000&exclude_expired=true`
+        `${LEGALWORK_KNOWLEDGE_RETRIEVE_PATH}?q=${encodeURIComponent(question.trim())}&max_chars=3000&exclude_expired=true${scopePath ? `&path_prefix=${encodeURIComponent(scopePath)}` : ''}`
       )
 
       // Save source-to-path mapping so [来源 N] links can navigate to the file.
@@ -937,7 +955,13 @@ export function KnowledgeBaseView({
           .join('\n')
         : '无'
 
+      const scopeContext = scopePath
+        ? `## 当前知识库范围\n文件夹：${scopeName}\n路径：${scopePath}\n\n只允许使用该文件夹及其子文件夹中的资料回答，不得引用范围之外的文件。`
+        : '## 当前知识库范围\n全部文件'
+
       const prompt = `你是一个专业的法律知识助手。请基于以下从知识库中检索到的相关内容回答用户的问题。
+
+${scopeContext}
 
 ## RAG 检索上下文
 ${context}
@@ -950,7 +974,7 @@ ${question.trim()}
 
 ## 回答要求
 ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
-请基于检索到的内容给出准确、专业的回答。如果内容不足以回答问题，请明确说明。引用来源时请标注对应的 [来源编号]，不要编造未出现在上下文中的依据。`
+请基于检索到的内容给出准确、专业的回答。如果内容不足以回答问题，请明确说明。${scopePath ? '当前回答必须严格限定在上述文件夹范围内。' : ''}引用来源时请标注对应的 [来源编号]，不要编造未出现在上下文中的依据。`
 
       // Reuse the active knowledge-chat thread if one exists; otherwise create a side thread.
       const workspace = await getWorkspaceRoot()
@@ -1032,14 +1056,12 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
       const assistantMsg = await pollKnowledgeChat(threadId, turnResponse.turnId)
       if (chatAbortRef.current !== abort) return
 
-      // Convert [来源 N] references to clickable source://N markdown links
-      const markedUp = stripRepeatedKnowledgeQuestionLead(
+      // Convert [来源 N] references to safe in-app hash links. Custom URL
+      // protocols are rejected by the Markdown hardener and render [blocked].
+      const markedUp = markKnowledgeSourceReferences(stripRepeatedKnowledgeQuestionLead(
         assistantMsg.content || streamedAssistant,
         question
-      ).replace(
-        /\[来源\s*(\d+)\]/g,
-        (_match, n) => `[来源 ${n}](source://${n})`
-      )
+      ))
       const finalReasoning = assistantMsg.reasoning.trim() || streamedReasoning.trim()
 
       setChatMessages((prev) => [...prev, {
@@ -1062,7 +1084,7 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
         setChatSending(false)
       }
     }
-  }, [chatSending, activeChatThreadId, onChatThreadsChange, pollKnowledgeChat])
+  }, [chatSending, currentPath, activeChatThreadId, onChatThreadsChange, pollKnowledgeChat])
 
   const clearChat = useCallback((): void => {
     chatAbortRef.current?.abort()
@@ -1073,9 +1095,15 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
     setLiveAssistant('')
     setChatSending(false)
     setActiveChatThreadId(null)
-    setChatContext({ kind: 'global' })
+    setChatContext(currentPath
+      ? {
+          kind: 'folder',
+          folderPath: currentPath,
+          folderName: currentPath.split('/').filter(Boolean).at(-1) ?? currentPath
+        }
+      : { kind: 'global' })
     onSelectThread?.(null)
-  }, [onSelectThread])
+  }, [currentPath, onSelectThread])
 
   const handleChatKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1829,7 +1857,11 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
             />
             <KnowledgeChatHeader
               title="知识库 AI 对话"
-              contextLabel={chatContext.kind === 'file' ? `当前文件 · ${chatContext.fileName}` : '全局知识库'}
+              contextLabel={chatContext.kind === 'file'
+                ? `当前文件 · ${chatContext.fileName}`
+                : chatContext.kind === 'folder'
+                  ? `当前文件夹 · ${chatContext.folderName}`
+                  : '全局知识库'}
               actions={(
                 <>
               {chatMessages.length > 0 || liveAssistant || liveReasoning ? (
@@ -1857,11 +1889,21 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
             {chatMessages.length === 0 && !chatSending && !liveAssistant && !liveReasoning ? (
               <KnowledgeChatEmptyState
                 visual={<Sparkles className="h-5 w-5 text-[var(--ds-accent)]" strokeWidth={1.7} />}
-                title={chatContext.kind === 'file' ? '关于此文件提问' : '与知识库对话'}
+                title={chatContext.kind === 'file'
+                  ? '关于此文件提问'
+                  : chatContext.kind === 'folder'
+                    ? '关于此文件夹提问'
+                    : '与知识库对话'}
                 description={chatContext.kind === 'file'
                   ? '基于当前文件内容进行对话，可询问关键信息、法律条款、风险分析或内容总结。'
-                  : '检索整个知识库后回答问题，可用于法律条款、案例分析、跨文件归纳与总结。'}
-                contextLabel={chatContext.kind === 'file' ? chatContext.fileName : '全部文件'}
+                  : chatContext.kind === 'folder'
+                    ? '只检索当前文件夹及其子文件夹，回答不会混入其他目录的内容。'
+                    : '检索整个知识库后回答问题，可用于法律条款、案例分析、跨文件归纳与总结。'}
+                contextLabel={chatContext.kind === 'file'
+                  ? chatContext.fileName
+                  : chatContext.kind === 'folder'
+                    ? chatContext.folderPath
+                    : '全部文件'}
               />
             ) : (
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
@@ -1923,7 +1965,11 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
 
             <KnowledgeChatComposer
               value={chatInput}
-              placeholder={chatContext.kind === 'file' ? '输入关于文件的问题...' : '输入关于知识库的问题...'}
+              placeholder={chatContext.kind === 'file'
+                ? '输入关于文件的问题...'
+                : chatContext.kind === 'folder'
+                  ? `输入关于“${chatContext.folderName}”的问题...`
+                  : '输入关于知识库的问题...'}
               disabled={chatSending}
               onChange={setChatInput}
               onKeyDown={handleChatKeyDown}

@@ -25,7 +25,7 @@ import { inferLayerFromMeta } from './knowledge-pyramid-router.js'
 
 export interface KnowledgeStore {
   sync(input?: KnowledgeSyncRequest): Promise<KnowledgeSyncResult>
-  search(input: { query: string; limit: number; includeContent?: boolean; layer?: KnowledgeLayer; layers?: KnowledgeLayer[] }): Promise<KnowledgeSearchHit[]>
+  search(input: { query: string; limit: number; includeContent?: boolean; layer?: KnowledgeLayer; layers?: KnowledgeLayer[]; pathPrefix?: string }): Promise<KnowledgeSearchHit[]>
   diagnostics(): Promise<KnowledgeDiagnostics>
   setLastSelected(ids: string[]): void
   /** List managed file/folder tree. */
@@ -351,8 +351,11 @@ export class FileKnowledgeStore implements KnowledgeStore {
 
     const documents: KnowledgeDocument[] = []
     const chunks: KnowledgeChunk[] = []
-    for (const filePath of files) {
-      const root = roots.find((candidate) => isInside(filePath, candidate)) ?? roots[0] ?? resolve('.')
+    const uniqueFiles = [...new Set(files.map((filePath) => resolve(filePath)))]
+    for (const filePath of uniqueFiles) {
+      const root = roots
+        .filter((candidate) => isInside(filePath, candidate))
+        .sort((left, right) => right.length - left.length)[0] ?? roots[0] ?? resolve('.')
       try {
         const info = await stat(filePath)
         const ext = extname(filePath).toLowerCase()
@@ -405,7 +408,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
     }
   }
 
-  async search(input: { query: string; limit: number; includeContent?: boolean; layer?: KnowledgeLayer; layers?: KnowledgeLayer[] }): Promise<KnowledgeSearchHit[]> {
+  async search(input: { query: string; limit: number; includeContent?: boolean; layer?: KnowledgeLayer; layers?: KnowledgeLayer[]; pathPrefix?: string }): Promise<KnowledgeSearchHit[]> {
     const query = input.query.trim()
     if (!query) return []
     let index = await this.readIndex()
@@ -421,6 +424,13 @@ export class FileKnowledgeStore implements KnowledgeStore {
     const filterByLayer = targetLayers.size > 0
 
     let candidates = index.chunks
+    const pathPrefix = normalizeRelativePath(input.pathPrefix ?? '')
+    if (pathPrefix) {
+      candidates = candidates.filter((chunk) => {
+        const chunkPath = knowledgeSearchRelativePath(chunk, this.managedRoot)
+        return chunkPath === pathPrefix || chunkPath.startsWith(`${pathPrefix}/`)
+      })
+    }
     if (filterByLayer) {
       // Layer filtering must NOT exclude unlabeled chunks: most user-uploaded
       // documents carry no pyramid layer, and excluding them made retrieval
@@ -432,6 +442,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
         (chunk) => !chunk.layer || targetLayers.has(chunk.layer)
       )
     }
+    candidates = [...new Map(candidates.map((chunk) => [chunk.id, chunk])).values()]
 
     const terms = queryTerms(query)
     const lowerQuery = query.toLowerCase()
@@ -443,21 +454,24 @@ export class FileKnowledgeStore implements KnowledgeStore {
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score || a.chunk.relativePath.localeCompare(b.chunk.relativePath))
       .slice(0, RERANK_POOL_SIZE), Math.max(1, input.limit))
-      .map(({ chunk, score, rankReason }) => ({
-        documentId: chunk.documentId,
-        chunkId: chunk.id,
-        title: chunk.title,
-        path: chunk.path,
-        relativePath: chunk.relativePath,
-        ...(chunk.category ? { category: chunk.category } : {}),
-        ...(chunk.tags?.length ? { tags: chunk.tags } : {}),
-        ...(chunk.keywords?.length ? { keywords: chunk.keywords } : {}),
-        ...(chunk.layer ? { layer: chunk.layer } : {}),
-        score,
-        rankReason,
-        snippet: makeSnippet(chunk.content, lowerQuery, terms),
-        ...(input.includeContent ? { content: chunk.content } : {})
-      }))
+      .map(({ chunk, score, rankReason }) => {
+        const relativePath = knowledgeSearchRelativePath(chunk, this.managedRoot)
+        return {
+          documentId: chunk.documentId,
+          chunkId: chunk.id,
+          title: chunk.title,
+          path: chunk.path,
+          relativePath,
+          ...(chunk.category ? { category: chunk.category } : {}),
+          ...(chunk.tags?.length ? { tags: chunk.tags } : {}),
+          ...(chunk.keywords?.length ? { keywords: chunk.keywords } : {}),
+          ...(chunk.layer ? { layer: chunk.layer } : {}),
+          score,
+          rankReason,
+          snippet: makeSnippet(chunk.content, lowerQuery, terms),
+          ...(input.includeContent ? { content: chunk.content } : {})
+        }
+      })
     this.setLastSelected(hits.map((hit) => hit.documentId))
     return hits
   }
@@ -1049,6 +1063,13 @@ function normalizeRelativePath(path: string): string {
     .map((part) => part.trim())
     .filter((part) => part && part !== '.')
     .join('/')
+}
+
+function knowledgeSearchRelativePath(chunk: KnowledgeChunk, managedRoot: string): string {
+  if (isInside(chunk.path, managedRoot)) {
+    return normalizeRelativePath(relative(managedRoot, chunk.path))
+  }
+  return normalizeRelativePath(chunk.relativePath)
 }
 
 function normalizeText(text: string): string {

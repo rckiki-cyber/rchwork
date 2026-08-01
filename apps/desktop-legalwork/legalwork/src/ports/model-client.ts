@@ -102,4 +102,5 @@ export interface ModelClient {
   readonly provider: string
   readonly model: string
   stream(request: ModelRequest): AsyncIterable<ModelStreamChunk>
+  close?(): Promise<void>
 }

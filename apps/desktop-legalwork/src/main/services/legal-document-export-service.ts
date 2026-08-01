@@ -256,6 +256,20 @@ function normalizeResearchTables(lines: string[]): string[] {
 function normalizeResearchHeadings(lines: string[]): string[] {
   let section = 0
   let subsection = 0
+  let item = 0
+  let subitem = 0
+
+  const chineseNumber = (value: number): string => {
+    const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九']
+    if (value < 10) return digits[value] ?? String(value)
+    if (value === 10) return '十'
+    if (value < 20) return `十${digits[value % 10] ?? ''}`
+    if (value < 100) {
+      const ones = value % 10
+      return `${digits[Math.floor(value / 10)] ?? ''}十${ones ? digits[ones] : ''}`
+    }
+    return String(value)
+  }
 
   return lines.map((line) => {
     const match = /^(#{1,6})\s+(.+?)\s*$/.exec(line)
@@ -266,17 +280,30 @@ function normalizeResearchHeadings(lines: string[]): string[] {
     if (level === 1) return `# ${heading}`
 
     const withoutNumber = heading
-      .replace(/^(?:[一二三四五六七八九十百]+[、.．]|第[一二三四五六七八九十百\d]+[章节部分][、.．]?|\d+(?:\.\d+)*[、.．]?)\s*/, '')
+      .replace(/^(?:[一二三四五六七八九十百]+[、.．]|第[一二三四五六七八九十百\d]+[章节部分项][、.．]?|\d+(?:\.\d+)*[、.．]?)\s*/, '')
       .replace(/^[（(][一二三四五六七八九十百\d]+[）)]\s*/, '')
 
     if (level === 2) {
       section += 1
       subsection = 0
-      return `## ${section}、${withoutNumber}`
+      item = 0
+      subitem = 0
+      return `## ${chineseNumber(section)}、${withoutNumber}`
     }
     if (level === 3) {
       subsection += 1
-      return `### （${subsection}）${withoutNumber}`
+      item = 0
+      subitem = 0
+      return `### （${chineseNumber(subsection)}）${withoutNumber}`
+    }
+    if (level === 4) {
+      item += 1
+      subitem = 0
+      return `#### ${item}、${withoutNumber}`
+    }
+    if (level === 5) {
+      subitem += 1
+      return `##### （${subitem}）${withoutNumber}`
     }
     return `**${withoutNumber}**`
   })
@@ -307,11 +334,10 @@ export function prepareLegalDocumentMarkdown(options: {
     if (inFence) return [line]
 
     const withoutBullet = line.replace(/^\s*[-*+]\s+(?=\S)/, '')
-    const ordered = /^\s*(\d+[.)、])\s+(.+)$/.exec(withoutBullet)
+    const ordered = /^\s*(\d+)[.)、]\s+(.+)$/.exec(withoutBullet)
     if (ordered) {
-      if (!isResearch) return [`${ordered[1]} ${ordered[2]}`, '']
-      const inlineMarker = (ordered[1] ?? '').replace(/[.)]/g, (punctuation) => `\\${punctuation}`)
-      return [`${inlineMarker} ${ordered[2]}`, '']
+      if (!isResearch) return [`${ordered[1]}. ${ordered[2]}`, '']
+      return [`${ordered[1]}、${ordered[2]}`, '']
     }
     return [withoutBullet]
   })

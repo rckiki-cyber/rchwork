@@ -127,19 +127,41 @@ export function createThreadActions(
   let activeTurnRecovery: { threadId: string; promise: Promise<boolean> } | null = null
   return {
   createThread: async (options = {}) => {
+    // Leave the current conversation synchronously so the New conversation
+    // command never waits on settings, thread discovery, or runtime I/O before
+    // showing a blank composer. A running turn continues in the runtime and is
+    // tracked by the existing background completion watcher.
+    const initialState = get()
+    const previousActiveThread = initialState.activeThreadId
+      ? initialState.threads.find((thread) => thread.id === initialState.activeThreadId) ?? null
+      : null
+    if (initialState.runtimeConnection === 'ready') {
+      const nextWatch = { ...initialState.watchTurnCompletion }
+      if (initialState.activeThreadId && initialState.busy) {
+        nextWatch[initialState.activeThreadId] = true
+        watchTurnCompletionNotification(initialState.activeThreadId)
+      }
+      sseAbortRef.current?.abort()
+      sseAbortRef.current = null
+      clearBusyWatchdog()
+      resetBusyRecoveryAttempts()
+      set({
+        ...clearedThreadSelection(),
+        watchTurnCompletion: nextWatch,
+        error: null
+      })
+      syncTurnCompletionPoll(set, get)
+    }
     if (!(await ensureRuntimeReadyForAction(set, get))) {
       return
     }
     try {
       const p = getProvider()
       const settings = await rendererRuntimeClient.getSettings()
-      const activeThread = get().activeThreadId
-        ? get().threads.find((thread) => thread.id === get().activeThreadId)
-        : null
       const workspaceRoot =
         normalizeWorkspaceRoot(options.workspaceRoot) ||
-        (activeThread && !isInternalTemporaryWorkspace(activeThread.workspace)
-          ? normalizeWorkspaceRoot(activeThread.workspace)
+        (previousActiveThread && !isInternalTemporaryWorkspace(previousActiveThread.workspace)
+          ? normalizeWorkspaceRoot(previousActiveThread.workspace)
           : '') ||
         normalizeWorkspaceRoot(settings.workspaceRoot)
       if (!workspaceRoot) {

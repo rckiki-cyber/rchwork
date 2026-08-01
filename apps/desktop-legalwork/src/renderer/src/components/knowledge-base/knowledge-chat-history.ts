@@ -6,11 +6,18 @@ export type ChatMessage = {
   role: 'user' | 'assistant'
   content: string
   reasoning?: string
+  quote?: KnowledgeChatQuote
   timestamp: number
+}
+
+export type KnowledgeChatQuote = {
+  text: string
+  label: string
 }
 
 export type KnowledgeChatContext =
   | { kind: 'global' }
+  | { kind: 'folder'; folderPath: string; folderName: string }
   | { kind: 'file'; fileName: string; filePath?: string }
 
 export type KnowledgeChatHistory = {
@@ -20,6 +27,13 @@ export type KnowledgeChatHistory = {
 
 export const KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION =
   '直接回答用户问题，不要在回答开头重复、改写或概括用户问题；不要把用户问题作为 Markdown 标题、加粗文本或引言单独输出。'
+
+export function markKnowledgeSourceReferences(answer: string): string {
+  return answer.replace(
+    /\[来源\s*(\d+)\](?!\()/g,
+    (_match, sourceNumber: string) => `[来源 ${sourceNumber}](#knowledge-source-${sourceNumber})`
+  )
+}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -94,11 +108,40 @@ function normalizeKnowledgeFileName(value: string): string {
 function extractKnowledgeChatContext(text: string): KnowledgeChatContext | null {
   const currentFile = extractMarkdownSection(text, '当前文件')
   const firstLine = currentFile?.split('\n').map((line) => line.trim()).find(Boolean)
-  if (!firstLine) return null
-  const fileName = normalizeKnowledgeFileName(firstLine)
-  if (!fileName) return null
-  const filePath = extractMarkdownSection(text, '当前文件路径')?.split('\n')[0]?.trim()
-  return filePath ? { kind: 'file', fileName, filePath } : { kind: 'file', fileName }
+  if (firstLine) {
+    const fileName = normalizeKnowledgeFileName(firstLine)
+    if (fileName) {
+      const filePath = extractMarkdownSection(text, '当前文件路径')?.split('\n')[0]?.trim()
+      return filePath ? { kind: 'file', fileName, filePath } : { kind: 'file', fileName }
+    }
+  }
+
+  const currentScope = extractMarkdownSection(text, '当前知识库范围')
+  const folderPath = currentScope
+    ?.split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.startsWith('路径：'))
+    ?.slice('路径：'.length)
+    .trim()
+  if (!folderPath) return null
+  const folderName = folderPath.split('/').filter(Boolean).at(-1) ?? folderPath
+  return { kind: 'folder', folderPath, folderName }
+}
+
+function extractKnowledgeQuote(text: string): KnowledgeChatQuote | undefined {
+  const section = extractMarkdownSection(text, 'PDF 划选引用')
+  if (!section) return undefined
+  const lines = section.split('\n')
+  const source = lines.find((line) => line.trim().startsWith('来源：'))?.trim().slice('来源：'.length).trim()
+  const page = lines.find((line) => line.trim().startsWith('页码：'))?.trim().slice('页码：'.length).trim()
+  const delimitedBody = text.match(/<<<PDF_SELECTION>>>\n([\s\S]*?)\n<<<END_PDF_SELECTION>>>/)
+  const bodyStart = lines.findIndex((line) => line.trim() === '正文：')
+  const quoteText = (delimitedBody?.[1] ?? (bodyStart >= 0 ? lines.slice(bodyStart + 1).join('\n') : section)).trim()
+  if (!quoteText) return undefined
+  return {
+    text: quoteText,
+    label: [source, page].filter(Boolean).join(' · ') || 'PDF 划选内容'
+  }
 }
 
 function normalizedPath(value: string): string {
@@ -143,10 +186,12 @@ export function knowledgeChatHistoryFromBlocks(blocks: ChatBlock[]): KnowledgeCh
       pendingReasoning = ''
       context = extractKnowledgeChatContext(block.text) ?? context
       latestUserQuestion = restoreKnowledgeUserQuestion(block.text)
+      const quote = extractKnowledgeQuote(block.text)
       messages.push({
         id: block.id,
         role: 'user',
         content: latestUserQuestion,
+        ...(quote ? { quote } : {}),
         timestamp: block.createdAt ? new Date(block.createdAt).getTime() : Date.now()
       })
     } else if (block.kind === 'reasoning') {

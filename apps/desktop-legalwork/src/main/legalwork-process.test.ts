@@ -315,6 +315,25 @@ describe('syncGuiManagedLegalworkConfig', () => {
     ]))
   })
 
+  it('GUI-managed attachments accept every file type via */*', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const configPath = join(tempRoot, 'config.json')
+    writeFileSync(configPath, JSON.stringify({
+      capabilities: {
+        attachments: {
+          enabled: true,
+          allowedMimeTypes: ['image/png']
+        }
+      }
+    }), 'utf8')
+    const module = await import('./legalwork-process')
+
+    await module.syncGuiManagedLegalworkConfig(tempRoot, defaultLegalworkRuntimeSettings())
+
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
+    expect(parsed.capabilities.attachments.allowedMimeTypes).toContain('*/*')
+  })
+
   it('adds the built-in schedule MCP server to Legalwork runtime capabilities', async () => {
     if (!tempRoot) throw new Error('temp root not initialized')
     const configPath = join(tempRoot, 'config.json')
@@ -690,6 +709,47 @@ describe('syncGuiManagedLegalworkConfig', () => {
         Authorization: 'Bearer docs-token'
       },
       trustScope: 'user'
+    })
+  })
+
+  it('rebinds the bundled IMA MCP script to the currently running app', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const configPath = join(tempRoot, 'config.json')
+    const mcpConfigPath = join(tempRoot, 'mcp.json')
+    const appPath = '/Users/test/Desktop/legalwork-dev.app/Contents/Resources/app.asar'
+    writeFileSync(mcpConfigPath, JSON.stringify({
+      servers: {
+        'ima-knowledge-base': {
+          enabled: true,
+          transport: 'stdio',
+          command: 'python3',
+          args: ['/Applications/legalwork.app/Contents/Resources/scripts/ima-mcp-server.py'],
+          env: {
+            IMA_CREDS_FILE: '/Users/test/Library/Application Support/legalwork/ima-creds.json'
+          },
+          trustScope: 'user',
+          timeoutMs: 120000
+        }
+      }
+    }), 'utf8')
+    const module = await import('./legalwork-process')
+
+    await module.syncGuiManagedLegalworkConfig(tempRoot, defaultLegalworkRuntimeSettings(), {
+      ima: { appPath, isPackaged: true },
+      mcpConfigPath
+    })
+
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
+    expect(parsed.capabilities.mcp.servers['ima-knowledge-base']).toMatchObject({
+      enabled: true,
+      transport: 'stdio',
+      command: 'python3',
+      args: ['/Users/test/Desktop/legalwork-dev.app/Contents/Resources/scripts/ima-mcp-server.py'],
+      env: {
+        IMA_CREDS_FILE: '/Users/test/Library/Application Support/legalwork/ima-creds.json'
+      },
+      trustScope: 'user',
+      timeoutMs: 120000
     })
   })
 

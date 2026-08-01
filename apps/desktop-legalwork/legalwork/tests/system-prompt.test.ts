@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { LEGALWORK_SYSTEM_PROMPT } from '../src/prompt/legalwork-system-prompt.js'
 
 describe('LEGALWORK_SYSTEM_PROMPT', () => {
+  it('uses renderable Mermaid for genuinely visual connected structures', () => {
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('valid Mermaid diagram')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('ASCII arrows')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('do not add a diagram when prose or a short list is clearer')
+  })
+
   it('defaults visible reasoning and answers to Chinese', () => {
     expect(LEGALWORK_SYSTEM_PROMPT).toContain('visible process/reasoning text')
     expect(LEGALWORK_SYSTEM_PROMPT).toContain('Default to Simplified Chinese for internal reasoning/thinking')

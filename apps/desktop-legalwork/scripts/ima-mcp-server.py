@@ -499,6 +499,7 @@ def _extract_text(value, depth=0):
         for key in (
             "Data",
             "data",
+            "text_message",
             "Result",
             "result",
             "Payload",
@@ -549,18 +550,46 @@ def _collect_refs(value, refs, depth=0):
         return
     if not isinstance(value, dict):
         return
-    medias = value.get("medias")
-    if isinstance(medias, list):
-        for media in medias:
+
+    # IMA 先后使用过 medias 和 file_list.files 两种参考资料结构。
+    for collection_key in ("medias", "files"):
+        collection = value.get(collection_key)
+        if not isinstance(collection, list):
+            continue
+        for media in collection:
             if not isinstance(media, dict):
                 continue
-            title = media.get("title") or media.get("mediaName") or media.get("name")
+            title = (
+                media.get("title")
+                or media.get("mediaName")
+                or media.get("name")
+                or media.get("fileName")
+                or media.get("file_name")
+            )
+            if title:
+                refs.append(str(title))
+
+    # reference_indexes.indexes 可能是以引用编号为键的对象映射。
+    indexes = value.get("indexes")
+    if isinstance(indexes, dict):
+        for item in indexes.values():
+            if not isinstance(item, dict):
+                continue
+            title = (
+                item.get("title")
+                or item.get("mediaName")
+                or item.get("name")
+                or item.get("fileName")
+                or item.get("file_name")
+            )
             if title:
                 refs.append(str(title))
     for key in (
         "context_refs",
         "Data",
         "data",
+        "file_list",
+        "reference_indexes",
         "Result",
         "result",
         "Payload",
@@ -1069,6 +1098,31 @@ TOOLS.update(_COOKIE_ONLY_TOOLS)
 if _has_openapi:
     TOOLS.update(_OPENAPI_TOOLS)
 
+_TOOL_ERROR_PREFIXES = (
+    "IMA_PROTOCOL_ERROR:",
+    "IMA_AUTH_EXPIRED:",
+    "IMA_SESSION_ERROR:",
+    "IMA_LIST_ERROR:",
+    "Q&A 接口返回",
+    "Q&A 请求失败:",
+    "需要 IMA 登录凭证",
+)
+
+
+def _is_tool_result_error(result):
+    if not isinstance(result, dict):
+        return True
+    if "error" in result:
+        return True
+    answer = result.get("answer")
+    if not isinstance(answer, str):
+        return False
+    # research_ima 会在回答前增加自动选库说明。
+    if answer.startswith("【IMA 自动选库：") and "\n\n" in answer:
+        answer = answer.split("\n\n", 1)[1]
+    return answer.lstrip().startswith(_TOOL_ERROR_PREFIXES)
+
+
 def main():
     for line in sys.stdin:
         line = line.strip()
@@ -1103,7 +1157,7 @@ def main():
                 result = tool["handler"](args)
                 text = json.dumps(result, ensure_ascii=False, indent=2) if not isinstance(result.get("answer"), str) else result["answer"]
                 respond(req_id, {"content": [{"type": "text", "text": text}],
-                                "isError": "error" in result})
+                                "isError": _is_tool_result_error(result)})
             except Exception as e:
                 respond_error(req_id, -32603, str(e))
             continue

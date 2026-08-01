@@ -13,6 +13,7 @@ import {
   computeLegalworkRuntimeCredentialPatch,
   getActiveAgentApiKey,
   getLegalworkRuntimeSettings,
+  isLegalworkModelAuthConfigured,
   mergeClawSettings,
   mergeLearningIterationSettings,
   mergeModelProviderSettings,
@@ -144,6 +145,10 @@ function resolveConfiguredApiKey(settings: AppSettingsV1): string {
   const fromSettings = getActiveAgentApiKey(settings)
   const fromEnv = process.env.DEEPSEEK_API_KEY?.trim() ?? ''
   return fromSettings || fromEnv
+}
+
+function hasConfiguredModelAuth(settings: AppSettingsV1): boolean {
+  return isLegalworkModelAuthConfigured(settings) || Boolean(process.env.DEEPSEEK_API_KEY?.trim())
 }
 
 function runtimeJsonError(code: string, message: string): Error {
@@ -621,7 +626,7 @@ async function ensureRuntimeOnce(settings: AppSettingsV1): Promise<void> {
 
 async function ensureLegalworkRuntime(settings: AppSettingsV1): Promise<void> {
   const runtime = getLegalworkRuntimeSettings(settings)
-  const hasApiKey = Boolean(resolveConfiguredApiKey(settings))
+  const hasModelAuth = hasConfiguredModelAuth(settings)
 
   const healthy = await waitForLegalworkHealth(settings, RUNTIME_EXISTING_HEALTH_FAST_MS)
   if (healthy) {
@@ -630,10 +635,10 @@ async function ensureLegalworkRuntime(settings: AppSettingsV1): Promise<void> {
     throw runtimeJsonError(threadApi.error, threadApi.message)
   }
 
-  if (!hasApiKey) {
+  if (!hasModelAuth) {
     throw runtimeJsonError(
-      'missing_api_key',
-      'DeepSeek API Key is required before the GUI can start Legalwork.'
+      'missing_model_auth',
+      'Configure a model API key or sign in to ChatGPT before the GUI starts Legalwork.'
     )
   }
   if (!runtime.autoStart) {
@@ -831,7 +836,7 @@ async function restartManagedRuntimeForSettingsChange(
   if (wasRunning) {
     await adapter.stopAndWait()
   }
-  if (!resolveConfiguredApiKey(next) || !runtime.autoStart) return
+  if (!hasConfiguredModelAuth(next) || !runtime.autoStart) return
 
   try {
     await adapter.ensureRunning(next)
@@ -851,7 +856,7 @@ async function restartManagedRuntimeForMcpConfigChange(settings: AppSettingsV1):
 
   if (!wasRunning) return
   await adapter.stopAndWait()
-  if (!resolveConfiguredApiKey(settings) || !runtime.autoStart) return
+  if (!hasConfiguredModelAuth(settings) || !runtime.autoStart) return
 
   try {
     await adapter.ensureRunning(settings)
@@ -1093,7 +1098,7 @@ app.whenReady().then(async () => {
       })
   })
 
-  if (resolveConfiguredApiKey(initial) && getLegalworkRuntimeSettings(initial).autoStart) {
+  if (hasConfiguredModelAuth(initial) && getLegalworkRuntimeSettings(initial).autoStart) {
     void ensureRuntime(initial).catch((err) => {
       console.warn('[legalwork] startup runtime warmup failed:', err)
     })
@@ -1106,7 +1111,7 @@ app.whenReady().then(async () => {
     console.warn('[legalwork] prune logs:', err)
   })
 
-  if (resolveConfiguredApiKey(initial)) {
+  if (hasConfiguredModelAuth(initial)) {
     setTimeout(() => {
       void legalworkRuntimeAdapter.resolveExecutable(initial).catch((err) => {
         console.warn('[legalwork] prewarm Legalwork binary:', err)

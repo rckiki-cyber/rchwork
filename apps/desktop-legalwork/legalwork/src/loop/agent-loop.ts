@@ -78,6 +78,10 @@ import { TODO_LIST_TOOL_NAME, TODO_WRITE_TOOL_NAME } from '../adapters/tool/todo
 import { shellRuntimeInstruction } from '../adapters/tool/builtin-tool-utils.js'
 import { LEGALWORK_SYSTEM_PROMPT } from '../prompt/legalwork-system-prompt.js'
 import { resolveImaRouteAction } from './ima-knowledge-router.js'
+import {
+  OFFICECLI_TOOL_NAME,
+  officeDocumentWorkflowInstruction
+} from './office-document-workflow.js'
 
 const PARALLEL_READ_ONLY_TOOL_NAMES = new Set(['read', 'grep', 'find', 'ls'])
 const MAX_PARALLEL_TOOL_CALLS = 3
@@ -721,6 +725,12 @@ export class AgentLoop {
     const requestToolSpecs = requiredToolName
       ? toolSpecs.filter((tool) => tool.name === requiredToolName)
       : toolSpecs
+    const officeWorkflowInstruction = officeDocumentWorkflowInstruction({
+      prompt: latestUserMessageText(healed.items, turnId) || turn?.prompt || '',
+      items: healed.items,
+      turnId,
+      officeCliAvailable: requestToolSpecs.some((tool) => tool.name === OFFICECLI_TOOL_NAME)
+    })
     // Final step of a plan turn that still owes a plan. Offer ONLY create_plan
     // (this DeepSeek-compatible provider ignores a forced tool_choice, so we
     // remove the investigation tools instead) so the model can only save the
@@ -739,6 +749,7 @@ export class AgentLoop {
       ...memoryInstructions(memories),
       ...skillResolution.instructions,
       ...(imaRouteAction ? [imaRouteAction.instruction] : []),
+      ...(officeWorkflowInstruction ? [officeWorkflowInstruction] : []),
       ...(requestToolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
       ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : [])
     ]
@@ -1156,6 +1167,10 @@ export class AgentLoop {
           call,
           context
         })
+        this.toolStormBreakers.get(input.turnId)?.observeResult(
+          call,
+          result.item.kind === 'tool_result' && result.item.isError === true
+        )
         await this.persistToolCallResult(input.threadId, input.turnId, call, result)
         index += 1
         continue
@@ -1196,6 +1211,10 @@ export class AgentLoop {
         const batchCall = batch[batchIndex]
         if (!result || !batchCall) continue
         if (result.status === 'rejected') throw result.reason
+        this.toolStormBreakers.get(input.turnId)?.observeResult(
+          batchCall,
+          result.value.item.kind === 'tool_result' && result.value.item.isError === true
+        )
         await this.persistToolCallResult(input.threadId, input.turnId, batchCall, result.value)
       }
 

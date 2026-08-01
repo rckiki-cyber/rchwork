@@ -73,12 +73,16 @@ describe('template generation legal formatting prompt', () => {
       materials: [{
         fileName: '判决书.txt',
         content: '被告蓝尚宝商贸有限公司，法定代表人陈某。'
-      }]
+      }],
+      instructions: '倾向维护被告立场，重点说明已履行部分义务。'
     })
 
     expect(userPrompt).toContain('被告蓝尚宝商贸有限公司')
     expect(userPrompt).toContain('未填写；有材料时必须先从全部材料主动提取')
     expect(systemPrompt).toContain('只要有明确答案就直接写入')
     expect(systemPrompt).toContain('禁止输出“待核实：请填写”')
+    expect(systemPrompt).toContain('不得写出与用户明确倾向相反的立场')
+    expect(userPrompt).toContain('用户补充要求（立场、倾向、目标与重点；必须优先落实）')
+    expect(userPrompt).toContain('倾向维护被告立场，重点说明已履行部分义务')
   })
 })

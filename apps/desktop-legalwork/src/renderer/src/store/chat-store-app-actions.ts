@@ -1,5 +1,6 @@
 import type i18next from 'i18next'
 import type { AppSettingsV1 } from '@shared/app-settings'
+import type { ModelProviderModelGroup } from '@shared/ds-gui-api'
 import { rendererRuntimeClient } from '../agent/runtime-client'
 import type { ChatState, ChatStoreGet, ChatStoreSet, InitialSetupMode, PluginHostRoute, SettingsRouteSection } from './chat-store-types'
 
@@ -106,8 +107,39 @@ export function createAppActions(options: CreateAppActionsOptions): Pick<
       if (getComposerModelLoadPromise()) return getComposerModelLoadPromise()!
       if (typeof window.dsGui === 'undefined') return
       const task = (async () => {
-        const res = await window.dsGui.fetchUpstreamModels()
         const settings = await rendererRuntimeClient.getSettings()
+        const legalworkRuntime = settings.agents.legalwork
+        // ChatGPT-account auth mode: the composer should offer the models the
+        // Codex/ChatGPT login actually provides, not the API-provider list.
+        if (legalworkRuntime.authMode === 'chatgpt') {
+          let model = readStoredComposerModel([])
+          let pick: string[] = []
+          let groups: ModelProviderModelGroup[] = []
+          try {
+            if (typeof window.dsGui?.getCodexAuthStatus === 'function') {
+              const status = await window.dsGui.getCodexAuthStatus(false)
+              if (status?.loggedIn && Array.isArray(status.models)) {
+                pick = status.models.map((m) => m.id)
+                groups = [{ providerId: 'codex', label: 'ChatGPT', modelIds: pick }]
+                const defaultModel = status.models.find((m) => m.isDefault)?.id
+                if (defaultModel) model = defaultModel
+              }
+            }
+          } catch {
+            pick = []
+          }
+          const allowed = new Set(pick)
+          if (model && !allowed.has(model)) model = pick[0] ?? ''
+          if (model !== get().composerModel) persistComposerModel(model)
+          set({
+            composerPickList: pick,
+            composerModel: model,
+            composerProviderId: 'codex',
+            composerModelGroups: groups
+          })
+          return
+        }
+        const res = await window.dsGui.fetchUpstreamModels()
         const pick = mergeComposerPickList(res.ok, res.ok ? res.modelIds : [])
         const groups = res.ok ? res.modelGroups ?? [] : []
         const allowed = new Set(pick)
@@ -121,7 +153,7 @@ export function createAppActions(options: CreateAppActionsOptions): Pick<
           return {
             composerPickList: pick,
             composerModel: model,
-            composerProviderId: settings.agents.legalwork.providerId,
+            composerProviderId: legalworkRuntime.providerId,
             composerModelGroups: groups
           }
         })

@@ -3,6 +3,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   isExternalMarkdownHref,
+  knowledgeSourceRefFromHref,
   shouldAnimateStreamingText,
   StreamdownAssistant
 } from './StreamdownAssistant'
@@ -32,6 +33,12 @@ describe('shouldAnimateStreamingText', () => {
     expect(isExternalMarkdownHref('not a url')).toBe(false)
   })
 
+  it('recognizes only the safe knowledge-source fragment format', () => {
+    expect(knowledgeSourceRefFromHref('#knowledge-source-3')).toBe('3')
+    expect(knowledgeSourceRefFromHref('source://3')).toBeNull()
+    expect(knowledgeSourceRefFromHref('#knowledge-source-any')).toBeNull()
+  })
+
   it('renders a verified legal-source Markdown link as a clickable external anchor', () => {
     const html = renderToStaticMarkup(
       createElement(StreamdownAssistant, {
@@ -44,5 +51,18 @@ describe('shouldAnimateStreamingText', () => {
     expect(html).toContain('class="ds-external-link"')
     expect(html).toContain('rel="noopener noreferrer"')
     expect(html).toContain('《个人信息保护法》')
+  })
+
+  it('renders knowledge citations without a blocked protocol marker', () => {
+    const html = renderToStaticMarkup(
+      createElement(StreamdownAssistant, {
+        text: '[来源 3](#knowledge-source-3)',
+        streaming: false
+      })
+    )
+
+    expect(html).toContain('href="#knowledge-source-3"')
+    expect(html).toContain('ds-knowledge-source-link')
+    expect(html).not.toContain('[blocked]')
   })
 })

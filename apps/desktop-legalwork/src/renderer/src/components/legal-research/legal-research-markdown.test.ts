@@ -73,4 +73,56 @@ describe('preprocessLegalResearchSummary', () => {
 
     expect(preprocessLegalResearchSummary(input)).toBe(input)
   })
+
+  it('removes the final stage broadcast before the actual report heading', () => {
+    const input = [
+      '✅ 第六阶段完成（帮信罪条文与司法解释核验）',
+      '',
+      '**主要结果：**',
+      '- 《刑法》第287条之二已经核验。',
+      '',
+      '**全部调研阶段已完成，材料齐备。以下为最终报告。**',
+      '',
+      '---',
+      '',
+      '# 多源调研报告：抢号软件行为定性',
+      '',
+      '## 一、结论',
+      '',
+      '这是最终报告正文。'
+    ].join('\n')
+
+    expect(preprocessLegalResearchSummary(input)).toBe([
+      '# 多源调研报告：抢号软件行为定性',
+      '',
+      '## 一、结论',
+      '',
+      '这是最终报告正文。'
+    ].join('\n'))
+  })
+})
+
+describe('finalReportOnly / planning heading exclusion', () => {
+  it('does not treat a planning heading as the start of the report', () => {
+    const input = [
+      '# 调研规划',
+      '',
+      '1. 核验刑法第30条',
+      '2. 检索案例',
+      '',
+      '# 一、结论',
+      '',
+      '本案辩护要点如下。'
+    ].join('\n')
+    const result = preprocessLegalResearchSummary(input)
+    // The report should start at "一、结论", not at "调研规划".
+    expect(result).not.toContain('调研规划')
+    expect(result).toContain('一、结论')
+    expect(result).toContain('本案辩护要点如下')
+  })
+
+  it('keeps a plain summary when there is no report heading', () => {
+    const input = '第一阶段检索完成，已核验法规。'
+    expect(preprocessLegalResearchSummary(input)).toBe(input)
+  })
 })

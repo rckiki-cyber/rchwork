@@ -37,6 +37,59 @@ describe('IMA knowledge router', () => {
     })
   })
 
+  it('does not force IMA ahead of an available PKULaw source', () => {
+    const action = resolveImaRouteAction({
+      prompt,
+      tools: [
+        {
+          name: 'mcp_ima_knowledge_base_research_ima',
+          description: 'research',
+          inputSchema: {}
+        },
+        {
+          name: 'mcp_pkulaw_law_search_search_article',
+          description: 'search laws',
+          inputSchema: {}
+        },
+        {
+          name: 'mcp_pkulaw_case_semantic_search_search_case',
+          description: 'search cases',
+          inputSchema: {}
+        }
+      ],
+      items: [],
+      turnId
+    })
+
+    expect(action).toBeNull()
+  })
+
+  it('still honors an explicit request to use IMA first', () => {
+    const imaFirstPrompt = '请先调用 IMA，再分析企业解除劳动合同的法律风险'
+    const action = resolveImaRouteAction({
+      prompt: imaFirstPrompt,
+      tools: [
+        {
+          name: 'mcp_ima_knowledge_base_research_ima',
+          description: 'research',
+          inputSchema: {}
+        },
+        {
+          name: 'mcp_pkulaw_law_search_search_article',
+          description: 'search laws',
+          inputSchema: {}
+        }
+      ],
+      items: [],
+      turnId
+    })
+
+    expect(action).toMatchObject({
+      kind: 'direct',
+      requiredToolName: 'mcp_ima_knowledge_base_research_ima'
+    })
+  })
+
   it('discovers and then calls research_ima in progressive MCP mode', () => {
     const discover = resolveImaRouteAction({
       prompt,

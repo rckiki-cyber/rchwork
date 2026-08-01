@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import shutil
 import sys
 import tempfile
 from pathlib import Path
+
+from docx import Document
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
@@ -15,7 +18,8 @@ if str(WORKSPACE_ROOT) not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from desensitize_engine import Desensitizer, process_desensitization  # noqa: E402
+import desensitize_engine  # noqa: E402
+from desensitize_engine import LEGAL_DOCUMENT_FONT, Desensitizer, process_desensitization  # noqa: E402
 
 
 PLACEHOLDER_TOKENS = {
@@ -63,6 +67,7 @@ def main() -> int:
             input_path=csv_path,
             document_name='csv',
             work_dir=work / 'csv-out',
+            output_format='md',
         )
         csv_text = Path(csv_result['output_file']).read_text(encoding='utf-8-sig')
         assert_no_placeholder(csv_text, 'csv')
@@ -76,13 +81,14 @@ def main() -> int:
             input_path=jsonl_path,
             document_name='jsonl',
             work_dir=work / 'jsonl-out',
+            output_format='md',
         )
         jsonl_text = Path(jsonl_result['output_file']).read_text(encoding='utf-8')
         assert_no_placeholder(jsonl_text, 'jsonl')
         assert_contains(jsonl_text, '137****2222', 'jsonl')
 
         report = json.loads(Path(jsonl_result['report_json']).read_text(encoding='utf-8'))
-        if report.get('strategy') != 'format_preserving_mask':
+        if report.get('strategy') != 'standardized_legal_document':
             raise AssertionError(f'unexpected strategy: {report.get("strategy")}')
 
         legal_text = (
@@ -103,6 +109,7 @@ def main() -> int:
             document_name='legal-text',
             work_dir=work / 'legal-text-out',
             is_text=True,
+            output_format='md',
         )
         legal_masked = Path(legal_result['output_file']).read_text(encoding='utf-8')
         for fragment in [
@@ -111,14 +118,15 @@ def main() -> int:
             '乙方合作公司',
             '商业管理公司',
             '地产开发公司',
+            '吉林省吉林市中级人民法院',
+            '某人民政府',
         ]:
             assert_contains(legal_masked, fragment, 'legal text')
         for forbidden in [
             '大连易和投资有限公司',
-            '吉林市丰满区人民政府',
-            '吉林省吉林市中级人民法院',
             '上海中联律师事务所',
             '上海功承瀛泰',
+            '吉林市丰满区人民政府',
             '王强',
             '程国滨',
             '王斌',
@@ -129,6 +137,85 @@ def main() -> int:
         ]:
             if forbidden in legal_masked:
                 raise AssertionError(f'legal text redaction policy failed: {forbidden!r} in {legal_masked!r}')
+
+        legal_docx_result = process_desensitization(
+            task_id='legal-docx',
+            input_path=legal_path,
+            document_name='民事判决书',
+            work_dir=work / 'legal-docx-out',
+            is_text=True,
+            output_format='docx',
+        )
+        document = Document(str(legal_docx_result['output_file']))
+        if not document.paragraphs or document.paragraphs[0].runs[0].font.name != LEGAL_DOCUMENT_FONT:
+            raise AssertionError('DOCX did not use the platform Song-style legal document font')
+        if document.paragraphs[0].runs[0].font.size.pt != 18:
+            raise AssertionError('DOCX title size is not 18pt')
+        body = next((paragraph for paragraph in document.paragraphs[1:] if paragraph.text.strip()), None)
+        if body is None or body.paragraph_format.line_spacing != 1.5:
+            raise AssertionError('DOCX body line spacing is not 1.5')
+
+        enhanced_path = work / 'enhanced-source.txt'
+        enhanced_path.write_text('内部联系人使用花名阿北，后文再次称阿北负责交接。', encoding='utf-8')
+        enhanced_responses = iter([
+            {'replacements': [{'original': '阿北', 'replacement': '联系人甲', 'entity_type': 'PERSON'}]},
+            {'replacements': []},
+        ])
+        original_agent_request = desensitize_engine._agent_json_request
+        try:
+            desensitize_engine._agent_json_request = lambda _system, _user: next(enhanced_responses)
+            enhanced_result = process_desensitization(
+                task_id='enhanced-text',
+                input_path=enhanced_path,
+                document_name='enhanced-text',
+                work_dir=work / 'enhanced-text-out',
+                is_text=True,
+                output_format='md',
+                redaction_mode='agent_enhanced',
+            )
+        finally:
+            desensitize_engine._agent_json_request = original_agent_request
+        enhanced_text = Path(enhanced_result['output_file']).read_text(encoding='utf-8')
+        if '阿北' in enhanced_text or enhanced_text.count('阿某') != 2:
+            raise AssertionError(f'agent enhanced consistency failed: {enhanced_text!r}')
+
+        limited_path = work / 'limited-source.txt'
+        limited_path.write_text(
+            '联系人：阿北，负责材料交接。\n\n机密事实段落不应发送给受限智能校验。\n\n后文再次称阿北负责交接。',
+            encoding='utf-8',
+        )
+        captured_prompts: list[str] = []
+        previous_key = os.environ.get('LEGALWORK_API_KEY')
+        original_agent_request = desensitize_engine._agent_json_request
+        original_openai = desensitize_engine.OpenAI
+        try:
+            os.environ['LEGALWORK_API_KEY'] = 'test-key'
+            desensitize_engine.OpenAI = object
+            def limited_request(_system: str, user: str) -> dict:
+                captured_prompts.append(user)
+                return {'replacements': [{'original': '阿北', 'replacement': '联系人甲', 'entity_type': 'PERSON'}]}
+            desensitize_engine._agent_json_request = limited_request
+            limited_result = process_desensitization(
+                task_id='limited-text',
+                input_path=limited_path,
+                document_name='limited-text',
+                work_dir=work / 'limited-text-out',
+                is_text=True,
+                output_format='md',
+                redaction_mode='standard',
+            )
+        finally:
+            desensitize_engine._agent_json_request = original_agent_request
+            desensitize_engine.OpenAI = original_openai
+            if previous_key is None:
+                os.environ.pop('LEGALWORK_API_KEY', None)
+            else:
+                os.environ['LEGALWORK_API_KEY'] = previous_key
+        limited_text = Path(limited_result['output_file']).read_text(encoding='utf-8')
+        if '阿北' in limited_text or limited_text.count('阿某') != 2:
+            raise AssertionError(f'limited semantic consistency failed: {limited_text!r}')
+        if not captured_prompts or any('机密事实段落不应发送' in prompt for prompt in captured_prompts):
+            raise AssertionError(f'limited semantic privacy boundary failed: {captured_prompts!r}')
 
         print('OK')
         return 0

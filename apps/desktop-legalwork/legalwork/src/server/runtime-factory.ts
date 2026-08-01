@@ -15,6 +15,7 @@ import { FileSessionStore, FileThreadStore } from '../adapters/file/index.js'
 import { HybridSessionStore, HybridThreadStore } from '../adapters/hybrid/index.js'
 import { DeepseekCompatModelClient } from '../adapters/model/deepseek-compat-model-client.js'
 import { AnthropicCompatModelClient } from '../adapters/model/anthropic-compat-model-client.js'
+import { CodexAccountModelClient } from '../adapters/model/codex-account-model-client.js'
 import { CapabilityRegistry } from '../adapters/tool/capability-registry.js'
 import { buildGoalLocalTools } from '../adapters/tool/goal-tools.js'
 import { buildTodoLocalTools } from '../adapters/tool/todo-tools.js'
@@ -64,6 +65,7 @@ import { RandomIdGenerator } from '../ports/id-generator.js'
 import type { SessionStore } from '../ports/session-store.js'
 import type { ThreadStore } from '../ports/thread-store.js'
 import type { ModelClient } from '../ports/model-client.js'
+import type { ToolHost } from '../ports/tool-host.js'
 import { LEGALWORK_SYSTEM_PROMPT } from '../prompt/legalwork-system-prompt.js'
 import { RuntimeEventRecorder } from '../services/runtime-event-recorder.js'
 import { ThreadService } from '../services/thread-service.js'
@@ -83,6 +85,9 @@ export type LegalworkServeRuntimeOptions = {
   configPath?: string
   dataDir: string
   runtimeToken: string
+  authMode?: 'api_key' | 'chatgpt'
+  codexBinaryPath?: string
+  codexHome?: string
   apiKey: string
   baseUrl: string
   endpointFormat?: string
@@ -157,6 +162,9 @@ export async function createLegalworkServeRuntime(
   const threadService = new ThreadService({ threadStore, sessionStore, events, ids, nowIso })
   void seedUsageCarryover({ threadStore, sessionStore, usageService }).catch(() => undefined)
   const modelClient = createModelClient({
+    authMode: options.authMode,
+    codexBinaryPath: options.codexBinaryPath,
+    codexHome: options.codexHome,
     baseUrl: options.baseUrl,
     apiKey: options.apiKey,
     model: options.model,
@@ -353,9 +361,34 @@ export async function createLegalworkServeRuntime(
     ...buildDelegationToolProviders(delegationRuntime)
   ])
   let shuttingDown = false
-  const mcpInitializationTimer = setTimeout(() => {
-    void buildMcpToolProviders(options.capabilities?.mcp, {
-      resolvePkulawFallbackToken: resolveBundledPkulawToken
+  const incrementalMcpRegistration = options.capabilities?.mcp.enabled === true
+    && options.capabilities.mcp.search.enabled === false
+  const pendingPkulawServerIds = new Set(
+    Object.entries(options.capabilities?.mcp.servers ?? {})
+      .filter(([serverId, server]) => server.enabled && /^pkulaw(?:-|_)/i.test(serverId))
+      .map(([serverId]) => serverId)
+  )
+  let resolvePkulawInitialization!: () => void
+  const pkulawInitializationPromise = new Promise<void>((resolve) => {
+    resolvePkulawInitialization = resolve
+  })
+  if (pendingPkulawServerIds.size === 0) resolvePkulawInitialization()
+  let mcpInitializationPromise: Promise<void> | undefined
+  const startMcpInitialization = (): Promise<void> => {
+    if (mcpInitializationPromise) return mcpInitializationPromise
+    mcpInitializationPromise = buildMcpToolProviders(options.capabilities?.mcp, {
+      resolvePkulawFallbackToken: resolveBundledPkulawToken,
+      startupTimeoutMs: 5_000,
+      ...(incrementalMcpRegistration ? {
+        onServerSettled: ({ serverId, provider }) => {
+          if (provider && !shuttingDown) {
+            childRegistry.registerProvider(provider)
+            registry.registerProvider(provider)
+          }
+          pendingPkulawServerIds.delete(serverId)
+          if (pendingPkulawServerIds.size === 0) resolvePkulawInitialization()
+        }
+      } : {})
     })
       .then(async (initialized) => {
         if (shuttingDown) {
@@ -363,15 +396,48 @@ export async function createLegalworkServeRuntime(
           return
         }
         mcpProviders = initialized
-        for (const provider of initialized.providers) {
-          childRegistry.registerProvider(provider)
-          registry.registerProvider(provider)
+        if (!incrementalMcpRegistration) {
+          for (const provider of initialized.providers) {
+            childRegistry.registerProvider(provider)
+            registry.registerProvider(provider)
+          }
         }
       })
       .catch(() => undefined)
+    return mcpInitializationPromise
+  }
+  const mcpInitializationTimer = setTimeout(() => {
+    void startMcpInitialization()
   }, 250)
   mcpInitializationTimer.unref?.()
-  const toolHost = new LocalToolHost({ registry, readTracker: true })
+  const localToolHost = new LocalToolHost({ registry, readTracker: true })
+  const toolHost: ToolHost = {
+    id: localToolHost.id,
+    async listTools(context) {
+      if (context) {
+        const turn = await turnService.getTurn(context.threadId, context.turnId)
+        if (shouldAwaitPkulawMcpInitialization(
+          turn?.prompt ?? '',
+          options.capabilities?.mcp
+        )) {
+          void startMcpInitialization()
+          await waitForAtMost(
+            incrementalMcpRegistration
+              ? pkulawInitializationPromise
+              : mcpInitializationPromise,
+            5_000
+          )
+        }
+      }
+      return localToolHost.listTools(context)
+    },
+    execute(call, context, onUpdate) {
+      return localToolHost.execute(call, context, onUpdate)
+    },
+    clearReadTracker(threadId) {
+      localToolHost.clearReadTracker(threadId)
+    }
+  }
   const loop = new AgentLoop({
     threadStore,
     sessionStore,
@@ -470,20 +536,65 @@ export async function createLegalworkServeRuntime(
       shuttingDown = true
       clearTimeout(mcpInitializationTimer)
       try {
+        await mcpInitializationPromise?.catch(() => undefined)
         await mcpProviders.close()
       } finally {
-        await stores.shutdown?.()
+        try {
+          await modelClient.close?.()
+        } finally {
+          await stores.shutdown?.()
+        }
       }
     }
   }
 }
 
+export function shouldAwaitPkulawMcpInitialization(
+  prompt: string,
+  mcp: LegalworkCapabilitiesConfig['mcp'] | undefined
+): boolean {
+  if (!mcp?.enabled) return false
+  const hasEnabledPkulawServer = Object.entries(mcp.servers).some(
+    ([serverId, server]) => server.enabled && /^pkulaw(?:-|_)/i.test(serverId)
+  )
+  if (!hasEnabledPkulawServer) return false
+  return /北大法宝|PKULaw|法律调研|多源调研/i.test(prompt)
+}
+
+export async function waitForAtMost(
+  promise: Promise<void> | undefined,
+  timeoutMs: number
+): Promise<'ready' | 'timeout'> {
+  if (!promise) return 'ready'
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise.then(() => 'ready' as const),
+      new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), Math.max(0, timeoutMs))
+      })
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 function createModelClient(input: {
+  authMode?: 'api_key' | 'chatgpt'
+  codexBinaryPath?: string
+  codexHome?: string
   baseUrl: string
   apiKey: string
   model: string
   endpointFormat?: string
 }): ModelClient {
+  if (input.authMode === 'chatgpt') {
+    return new CodexAccountModelClient({
+      binaryPath: input.codexBinaryPath?.trim() || 'codex',
+      model: input.model,
+      legalworkCodexHome: input.codexHome?.trim()
+    })
+  }
   const endpointFormat = normalizeModelEndpointFormat(input.endpointFormat ?? DEFAULT_MODEL_ENDPOINT_FORMAT)
   if (endpointFormat === 'messages') {
     return new AnthropicCompatModelClient(input)

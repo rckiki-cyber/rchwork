@@ -268,7 +268,7 @@ describe('DeepseekCompatModelClient', () => {
         headers: { 'content-type': 'application/json' }
       })
     const client = new DeepseekCompatModelClient({
-      baseUrl: 'https://example.com/beta',
+      baseUrl: 'https://api.deepseek.com',
       apiKey: 'k',
       model: 'deepseek-chat',
       fetchImpl,
@@ -373,7 +373,7 @@ describe('DeepseekCompatModelClient', () => {
         headers: { 'content-type': 'application/json' }
       })
     const client = new DeepseekCompatModelClient({
-      baseUrl: 'https://example.com/beta',
+      baseUrl: 'https://api.deepseek.com',
       apiKey: 'k',
       model: 'deepseek-chat',
       fetchImpl,
@@ -782,7 +782,7 @@ describe('DeepseekCompatModelClient', () => {
       })
     }
     const client = new DeepseekCompatModelClient({
-      baseUrl: 'https://example.com/beta',
+      baseUrl: 'https://api.deepseek.com',
       apiKey: 'k',
       model: 'deepseek-chat',
       fetchImpl,

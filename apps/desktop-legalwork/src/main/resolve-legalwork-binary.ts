@@ -118,6 +118,8 @@ export function buildLegalworkServeArgs(input: {
   host: string
   port: number
   dataDir: string
+  authMode?: 'api_key' | 'chatgpt'
+  codexBinaryPath?: string
   baseUrl?: string
   endpointFormat?: string
   model: string
@@ -134,6 +136,8 @@ export function buildLegalworkServeArgs(input: {
     String(input.port),
     '--data-dir',
     input.dataDir,
+    ...(input.authMode ? ['--auth-mode', input.authMode] : []),
+    ...(input.codexBinaryPath ? ['--codex-binary', input.codexBinaryPath] : []),
     ...(input.baseUrl ? ['--base-url', input.baseUrl] : []),
     ...(input.endpointFormat ? ['--endpoint-format', input.endpointFormat] : []),
     '--model',

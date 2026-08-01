@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
 import type { ApprovalPolicy, AppSettingsV1, ModelProviderProfileV1 } from '@shared/app-settings'
+import type { CodexQuotaWindow } from '@shared/ds-gui-api'
 import {
   DEFAULT_MODEL_PROVIDER_ID,
   DEFAULT_WRITE_INLINE_COMPLETION_BASE_URL,
@@ -13,7 +14,7 @@ import {
 } from '@shared/app-settings'
 import type { GuiUpdateChannel } from '@shared/gui-update'
 import type { SkillRootId } from '../lib/skill-root-preference'
-import { Ban, ChevronDown, FolderOpen, Loader2, Plus, RefreshCw, Settings, Trash2 } from 'lucide-react'
+import { Ban, CheckCircle2, ChevronDown, FolderOpen, Loader2, LogIn, LogOut, Plus, RefreshCw, Settings, Trash2 } from 'lucide-react'
 import { GuiUpdateControl } from './settings-gui-update'
 import {
   InlineNoticeView,
@@ -279,6 +280,31 @@ function AdvancedSettingsDisclosure({
       <div className="border-t border-ds-border-muted bg-ds-card/45">{children}</div>
     </details>
   )
+}
+
+function formatCodexQuotaDuration(minutes: number, locale: string): string {
+  const language = locale.startsWith('zh') ? 'zh-CN' : 'en-US'
+  const number = new Intl.NumberFormat(language, { maximumFractionDigits: 1 })
+  if (minutes >= 1_440 && minutes % 1_440 === 0) {
+    const value = number.format(minutes / 1_440)
+    return locale.startsWith('zh') ? `${value} 天` : `${value}d`
+  }
+  if (minutes >= 60 && minutes % 60 === 0) {
+    const value = number.format(minutes / 60)
+    return locale.startsWith('zh') ? `${value} 小时` : `${value}h`
+  }
+  const value = number.format(minutes)
+  return locale.startsWith('zh') ? `${value} 分钟` : `${value}m`
+}
+
+function formatCodexQuotaReset(timestamp: number | null, locale: string): string {
+  if (!timestamp) return ''
+  return new Intl.DateTimeFormat(locale.startsWith('zh') ? 'zh-CN' : 'en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(timestamp * 1_000))
 }
 
 export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): ReactElement {
@@ -679,6 +705,7 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                       description={t('legalworkAssistantAdvancedDesc')}
                     >
                       <div className="divide-y divide-ds-border-muted">
+                  {legalwork.authMode !== 'chatgpt' ? <>
                   <SettingRow
                     title={t('legalworkProvider')}
                     description={t('legalworkProviderDesc')}
@@ -757,6 +784,18 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                                 })}
                               />
                             </label>
+                            <label className="grid gap-1.5 text-[12px] font-semibold text-ds-muted">
+                              {t('endpointFormat')}
+                              <select
+                                className={selectControlClass}
+                                value={activeProvider.endpointFormat || 'chat_completions'}
+                                onChange={(e) => updateModelProvider(activeProvider.id, { endpointFormat: e.target.value })}
+                              >
+                                <option value="chat_completions">{t('endpointFormatChat')}</option>
+                                <option value="responses">{t('endpointFormatResponses')}</option>
+                                <option value="messages">{t('endpointFormatMessages')}</option>
+                              </select>
+                            </label>
                             {activeProvider.id !== DEFAULT_MODEL_PROVIDER_ID ? (
                               <button
                                 type="button"
@@ -816,6 +855,7 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                       </div>
                     }
                   />
+                  </> : null}
                   <SettingRow
                     title={t('port')}
                     description={t('portDesc')}
@@ -860,17 +900,6 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                         placeholder={DEFAULT_LEGALWORK_DATA_DIR}
                         value={legalwork.dataDir}
                         onChange={(e) => updateLegalwork({ dataDir: e.target.value })}
-                      />
-                    }
-                  />
-                  <SettingRow
-                    title={t('legalworkModel')}
-                    description={t('legalworkModelDesc')}
-                    control={
-                      <input
-                        className="w-full min-w-0 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[14px] text-ds-ink shadow-sm focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/30 md:max-w-md"
-                        value={legalwork.model}
-                        onChange={(e) => updateLegalwork({ model: e.target.value })}
                       />
                     }
                   />

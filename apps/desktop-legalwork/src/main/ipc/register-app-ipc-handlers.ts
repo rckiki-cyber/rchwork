@@ -93,7 +93,11 @@ import {
   getRuntimeBaseUrlForSettings,
   runtimeAuthHeaders
 } from '../runtime/legalwork-adapter'
-import { resolveLegalworkDataDir } from '../legalwork-process'
+import {
+  resolveBundledImaMcpScriptPath,
+  resolveLegalworkDataDir
+} from '../legalwork-process'
+import { imaStandalonePythonCandidates } from '../ima-python-runtime'
 import { createAndSwitchGitBranch, getGitBranches, switchGitBranch } from '../services/git-service'
 import {
   createWorkspaceDirectory,
@@ -108,6 +112,7 @@ import {
   readClipboardImage,
   readWorkspaceImage,
   readWorkspaceFile,
+  readWorkspaceBinary,
   renameWorkspaceEntry,
   resolveWorkspaceFile,
   saveWorkspaceClipboardImage,
@@ -144,6 +149,7 @@ import { legalDocumentMarkdownToDocx } from '../services/legal-document-export-s
 import { fillDocxTemplateWithMarkdown } from '../services/template-docx-export-service'
 import { exportMarkdownDocument } from '../services/markdown-export-service'
 import { importGuiSkillFromPath, listGuiSkills, readGuiSkillFile } from '../services/skill-service'
+import { CodexAuthManager } from '../codex-auth-manager'
 import {
   loadImaAuth,
   clearImaAuth,
@@ -352,6 +358,7 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     resolveLogDirectory,
     logError
   } = options
+  const codexAuthManager = new CodexAuthManager()
   const workspaceFileWatchers = new Map<string, WorkspaceFileWatchRecord>()
 
   const disposeWorkspaceFileWatch = (watchId: string): boolean => {
@@ -448,6 +455,16 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     return runtimeRequest(request.path, request.method, request.body)
   })
   ipcMain.handle('runtime:reconnect', async () => reconnectRuntime())
+  ipcMain.handle('codex:auth-status', async (_, payload: unknown) => {
+    const parsed = z.object({ refreshToken: z.boolean().optional() }).strict().parse(payload ?? {})
+    return codexAuthManager.status(await store.load(), parsed.refreshToken === true)
+  })
+  ipcMain.handle('codex:auth-login', async () =>
+    codexAuthManager.login(await store.load(), getMainWindow())
+  )
+  ipcMain.handle('codex:auth-logout', async () =>
+    codexAuthManager.logout(await store.load())
+  )
 
   ipcMain.handle('upstream:models', async () => fetchUpstreamModels())
   ipcMain.handle('upstream:models-for-endpoint', async (_, payload: unknown) => {
@@ -1480,6 +1497,11 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       parseIpcPayload('file:read-workspace', workspaceFileTargetPayloadSchema, payload)
     )
   )
+  ipcMain.handle('file:read-workspace-binary', async (_, payload: unknown) =>
+    readWorkspaceBinary(
+      parseIpcPayload('file:read-workspace-binary', workspaceFileTargetPayloadSchema, payload)
+    )
+  )
   ipcMain.handle('file:read-workspace-image', async (_, payload: unknown) =>
     readWorkspaceImage(
       parseIpcPayload('file:read-workspace-image', workspaceFileTargetPayloadSchema, payload)
@@ -1846,17 +1868,67 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     }
   })
 
-  ipcMain.handle('ima:get-mcp-config', async (): Promise<Record<string, unknown> | { error: string }> => {
+  let imaPythonInstallPromise: Promise<string | null> | null = null
+
+  async function ensureImaPythonCommand(
+    event: Electron.IpcMainInvokeEvent
+  ): Promise<string | null> {
+    const settings = await store.load()
+    const runtime = resolveLegalworkRuntimeSettings(settings)
+    const dataDir = resolveLegalworkDataDir(runtime)
+    const standaloneCandidates = imaStandalonePythonCandidates(
+      app.getPath('userData'),
+      dataDir,
+      process.platform
+    )
+    for (const candidate of standaloneCandidates) {
+      if (existsSync(candidate) && await isSupportedPythonExecutable(candidate)) return candidate
+    }
+
+    const systemPython = await resolvePythonForCompliance()
+    if (systemPython) return systemPython
+
+    if (!imaPythonInstallPromise) {
+      const sendProgress = (progress: DataComplianceInstallProgress): void => {
+        const win = getMainWindow()
+        const contents = win && !win.isDestroyed() ? win.webContents : event.sender
+        if (!contents.isDestroyed()) contents.send('ima:python-install-progress', progress)
+      }
+      imaPythonInstallPromise = (
+        process.platform === 'win32'
+          ? downloadAndInstallPythonWindows(sendProgress)
+          : process.platform === 'darwin'
+            ? downloadAndInstallPythonMacOS(sendProgress)
+            : process.platform === 'linux'
+              ? downloadAndInstallPythonLinux(sendProgress)
+              : Promise.resolve(null)
+      ).finally(() => {
+        imaPythonInstallPromise = null
+      })
+    }
+    return imaPythonInstallPromise
+  }
+
+  ipcMain.handle('ima:get-mcp-config', async (event): Promise<Record<string, unknown> | { error: string }> => {
     const auth = loadImaAuth()
     if (!auth?.cookie || !auth?.bkn) {
       return { error: 'IMA 未登录，请先登录' }
     }
-    const scriptsDir = join(app.getAppPath(), '..', 'scripts')
-    const scriptPath = join(scriptsDir, 'ima-mcp-server.py')
+    const scriptPath = resolveBundledImaMcpScriptPath(app.getAppPath(), app.isPackaged)
     if (!existsSync(scriptPath)) {
       return { error: 'IMA MCP 服务脚本不存在' }
     }
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
+    let pythonCmd: string | null
+    try {
+      pythonCmd = await ensureImaPythonCommand(event)
+    } catch (error) {
+      return {
+        error: `IMA 运行环境安装失败：${error instanceof Error ? error.message : String(error)}`
+      }
+    }
+    if (!pythonCmd) {
+      return { error: 'IMA 运行环境不可用：未找到 Python，自动安装也未成功' }
+    }
     // 传递凭证文件路径供 MCP Server 实时读取（自动刷新后无需重启即可生效）
     return {
       servers: {

@@ -1,10 +1,10 @@
 import { type CSSProperties, type ReactElement, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  getActiveAgentApiKey,
   getLegalworkRuntimeSettings,
   getModelProviderProfile,
   getModelProviderSettings,
+  isLegalworkModelAuthConfigured,
   normalizeAppSettings,
   withLegalworkRuntimeSettings,
   type AppSettingsPatch,
@@ -13,7 +13,7 @@ import {
 import { rendererRuntimeClient } from '../agent/runtime-client'
 import { applyTheme } from '../lib/apply-theme'
 import { useChatStore } from '../store/chat-store'
-import { Eye, EyeOff, ExternalLink, Sparkles, Sun, Moon, Monitor, X } from 'lucide-react'
+import { CheckCircle2, Eye, EyeOff, ExternalLink, Loader2, LogIn, Sparkles, Sun, Moon, Monitor, X } from 'lucide-react'
 
 type ThemePref = AppSettingsV1['theme']
 type SetupFormPatch = AppSettingsPatch
@@ -38,8 +38,10 @@ export function InitialSetupDialog(): ReactElement {
   const [showApiKey, setShowApiKey] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [codexLoggedIn, setCodexLoggedIn] = useState(false)
   const isPreview = initialSetupMode === 'preview'
   const provider = form ? getModelProviderSettings(form) : null
+  const runtime = form ? getLegalworkRuntimeSettings(form) : null
 
   useEffect(() => {
     let cancelled = false
@@ -71,6 +73,44 @@ export function InitialSetupDialog(): ReactElement {
     updateForm({ provider: patch })
   }
 
+  const selectAuthMode = (authMode: 'api_key' | 'chatgpt'): void => {
+    if (!form) return
+    setForm(withLegalworkRuntimeSettings(form, {
+      ...getLegalworkRuntimeSettings(form),
+      authMode
+    }))
+    setError(null)
+    if (authMode === 'chatgpt') {
+      void window.dsGui.getCodexAuthStatus(false).then((status) => {
+        setCodexLoggedIn(status.loggedIn)
+      }).catch(() => undefined)
+    }
+  }
+
+  const handleCodexLogin = async (): Promise<void> => {
+    if (!form) return
+    setSaving(true)
+    setError(null)
+    try {
+      const result = await window.dsGui.loginCodexWithChatGpt()
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
+      setCodexLoggedIn(true)
+      const model = result.status.models.find((item) => item.isDefault)?.id ?? result.status.models[0]?.id
+      setForm(withLegalworkRuntimeSettings(form, {
+        ...getLegalworkRuntimeSettings(form),
+        authMode: 'chatgpt',
+        ...(model ? { model } : {})
+      }))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleThemeChange = (theme: ThemePref) => {
     if (!form) return
     updateForm({ theme })
@@ -90,9 +130,16 @@ export function InitialSetupDialog(): ReactElement {
 
   const handleSave = async () => {
     if (!form) return
-    if (!getActiveAgentApiKey(form).trim()) {
+    if (!isLegalworkModelAuthConfigured(form)) {
       setError(t('firstRunApiKeyValidation'))
       return
+    }
+    if (getLegalworkRuntimeSettings(form).authMode === 'chatgpt' && !codexLoggedIn) {
+      const status = await window.dsGui.getCodexAuthStatus(true)
+      if (!status.loggedIn) {
+        setError(t('codexAuthNotConnected'))
+        return
+      }
     }
     setSaving(true)
     setError(null)
@@ -226,6 +273,50 @@ export function InitialSetupDialog(): ReactElement {
           </div>
 
           <div className="space-y-2.5 sm:space-y-3.5">
+            <label className={labelClass}>{t('legalworkAuthMode')}</label>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => selectAuthMode('api_key')}
+                className={choiceButtonClass(runtime?.authMode !== 'chatgpt')}
+              >
+                {t('legalworkAuthApiKey')}
+              </button>
+              <button
+                type="button"
+                onClick={() => selectAuthMode('chatgpt')}
+                className={choiceButtonClass(runtime?.authMode === 'chatgpt')}
+              >
+                {t('legalworkAuthChatGpt')}
+              </button>
+            </div>
+          </div>
+
+          {runtime?.authMode === 'chatgpt' ? (
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/75 px-4 py-4 dark:border-white/10 dark:bg-white/[0.035]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-800 dark:text-slate-100">
+                    {codexLoggedIn ? <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-300" /> : null}
+                    {t(codexLoggedIn ? 'codexAuthConnected' : 'codexAuthNotConnected')}
+                  </div>
+                  <p className="mt-1 text-[12.5px] leading-5 text-slate-500 dark:text-slate-400">{t('codexAuthHint')}</p>
+                </div>
+                {!codexLoggedIn ? (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void handleCodexLogin()}
+                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#1388ff]/24 bg-[#1388ff]/[0.08] px-4 text-[13px] font-semibold text-[#1377df] transition hover:bg-[#1388ff]/[0.12] disabled:opacity-50 dark:border-[#3aa0ff]/22 dark:bg-[#3aa0ff]/[0.12] dark:text-[#88c8ff]"
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+                    {t('codexAuthLogin')}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : <>
+          <div className="space-y-2.5 sm:space-y-3.5">
             <label className={labelClass}>
               {t('apiKey')}
             </label>
@@ -277,6 +368,7 @@ export function InitialSetupDialog(): ReactElement {
               className={fieldClass}
             />
           </div>
+          </>}
         </div>
 
         <div className="shrink-0 space-y-3 border-t border-slate-200/72 bg-white/70 px-5 pb-4 pt-3.5 dark:border-white/10 dark:bg-white/[0.025] sm:space-y-4 sm:px-7 sm:pb-6 sm:pt-4">

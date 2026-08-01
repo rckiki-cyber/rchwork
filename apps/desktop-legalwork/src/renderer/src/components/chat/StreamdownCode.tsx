@@ -18,7 +18,7 @@ import {
   type HTMLAttributes,
   type ReactNode
 } from 'react'
-import { StreamdownContext } from 'streamdown'
+import { StreamdownContext, useIsCodeFenceIncomplete } from 'streamdown'
 import {
   findFileReferences,
   type FileReferenceTarget
@@ -32,6 +32,11 @@ import {
   renderFallbackCodeHtml
 } from '../../lib/code-highlighting'
 import { useChatStore } from '../../store/chat-store'
+import {
+  isMermaidLanguage,
+  looksLikeMermaidSource,
+  MermaidDiagram
+} from './MermaidDiagram'
 
 const LANGUAGE_REGEX = /language-([^\s]+)/
 const TRAILING_NEWLINES_REGEX = /\n+$/
@@ -314,6 +319,7 @@ function CodeBlock({
 }
 
 function CodeComponent({ node, className, children, ...props }: CodeProps) {
+  const isIncomplete = useIsCodeFenceIncomplete()
   const text = extractText(children)
   const startLine = node?.position?.start?.line
   const endLine = node?.position?.end?.line
@@ -351,6 +357,13 @@ function CodeComponent({ node, className, children, ...props }: CodeProps) {
 
   const match = className?.match(LANGUAGE_REGEX)
   const language = match?.[1] ?? ''
+
+  if (
+    isMermaidLanguage(language) ||
+    (isPlainTextLanguage(language) && looksLikeMermaidSource(text))
+  ) {
+    return <MermaidDiagram code={text} isIncomplete={isIncomplete} />
+  }
 
   if (isPlainTextLanguage(language)) {
     return <PlainTextBlock code={text} />

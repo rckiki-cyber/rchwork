@@ -148,6 +148,7 @@
     resolveWorkspaceFile: (opts) =>
       Promise.resolve({ ok: true, resolvedPath: opts?.relativePath || '' }),
     readWorkspaceFile: () => Promise.resolve({ ok: true, data: '' }),
+    readWorkspaceBinary: () => Promise.resolve({ ok: false, message: 'Binary preview unavailable in browser mock.' }),
     readWorkspaceImage: () => Promise.resolve({ ok: true, data: '', mimeType: 'image/png' }),
     writeWorkspaceFile: () => Promise.resolve({ ok: true }),
     createWorkspaceFile: () => Promise.resolve({ ok: true, path: '' }),

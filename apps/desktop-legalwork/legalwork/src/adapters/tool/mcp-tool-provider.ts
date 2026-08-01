@@ -85,6 +85,11 @@ export type McpToolProviderOptions = {
   nowIso?: () => string
   startupTimeoutMs?: number
   resolvePkulawFallbackToken?: () => string | undefined
+  onServerSettled?: (input: {
+    serverId: string
+    provider?: CapabilityToolProvider
+    diagnostic: McpServerDiagnostic
+  }) => Promise<void> | void
 }
 
 type McpConnectionState = {
@@ -192,9 +197,11 @@ export async function buildMcpToolProviders(
 
   const outcomeResults = await Promise.allSettled(Object.entries(mcp.servers).map(async ([serverId, server]) => {
     if (!server.enabled) {
-      return {
+      const outcome: McpServerBuildOutcome = {
         diagnostic: serverDiagnostic({ serverId, server }, 'disabled', 0)
-      } satisfies McpServerBuildOutcome
+      }
+      await options.onServerSettled?.({ serverId, diagnostic: outcome.diagnostic })
+      return outcome
     }
     try {
       const connectionCandidates = createPkulawConnectionCandidates(server, pkulawFallbackToken)
@@ -207,7 +214,7 @@ export async function buildMcpToolProviders(
       })
       const catalogRecords = listed.map((tool) => createMcpSearchCatalogRecord(state, tool))
       const tools = listed.map((tool) => createMcpLocalTool(state, tool))
-      return {
+      const outcome: McpServerBuildOutcome = {
         state,
         catalogRecords,
         directProvider: {
@@ -218,16 +225,24 @@ export async function buildMcpToolProviders(
           tools
         },
         diagnostic: serverDiagnostic(state, 'connected', tools.length)
-      } satisfies McpServerBuildOutcome
+      }
+      await options.onServerSettled?.({
+        serverId,
+        provider: outcome.directProvider,
+        diagnostic: outcome.diagnostic
+      })
+      return outcome
     } catch (error) {
-      return {
+      const outcome: McpServerBuildOutcome = {
         diagnostic: serverDiagnostic(
           { serverId, server },
           'error',
           0,
           redactMcpErrorMessage(error, [server])
         )
-      } satisfies McpServerBuildOutcome
+      }
+      await options.onServerSettled?.({ serverId, diagnostic: outcome.diagnostic })
+      return outcome
     }
   }))
   const outcomes = outcomeResults
@@ -435,7 +450,9 @@ function createMcpLocalTool(
     : undefined
   return LocalToolHost.defineTool({
     name: normalizeMcpToolName(state.serverId, descriptor.name),
-    description: descriptor.description ?? `MCP tool ${descriptor.name} from ${state.serverId}`,
+    description: isOfficeCliTool(state.serverId, descriptor.name)
+      ? officeCliToolDescription(descriptor.description)
+      : descriptor.description ?? `MCP tool ${descriptor.name} from ${state.serverId}`,
     inputSchema: normalizeMcpInputSchema(state.serverId, descriptor),
     policy: policyForMcpTool(state.serverId, descriptor),
     shouldAdvertise: (context: ToolHostContext) => isMcpServerTrusted(state.server, context.workspace),
@@ -509,10 +526,62 @@ function normalizeMcpInputSchema(
 ): Record<string, unknown> {
   const schema = descriptor.inputSchema ?? { type: 'object' }
   if (!isOfficeCliTool(serverId, descriptor.name)) return schema
+  const properties = typeof schema.properties === 'object' && schema.properties !== null
+    ? schema.properties as Record<string, unknown>
+    : {}
   return {
     ...schema,
+    properties: {
+      ...properties,
+      file: {
+        type: 'string',
+        description: 'Document path. May be omitted after a successful create/open in this task.'
+      },
+      parent: {
+        type: 'string',
+        description: 'Parent document element path for a bare add command, such as /body.'
+      },
+      path: {
+        type: 'string',
+        description: 'Document element path for a bare get/set/remove command.'
+      },
+      type: {
+        type: 'string',
+        description: 'Element type for a bare add command.'
+      },
+      props: {
+        type: 'object',
+        additionalProperties: true,
+        description: 'Element properties for a bare add/set command.'
+      },
+      commands: {
+        type: 'array',
+        items: { type: 'object', additionalProperties: true },
+        description:
+          'Structured batch operations. Use with command="batch"; each item uses a bare command plus sibling fields such as parent/path/type/props.'
+      },
+      stop_on_error: {
+        type: 'boolean',
+        description: 'For batch only. Stop at the first failed operation instead of reporting per-item errors.'
+      }
+    },
     additionalProperties: false
   }
+}
+
+function officeCliToolDescription(baseDescription?: string): string {
+  return [
+    baseDescription ?? 'Read and write Office documents through OfficeCLI.',
+    '',
+    'Efficiency and quality contract:',
+    '- Keep requested content, citations, structure, and visible formatting complete; batching is only an execution optimization.',
+    '- For three or more related add/set operations, prefer one batch call instead of many single calls.',
+    '- Structured form: command="batch", file="/path/report.docx", commands=[{"command":"add","parent":"/body","type":"paragraph","props":{"text":"..."}}].',
+    '- Equivalent argv form: ["batch","/path/report.docx","--commands","<JSON array>","--json"].',
+    '- Batch items use a bare verb with sibling fields (parent/path/type/props); do not put a full CLI string inside an item command.',
+    '- If a batch partially fails, retry only failed items. Never repeat identical failed arguments.',
+    '- Save and validate after substantive writing. Once validation passes, only repair remaining issues that materially affect requested content, structure, or visible formatting.'
+  ].join('\n')
 }
 
 /**
@@ -547,7 +616,7 @@ export function normalizeOfficeCliArguments(
 
   const file = scalarToolArgument(input.file)
     ?? scalarToolArgument(input.document)
-    ?? scalarToolArgument(input.path)
+    ?? (!OFFICECLI_PARENT_COMMANDS.has(verb) ? scalarToolArgument(input.path) : undefined)
     ?? activeDocument
   if (!file) {
     return {
@@ -561,6 +630,7 @@ export function normalizeOfficeCliArguments(
     const parent = scalarToolArgument(input.parent)
       ?? scalarToolArgument(input.target)
       ?? scalarToolArgument(input.element)
+      ?? scalarToolArgument(input.path)
     if (!parent) {
       return {
         arguments: {},
@@ -589,8 +659,19 @@ function appendOfficeCliOptions(command: string[], input: Record<string, unknown
     const value = scalarToolArgument(input[option])
     if (value !== undefined) command.push(`--${option}`, value)
   }
+  const commands = input.commands
+  if (Array.isArray(commands)) {
+    command.push('--commands', JSON.stringify(commands))
+  } else if (typeof commands === 'string' && commands.trim()) {
+    command.push('--commands', commands.trim())
+  }
+  if (input.stop_on_error === true || input.stopOnError === true) {
+    command.push('--stop-on-error')
+  }
   if (input.force === true) command.push('--force')
-  if (input.json === true) command.push('--json')
+  if (input.json === true || (command[0]?.toLowerCase() === 'batch' && input.json !== false)) {
+    command.push('--json')
+  }
   const additional = input.additionalArguments ?? input.additional_arguments
   if (Array.isArray(additional)) {
     for (const value of additional) {

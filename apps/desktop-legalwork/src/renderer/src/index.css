@@ -2,4 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Keep long-running task feedback on its own compositor layer. Full-screen
+   backdrop filters compete with OCR/document work and make SVG rotation jank. */
+@keyframes ds-progress-spinner-rotate {
+  from {
+    transform: translateZ(0) rotate(0deg);
+  }
+  to {
+    transform: translateZ(0) rotate(360deg);
+  }
+}
+
+.ds-progress-spinner {
+  animation: ds-progress-spinner-rotate 720ms linear infinite;
+  backface-visibility: hidden;
+  contain: layout paint style;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-progress-spinner {
+    animation-duration: 1.8s;
+  }
+}
+
 /* Design tokens: light keeps the existing OpenBridge feel; dark follows the Codex-style theme-v1 palette. */

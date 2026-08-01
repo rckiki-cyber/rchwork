@@ -292,20 +292,28 @@
 
 .legal-document-preview h1 + p,
 .legal-document-preview h2 + p,
-.legal-document-preview h3 + p,
-.legal-document-preview li > p {
+.legal-document-preview h3 + p {
   margin-top: 0;
 }
 
 .legal-document-preview ul,
 .legal-document-preview ol {
   margin: 2px 0;
-  padding-left: 2.4em;
+  padding-left: 1.65em;
 }
 
 .legal-document-preview li {
   margin: 0;
-  padding-left: 0.2em;
+  padding-left: 0;
+}
+
+.legal-document-preview li > p {
+  margin-top: 0;
+  text-indent: 0;
+}
+
+.legal-document-preview li > p + p {
+  text-indent: 2em;
 }
 
 .legal-document-preview blockquote {

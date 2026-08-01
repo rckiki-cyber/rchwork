@@ -125,7 +125,7 @@ describe('WorkspaceModeTabs', () => {
     expect(truncateMatches?.length).toBe(2)
   })
 
-  it('preserves min-w-fit on buttons for flex truncation', () => {
+  it('allows every button to shrink inside the full-width background track', () => {
     const onCodeOpen = vi.fn()
     const onDataComplianceOpen = vi.fn()
 
@@ -137,8 +137,9 @@ describe('WorkspaceModeTabs', () => {
       })
     )
 
-    // min-w-fit prevents the flex children from collapsing too small while still allowing truncation
-    expect(html).toContain('min-w-fit')
+    expect(html).toContain('w-full')
+    expect(html).toContain('min-w-0')
+    expect(html).not.toContain('min-w-fit')
   })
 
   it('renders role="tablist" container with descriptive aria-label', () => {

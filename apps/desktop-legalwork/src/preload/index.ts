@@ -10,6 +10,10 @@ const api = {
   runtimeRequest: (path, method, body) =>
     ipcRenderer.invoke('runtime:request', { path, method, body }),
   reconnectRuntime: () => ipcRenderer.invoke('runtime:reconnect'),
+  getCodexAuthStatus: (refreshToken) =>
+    ipcRenderer.invoke('codex:auth-status', { refreshToken: refreshToken === true }),
+  loginCodexWithChatGpt: () => ipcRenderer.invoke('codex:auth-login'),
+  logoutCodex: () => ipcRenderer.invoke('codex:auth-logout'),
   getDataComplianceStatus: () =>
     ipcRenderer.invoke('data-compliance:status'),
   installDataCompliance: () =>
@@ -80,6 +84,8 @@ const api = {
     ipcRenderer.invoke('file:resolve-workspace', options),
   readWorkspaceFile: (options) =>
     ipcRenderer.invoke('file:read-workspace', options),
+  readWorkspaceBinary: (options) =>
+    ipcRenderer.invoke('file:read-workspace-binary', options),
   readWorkspaceImage: (options) =>
     ipcRenderer.invoke('file:read-workspace-image', options),
   writeWorkspaceFile: (payload) =>

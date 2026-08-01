@@ -22,6 +22,7 @@ import type {
   WorkspaceClipboardImageSavePayload,
   WorkspaceClipboardImageSaveResult,
   WorkspaceFileReadResult,
+  WorkspaceBinaryReadResult,
   WorkspaceImageReadResult,
   WorkspaceDirectoryCreatePayload,
   WorkspaceDirectoryCreateResult,
@@ -72,6 +73,49 @@ import type {
 } from './write-export'
 
 export type RuntimeRequestResult = { ok: boolean; status: number; body: string }
+export type CodexModelSummary = {
+  id: string
+  displayName: string
+  description: string
+  isDefault: boolean
+}
+export type CodexQuotaWindow = {
+  usedPercent: number
+  windowDurationMins: number
+  resetsAt: number | null
+}
+export type CodexQuotaBucket = {
+  limitId: string
+  limitName: string | null
+  planType: string | null
+  primary: CodexQuotaWindow | null
+  secondary: CodexQuotaWindow | null
+  credits: {
+    hasCredits: boolean
+    unlimited: boolean
+    balance: string | null
+  } | null
+  rateLimitReachedType: string | null
+}
+export type CodexQuotaStatus = {
+  buckets: CodexQuotaBucket[]
+  resetCreditsAvailable: number
+}
+export type CodexAuthStatus = {
+  available: boolean
+  loggedIn: boolean
+  authMode: 'chatgpt' | 'api_key' | 'none'
+  email: string | null
+  planType: string | null
+  credentialSource: 'local' | 'legalwork' | 'none'
+  binaryPath: string
+  models: CodexModelSummary[]
+  quota: CodexQuotaStatus | null
+  message?: string
+}
+export type CodexAuthActionResult =
+  | { ok: true; status: CodexAuthStatus }
+  | { ok: false; message: string }
 export type DataComplianceStatus =
   | {
       ok: true
@@ -105,7 +149,8 @@ export type DataComplianceSubmitPayload = {
   inputText?: string
   reviewType?: 'document' | 'code'
   outputDir?: string
-  outputFormat?: 'md' | 'docx' | 'txt'
+  outputFormat?: 'md' | 'docx' | 'pdf' | 'txt'
+  redactionMode?: 'standard' | 'agent_enhanced'
   file?: {
     name: string
     type?: string
@@ -340,6 +385,9 @@ export type DsGuiApi = {
   getLocalFilePath: (file: File) => string
   runtimeRequest: (path: string, method?: string, body?: string) => Promise<RuntimeRequestResult>
   reconnectRuntime: () => Promise<AppSettingsV1>
+  getCodexAuthStatus: (refreshToken?: boolean) => Promise<CodexAuthStatus>
+  loginCodexWithChatGpt: () => Promise<CodexAuthActionResult>
+  logoutCodex: () => Promise<CodexAuthActionResult>
   getDataComplianceStatus: () => Promise<DataComplianceStatus>
   installDataCompliance: () => Promise<boolean>
   dataComplianceRequest: (
@@ -396,6 +444,7 @@ export type DsGuiApi = {
   listWorkspaceDirectory: (options: WorkspaceDirectoryTarget) => Promise<WorkspaceDirectoryListResult>
   resolveWorkspaceFile: (options: WorkspaceFileTarget) => Promise<WorkspaceFileResolveResult>
   readWorkspaceFile: (options: WorkspaceFileTarget) => Promise<WorkspaceFileReadResult>
+  readWorkspaceBinary: (options: WorkspaceFileTarget) => Promise<WorkspaceBinaryReadResult>
   readWorkspaceImage: (options: WorkspaceFileTarget) => Promise<WorkspaceImageReadResult>
   writeWorkspaceFile: (payload: WorkspaceFileWritePayload) => Promise<WorkspaceFileWriteResult>
   createWorkspaceFile: (payload: WorkspaceFileCreatePayload) => Promise<WorkspaceFileCreateResult>

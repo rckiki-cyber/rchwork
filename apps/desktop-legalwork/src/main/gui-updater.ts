@@ -1,5 +1,5 @@
 import { app, autoUpdater as nativeAutoUpdater, BrowserWindow } from 'electron'
-import { constants, createReadStream, existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { constants, createReadStream, existsSync, readFileSync, rmSync } from 'node:fs'
 import { access, chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -1102,27 +1102,42 @@ async function checkManualUpdate(
   }
 }
 
-/** Clean up any leftover update temp files from previous aborted updates */
-function cleanupStaleUpdateFiles(): void {
-  try {
-    const userDataPath = app.getPath('userData')
-    // electron-updater caches downloads in a __update__ subdirectory
-    const updateCacheDir = join(userDataPath, '__update__')
-    if (!existsSync(updateCacheDir)) return
+function fileNameContainsVersion(fileName: string, version: string): boolean {
+  if (!fileName || !version) return false
+  const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?:^|[^0-9])${escapedVersion}(?:[^0-9]|$)`).test(fileName)
+}
 
-    const entries = readdirSync(updateCacheDir)
-    for (const entry of entries) {
-      const fullPath = join(updateCacheDir, entry)
-      const stat = statSync(fullPath)
-      if (stat.isFile() && (entry.endsWith('.dmg') || entry.endsWith('.zip') || entry.endsWith('.exe') || entry.endsWith('.AppImage'))) {
-        // Only clean files older than 1 hour to avoid deleting an in-progress download
-        if (Date.now() - stat.mtimeMs > 3_600_000) {
-          rmSync(fullPath, { force: true })
-        }
-      }
+/**
+ * Remove an update package after that same version has successfully launched.
+ *
+ * electron-updater stores the downloaded package under `<cache>/pending` and,
+ * on macOS, keeps a second `<cache>/update.zip` for future differential
+ * downloads. Keep the differential cache, but discard the now-installed
+ * pending copy so every successful update does not occupy two ZIP-sized files.
+ */
+function cleanupInstalledUpdatePackage(): void {
+  const currentVersion = app.getVersion().trim()
+  if (!currentVersion) return
+
+  for (const cacheDir of updaterCacheDirCandidates()) {
+    const pendingDir = join(cacheDir, 'pending')
+    const infoPath = join(pendingDir, 'update-info.json')
+    try {
+      if (!existsSync(infoPath)) continue
+      const info = JSON.parse(readFileSync(infoPath, 'utf8')) as { fileName?: unknown }
+      const fileName = typeof info.fileName === 'string' ? info.fileName : ''
+      if (!fileNameContainsVersion(fileName, currentVersion)) continue
+
+      rmSync(pendingDir, { recursive: true, force: true })
+      logInfo(
+        'gui-update',
+        `Removed the pending package for installed GUI version ${currentVersion}.`
+      )
+    } catch {
+      // Best-effort cleanup. The updater validates or replaces malformed cache
+      // metadata the next time an update is downloaded.
     }
-  } catch {
-    // best-effort cleanup, ignore errors
   }
 }
 
@@ -1141,8 +1156,7 @@ export function initializeGuiUpdater(
   if (initialized) return
   initialized = true
 
-  // Remove leftover update temp files from previous aborted updates
-  cleanupStaleUpdateFiles()
+  cleanupInstalledUpdatePackage()
 
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false

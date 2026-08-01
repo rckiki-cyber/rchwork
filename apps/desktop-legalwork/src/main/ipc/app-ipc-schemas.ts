@@ -238,7 +238,8 @@ export const dataComplianceSubmitPayloadSchema = z.object({
   inputText: z.string().optional(),
   reviewType: z.enum(['document', 'code']).optional(),
   outputDir: z.string().trim().max(2000).optional(),
-  outputFormat: z.enum(['md', 'docx', 'txt']).optional(),
+  outputFormat: z.enum(['md', 'docx', 'pdf', 'txt']).optional(),
+  redactionMode: z.enum(['standard', 'agent_enhanced']).optional(),
   file: dataComplianceFilePayloadSchema.optional(),
   files: z.array(dataComplianceFilePayloadSchema).optional()
 }).strict().refine((payload) => Boolean(payload.file || payload.files?.length || payload.inputText?.trim()), {
@@ -286,6 +287,8 @@ const legalworkRuntimePatchSchema = z.object({
   binaryPath: defaultPathSchema,
   port: z.number().int().min(1).max(65_535).optional(),
   autoStart: z.boolean().optional(),
+  authMode: z.enum(['api_key', 'chatgpt']).optional(),
+  codexBinaryPath: defaultPathSchema,
   apiKey: z.string().max(MAX_BODY_BYTES).optional(),
   baseUrl: z.string().trim().max(MAX_URL_LENGTH).optional(),
   endpointFormat: z.string().trim().max(64).optional(),

@@ -149,6 +149,24 @@ describe('buildMcpToolProviders', () => {
     expect(started).toBe(2)
   })
 
+  it('publishes each connected provider as soon as that server settles', async () => {
+    const settled: string[] = []
+    const built = await buildMcpToolProviders(pkulawConfig(), {
+      clientFactory: async () => ({
+        ...fakeClient(),
+        listTools: async () => ({
+          tools: [{ name: 'search_law', inputSchema: { type: 'object' } }]
+        })
+      }),
+      onServerSettled: ({ serverId, provider }) => {
+        settled.push(`${serverId}:${provider?.tools.length ?? 0}`)
+      }
+    })
+
+    expect(settled).toEqual(['pkulaw-law-keyword:1'])
+    expect(built.connectedServers).toBe(1)
+  })
+
   it('uses the startup timeout cap while building initial MCP clients', async () => {
     const seenTimeouts: number[] = []
     const config: McpCapabilityConfig = {
@@ -426,6 +444,13 @@ describe('buildMcpToolProviders', () => {
     }, toolContext())
 
     expect(tool.inputSchema).toMatchObject({ additionalProperties: false })
+    expect(tool.description).toContain('prefer one batch call')
+    expect(tool.inputSchema).toMatchObject({
+      properties: {
+        commands: { type: 'array' },
+        props: { type: 'object' }
+      }
+    })
     expect(calls[1]).toEqual({
       name: 'officecli',
       arguments: {
@@ -461,6 +486,55 @@ describe('normalizeOfficeCliArguments', () => {
       type: 'paragraph'
     })).toMatchObject({
       error: expect.stringContaining('no active document')
+    })
+  })
+
+  it('turns structured batch operations into one AI-friendly OfficeCLI command', () => {
+    const commands = [
+      {
+        command: 'add',
+        parent: '/body',
+        type: 'paragraph',
+        props: { text: '第一段' }
+      },
+      {
+        command: 'set',
+        path: '/body/p[1]',
+        props: { bold: true }
+      }
+    ]
+
+    expect(normalizeOfficeCliArguments({
+      command: 'batch',
+      commands
+    }, '/tmp/综述.docx')).toEqual({
+      arguments: {
+        command: [
+          'batch',
+          '/tmp/综述.docx',
+          '--commands',
+          JSON.stringify(commands),
+          '--json'
+        ]
+      }
+    })
+  })
+
+  it('treats path as the document element for bare set commands', () => {
+    expect(normalizeOfficeCliArguments({
+      command: 'set',
+      path: '/body/p[1]',
+      props: { style: 'Heading 1' }
+    }, '/tmp/综述.docx')).toEqual({
+      arguments: {
+        command: [
+          'set',
+          '/tmp/综述.docx',
+          '/body/p[1]',
+          '--prop',
+          'style=Heading 1'
+        ]
+      }
     })
   })
 })

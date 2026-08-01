@@ -82,7 +82,8 @@ module.exports = {
     '**/vendor/data-compliance-review-codex/projects/data-compliance-ai-project-kit/**/*',
     '**/node_modules/better-sqlite3/**/*',
     '**/node_modules/bindings/**/*',
-    '**/node_modules/file-uri-to-path/**/*'
+    '**/node_modules/file-uri-to-path/**/*',
+    '**/node_modules/@openai/codex*/**/*'
   ],
   npmRebuild: true,
   directories: {
@@ -115,8 +116,10 @@ module.exports = {
     }
   ],
   files: [
+    '!.dev-dist/**/*',
     'out/**/*',
     'package.json',
+    'node_modules/@openai/codex*/**/*',
     'legalwork/dist/**/*',
     'legalwork/package.json',
     'legalwork/package-lock.json',

@@ -19,16 +19,22 @@ describe('document-writing agent workflow', () => {
         claim: '请求返还借款。',
         [DOCUMENT_SUBJECT_FIELD_ID]: '原告张某'
       },
-      materials: [{ fileName: '借条.txt', content: '借款发生于 2025 年。' }]
+      materials: [{ fileName: '借条.txt', content: '借款发生于 2025 年。' }],
+      instructions: '倾向主张借款已经到期，重点论证催收经过。'
     })
 
-    expect(prompt).toContain('北大法宝（PKULaw）、元典')
+    expect(prompt).toContain('北大法宝（PKULaw）作为法规与案例主来源')
+    expect(prompt).toContain('不要求机械调用全部来源')
+    expect(prompt).toContain('IMA 与本地知识库作为')
     expect(prompt.indexOf('法律调研')).toBeLessThan(prompt.indexOf('撰写文书'))
     expect(prompt).toContain('绝不编造法规、案例、案号、链接或事实')
     expect(prompt).toContain('必须先调用 resolve_legal_document_template')
     expect(prompt).toContain('用户明确指定本次文书代表的主体为“原告张某”')
     expect(prompt).toContain('只要材料中存在明确答案，就直接写入正文')
     expect(prompt).toContain('严禁输出“待核实：请填写”')
+    expect(prompt).toContain('用户补充要求（立场、倾向、目标与重点；必须优先落实）')
+    expect(prompt).toContain('倾向主张借款已经到期，重点论证催收经过')
+    expect(prompt).toContain('不得写出与用户明确倾向相反的立场')
   })
 
   it('keeps a user-uploaded template above hidden built-ins', () => {

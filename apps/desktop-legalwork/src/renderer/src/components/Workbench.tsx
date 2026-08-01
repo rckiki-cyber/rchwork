@@ -63,6 +63,7 @@ import {
   type ComposerFileContextEntry
 } from '../lib/composer-file-references'
 import { DocumentWritingProvider } from './document-writing/DocumentWritingContext'
+import { deriveConversationFiles, type ConversationFile } from '../lib/conversation-files'
 
 const ChangeInspector = lazy(() =>
   import('./ChangeInspector').then((module) => ({ default: module.ChangeInspector }))
@@ -76,6 +77,16 @@ const PluginMarketplaceView = lazy(() =>
 const WorkspaceFilePreviewPanel = lazy(() =>
   import('./WorkspaceFilePreviewPanel').then((module) => ({
     default: module.WorkspaceFilePreviewPanel
+  }))
+)
+const ConversationFilesPanel = lazy(() =>
+  import('./ConversationFilesPanel').then((module) => ({
+    default: module.ConversationFilesPanel
+  }))
+)
+const ConversationFilesFloating = lazy(() =>
+  import('./ConversationFilesPanel').then((module) => ({
+    default: module.ConversationFilesFloating
   }))
 )
 const PlanPanel = lazy(() =>
@@ -347,6 +358,8 @@ export function Workbench(): ReactElement {
   const [attachmentUploadError, setAttachmentUploadError] = useState<string | null>(null)
   const [connectPhoneSidebarOpen, setConnectPhoneSidebarOpen] = useState(false)
   const [runtimeLogPath, setRuntimeLogPath] = useState('')
+  const [filesFloatingOpen, setFilesFloatingOpen] = useState(false)
+  const [conversationFilePreviewAttachment, setConversationFilePreviewAttachment] = useState<ConversationFile | null>(null)
   const hiddenAtRef = useRef<number | null>(document.hidden ? Date.now() : null)
   const lastWindowResumeRecoveryRef = useRef(0)
   const writeAssistantOpen = useWriteWorkspaceStore((s) => s.assistantOpen)
@@ -448,6 +461,7 @@ export function Workbench(): ReactElement {
   const timelineBlocks = blocks
   const timelineLiveReasoning = liveReasoning
   const timelineLiveAssistant = liveAssistant
+  const conversationFiles = useMemo(() => deriveConversationFiles(timelineBlocks), [timelineBlocks])
   const waitingForUserInput = timelineBlocks.some(
     (block) => block.kind === 'user_input' && block.status === 'pending'
   )
@@ -520,6 +534,7 @@ export function Workbench(): ReactElement {
     route,
     workspaceRoot
   })
+
   const {
     activeGuiPlan,
     buildGuiPlan,
@@ -1210,6 +1225,23 @@ export function Workbench(): ReactElement {
   const closeRightPanel = (): void => {
     setRightPanelMode(null)
     setFilePreviewTarget(null)
+    setConversationFilePreviewAttachment(null)
+  }
+
+  const toggleFilesFloating = (): void => {
+    setFilesFloatingOpen((open) => !open)
+  }
+
+  const openConversationFilePreview = (file: ConversationFile): void => {
+    setFilesFloatingOpen(false)
+    if (file.kind === 'attachment') {
+      setConversationFilePreviewAttachment(file)
+      setRightPanelMode('files')
+      return
+    }
+    setFilePreviewTarget({ path: file.path, workspaceRoot })
+    setRightSidebarWidth((width) => Math.max(width, 720))
+    setRightPanelMode('file')
   }
 
   const startNewWriteAssistantConversation = (): void => {
@@ -1279,12 +1311,27 @@ export function Workbench(): ReactElement {
                 onCollapse={closeRightPanel}
                 onBuildPlan={() => void buildGuiPlan()}
               />
+            ) : rightPanelMode === 'files' ? (
+              <ConversationFilesPanel
+                files={conversationFiles}
+                activeThreadId={activeThreadId}
+                workspaceRoot={workspaceRoot}
+                className="h-full max-h-full w-full"
+                onClose={closeRightPanel}
+                onOpenWorkspaceFile={(path) => {
+                  setFilePreviewTarget({ path, workspaceRoot })
+                  setRightSidebarWidth((width) => Math.max(width, 720))
+                  setRightPanelMode('file')
+                }}
+                initialAttachment={conversationFilePreviewAttachment}
+              />
             ) : (
               <WorkspaceFilePreviewPanel
                 target={filePreviewTarget}
                 workspaceRoot={workspaceRoot}
                 className="h-full max-h-full w-full"
                 onClose={closeRightPanel}
+                onBack={() => setRightPanelMode('files')}
               />
             )}
           </Suspense>
@@ -1543,6 +1590,9 @@ export function Workbench(): ReactElement {
                     sideChatOpen={sidePanel.open}
                     sideChatEnabled={runtimeConnection === 'ready' && Boolean(activeThreadId)}
                     onOpenSideChat={openSideChat}
+                    conversationFileCount={conversationFiles.length}
+                    filesFloatingOpen={filesFloatingOpen}
+                    onToggleFilesFloating={toggleFilesFloating}
                   />
                 </div>
               </div>
@@ -1655,6 +1705,17 @@ export function Workbench(): ReactElement {
 
           {route === 'chat' ? (
             <SideConversationPanel rightOffset={rightPanelVisible ? rightSidebarWidth + 24 : 24} />
+          ) : null}
+
+          {route === 'chat' ? (
+            <Suspense fallback={null}>
+              <ConversationFilesFloating
+                files={conversationFiles}
+                open={filesFloatingOpen}
+                onClose={() => setFilesFloatingOpen(false)}
+                onOpenFile={openConversationFilePreview}
+              />
+            </Suspense>
           ) : null}
 
           {renderRightPanel()}

@@ -1,5 +1,6 @@
-import type { WorkspaceFileReadResult, WorkspaceFileTarget } from '@shared/workspace-file'
+import type { WorkspaceBinaryReadResult, WorkspaceFileReadResult, WorkspaceFileTarget } from '@shared/workspace-file'
 import {
+  ArrowLeft,
   Check,
   ChevronRight,
   Copy,
@@ -24,15 +25,20 @@ import {
   languageFromFilePath,
   renderFallbackCodeHtml
 } from '../lib/code-highlighting'
+import { FileTypeIcon } from '../lib/file-type-icon'
+import { DocxPreview } from './knowledge-base/DocxPreview'
+import { PdfJsPreview } from './knowledge-base/PdfJsPreview'
 
 type Props = {
   target: WorkspaceFileTarget | null
   workspaceRoot: string
   className?: string
   onClose: () => void
+  onBack?: () => void
 }
 
 const COPY_RESET_MS = 1400
+const RICH_PREVIEW_EXTENSION = /\.(?:docx?|pdf|xlsx?|pptx?|png|jpe?g|gif|webp|bmp|avif|ico|mp3|wav|m4a|mp4)$/i
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -64,14 +70,46 @@ function extensionBadge(path: string, language: string): string {
   return value.slice(0, 3).toUpperCase()
 }
 
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+  ico: 'image/x-icon',
+  svg: 'image/svg+xml',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  m4a: 'audio/mp4',
+  mp4: 'video/mp4',
+  txt: 'text/plain',
+  md: 'text/markdown'
+}
+
+function mimeTypeFromName(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase() ?? ''
+  return MIME_BY_EXT[ext] ?? 'application/octet-stream'
+}
+
 export function WorkspaceFilePreviewPanel({
   target,
   workspaceRoot,
   className,
-  onClose
+  onClose,
+  onBack
 }: Props): ReactElement {
   const { t } = useTranslation('common')
   const [result, setResult] = useState<WorkspaceFileReadResult | null>(null)
+  const [binaryResult, setBinaryResult] = useState<WorkspaceBinaryReadResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [highlightHtml, setHighlightHtml] = useState(() => renderFallbackCodeHtml(''))
@@ -81,6 +119,7 @@ export function WorkspaceFilePreviewPanel({
   useEffect(() => {
     if (!target) {
       setResult(null)
+      setBinaryResult(null)
       setLoading(false)
       return
     }
@@ -88,22 +127,69 @@ export function WorkspaceFilePreviewPanel({
     let cancelled = false
     setLoading(true)
     setResult(null)
+    setBinaryResult(null)
 
-    void window.dsGui
-      .readWorkspaceFile({
-        ...target,
-        workspaceRoot: target.workspaceRoot ?? workspaceRoot
-      })
-      .then((next) => {
-        if (!cancelled) setResult(next)
-      })
-      .catch((error) => {
+    const request = {
+      ...target,
+      workspaceRoot: target.workspaceRoot ?? workspaceRoot
+    }
+    const richPreview = RICH_PREVIEW_EXTENSION.test(target.path)
+    const applyError = (message: string): void => {
+      const failed = { ok: false, message } as const
+      if (richPreview) setBinaryResult(failed)
+      else setResult(failed)
+    }
+
+    const fallbackToKnowledge = async (): Promise<boolean> => {
+      if (typeof window.dsGui?.runtimeRequest !== 'function') return false
+      try {
+        const response = await window.dsGui.runtimeRequest(
+          `/v1/knowledge/file?path=${encodeURIComponent(target.path)}&encoding=base64`,
+          'GET'
+        )
+        if (!response.ok) return false
+        const data = JSON.parse(response.body) as { path: string; content: string; encoding?: string }
+        if (typeof data.content !== 'string' || !data.content) return false
+        const mimeType = mimeTypeFromName(target.path)
         if (!cancelled) {
-          setResult({
-            ok: false,
-            message: error instanceof Error ? error.message : String(error)
+          setBinaryResult({
+            ok: true,
+            path: data.path,
+            dataBase64: data.content,
+            mimeType,
+            size: Math.floor((data.content.length * 3) / 4)
           })
         }
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const readTask = (richPreview
+      ? window.dsGui.readWorkspaceBinary(request)
+      : window.dsGui.readWorkspaceFile(request)
+    ).then(async (next) => {
+      if (cancelled) return
+      if (next.ok) {
+        if (richPreview && 'dataBase64' in next) setBinaryResult(next)
+        else if (!richPreview && 'content' in next) setResult(next)
+        return
+      }
+      // A knowledge-base file referenced in conversation lives outside the
+      // workspace; when workspace resolution fails with File not found,
+      // fall back to the runtime knowledge API so it can still be previewed.
+      if (/File not found/i.test(next.message)) {
+        const handled = await fallbackToKnowledge()
+        if (!handled && !cancelled) applyError(next.message)
+        return
+      }
+      applyError(next.message)
+    })
+
+    void readTask
+      .catch((error) => {
+        if (!cancelled) applyError(error instanceof Error ? error.message : String(error))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -132,21 +218,22 @@ export function WorkspaceFilePreviewPanel({
 
   const displayPath = useMemo(() => {
     if (result?.ok) return formatFilePathForDisplay(result.path, workspaceRoot) ?? result.path
+    if (binaryResult?.ok) return formatFilePathForDisplay(binaryResult.path, workspaceRoot) ?? binaryResult.path
     return target?.path ?? ''
-  }, [result, target, workspaceRoot])
+  }, [binaryResult, result, target, workspaceRoot])
   const language = useMemo(() => {
     if (result?.ok) return languageFromFilePath(result.path)
     return target?.path ? languageFromFilePath(target.path) : ''
   }, [result, target])
   const lines = useMemo(() => (result?.ok ? result.content.split('\n') : []), [result])
   const breadcrumbSegments = useMemo(() => {
-    const path = result?.ok ? result.path : target?.path ?? ''
+    const path = result?.ok ? result.path : binaryResult?.ok ? binaryResult.path : target?.path ?? ''
     if (!path) return []
     const projectName = workspaceRoot ? fileNameFromPath(workspaceRoot) : 'Project'
     return ['Project', projectName, ...relativePathSegments(path, workspaceRoot)]
-  }, [result, target, workspaceRoot])
+  }, [binaryResult, result, target, workspaceRoot])
   const currentFileName = displayPath ? fileNameFromPath(displayPath) : t('filePreviewTitle')
-  const badge = extensionBadge(result?.ok ? result.path : target?.path ?? '', language)
+  const badge = extensionBadge(result?.ok ? result.path : binaryResult?.ok ? binaryResult.path : target?.path ?? '', language)
   const activeLine = result?.ok && result.line && result.line >= 1 && result.line <= lines.length
     ? result.line
     : null
@@ -176,8 +263,12 @@ export function WorkspaceFilePreviewPanel({
   }, [result, language])
 
   const openInEditor = (): void => {
-    const path = result?.ok ? result.path : target?.path
+    const path = result?.ok ? result.path : binaryResult?.ok ? binaryResult.path : target?.path
     if (!path) return
+    if (binaryResult?.ok && typeof window.dsGui?.openLocalPath === 'function') {
+      void window.dsGui.openLocalPath(path)
+      return
+    }
     void openWorkspacePathInEditor(
       {
         path,
@@ -196,7 +287,7 @@ export function WorkspaceFilePreviewPanel({
   }
 
   const copyPath = async (): Promise<void> => {
-    const path = result?.ok ? result.path : target?.path
+    const path = result?.ok ? result.path : binaryResult?.ok ? binaryResult.path : target?.path
     if (!path || !navigator?.clipboard?.writeText) return
     try {
       await navigator.clipboard.writeText(path)
@@ -213,14 +304,13 @@ export function WorkspaceFilePreviewPanel({
       className={`ds-no-drag ds-code-sidebar flex min-h-0 flex-col border-l border-ds-border-muted ${className ?? ''}`}
     >
       <div className="ds-code-sidebar-topbar">
-        <button
-          type="button"
-          onDoubleClick={openInEditor}
-          className="ds-code-sidebar-tab"
-          title={displayPath}
-          disabled={!target}
-        >
-          <span className="ds-code-sidebar-file-badge">{badge}</span>
+        {onBack ? (
+          <button type="button" onClick={onBack} className="ds-code-sidebar-icon-button ml-1" title="返回文件列表" aria-label="返回文件列表">
+            <ArrowLeft className="h-4 w-4" strokeWidth={1.8} />
+          </button>
+        ) : null}
+        <button type="button" onDoubleClick={openInEditor} className="ds-code-sidebar-tab" title={displayPath} disabled={!target}>
+          {currentFileName ? <FileTypeIcon name={currentFileName} className="h-[18px] w-[18px] shrink-0" /> : <span className="ds-code-sidebar-file-badge">{badge}</span>}
           <span className="truncate">{currentFileName}</span>
         </button>
 
@@ -282,10 +372,10 @@ export function WorkspaceFilePreviewPanel({
             <span className="truncate text-ds-muted">{t('filePreviewEmpty')}</span>
           )}
         </div>
-        {result?.ok ? (
+        {result?.ok || binaryResult?.ok ? (
           <span className="shrink-0 font-mono text-[10px] text-ds-faint">
-            {formatBytes(result.size)}
-            {language ? ` · ${language}` : ''}
+            {formatBytes(result?.ok ? result.size : binaryResult?.ok ? binaryResult.size : 0)}
+            {result?.ok && language ? ` · ${language}` : ''}
           </span>
         ) : null}
       </div>
@@ -304,6 +394,28 @@ export function WorkspaceFilePreviewPanel({
           <div className="flex flex-1 items-center justify-center gap-2 text-[12px] text-ds-muted">
             <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.8} />
             {t('filePreviewLoading')}
+          </div>
+        ) : binaryResult?.ok ? (
+          <div className="min-h-0 flex-1 overflow-auto">
+            {binaryResult.mimeType.includes('wordprocessingml') || binaryResult.path.toLowerCase().endsWith('.docx') ? (
+              <DocxPreview base64Content={binaryResult.dataBase64} fileName={currentFileName} fallbackText="" />
+            ) : binaryResult.mimeType === 'application/pdf' ? (
+              <PdfJsPreview base64Content={binaryResult.dataBase64} fileName={currentFileName} />
+            ) : binaryResult.mimeType.startsWith('image/') ? (
+              <div className="flex min-h-full items-center justify-center bg-ds-subtle/70 p-5">
+                <img src={`data:${binaryResult.mimeType};base64,${binaryResult.dataBase64}`} alt={currentFileName} className="max-h-full max-w-full rounded-lg object-contain shadow-sm" />
+              </div>
+            ) : binaryResult.mimeType.startsWith('audio/') ? (
+              <div className="flex min-h-full items-center justify-center p-6"><audio src={`data:${binaryResult.mimeType};base64,${binaryResult.dataBase64}`} controls className="w-full" /></div>
+            ) : binaryResult.mimeType.startsWith('video/') ? (
+              <div className="flex min-h-full items-center justify-center bg-black p-3"><video src={`data:${binaryResult.mimeType};base64,${binaryResult.dataBase64}`} controls className="max-h-full max-w-full" /></div>
+            ) : (
+              <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 p-8 text-center">
+                <FileTypeIcon name={currentFileName} className="h-12 w-12" />
+                <div className="font-medium text-ds-ink">暂不支持此格式的内嵌预览</div>
+                <button type="button" onClick={openInEditor} className="mt-1 rounded-lg border border-ds-border bg-ds-card px-3 py-2 text-[12px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink">使用本机应用打开</button>
+              </div>
+            )}
           </div>
         ) : result?.ok ? (
           <div className="relative flex min-h-0 flex-1 flex-col">
@@ -346,7 +458,7 @@ export function WorkspaceFilePreviewPanel({
           </div>
         ) : (
           <div className="flex flex-1 items-center justify-center px-6 text-center text-[12px] leading-6 text-red-700 dark:text-red-300">
-            {result?.message ?? t('filePreviewFailed')}
+            {result?.message ?? binaryResult?.message ?? t('filePreviewFailed')}
           </div>
         )}
       </div>

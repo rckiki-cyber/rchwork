@@ -79,6 +79,21 @@ export function parseServeOptions(
           : env.LEGALWORK_RUNTIME_TOKEN ??
             configServe.runtimeToken ??
             DEFAULT_SERVE_OPTIONS.runtimeToken,
+    authMode:
+      typeof raw['auth-mode'] === 'string'
+        ? raw['auth-mode'] as ServeOptions['authMode']
+        : typeof raw.authMode === 'string'
+          ? raw.authMode as ServeOptions['authMode']
+          : env.LEGALWORK_AUTH_MODE === 'chatgpt'
+            ? 'chatgpt'
+            : configServe.authMode ?? DEFAULT_SERVE_OPTIONS.authMode,
+    codexBinaryPath:
+      typeof raw['codex-binary'] === 'string'
+        ? raw['codex-binary']
+        : typeof raw.codexBinaryPath === 'string'
+          ? raw.codexBinaryPath
+          : env.LEGALWORK_CODEX_BINARY ?? configServe.codexBinaryPath ?? DEFAULT_SERVE_OPTIONS.codexBinaryPath,
+    codexHome: env.LEGALWORK_CODEX_HOME ?? DEFAULT_SERVE_OPTIONS.codexHome,
     apiKey:
       typeof raw['api-key'] === 'string'
         ? raw['api-key']

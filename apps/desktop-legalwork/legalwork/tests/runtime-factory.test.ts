@@ -3,8 +3,13 @@ import { InMemorySessionStore } from '../src/adapters/in-memory-session-store.js
 import { InMemoryThreadStore } from '../src/adapters/in-memory-thread-store.js'
 import { createThreadRecord } from '../src/domain/thread.js'
 import { UsageService } from '../src/services/usage-service.js'
-import { seedUsageCarryover } from '../src/server/runtime-factory.js'
+import {
+  seedUsageCarryover,
+  shouldAwaitPkulawMcpInitialization,
+  waitForAtMost
+} from '../src/server/runtime-factory.js'
 import type { UsageSnapshot } from '../src/contracts/usage.js'
+import type { LegalworkCapabilitiesConfig } from '../src/contracts/capabilities.js'
 
 function usage(overrides: Partial<UsageSnapshot>): UsageSnapshot {
   const promptTokens = overrides.promptTokens ?? 10
@@ -66,5 +71,47 @@ describe('runtime factory usage carryover', () => {
       misses: 8,
       hitRate: 0.9
     })
+  })
+})
+
+describe('runtime factory MCP readiness', () => {
+  const mcp = {
+    enabled: true,
+    servers: {
+      'pkulaw-law-search': {
+        enabled: true,
+        transport: 'streamable-http',
+        url: 'https://mcp.example.test/pkulaw',
+        args: [],
+        headers: {},
+        env: {},
+        trustScope: 'user',
+        trustedWorkspaceRoots: [],
+        timeoutMs: 30_000
+      }
+    },
+    search: {
+      enabled: false,
+      mode: 'auto',
+      autoThresholdToolCount: 24,
+      topKDefault: 5,
+      topKMax: 10,
+      minScore: 0.15,
+      bm25: { k1: 1.2, b: 0.75 }
+    }
+  } satisfies LegalworkCapabilitiesConfig['mcp']
+
+  it('waits for configured PKULaw only on legal-research turns', () => {
+    expect(shouldAwaitPkulawMcpInitialization('请进行多源调研，并优先使用北大法宝', mcp)).toBe(true)
+    expect(shouldAwaitPkulawMcpInitialization('整理当前目录中的 TypeScript 文件', mcp)).toBe(false)
+  })
+
+  it('never blocks the turn beyond the supplied readiness budget', async () => {
+    const never = new Promise<void>(() => undefined)
+    const startedAt = Date.now()
+
+    await expect(waitForAtMost(never, 20)).resolves.toBe('timeout')
+    expect(Date.now() - startedAt).toBeLessThan(250)
+    await expect(waitForAtMost(Promise.resolve(), 20)).resolves.toBe('ready')
   })
 })

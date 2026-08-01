@@ -74,8 +74,8 @@ describe('legal document Word export', () => {
     })
 
     expect(markdown).toContain('# 多源调研报告：土地出让金返还条款效力')
-    expect(markdown).toContain('## 1、研究摘要')
-    expect(markdown).toContain('### （1）法律依据')
+    expect(markdown).toContain('## 一、研究摘要')
+    expect(markdown).toContain('### （一）法律依据')
     expect(markdown).toContain('**核心结论**：该条款原则上无效。')
     expect(markdown).toContain('**案号：** （2024）某号')
     expect(markdown).toContain('[北大法宝链接](https://www.pkulaw.com/chl/example.html)')
@@ -107,11 +107,33 @@ describe('legal document Word export', () => {
       markdown: source
     })
 
-    expect(markdown).toContain('1\\. **第一篇论文**')
-    expect(markdown).toContain('1\\. **第二篇论文**')
+    expect(markdown).toContain('1、**第一篇论文**')
+    expect(markdown).toContain('1、**第二篇论文**')
     expect(html).not.toContain('<ol>')
     expect(html).not.toContain('<li>')
-    expect(html).toContain('>1. <strong>第一篇论文</strong>')
+    expect(html).toContain('>1、<strong>第一篇论文</strong>')
+  })
+
+  it('normalizes research heading depth to Chinese legal-document numbering', () => {
+    const markdown = prepareLegalDocumentMarkdown({
+      templateName: '法律调研报告',
+      markdown: [
+        '# 法律调研报告',
+        '',
+        '## 4、分析与风险提示',
+        '',
+        '### （1）定性分析框架',
+        '',
+        '#### 第一项 核心分水岭',
+        '',
+        '##### 1. 具体判断标准'
+      ].join('\n')
+    })
+
+    expect(markdown).toContain('## 一、分析与风险提示')
+    expect(markdown).toContain('### （一）定性分析框架')
+    expect(markdown).toContain('#### 1、核心分水岭')
+    expect(markdown).toContain('##### （1）具体判断标准')
   })
 
   it('writes the reference-report font and paragraph settings into DOCX OOXML', async () => {

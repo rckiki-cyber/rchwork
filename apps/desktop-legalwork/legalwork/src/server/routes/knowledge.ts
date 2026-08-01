@@ -15,7 +15,8 @@ const KnowledgeSearchQuery = z.object({
 const KnowledgeRetrieveQuery = z.object({
   q: z.string().trim().min(1),
   max_chars: z.coerce.number().int().positive().max(20000).default(8000),
-  exclude_expired: z.coerce.boolean().default(true)
+  exclude_expired: z.coerce.boolean().default(true),
+  path_prefix: z.string().trim().max(1000).optional()
 }).strict()
 
 export async function syncKnowledge(store: KnowledgeStore | undefined, request: Request): Promise<JsonResponse> {
@@ -67,13 +68,15 @@ export async function retrieveKnowledge(store: KnowledgeStore | undefined, reque
   const parsed = KnowledgeRetrieveQuery.safeParse({
     q: url.searchParams.get('q') ?? '',
     max_chars: url.searchParams.get('max_chars') ?? undefined,
-    exclude_expired: url.searchParams.get('exclude_expired') ?? undefined
+    exclude_expired: url.searchParams.get('exclude_expired') ?? undefined,
+    path_prefix: url.searchParams.get('path_prefix') ?? undefined
   })
   if (!parsed.success) return ERRORS.validation('invalid knowledge retrieve query', parsed.error.issues)
   const pipeline = new KnowledgeRetrievalPipeline(store)
   return jsonResponse(await pipeline.retrieve(parsed.data.q, {
     maxChars: parsed.data.max_chars,
-    excludeExpired: parsed.data.exclude_expired
+    excludeExpired: parsed.data.exclude_expired,
+    ...(parsed.data.path_prefix ? { pathPrefix: parsed.data.path_prefix } : {})
   }))
 }
 

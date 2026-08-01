@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import type { ChatBlock } from '../../agent/types'
 import {
   findKnowledgeFileForChatContext,
   knowledgeChatHistoryFromBlocks,
+  markKnowledgeSourceReferences,
   stripRepeatedKnowledgeQuestionLead
 } from './knowledge-chat-history'
+import { KnowledgeChatComposer } from './KnowledgeChatUI'
 
 describe('knowledgeChatHistoryFromBlocks', () => {
   it('restores the visible user question from a stored global RAG prompt', () => {
@@ -43,6 +47,82 @@ describe('knowledgeChatHistoryFromBlocks', () => {
       role: 'assistant',
       content: '## 结论\n\n核心结论如下。'
     })
+  })
+
+  it('restores the selected folder scope from a stored knowledge prompt', () => {
+    const blocks: ChatBlock[] = [{
+      kind: 'user',
+      id: 'user-folder',
+      text: `## 当前知识库范围
+文件夹：论文
+路径：研究资料/论文
+
+## 用户问题
+这些是什么？`
+    }]
+
+    expect(knowledgeChatHistoryFromBlocks(blocks).context).toEqual({
+      kind: 'folder',
+      folderPath: '研究资料/论文',
+      folderName: '论文'
+    })
+  })
+
+  it('restores a PDF selection as a quote separate from user input', () => {
+    const blocks: ChatBlock[] = [{
+      kind: 'user',
+      id: 'user-pdf-quote',
+      text: `## 当前文件
+行政法论文.pdf（PDF）
+
+## PDF 划选引用
+来源：行政法论文.pdf
+页码：第 2 页
+正文：
+行政机关处理个人信息应当遵循合法、正当、必要原则。
+
+## 用户问题
+这段话的规范依据是什么？`
+    }]
+
+    expect(knowledgeChatHistoryFromBlocks(blocks).messages[0]).toMatchObject({
+      role: 'user',
+      content: '这段话的规范依据是什么？',
+      quote: {
+        label: '行政法论文.pdf · 第 2 页',
+        text: '行政机关处理个人信息应当遵循合法、正当、必要原则。'
+      }
+    })
+  })
+
+  it('uses a safe in-app anchor when marking source references', () => {
+    expect(markKnowledgeSourceReferences('依据[来源 3]，并参见[来源 4]。')).toBe(
+      '依据[来源 3](#knowledge-source-3)，并参见[来源 4](#knowledge-source-4)。'
+    )
+    expect(markKnowledgeSourceReferences('[来源 3](#knowledge-source-3)')).toBe(
+      '[来源 3](#knowledge-source-3)'
+    )
+  })
+
+  it('renders a PDF quote separately from the user-authored composer text', () => {
+    const html = renderToStaticMarkup(createElement(KnowledgeChatComposer, {
+      value: '这段话的法律依据是什么？',
+      placeholder: '输入关于文件的问题...',
+      disabled: false,
+      quote: {
+        label: '行政法论文.pdf · 第 2 页',
+        text: '行政机关处理个人信息应当遵循合法、正当、必要原则。'
+      },
+      onRemoveQuote: () => undefined,
+      onChange: () => undefined,
+      onKeyDown: () => undefined,
+      onSend: () => undefined
+    }))
+
+    expect(html).toContain('行政法论文.pdf · 第 2 页')
+    expect(html).toContain('行政机关处理个人信息应当遵循合法、正当、必要原则。')
+    expect(html).toContain('value="这段话的法律依据是什么？"')
+    expect(html).toContain('移除引用')
   })
 
   it('extracts the file context from a stored file chat prompt', () => {

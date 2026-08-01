@@ -1,7 +1,8 @@
 import type { KeyboardEvent, ReactElement, ReactNode } from 'react'
-import { useEffect, useState } from 'react'
-import { Sparkles } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Quote, Sparkles, X } from 'lucide-react'
 import { SendIcon } from '../icons/SendIcon'
+import type { KnowledgeChatQuote } from './knowledge-chat-history'
 
 const KNOWLEDGE_CHAT_SIDEBAR_EXIT_MS = 320
 
@@ -130,10 +131,45 @@ export function KnowledgeChatMessage({
   )
 }
 
+type KnowledgeSelectionQuoteProps = {
+  quote: KnowledgeChatQuote
+  onRemove?: () => void
+}
+
+export function KnowledgeSelectionQuote({
+  quote,
+  onRemove
+}: KnowledgeSelectionQuoteProps): ReactElement {
+  return (
+    <div className="mb-2 rounded-[10px] border border-[color-mix(in_srgb,var(--ds-accent)_18%,var(--ds-border))] bg-[color-mix(in_srgb,var(--ds-accent)_7%,var(--ds-card-soft))] px-2.5 py-2 text-left">
+      <div className="flex items-center gap-1.5 text-[10px] font-medium text-[var(--ds-accent)]">
+        <Quote className="h-3 w-3 shrink-0" strokeWidth={1.8} />
+        <span className="min-w-0 flex-1 truncate">{quote.label}</span>
+        {onRemove ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] text-[var(--ds-muted)] transition hover:bg-ds-hover hover:text-[var(--ds-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-accent)]"
+            title="移除引用"
+            aria-label="移除引用"
+          >
+            <X className="h-3 w-3" strokeWidth={1.8} />
+          </button>
+        ) : null}
+      </div>
+      <div className="mt-1 max-h-20 overflow-y-auto whitespace-pre-wrap break-words border-l-2 border-[color-mix(in_srgb,var(--ds-accent)_42%,transparent)] pl-2 text-[11px] leading-[1.55] text-[var(--ds-muted)]">
+        {quote.text}
+      </div>
+    </div>
+  )
+}
+
 type KnowledgeChatComposerProps = {
   value: string
   placeholder: string
   disabled: boolean
+  quote?: KnowledgeChatQuote | null
+  onRemoveQuote?: () => void
   onChange: (value: string) => void
   onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void
   onSend: () => void
@@ -143,41 +179,52 @@ export function KnowledgeChatComposer({
   value,
   placeholder,
   disabled,
+  quote,
+  onRemoveQuote,
   onChange,
   onKeyDown,
   onSend
 }: KnowledgeChatComposerProps): ReactElement {
   const [focused, setFocused] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (quote) inputRef.current?.focus()
+  }, [quote])
 
   return (
     <div className="shrink-0 px-3 pb-3 pt-2">
       <div
         data-liquid-surface="composer"
         data-liquid-reactive
-        className={`ds-composer-shell ds-chat-composer ds-frosted flex items-center gap-2 rounded-[20px] px-2.5 py-2 transition ${
+        className={`ds-composer-shell ds-chat-composer ds-frosted flex flex-col items-stretch rounded-[20px] px-2.5 py-2 transition ${
           focused ? 'ds-chat-composer-focus' : ''
         }`}
       >
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={onKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder={placeholder}
-          disabled={disabled}
-          className="h-9 min-w-0 flex-1 bg-transparent px-1.5 text-[13px] text-[var(--ds-ink)] outline-none placeholder:text-[var(--ds-faint)] disabled:opacity-50"
-        />
-        <button
-          type="button"
-          onClick={onSend}
-          disabled={disabled || !value.trim()}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ds-userbubble)] text-[var(--ds-userbubbleFg)] shadow-sm transition duration-200 hover:scale-[1.03] hover:opacity-95 active:scale-[0.96] disabled:scale-100 disabled:opacity-35"
-          aria-label="发送"
-          title="发送"
-        >
-          <SendIcon className="h-4 w-4" />
-        </button>
+        {quote ? <KnowledgeSelectionQuote quote={quote} onRemove={onRemoveQuote} /> : null}
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={onKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={placeholder}
+            disabled={disabled}
+            className="h-9 min-w-0 flex-1 bg-transparent px-1.5 text-[13px] text-[var(--ds-ink)] outline-none placeholder:text-[var(--ds-faint)] disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={onSend}
+            disabled={disabled || !value.trim()}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ds-userbubble)] text-[var(--ds-userbubbleFg)] shadow-sm transition duration-200 hover:scale-[1.03] hover:opacity-95 active:scale-[0.96] disabled:scale-100 disabled:opacity-35"
+            aria-label="发送"
+            title="发送"
+          >
+            <SendIcon className="h-4 w-4" />
+          </button>
+        </div>
       </div>
       <div className="mt-1.5 px-2 text-right text-[9.5px] text-[var(--ds-faint)]">
         Enter 发送

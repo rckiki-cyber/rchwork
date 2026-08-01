@@ -158,6 +158,42 @@ describe('electron-builder Legalwork packaging', () => {
     )
   })
 
+  it('ships the current IMA MCP server and rejects stale packaged copies', () => {
+    expect(builderConfig.extraResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        from: 'scripts',
+        to: 'scripts',
+        filter: expect.arrayContaining(['ima-mcp-server.py'])
+      })
+    ]))
+
+    const root = tempRoot()
+    const projectDir = join(root, 'project')
+    const context = {
+      ...createMacPackContext(root),
+      packager: {
+        ...createMacPackContext(root).packager,
+        projectDir
+      }
+    }
+    const sourcePath = join(projectDir, afterPack.IMA_MCP_SCRIPT_RELATIVE_PATH)
+    const bundledPath = join(
+      afterPack._internals.packedResourcesDir(context),
+      afterPack.IMA_MCP_SCRIPT_RELATIVE_PATH
+    )
+    mkdirSync(join(sourcePath, '..'), { recursive: true })
+    mkdirSync(join(bundledPath, '..'), { recursive: true })
+    writeFileSync(sourcePath, 'current IMA MCP script\n', 'utf8')
+    writeFileSync(bundledPath, 'current IMA MCP script\n', 'utf8')
+
+    expect(() => afterPack._internals.validateBundledImaMcpServer(context)).not.toThrow()
+
+    writeFileSync(bundledPath, 'stale IMA MCP script\n', 'utf8')
+    expect(() => afterPack._internals.validateBundledImaMcpServer(context)).toThrow(
+      /Bundled IMA MCP script is stale/
+    )
+  })
+
   it('validates the unpacked data compliance runtime before release artifacts are created', () => {
     const root = tempRoot()
     const context = createMacPackContext(root)
