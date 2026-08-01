@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-01T14:04:37.056Z",
+  "generated_at": "2026-08-01T14:04:55.394Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
@@ -8,12 +8,16 @@
       "published_at": "2026-08-01T14:04:14Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.10",
       "prerelease": false,
-      "summary": "本次更新包括：修复优化。",
+      "summary": "本次发布带来功能和稳定性改进，安装最新版后即可体验。",
       "highlights": [
-        "LegalWork 0.3.10 已上线，安装后即可使用这一版的新能力与体验优化。"
+        "使用体验更新：v0.3.10 更新内容",
+        "🆕 新增",
+        "设置新增「模型配置」独立子项：认证方式（API Key / ChatGPT 账号）、模型供应商、API Key、Base URL、接口协议、模型列表、当前模型统一管理，从「通用」与「AI 助手」中抽出集中展示。",
+        "现在支持： ChatGPT 账号认证：设置里可选「ChatGPT 账号」登录（走 ChatGPT 订阅，无需 API Key），主页模型自动联动账号可用模型。",
+        "使用体验更新：中转站（Relay）适配：接口协议可选 OpenAI Chat Completions / OpenAI Responses / Anthropic Messages；thinking 字段按 host 收敛，仅官方 DeepSeek 域名自动注入；费用估算按 host 收敛。"
       ],
       "categories": [
-        "修复优化"
+        "版本发布"
       ],
       "assets": [
         {
