@@ -103,6 +103,9 @@ jobs:
           APPLE_API_KEY: ${{ env.MAC_API_KEY_PATH || '' }}
           APPLE_API_KEY_ID: ${{ secrets.MAC_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.MAC_API_ISSUER }}
+          LEGALWORK_ERROR_REPORT_GITHUB_REPO: ${{ secrets.ERROR_REPORT_REPO }}
+          LEGALWORK_ERROR_REPORT_GITHUB_TOKEN: ${{ secrets.ERROR_REPORT_TOKEN }}
+          LEGALWORK_ERROR_REPORT_GITHUB_LABEL: ${{ secrets.ERROR_REPORT_LABEL }}
         run: npm run dist:mac
 
       - name: Upload macOS build artifact
@@ -157,6 +160,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ env.WIN_CERT_PATH || '' }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
+          LEGALWORK_ERROR_REPORT_GITHUB_REPO: ${{ secrets.ERROR_REPORT_REPO }}
+          LEGALWORK_ERROR_REPORT_GITHUB_TOKEN: ${{ secrets.ERROR_REPORT_TOKEN }}
+          LEGALWORK_ERROR_REPORT_GITHUB_LABEL: ${{ secrets.ERROR_REPORT_LABEL }}
         run: npm run dist:win
 
       - name: Upload Windows build artifact
@@ -194,6 +200,9 @@ jobs:
           LEGALWORK_APP_VERSION: ${{ needs.create-release.outputs.version }}
           LEGALWORK_UPDATE_CHANNEL: stable
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LEGALWORK_ERROR_REPORT_GITHUB_REPO: ${{ secrets.ERROR_REPORT_REPO }}
+          LEGALWORK_ERROR_REPORT_GITHUB_TOKEN: ${{ secrets.ERROR_REPORT_TOKEN }}
+          LEGALWORK_ERROR_REPORT_GITHUB_LABEL: ${{ secrets.ERROR_REPORT_LABEL }}
         run: npm run dist -- --linux AppImage --x64
 
       - name: Upload Linux build artifact

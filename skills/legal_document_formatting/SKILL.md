@@ -34,6 +34,8 @@ description: LegalWork 的 Word/DOCX 底层格式与排版技能。凡任务涉�
 
 ### 2. 选择格式权威
 
+**前置纪律：本技能全部内容已通过注入提供，禁止 `find`/`ls`/`cat` 查找或重新读取本技能目录下的任何文件**（`SKILL.md`、`references/*.md`、`scripts/*.py`）。需要格式规范直接按本文件执行；需要审计脚本直接按下方 `python3 scripts/audit_docx_format.py` 调用，不要先 grep 脚本源码。
+
 先检查是否存在以下材料：
 
 - 指定模板、同类历史定稿、投稿或提交指南；
@@ -123,17 +125,119 @@ description: LegalWork 的 Word/DOCX 底层格式与排版技能。凡任务涉�
 - 表格几何使用 DXA 明确计算，确保 `tblW`、`tblGrid`、`tcW` 与可用版心一致。
 - 对旧 `.doc` 先转换为 `.docx`，再编辑；不得直接用仅支持 `.docx` 的库打开 `.doc`。
 
+## 新建 DOCX 的一键生成模板（首选，省时省调用）
+
+**这是新建文档的默认路径。目标：一次 batch 写完内容，总工具调用控制在 ≤6 次，不反复 help、不逐条 create/section/paragraph。**
+
+用环境提供的 officecli MCP 工具（`mcp_officecli_officecli`），命令结构如下（参数按 MCP 工具传 `{command, file, ...}`，见下方示例）：
+
+```
+第1步  create <文件路径>                          # 建空文件
+第2步  set    <文件路径> /section[1]              # 页面设置：A4、页边距（一次设完）
+第3步  batch  <文件路径>                          # 一次性写入：样式 + 标题 + 正文 + 表格 + 页脚（所有内容一个 batch 的 commands 数组）
+第4步  save   <文件路径>
+第5步  validate <文件路径>                        # 结构校验（一次，不要反复）
+第6步  view <文件路径> outline                     # 检查大纲层级，确认无空段/错层即止
+```
+
+### 已实测可用的命令模板
+
+**create（第1步）**
+```
+{command: create, file: "/path/out.docx"}
+```
+
+**页面设置 set（第2步）**
+```
+{command: set, file: "/path/out.docx", path: "/section[1]", props: {
+  pageWidth: "21cm", pageHeight: "29.7cm",
+  marginTop: "2.54cm", marginBottom: "2.54cm",
+  marginLeft: "3.18cm", marginRight: "3.18cm",
+  marginHeader: "1.5cm", marginFooter: "1.75cm"}}
+```
+
+**一次性写全部内容 batch（第3步）——按需组合，全部塞进 commands 数组**
+
+样式（先建样式，一次 add 完）：
+```
+{command: batch, file: "/path/out.docx", commands: [
+  {command: add, parent: "/styles", type: "style", props: {id: "Title", type: "paragraph", font: "Times New Roman", "font.ea": "黑体", size: 18, align: "center", spaceBefore: "0pt", spaceAfter: "18pt", outlineLvl: 0, keepNext: true}},
+  {command: add, parent: "/styles", type: "style", props: {id: "Heading1", type: "paragraph", basedOn: "Normal", font: "Times New Roman", "font.ea": "黑体", size: 14, bold: true, align: "left", spaceBefore: "12pt", spaceAfter: "6pt", outlineLvl: 0, keepNext: true}},
+  {command: add, parent: "/styles", type: "style", props: {id: "Heading2", type: "paragraph", basedOn: "Normal", font: "Times New Roman", "font.ea": "黑体", size: 12, bold: true, align: "left", spaceBefore: "9pt", spaceAfter: "3pt", outlineLvl: 1, keepNext: true}},
+  {command: add, parent: "/styles", type: "style", props: {id: "Heading3", type: "paragraph", basedOn: "Normal", font: "Times New Roman", "font.ea": "宋体", size: 12, bold: true, align: "left", spaceBefore: "6pt", spaceAfter: "0pt", outlineLvl: 2, keepNext: true}},
+  {command: set, path: "/styles/Normal", props: {font: "Times New Roman", "font.ea": "宋体", size: 12, lineSpacing: "1.5x", align: "justify", widowControl: true}}
+]}
+```
+
+正文与表格（同样放 batch 的 commands 数组，跟在样式后面一起提交）：
+```
+{command: add, parent: "/body", type: "paragraph", props: {style: "Title", text: "标题"}}
+{command: add, parent: "/body", type: "paragraph", props: {style: "Heading1", text: "一、..."}}
+{command: add, parent: "/body", type: "paragraph", props: {style: "Normal", firstLineIndent: "480", text: "正文首行缩进2字符"}}
+{command: add, parent: "/body", type: "table", props: {cols: 2, rows: 4, layout: "fixed", width: "100%", data: "表头1,表头2;单元格A,单元格B;..."}}
+```
+
+表格列宽与表头重复（同一 batch 或下一个 batch）：
+```
+{command: set, path: "/body/tbl[1]", props: {colWidths: "1800,6000", layout: "fixed", border: "none"}}
+{command: set, path: "/body/tbl[2]/tr[1]", props: {header: true}}
+```
+
+页脚页码（放在 batch commands 数组末尾）：
+```
+{command: add, parent: "/", type: "footer", props: {type: "default", align: "center", font: "Times New Roman", "font.ea": "宋体", size: 10.5, text: "第 "}},
+{command: add, parent: "/footer[1]/p[1]", type: "field", props: {fieldType: "page"}},
+{command: add, parent: "/footer[1]/p[1]", type: "run", props: {text: " 页　共 "}},
+{command: add, parent: "/footer[1]/p[1]", type: "field", props: {fieldType: "numpages"}},
+{command: add, parent: "/footer[1]/p[1]", type: "run", props: {text: " 页"}}
+```
+
+### 关键纪律（违反会导致 30+ 次无谓调用）
+
+- **不要 help**：语法已在上方，不需要 `help docx style/section/paragraph/...`。一次都不需要。
+- **不要 find/cat 技能文件**：本技能内容已通过注入提供，无需 `ls ~/.legalwork/skills`、`find`、`cat SKILL.md`。直接照本模板执行。
+- **内容一次写完**：把全部标题、正文、表格、页脚在**第一个 batch** 里一次提交，不要分 6 次 `batch` 逐个 add。
+- **最多一次 validate + 一次 view outline**：通过即交付，不要对 warning 反复调试。
+
+## PPT（.pptx）一键生成模板
+
+officecli 同样支持 PPT。**目标：≤8 次调用，一次 batch 建完所有幻灯片，不逐页截图、不反复渲染检查。**
+
+```
+第1步  load_skill pptx          # 加载 pptx 语法（只一次）
+第2步  create <文件路径>.pptx
+第3步  batch <文件路径>  commands=[ ...全部幻灯片... ]   # 见下方
+第4步  save <文件路径>
+第5步  view <文件路径> outline   # 检查大纲层级，通过即交付
+```
+
+**batch 命令模板（每页一个 slide，全部塞进 commands 数组）：**
+```json
+{ "command": "batch", "file": "/path/演示.pptx", "commands": [
+  { "command": "add", "parent": "/", "type": "slide", "props": { "layout": "title", "title": "人工智能对行政法的根本影响", "subtitle": "——基于本地知识库的文献综述" } },
+  { "command": "add", "parent": "/", "type": "slide", "props": { "layout": "title_and_content", "title": "一、核心判断", "content": "人工智能对行政法的影响不是局部修补，而是对“主体—行为—程序—责任”链条的根本性重塑。" } },
+  { "command": "add", "parent": "/", "type": "slide", "props": { "layout": "title_and_content", "title": "二、组织平台化", "content": "行政组织法变革：平台化、公私合作新形态。" } }
+] }
+```
+
+**PPT 质检纪律（防止陷入死循环）：**
+- **绝不逐页截图检查**。模型不支持读图时，截图毫无意义，`view screenshot` 一次都不要用。
+- **不重渲染**：`view outline` 确认层级正确即交付，不要反复 screenshot + 几何复核。
+- **保存即收尾**：`save` 之后直接输出交付说明（"PPT 已生成，共 N 页"），**不要 save 后再发起新的复核轮次**。
+- **不要 help**：pptx 语法已在上方，`load_skill pptx` 一次即可，不要反复 help slide。
+
 ## 强制质检
 
-每次生成或实质修改 DOCX 后执行：
+每次生成或实质修改 DOCX 后执行，**控制在 ≤3 次工具调用，只修真错误，不为美观反复折腾**：
 
-1. 结构检查：文件可打开；样式、编号、节、字段、关系和内容类型有效。
-2. 规则审计：运行 `scripts/audit_docx_format.py` 并选正确 profile；把 error 修完，对 warning 逐项判断。
-3. 内容保真：核对段落、表格、脚注、图片、批注、修订和附件是否丢失或重复。
-4. 渲染检查：把 DOCX 渲染为逐页 PNG，在 100% 比例检查每一页。
-5. 版面修复后重新渲染，直到无截字、重叠、乱码、孤标题、异常空白、破表、页码错位和字体漂移。
+1. 结构检查：`validate` 一次，确认文件可打开、样式/字段/内容类型有效。
+2. 规则审计：运行 `scripts/audit_docx_format.py` 并选正确 profile。
+   - **只修 error**。error 为 0 即可交付。
+   - **warning 一律不修**，除非它影响真实交付（如表格破表、缺页眉页脚）；正常交付下 warning 记为已知项即可。
+   - **info 直接忽略**，不做任何处理。
+3. 内容保真：核对段落、表格、脚注、图片、批注、修订和附件是否丢失或重复（`view outline` 一次即可）。
 
-若渲染器缺少目标字体，先检查可用字体并使用兼容替代进行 QA；不得把缺字方框视为通过。若确实无法完成视觉检查，在交付时明确说明未通过渲染门槛。
+不强制逐页 PNG 渲染。只有当 `validate` 或 audit 报出真实结构/版面错误、且确实需要目视确认时才渲染，检查完即止。不要对肉眼几乎不可见的中英文标点混排、手打编号等吹毛求疵——这些不是错误。
 
 ## 最终交付
 

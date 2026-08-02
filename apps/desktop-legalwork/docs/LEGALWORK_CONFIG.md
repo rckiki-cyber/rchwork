@@ -291,6 +291,17 @@ Legalwork 内置 DeepSeek V4 默认模型画像：
 
 当两个位置都写了同一个模型时，`models.profiles` 的配置优先。
 
+## 数据合规 / 脱敏环境安装
+
+数据合规（脱敏/合规审查）首次使用时会现场创建 Python venv 并 `pip install`（依赖含 PaddlePaddle、spacy 等大包，未随安装包预装）。以下环境变量可缓解网络导致的安装失败：
+
+| 环境变量 | 作用 |
+| --- | --- |
+| `LEGALWORK_PIP_INDEX_URL` | pip 镜像源，如 `https://pypi.tuna.tsinghua.edu.cn/simple`。设置后 pip 会走镜像，显著降低国内安装失败率。 |
+| `LEGALWORK_PYTHON_MIRROR_PREFIX` | python-build-standalone 下载镜像前缀（如 `https://ghproxy.com/`），用于加速 GitHub 下载内置 Python。 |
+
+两者都做了失败自动重试。设了 `LEGALWORK_PIP_INDEX_URL` 后，GUI「重试」按钮和 agent 对话触发的脱敏都会走镜像源。
+
 ## 相关源码
 
 - 默认 GUI Agent 设置：`src/shared/app-settings-legalwork.ts`

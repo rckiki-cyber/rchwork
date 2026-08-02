@@ -6,6 +6,7 @@ import {
   JsonSettingsStore,
   devServerHintUrl
 } from './settings-store'
+import { reportStartup } from './services/startup-report'
 import legalworkLogoPng from '../asset/img/legalwork.png?url'
 import { createAppIcon } from './app-icon'
 import {
@@ -40,7 +41,15 @@ import {
   runtimeRequestViaHost
 } from './runtime/legalwork-adapter'
 import { findAvailableLegalworkPort } from './legalwork-process'
-import { configureLogger, logError, logWarn, pruneOnStartup } from './logger'
+import { configureLogger, logError, logWarn, pruneOnStartup, setLogErrorReporter } from './logger'
+import {
+  configureErrorReporting,
+  reportError,
+  ERROR_REPORT_ENDPOINT_ENV,
+  ERROR_REPORT_GITHUB_REPO_ENV,
+  ERROR_REPORT_GITHUB_TOKEN_ENV,
+  ERROR_REPORT_GITHUB_LABEL_ENV
+} from './error-report'
 import { createClawRuntime, type ClawRuntime } from './claw-runtime'
 import { createScheduleRuntime, type ScheduleRuntime } from './schedule-runtime'
 import {
@@ -887,6 +896,53 @@ async function runtimeRequest(
   }
 }
 
+function registerGlobalErrorHandlers(): void {
+  const report = (input: { category: string; message: string; stack?: string }): void => {
+    // logError writes the local log AND (via the injected reporter) triggers
+    // the silent error report. Never let this path itself throw.
+    try {
+      logError(input.category, input.message)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  process.on('uncaughtException', (error) => {
+    report({
+      category: 'uncaught-exception',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    // State after an uncaught exception is unreliable. Exit explicitly (via
+    // app.exit, skipping the quit-cleanup chain) — same "crash" behavior as
+    // before, but with the failure recorded and reported first.
+    app.exit(1)
+  })
+
+  process.on('unhandledRejection', (reason) => {
+    report({
+      category: 'unhandled-rejection',
+      message: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined
+    })
+    // Not necessarily fatal; record + report but keep running.
+  })
+
+  app.on('render-process-gone', (_event, _webContents, details) => {
+    report({
+      category: 'render-process-gone',
+      message: `${details.reason} (exit code ${details.exitCode})`
+    })
+  })
+
+  app.on('child-process-gone', (_event, details) => {
+    report({
+      category: 'child-process-gone',
+      message: `${details.type} ${details.reason} (${details.exitCode ?? ''})`
+    })
+  })
+}
+
 if (runningClawScheduleMcpServer) {
   void runClawScheduleMcpServerFromArgv(process.argv).catch((error) => {
     console.error('[claw-schedule-mcp] server failed:', error)
@@ -909,6 +965,17 @@ app.whenReady().then(async () => {
   traceStartup('settings load:start')
   const initial = await store.load()
   traceStartup('settings load:done')
+  // Best-effort unique-device startup report. Endpoint reads from env so it
+  // can be wired without a rebuild; failures are swallowed inside.
+  const startupReportEndpoint = (process.env.LEGALWORK_STARTUP_REPORT_URL || '').trim()
+  void reportStartup({
+    dataDir: app.getPath('userData'),
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    appId: app.getName(),
+    endpoint: startupReportEndpoint || undefined
+  })
   appBehavior = initial.appBehavior
   syncLoginItemSettings(initial)
   syncTray(initial)
@@ -922,6 +989,27 @@ app.whenReady().then(async () => {
     enabled: initial.log.enabled,
     retentionDays: initial.log.retentionDays
   })
+  // Silent automatic error reporting. Publisher-controlled: nothing is sent
+  // unless a destination is configured; users do nothing. Prefer GitHub issue
+  // reporting (repo + minimal token); a generic endpoint URL also works.
+  // Runtime env (dev/CI) wins; otherwise the config file bundled into the
+  // packaged app resources supplies the destination.
+  configureErrorReporting({
+    dataDir: app.getPath('userData'),
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    appId: app.getName(),
+    githubRepo: (process.env[ERROR_REPORT_GITHUB_REPO_ENV] || '').trim() || undefined,
+    githubToken: (process.env[ERROR_REPORT_GITHUB_TOKEN_ENV] || '').trim() || undefined,
+    githubLabels: (process.env[ERROR_REPORT_GITHUB_LABEL_ENV] || '').split(',').map((s) => s.trim()).filter(Boolean),
+    endpoint: (process.env[ERROR_REPORT_ENDPOINT_ENV] || '').trim() || undefined,
+    configPath: app.isPackaged
+      ? join(process.resourcesPath || '', 'error-report.config.json')
+      : join(__dirname, '..', '..', '..', 'error-report.config.json')
+  })
+  setLogErrorReporter((input) => reportError(input))
+  registerGlobalErrorHandlers()
   traceStartup('logger configured')
   scheduleRuntime = createScheduleRuntime({ store, runtimeRequest, logError, powerSaveBlocker })
   scheduleRuntime.sync(initial)

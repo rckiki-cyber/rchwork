@@ -43,6 +43,7 @@ config.local.*
 *.key
 *.mobileprovision
 scripts/release.local.env
+apps/desktop-legalwork/error-report.config.json
 
 # Local data and uploads
 uploads/
@@ -79,3 +80,6 @@ research/
 
 # Local skill drafts
 skills/legalwork-learning-iteration/
+
+# Backup files (temporary working backups, not part of app)
+*.bak-*

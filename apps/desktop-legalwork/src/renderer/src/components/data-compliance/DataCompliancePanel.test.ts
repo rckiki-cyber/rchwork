@@ -19,7 +19,6 @@ describe('data compliance history navigation', () => {
     expect(html).toContain('历史任务')
     expect(html).toContain('0 项任务')
     expect(html).toContain('暂无历史任务')
-    expect(html).toContain('结果查询')
   })
 
   it('uses the same expandable history hierarchy for desensitization', () => {

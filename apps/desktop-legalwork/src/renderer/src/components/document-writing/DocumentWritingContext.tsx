@@ -144,6 +144,14 @@ function loadedMaterials(materials: UploadedMaterial[]): Array<{ fileName: strin
 
 const TEMPLATE_CONTENT_MAX_CHARS = 50_000
 const TEMPLATE_OPERATION_TIMEOUT_MS = 30_000
+// 扫描版 PDF/图片需走本地 OCR，可长达 1-3 分钟；普通文件 30s 足够。
+const TEMPLATE_OCR_TIMEOUT_MS = 180_000
+const OCR_LIKE_EXTENSIONS = new Set(['pdf', 'png', 'jpg', 'jpeg', 'webp', 'bmp', 'tif', 'tiff'])
+
+function templateTimeoutForFile(fileName: string): number {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
+  return OCR_LIKE_EXTENSIONS.has(ext) ? TEMPLATE_OCR_TIMEOUT_MS : TEMPLATE_OPERATION_TIMEOUT_MS
+}
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined
@@ -178,7 +186,7 @@ async function extractMaterialText(file: File): Promise<string> {
 async function extractTemplateText(file: File): Promise<string> {
   const content = await withTimeout(
     extractMaterialText(file),
-    TEMPLATE_OPERATION_TIMEOUT_MS,
+    templateTimeoutForFile(file.name),
     '读取模板文件超时，请确认文件可正常打开后重试。'
   )
   const normalized = content.split('\u0000').join('').trim()

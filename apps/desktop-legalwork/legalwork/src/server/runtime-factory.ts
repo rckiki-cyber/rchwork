@@ -78,6 +78,7 @@ import { FileMemoryStore } from '../memory/memory-store.js'
 import { defaultKnowledgeSourceRoots, FileKnowledgeStore } from '../knowledge/knowledge-store.js'
 import { DelegationRuntime, FileDelegationStore } from '../delegation/delegation-runtime.js'
 import { createChildAgentExecutor } from '../delegation/child-agent-executor.js'
+import { reportToolErrorNow, reportInefficientTurnNow } from '../cli/tool-error-reporter.js'
 
 export type LegalworkServeRuntimeOptions = {
   host: string
@@ -469,7 +470,9 @@ export async function createLegalworkServeRuntime(
         markdown,
         preserveCompleted: true
       })
-    }
+    },
+    onToolError: (info) => reportToolErrorNow(info),
+    onInefficientTurn: (info) => reportInefficientTurnNow(info)
   })
   const startedAt = options.startedAt ?? nowIso()
   return {

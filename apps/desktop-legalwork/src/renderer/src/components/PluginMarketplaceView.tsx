@@ -1101,6 +1101,12 @@ export function PluginMarketplaceView({
     const hasWorkspace = !!workspaceRoot
     return [
       {
+        id: 'global-deepseek',
+        label: t('pluginSkillRootGlobalDeepseek'),
+        path: '~/.legalwork/skills',
+        available: true
+      },
+      {
         id: 'workspace-agents',
         label: t('pluginSkillRootWorkspaceAgents'),
         path: workspaceRoot ? joinFsPath(workspaceRoot, '.agents/skills') : '',
@@ -1116,12 +1122,6 @@ export function PluginMarketplaceView({
         id: 'global-agents',
         label: t('pluginSkillRootGlobalAgents'),
         path: '~/.agents/skills',
-        available: true
-      },
-      {
-        id: 'global-deepseek',
-        label: t('pluginSkillRootGlobalDeepseek'),
-        path: '~/.legalwork/skills',
         available: true
       }
     ]
@@ -1331,6 +1331,10 @@ export function PluginMarketplaceView({
         return true
       })
       .sort((left, right) => {
+        // 用户已安装的 skill 置顶，其次是分类，再按标题。
+        if (Boolean(left.userInstalled) !== Boolean(right.userInstalled)) {
+          return left.userInstalled ? -1 : 1
+        }
         const categoryDelta = categoryRank(inferMarketplaceCategory(left)) - categoryRank(inferMarketplaceCategory(right))
         if (categoryDelta !== 0) return categoryDelta
         return itemTitle(left, t).localeCompare(itemTitle(right, t))

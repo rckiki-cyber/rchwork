@@ -25,6 +25,9 @@ import { AssistantMarkdown } from './AssistantMarkdown'
 import { MessageBubble } from './message-timeline-bubbles'
 import { blockHasPendingRuntimeWork, splitThink } from './message-timeline-turns'
 import { formatDuration, formatToolTitle } from './message-timeline-tools'
+import { orbStateForBlock } from './orb-state'
+import { ThinkingOrbStatus } from './ThinkingOrbStatus'
+import { extractToolName } from './tool-summary'
 
 export type ProcessSection = {
   id: string
@@ -260,6 +263,7 @@ function processBlockIsActive(block: ChatBlock, processing: boolean): boolean {
   return (
     processBlockIsRunningTool(block, processing) ||
     processBlockIsAutoOpenPending(block, processing) ||
+    (processing && block.kind === 'reasoning' && block.id === 'live-reasoning') ||
     (processing && block.kind === 'assistant' && block.id === 'live-assistant')
   )
 }
@@ -290,6 +294,15 @@ function ProcessBlockIcon({
         ? 'text-accent'
         : 'text-ds-faint'
   }`
+
+  // Live reasoning/tool blocks get the animated orb while running; error and
+  // inactive blocks keep their static lucide icons.
+  if (active && !error) {
+    const orbState = orbStateForBlock(block)
+    if (orbState) {
+      return <ThinkingOrbStatus state={orbState} size={20} className="mt-0.5 shrink-0" />
+    }
+  }
 
   if (block.kind === 'reasoning') return <Brain className={iconClass} strokeWidth={1.85} />
   if (block.kind === 'system') return <AlertTriangle className={iconClass} strokeWidth={1.85} />
@@ -707,11 +720,6 @@ function builtInToolLabel(
     default:
       return undefined
   }
-}
-
-function extractToolName(summary: string): string {
-  const match = summary.trim().match(/^([a-z0-9_-]+)\s*:/i)
-  return match?.[1] ?? ''
 }
 
 function extractQuotedField(text: string, field: string): string | undefined {

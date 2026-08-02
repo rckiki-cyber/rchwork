@@ -448,6 +448,9 @@
   max-width: none !important;
   height: auto !important;
   margin: 0 auto;
+  /* Mermaid measures CJK labels in a detached document and can come out a few
+     pixels wider than the layout assumed; never clip those stray glyphs. */
+  overflow: visible;
 }
 
 /* Mermaid measures labels in a temporary document before the SVG enters the

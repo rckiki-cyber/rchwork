@@ -15,8 +15,9 @@ import {
   processBlockNeedsAttention,
   summarizeProcessBlocks
 } from './message-timeline-process-summary'
-import { AnimatedWorkLogo } from './AnimatedWorkLogo'
 import { brandForModel } from '../../lib/model-brand'
+import { activeToolOrbState, resolveOrbState, type OrbState } from './orb-state'
+import { ThinkingOrbStatus } from './ThinkingOrbStatus'
 import {
   groupTurns,
   splitThink,
@@ -295,9 +296,6 @@ function MessageTurn({
   const { think: liveThink, content: liveContent } = splitThink(live)
   const liveProcessText = [liveReasoning, liveThink].filter(Boolean).join('\n\n')
   const [workExpandedByUser, setWorkExpandedByUser] = useState(false)
-  const turnModelBrand = turn.user?.modelLabel
-    ? brandForModel(turn.user.modelLabel)
-    : modelBrand
 
   const { processBlocks, assistantContentBlocks, turnFileChanges } = useMemo(
     () =>
@@ -405,7 +403,8 @@ function MessageTurn({
 
       {isProcessing ? (
         <LiveTurnProgressRow
-          modelBrand={turnModelBrand}
+          processBlocks={processBlocks}
+          liveReasoning={liveReasoning}
           waitingForUserInput={waitingForUserInput}
         />
       ) : null}
@@ -430,13 +429,19 @@ function MessageTurn({
 }
 
 function LiveTurnProgressRow({
-  modelBrand,
+  processBlocks,
+  liveReasoning,
   waitingForUserInput
 }: {
-  modelBrand: ReturnType<typeof brandForModel>
+  processBlocks: ChatBlock[]
+  liveReasoning: string
   waitingForUserInput: boolean
 }): ReactElement {
   const { t } = useTranslation('common')
+  const orbState: OrbState = waitingForUserInput
+    ? 'listening'
+    : activeToolOrbState(processBlocks) ??
+      resolveOrbState({ busy: true, liveReasoning, waitingForUserInput: false })
 
   return (
     <div
@@ -448,7 +453,7 @@ function LiveTurnProgressRow({
         {waitingForUserInput ? (
           <span className="block h-2.5 w-2.5 rounded-full bg-accent" />
         ) : (
-          <AnimatedWorkLogo active brand={modelBrand} phase="trail" size="sm" />
+          <ThinkingOrbStatus state={orbState} size={20} />
         )}
       </span>
       <span className={waitingForUserInput ? '' : 'ds-shiny-text'}>

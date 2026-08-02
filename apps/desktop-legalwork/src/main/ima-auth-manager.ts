@@ -17,7 +17,7 @@ const IMA_AUTH_FILE = 'ima-auth.json'
 const IMA_CREDS_FILE = 'ima-creds.json'   // MCP Server 读取的明文凭证
 const KEY_DERIVATION = 'legalwork:ima-auth:v1'
 const IMA_SESSION_PARTITION = 'persist:ima-persistent'
-const IMA_LOGIN_URL = 'https://ima.qq.com/'
+const IMA_LOGIN_URL = 'https://ima.qq.com/wikis'
 const IMA_WIKIS_URL = 'https://ima.qq.com/wikis'
 const IMA_REFRESH_URL = 'https://ima.qq.com/cgi-bin/auth_login/refresh'
 

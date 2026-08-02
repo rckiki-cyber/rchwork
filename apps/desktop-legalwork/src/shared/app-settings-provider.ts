@@ -16,6 +16,7 @@ import { DEFAULT_COMPOSER_MODEL_IDS } from './default-composer-models'
 import {
   BUILTIN_MODEL_PROVIDER_PRESETS,
   getBuiltinModelProviderPreset,
+  inferEndpointFormatFromBaseUrl,
   normalizeModelProviderId
 } from './model-providers'
 
@@ -249,7 +250,7 @@ function normalizeModelProviderProfile(
   const models = normalizeProviderModels(input?.models, preset?.models)
   const endpointFormat = typeof input?.endpointFormat === 'string' && input.endpointFormat.trim()
     ? input.endpointFormat.trim()
-    : preset?.endpointFormat ?? 'chat_completions'
+    : preset?.endpointFormat ?? inferEndpointFormatFromBaseUrl(baseUrl, id)
   return {
     id,
     name,

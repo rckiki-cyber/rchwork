@@ -59,7 +59,39 @@ export function repairDispatchToolArguments(
     notes.push(`truncated ${truncated.count} oversized argument string(s)`)
   }
 
+  // bash 专属校验：模型在超长上下文中有时会发出只含 `type`/`session`/`date`
+  // 等元数据、却缺少 `command` 的无效 bash 调用（如 traj 导出场景）。这类调用
+  // 一旦放行，bash 工具会因缺 command 报错，agent 原地打转甚至卡死。这里把
+  // command 替换为一条常量、无任何模型数据的报错命令，让工具返回清晰错误、
+  // agent 能据此自纠。
+  // 安全注意：command 会被 shell 以 `-lc` 执行，绝不能把模型提供的参数拼进
+  // 命令串（会形成命令注入）。因此错误命令是纯常量字符串，参数详情只放进
+  // note（结构化字段，不经 shell），不以命令形式回显。
+  if (options.toolName === 'bash' && !hasOwn(current, 'command')) {
+    const argSummary = safeStringifySlice(current, 200)
+    current = {
+      ...current,
+      command: `echo 'Invalid bash call: missing required command field' >&2; exit 1`
+    }
+    notes.push(`repaired invalid bash call missing "command" (args=${argSummary})`)
+  }
+
   return { arguments: current, notes }
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
+/** 安全序列化，循环引用/异常时兜底，避免整轮 turn 因 stringify 抛错。 */
+function safeStringifySlice(value: unknown, max: number): string {
+  let serialized: string
+  try {
+    serialized = JSON.stringify(value) ?? String(value)
+  } catch {
+    serialized = String(value)
+  }
+  return serialized.slice(0, max)
 }
 
 function shallowCloneRecord(value: Record<string, unknown>): Record<string, unknown> {

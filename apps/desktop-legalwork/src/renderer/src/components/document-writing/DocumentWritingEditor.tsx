@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react'
 import { DOCUMENT_SUBJECT_FIELD_ID } from '../../../../shared/user-templates'
+import { ThinkingOrbStatus } from '../chat/ThinkingOrbStatus'
 import type { LegalTemplate, LegalTemplateField } from './legal-templates'
 import { DocumentWritingEditorDialog } from './DocumentWritingEditorDialog'
 import '../../styles/document-writing.css'
@@ -488,7 +489,7 @@ export function DocumentWritingEditor({
                           </span>
                         </span>
                         {!mat.loaded && !mat.error && (
-                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--ds-faint)]" />
+                          <ThinkingOrbStatus state="searching" size={20} />
                         )}
                         {onRemoveMaterial && (
                           <button
@@ -674,7 +675,7 @@ export function DocumentWritingEditor({
                   className="document-writing-primary-button w-full"
                 >
                   {generating ? (
-                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                    <ThinkingOrbStatus state="composing" size={20} />
                   ) : (
                     <WandSparkles className="h-4 w-4" strokeWidth={1.9} />
                   )}

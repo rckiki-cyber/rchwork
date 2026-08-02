@@ -12,6 +12,7 @@ type Props = {
 
 const ALLOWED_EXTENSIONS = ['.docx', '.pdf', '.txt', '.md']
 const MAX_TEMPLATE_FILE_BYTES = 10 * 1024 * 1024
+const OCR_LIKE_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff'])
 
 function getFileExt(name: string): string {
   const dot = name.lastIndexOf('.')
@@ -27,6 +28,7 @@ export function DocumentTemplateUploader({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadingHint, setUploadingHint] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -62,6 +64,9 @@ export function DocumentTemplateUploader({
     if (err) { setError(err); return }
     setError(null)
     setUploading(true)
+    setUploadingHint(OCR_LIKE_EXTENSIONS.has(getFileExt(file.name))
+      ? t('documentWritingUploadOcrHint')
+      : null)
     try {
       await onUpload(file)
       onClose()
@@ -69,6 +74,7 @@ export function DocumentTemplateUploader({
       setError(e instanceof Error ? e.message : t('documentWritingUploadError'))
     } finally {
       setUploading(false)
+      setUploadingHint(null)
     }
   }, [validateFile, onUpload, onClose, t])
 
@@ -143,9 +149,15 @@ export function DocumentTemplateUploader({
           <p className="text-[13px] text-[var(--ds-ink)]">
             {uploading ? t('documentWritingUploading') : t('documentWritingUploadDragHint')}
           </p>
-          <p className="text-[12px] text-[var(--ds-faint)]">
-            {t('documentWritingUploadFormats')}
-          </p>
+          {uploadingHint ? (
+            <p className="text-[12px] text-[var(--ds-accent)]">
+              {uploadingHint}
+            </p>
+          ) : (
+            <p className="text-[12px] text-[var(--ds-faint)]">
+              {t('documentWritingUploadFormats')}
+            </p>
+          )}
           <input ref={fileInputRef} type="file" accept={ALLOWED_EXTENSIONS.join(',')} onChange={handleInputChange} className="hidden" disabled={uploading} />
         </div>
 

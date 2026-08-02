@@ -22,6 +22,8 @@ import {
 import { useChatStore } from '../../store/chat-store'
 import { AnimatedWorkLogo } from '../chat/AnimatedWorkLogo'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
+import { resolveOrbState } from '../chat/orb-state'
+import { ThinkingOrbStatus } from '../chat/ThinkingOrbStatus'
 import { FloatingComposerModelPicker } from '../chat/FloatingComposerModelPicker'
 import { ModelBrandIcon } from '../chat/ModelBrandIcon'
 import { LegalworkRuntimeProvider } from '../../agent/legalwork-runtime'
@@ -271,6 +273,7 @@ export function KnowledgeBaseFileView({
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [retrieving, setRetrieving] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   const [activeChatThreadId, setActiveChatThreadId] = useState<string | null>(null)
   const [liveReasoning, setLiveReasoning] = useState('')
@@ -624,6 +627,7 @@ export function KnowledgeBaseFileView({
     setLiveAssistant('')
 
     try {
+      setRetrieving(true)
       const retrievalQuery = `${question.trim()} ${node.name} ${node.path}`
       const retrieval = await requestJson<KnowledgeRetrievalResult>(
         `${LEGALWORK_KNOWLEDGE_RETRIEVE_PATH}?q=${encodeURIComponent(retrievalQuery)}&max_chars=3000&exclude_expired=true`
@@ -632,6 +636,7 @@ export function KnowledgeBaseFileView({
         sources: [],
         latencyMs: 0
       }))
+      setRetrieving(false)
 
       // Save source-to-path mapping so [来源 N] links can navigate to the file.
       const sourceMapping: Record<number, { path: string; title: string }> = {}
@@ -1056,7 +1061,7 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
                   ) : msg.role === 'tool' ? (
                     <div className="flex items-center gap-2">
                       {msg.status === 'running' ? (
-                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" strokeWidth={1.8} />
+                        <ThinkingOrbStatus state="searching" size={20} />
                       ) : null}
                       <span className="min-w-0 flex-1 break-words">{msg.content}</span>
                     </div>
@@ -1072,7 +1077,7 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
               {liveReasoning ? (
                 <KnowledgeChatMessage
                   role="reasoning"
-                  leading={<AnimatedWorkLogo active brand={modelBrand} phase="trail" size="sm" />}
+                  leading={<ThinkingOrbStatus state="solving" size={20} />}
                 >
                   <AssistantMarkdown
                     text={liveReasoning}
@@ -1098,10 +1103,19 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
               {sending ? (
                 <KnowledgeChatMessage
                   role="assistant"
-                  leading={<AnimatedWorkLogo active brand={modelBrand} phase="trail" size="sm" />}
+                  leading={
+                    <ThinkingOrbStatus
+                      state={resolveOrbState({
+                        busy: true,
+                        liveReasoning,
+                        waitingForUserInput: false,
+                        activeToolName: retrieving ? 'knowledge_search' : undefined
+                      })}
+                      size={20}
+                    />
+                  }
                 >
                   <div className="flex items-center gap-2 text-[var(--ds-muted)]">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
                     <span>AI 思考中...</span>
                   </div>
                 </KnowledgeChatMessage>

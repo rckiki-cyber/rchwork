@@ -1,3 +1,5 @@
+export type EndpointFormat = 'chat_completions' | 'responses' | 'messages'
+
 export type ModelProviderBrand =
   | 'deepseek'
   | 'kimi'
@@ -154,6 +156,29 @@ export function inferModelProviderBrand(providerId: string | undefined, modelId:
 
 export function modelProviderBrandLabel(brand: ModelProviderBrand): string {
   return getBuiltinModelProviderPreset(brand)?.name ?? 'Custom'
+}
+
+/**
+ * Infer the request/response protocol from a provider's base URL.
+ *
+ * Users usually can't tell whether an endpoint speaks OpenAI Chat Completions,
+ * OpenAI Responses, or Anthropic Messages — and picking wrong yields a 401 when
+ * fetching the model list (the auth header differs per protocol). This derives
+ * the format so non-relay (official) endpoints work without manual selection.
+ *
+ * Rules:
+ *   - Anthropic official (providerId claude or host contains anthropic.com) → messages
+ *   - everything else → chat_completions (the most widely compatible default;
+ *     OpenAI official also accepts it, so api.openai.com keeps working)
+ */
+export function inferEndpointFormatFromBaseUrl(
+  baseUrl: string | undefined,
+  providerId?: string
+): EndpointFormat {
+  const normalizedProviderId = normalizeModelProviderId(providerId)
+  const url = (baseUrl ?? '').trim().toLowerCase()
+  if (normalizedProviderId === 'claude' || url.includes('anthropic.com')) return 'messages'
+  return 'chat_completions'
 }
 
 export function normalizeModelProviderId(value: unknown): string {

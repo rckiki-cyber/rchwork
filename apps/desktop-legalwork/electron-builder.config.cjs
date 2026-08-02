@@ -113,6 +113,10 @@ module.exports = {
       from: '../../document',
       to: 'document',
       filter: ['**/*', '!**/__pycache__/**/*', '!**/*.pyc', '!**/*.pyo', '!.DS_Store']
+    },
+    {
+      from: 'error-report.config.json',
+      to: 'error-report.config.json'
     }
   ],
   files: [

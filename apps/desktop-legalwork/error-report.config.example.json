@@ -1,0 +1,6 @@
+{
+  "githubRepo": "your-account/legalwork-reports",
+  "githubToken": "ghp_YOUR_MINIMAL_SCOPE_TOKEN_HERE",
+  "githubLabels": ["bug-report"],
+  "endpoint": ""
+}

@@ -444,4 +444,39 @@ describe('registerAppIpcHandlers', () => {
     expect(mainWindow.maximize).toHaveBeenCalledTimes(1)
     expect(mainWindow.close).toHaveBeenCalledTimes(1)
   })
+
+  it('deepseek:config:read returns the default PKULaw config when mcp.json is missing', async () => {
+    const { registerAppIpcHandlers } = await import('./register-app-ipc-handlers')
+
+    // resolveLegalworkConfigPath defaults to a non-existent path -> ENOENT branch.
+    registerAppIpcHandlers(registerOptions())
+    const handler = handlers.get('deepseek:config:read')
+    expect(handler).toBeTypeOf('function')
+
+    const result = await handler?.({}) as { path: string; content: string; exists: boolean }
+    expect(result.exists).toBe(false)
+
+    const parsed = JSON.parse(result.content) as { servers: Record<string, { enabled: boolean }> }
+    expect(Object.keys(parsed.servers)).toHaveLength(9)
+    expect(Object.keys(parsed.servers).every((id) => id.startsWith('pkulaw-'))).toBe(true)
+    expect(Object.values(parsed.servers).every((server) => server.enabled === true)).toBe(true)
+  })
+
+  it('deepseek:config:read returns the on-disk content when mcp.json exists', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'legalwork-mcp-test-'))
+    const mcpPath = join(dir, 'mcp.json')
+    writeFileSync(mcpPath, JSON.stringify({ servers: { custom: { enabled: true } } }), 'utf8')
+
+    try {
+      const { registerAppIpcHandlers } = await import('./register-app-ipc-handlers')
+      registerAppIpcHandlers(registerOptions({ resolveLegalworkConfigPath: () => mcpPath }))
+      const handler = handlers.get('deepseek:config:read')
+
+      const result = await handler?.({}) as { path: string; content: string; exists: boolean }
+      expect(result.exists).toBe(true)
+      expect(JSON.parse(result.content)).toEqual({ servers: { custom: { enabled: true } } })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

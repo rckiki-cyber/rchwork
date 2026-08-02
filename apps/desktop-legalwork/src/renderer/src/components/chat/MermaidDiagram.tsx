@@ -24,8 +24,14 @@ const COPY_RESET_MS = 2000
 const MIN_ZOOM = 0.55
 const MAX_ZOOM = 2
 const ZOOM_STEP = 0.15
-const MIN_DIAGRAM_WIDTH = 560
+const MIN_DIAGRAM_WIDTH = 240
 const MAX_DIAGRAM_WIDTH = 2400
+const DEFAULT_FONT_SIZE = 15
+const MIN_FONT_SIZE = 12
+const LIGHT_TEXT_WEIGHT = 40
+const HEAVY_TEXT_WEIGHT = 520
+const MERMAID_DIRECTIVE_WORDS =
+  /\b(?:flowchart|graph|sequenceDiagram|classDiagram|classDiagram-v2|stateDiagram|stateDiagram-v2|erDiagram|journey|gantt|pie|quadrantChart|requirementDiagram|gitGraph|mindmap|timeline|zenuml|sankey-beta|xychart-beta|block-beta|packet-beta|kanban|architecture-beta|subgraph|end|direction|LR|RL|TB|BT|TD|click|linkStyle|style|classDef|accTitle|accDescr)\b/g
 const VIEWBOX_REGEX = /<svg\b[^>]*\bviewBox=(['"])([^'"]+)\1/i
 const FOREIGN_OBJECT_REGEX = /<foreignObject\b([^>]*)>/g
 const MERMAID_SOURCE_REGEX =
@@ -91,8 +97,75 @@ export function ensureMermaidLabelVisibility(svg: string): string {
   })
 }
 
-function mermaidConfig(theme: DiagramTheme): MermaidConfig {
+/**
+ * Mermaid measures label widths in a detached document, so CJK glyphs can come
+ * out a few pixels wider than the layout assumed once the SVG lands in the chat
+ * context. The root <svg> clips anything past the viewBox, which cuts off those
+ * few stray pixels. Widen the viewBox symmetrically (without rescaling the
+ * content, which stays 1:1 and centered) so the overflow has room to render.
+ */
+export function expandSvgViewBox(svg: string): string {
+  const match = svg.match(VIEWBOX_REGEX)
+  if (!match) return svg
+  const numbers = match[2].trim().split(/[\s,]+/).map(Number)
+  if (
+    numbers.length !== 4 ||
+    !numbers.every(Number.isFinite) ||
+    numbers[2] <= 0 ||
+    numbers[3] <= 0
+  ) {
+    return svg
+  }
+  const [x, y, width, height] = numbers
+  const padX = Math.max(20, Math.round(width * 0.05))
+  const padY = Math.max(20, Math.round(height * 0.05))
+  const value = `${x - padX} ${y - padY} ${width + padX * 2} ${height + padY * 2}`
+  return svg.replace(`${match[1]}${match[2]}${match[1]}`, `${match[1]}${value}${match[1]}`)
+}
+
+/**
+ * Approximate how much label text a Mermaid diagram carries. Full-width glyphs
+ * (CJK) are wider than Latin glyphs, so they weigh 1.0 while letters/digits
+ * weigh 0.5. Syntax markers are stripped first so only real label text counts.
+ */
+export function estimateLabelChars(source: string): number {
+  const text = source
+    .replace(/^\s*---[\s\S]*?---\s*/u, '')
+    .replace(/%%[^\n]*/g, ' ')
+    .replace(MERMAID_DIRECTIVE_WORDS, ' ')
+    .replace(/\[|\]/g, ' ')
+    .replace(/[{}()<>|:;#~"'`&!+*\\=\-,.]/g, ' ')
+    .replace(/\s+/g, '')
+  let weight = 0
+  for (const ch of text) {
+    if (/[⺀-鿿豈-﫿]/u.test(ch)) weight += 1
+    else if (/[a-zA-Z0-9]/.test(ch)) weight += 0.5
+    else weight += 0.2
+  }
+  return weight
+}
+
+/**
+ * Pick a base font size that adapts to how much text a diagram holds: short
+ * diagrams keep a comfortable 15px, text-heavy ones shrink toward 12px so the
+ * boxes, connectors and glyphs stay compact instead of blowing up.
+ */
+export function adaptiveFontSize(source: string): number {
+  const weight = estimateLabelChars(source)
+  if (weight <= LIGHT_TEXT_WEIGHT) return DEFAULT_FONT_SIZE
+  if (weight >= HEAVY_TEXT_WEIGHT) return MIN_FONT_SIZE
+  const t = (weight - LIGHT_TEXT_WEIGHT) / (HEAVY_TEXT_WEIGHT - LIGHT_TEXT_WEIGHT)
+  return Math.round((DEFAULT_FONT_SIZE - (DEFAULT_FONT_SIZE - MIN_FONT_SIZE) * t) * 10) / 10
+}
+
+function mermaidConfig(
+  theme: DiagramTheme,
+  fontSize: number = DEFAULT_FONT_SIZE
+): MermaidConfig {
   const dark = theme === 'dark'
+  // Keep connector spacing proportional to the font so a compact (text-heavy)
+  // diagram doesn't end up with oversized gaps between nodes.
+  const spacing = fontSize / DEFAULT_FONT_SIZE
   return {
     startOnLoad: false,
     securityLevel: 'strict',
@@ -113,7 +186,7 @@ function mermaidConfig(theme: DiagramTheme): MermaidConfig {
           edgeLabelBackground: '#17181c',
           clusterBkg: '#202226',
           clusterBorder: '#454a54',
-          fontSize: '15px'
+          fontSize: `${fontSize}px`
         }
       : {
           background: '#ffffff',
@@ -127,13 +200,13 @@ function mermaidConfig(theme: DiagramTheme): MermaidConfig {
           edgeLabelBackground: '#ffffff',
           clusterBkg: '#f7f8fa',
           clusterBorder: '#d8dde6',
-          fontSize: '15px'
+          fontSize: `${fontSize}px`
         },
     flowchart: {
       curve: 'linear',
       htmlLabels: false,
-      nodeSpacing: 42,
-      rankSpacing: 54,
+      nodeSpacing: Math.round(42 * spacing),
+      rankSpacing: Math.round(54 * spacing),
       useMaxWidth: false
     },
     sequence: {
@@ -153,9 +226,11 @@ async function renderMermaid(
 ): Promise<{ svg: string; width: number }> {
   return enqueueMermaidRender(async () => {
     const { createMermaidPlugin } = await import('@streamdown/mermaid')
-    const plugin = createMermaidPlugin({ config: mermaidConfig(theme) })
+    const plugin = createMermaidPlugin({
+      config: mermaidConfig(theme, adaptiveFontSize(source))
+    })
     const result = await plugin.getMermaid().render(id, source)
-    const svg = ensureMermaidLabelVisibility(result.svg)
+    const svg = expandSvgViewBox(ensureMermaidLabelVisibility(result.svg))
     return { svg, width: diagramWidthFromSvg(svg) }
   })
 }

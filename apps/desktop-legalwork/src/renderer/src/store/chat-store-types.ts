@@ -142,6 +142,13 @@ export type ChatState = {
   liveReasoning: string
   liveAssistant: string
   lastSeq: number
+  /**
+   * 实际追加进 liveAssistant/liveReasoning 的最大 delta seq。与 lastSeq 分离：
+   * lastSeq 会被 onSeq（心跳/工具事件）推到非 delta 的 seq，若用它做去重阈值
+   * 会把边界处后到的合法 delta 误跳过（丢字）。appliedSeq 只随真正 append 的
+   * delta 推进，作为去重判断的准确水位。
+   */
+  appliedSeq: number
   usageRefreshKey: number
   busy: boolean
   error: string | null

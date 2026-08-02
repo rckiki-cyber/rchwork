@@ -40,11 +40,13 @@ import {
   type ClawScheduleMcpLaunchConfig
 } from './claw-schedule-mcp-config'
 import { defaultLegalworkDataDir } from './runtime/legalwork-adapter'
+import { DEFAULT_PKULAW_MCP_SERVERS } from './pkulaw-default-servers'
 import { isLegalworkHealthResponseBody } from './legalwork-health'
 import { appendManagedLogLine } from './logger'
 import { guiSkillRootsForRuntime, normalizeSkillRootPath } from './services/skill-service'
 import { buildOcrRuntimeEnvironment } from './data-compliance-runtime'
 import { resolveCodexBinaryPath } from './codex-auth-manager'
+import { reportError } from './error-report'
 
 let child: ChildProcess | null = null
 let childLogCapture: LegalworkChildLogCapture | null = null
@@ -174,7 +176,44 @@ function createLegalworkChildLogCapture(pid: number | undefined): LegalworkChild
       stderrRemainder = remainder
     }
     for (const part of parts) {
+      if (stream === 'stdout') {
+        handleToolErrorLine(part)
+      }
       writeLine(stream, part)
+    }
+  }
+
+  /**
+   * 识别 runtime 通过 stdout 上报的信号行（工具错误 / 低效 turn），
+   * 转发到错误上报链路（→ GitHub issue）。只含结构化字段，无对话内容。
+   */
+  function handleToolErrorLine(line: string): void {
+    const TOOL_ERROR_PREFIX = 'LEGALWORK_TOOL_ERROR '
+    const INEFFICIENT_PREFIX = 'LEGALWORK_INEFFICIENT_TURN '
+    try {
+      if (line.startsWith(TOOL_ERROR_PREFIX)) {
+        const parsed = JSON.parse(line.slice(TOOL_ERROR_PREFIX.length)) as {
+          toolName?: string
+          error?: string
+        }
+        if (parsed && typeof parsed.toolName === 'string') {
+          const message = `[${parsed.toolName}] ${parsed.error ?? 'unknown tool error'}`
+          reportError({ category: 'agent-tool-error', message })
+        }
+        return
+      }
+      if (line.startsWith(INEFFICIENT_PREFIX)) {
+        const parsed = JSON.parse(line.slice(INEFFICIENT_PREFIX.length)) as {
+          steps?: number
+          toolCalls?: number
+        }
+        if (parsed && typeof parsed.steps === 'number') {
+          const message = `agent ran ${parsed.steps} steps without completing (toolCalls=${parsed.toolCalls ?? 0})`
+          reportError({ category: 'agent-inefficient-turn', message })
+        }
+      }
+    } catch {
+      // 解析失败忽略，行仍写入日志
     }
   }
 
@@ -655,7 +694,17 @@ async function readGuiManagedMcpServers(path: string): Promise<Record<string, un
     })
     .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null)
 
-  return Object.fromEntries(normalizedEntries)
+  const servers = Object.fromEntries(normalizedEntries)
+
+  // 北大法宝默认预装：mcp.json 未配置任何 pkulaw server 时自动补齐，
+  // 保证装好即连（headers 为空 → runtime 注入随包 fallback token）。
+  // 若 mcp.json 已含 pkulaw（用户填过自己的 token），则不覆盖，用户配置优先。
+  const hasAnyPkulawServer = Object.keys(servers).some((serverId) => serverId.startsWith('pkulaw-'))
+  if (!hasAnyPkulawServer) {
+    Object.assign(servers, DEFAULT_PKULAW_MCP_SERVERS)
+  }
+
+  return servers
 }
 
 function mcpServersFromGuiConfig(config: Record<string, unknown>): Record<string, unknown> {

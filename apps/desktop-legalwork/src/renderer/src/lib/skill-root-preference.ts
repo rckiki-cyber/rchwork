@@ -6,7 +6,9 @@ export type SkillRootId =
   | 'global-agents'
   | 'global-deepseek'
 
-const DEFAULT_SKILL_ROOT_ID: SkillRootId = 'workspace-agents'
+// 默认保存到用户全局 skill 根 ~/.legalwork/skills：该根永远在运行时扫描列表中，
+// 不依赖当前 workspace，保证刷新后一定能找到，且 isUserInstalled 判定自然成立。
+const DEFAULT_SKILL_ROOT_ID: SkillRootId = 'global-deepseek'
 const SKILL_ROOT_PREFERENCE_KEY = 'legalwork.skillRootPreference'
 
 function isSkillRootId(value: string): value is SkillRootId {

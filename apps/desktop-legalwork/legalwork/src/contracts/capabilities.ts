@@ -169,7 +169,10 @@ export type WebCapabilityConfig = z.infer<typeof WebCapabilityConfig>
 
 export const SkillsCapabilityConfig = CapabilityToggleConfig.extend({
   roots: z.array(z.string().min(1)).default([]),
-  legacySkillMd: z.boolean().default(true)
+  legacySkillMd: z.boolean().default(true),
+  // 用户上传的 skill（~/.legalwork/skills 下）是否在对话提到相关关键词时
+  // 自动激活（注入指令）。默认开；关闭可省 token（改为靠 search_skills 按需加载）。
+  autoActivateUserSkills: z.boolean().default(true)
 }).strict()
 export type SkillsCapabilityConfig = z.infer<typeof SkillsCapabilityConfig>
 

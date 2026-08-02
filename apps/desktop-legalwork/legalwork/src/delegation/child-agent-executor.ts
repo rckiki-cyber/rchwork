@@ -24,6 +24,7 @@ import { ThreadService } from '../services/thread-service.js'
 import { TurnService } from '../services/turn-service.js'
 import { UsageService } from '../services/usage-service.js'
 import type { ChildRunExecutor } from './delegation-runtime.js'
+import { reportToolErrorNow, reportInefficientTurnNow } from '../cli/tool-error-reporter.js'
 
 export type ChildAgentExecutorOptions = {
   model: ModelClient
@@ -101,7 +102,9 @@ export function createChildAgentExecutor(options: ChildAgentExecutorOptions): Ch
       ...(options.contextCompaction ? { contextCompaction: options.contextCompaction } : {}),
       ...(options.tokenEconomy ? { tokenEconomy: options.tokenEconomy } : {}),
       ...(options.runtime?.toolStorm ? { toolStorm: options.runtime.toolStorm } : {}),
-      ...(options.runtime?.toolArgumentRepair ? { toolArgumentRepair: options.runtime.toolArgumentRepair } : {})
+      ...(options.runtime?.toolArgumentRepair ? { toolArgumentRepair: options.runtime.toolArgumentRepair } : {}),
+      onToolError: (info) => reportToolErrorNow(info),
+    onInefficientTurn: (info) => reportInefficientTurnNow(info)
     })
 
     const model = input.model?.trim() || options.defaultModel

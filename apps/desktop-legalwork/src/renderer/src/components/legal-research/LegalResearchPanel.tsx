@@ -8,13 +8,14 @@ import {
   FileDown,
   FilePenLine,
   FileText,
-  LoaderCircle,
   MessageSquareText,
   Scale,
   Search,
   Square
 } from 'lucide-react'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
+import { ThinkingOrbStatus } from '../chat/ThinkingOrbStatus'
+import { orbStateForResearchLive, orbStateForResearchPhase, orbStateForResearchText } from './legal-research-orb'
 import type { ReturnUseLegalResearch } from './useLegalResearch'
 import {
   preprocessLegalResearchSummary,
@@ -487,7 +488,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                   }`}
                 >
                   {activeRecord.status === 'running' ? (
-                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={1.9} />
+                    <ThinkingOrbStatus state={orbStateForResearchPhase(activeRecord)} size={20} />
                   ) : activeRecord.status === 'done' ? (
                     <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.9} />
                   ) : (
@@ -507,10 +508,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
               <div className="legal-research-live-strip sticky top-0 z-10 overflow-hidden rounded-[16px] border border-[var(--ds-border)] bg-[var(--ds-card-strong)] px-4 py-3 shadow-sm">
                 <div className="relative z-[1] flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[var(--ds-muted)]">
                   <span className="flex items-center gap-2 font-medium text-[var(--ds-ink)]">
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--ds-accent)] opacity-30" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--ds-accent)]" />
-                    </span>
+                    <ThinkingOrbStatus state={orbStateForResearchLive(activeRecord)} size={20} />
                     <span className="ds-shiny-text">{t('legalResearchLiveStatus')}</span>
                   </span>
                   <span>{t('legalResearchLastUpdate', { time: formatDuration(runningSince) })}</span>
@@ -543,7 +541,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                       : 'bg-[var(--ds-success-soft)] text-[var(--ds-success)]'
                   }`}>
                     {isResearchPlanStreaming ? (
-                      <LoaderCircle className="h-3 w-3 animate-spin" strokeWidth={1.9} />
+                      <ThinkingOrbStatus state="solving" size={20} />
                     ) : (
                       <CheckCircle2 className="h-3 w-3" strokeWidth={1.9} />
                     )}
@@ -570,7 +568,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 py-2 text-[12px] text-[var(--ds-faint)]">
-                      <LoaderCircle className="h-3.5 w-3.5 animate-spin text-[var(--ds-accent)]" strokeWidth={1.8} />
+                      <ThinkingOrbStatus state="solving" size={20} />
                       <span>{t('legalResearchReasoningProcessing')}</span>
                     </div>
                   )}
@@ -610,7 +608,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                             </span>
                             {isCurrent ? (
                               <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-[var(--ds-accent)]">
-                                <LoaderCircle className="h-3 w-3 animate-spin" />
+                                <ThinkingOrbStatus state={orbStateForResearchText(update.text)} size={20} />
                                 {t('legalResearchUpdateStreaming')}
                               </span>
                             ) : (
@@ -653,10 +651,13 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                       />
                     </div>
                   ) : (
-                    <div className="legal-research-stream-placeholder py-2" aria-label={t('legalResearchReportDrafting')}>
-                      <span />
-                      <span />
-                      <span />
+                    <div className="flex items-center gap-3 py-2" aria-label={t('legalResearchReportDrafting')}>
+                      <ThinkingOrbStatus state="composing" size={20} />
+                      <div className="legal-research-stream-placeholder flex-1">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
                     </div>
                   )}
                 </div>

@@ -497,13 +497,27 @@ export function buildThreadEventSink(
         if (deltas.length === 0) return {}
         resetBusyRecoveryAttempts()
         const nextError = clearRuntimeStreamRecoveringError(s.error)
-        const seqs = deltas
-          .map((delta) => delta.seq)
-          .filter((value): value is number => typeof value === 'number')
-        const nextLastSeq = seqs.length > 0 ? Math.max(s.lastSeq, ...seqs) : s.lastSeq
+        // 基于 seq 的单调去重：断线重连时，服务端用 since_seq 重拉，可能与
+        // 渲染端已消费的窗口重叠，导致同一批 delta 被重复投递。这里跳过所有
+        // seq <= lastSeq 的 delta（已处理过），只追加真正新增的文本，从根源
+        // 消除 liveAssistant 重复拼接（表现为字符/双字重复交错）。没有 seq 的
+        // delta 无法去重，按原样追加。
+        const seenSeqs = new Set<number>()
+        let maxAppliedSeq = s.appliedSeq
+        for (const delta of deltas) {
+          if (typeof delta.seq === 'number') {
+            if (delta.seq <= s.appliedSeq) continue
+            if (seenSeqs.has(delta.seq)) continue
+            seenSeqs.add(delta.seq)
+            if (delta.seq > maxAppliedSeq) maxAppliedSeq = delta.seq
+          }
+        }
+        const nextAppliedSeq = maxAppliedSeq
         const base: Partial<ChatState> = {
           error: nextError,
-          ...(nextLastSeq !== s.lastSeq ? { lastSeq: nextLastSeq } : {})
+          // 只推进 appliedSeq（实际 append 的 delta 水位），不动 lastSeq——
+          // lastSeq 是订阅水位，可能被 onSeq 推到非 delta 的 seq。
+          ...(nextAppliedSeq !== s.appliedSeq ? { appliedSeq: nextAppliedSeq } : {})
         }
         // When deltas arrive but busy is false (e.g. switching back to a running
         // thread or SSE stream recovered from a transient error), restore the
@@ -518,6 +532,13 @@ export function buildThreadEventSink(
         let nextReasoningLastAtByUserId = s.turnReasoningLastAtByUserId
         const userId = s.currentTurnUserId
         for (const delta of deltas) {
+          // 与上方 seq 过滤一致：跳过已处理过的重复投递 delta，避免重复拼接。
+          // 同一批次内重复的 seq 也只保留首次出现，其余跳过。阈值用 appliedSeq
+          // （实际 append 的水位），不用 lastSeq（可能被非 delta 事件推高）。
+          if (typeof delta.seq === 'number') {
+            if (delta.seq <= s.appliedSeq) continue
+            if (!seenSeqs.has(delta.seq)) continue
+          }
           if (delta.kind === 'agent_reasoning') {
             liveReasoning += delta.text
             if (userId) {

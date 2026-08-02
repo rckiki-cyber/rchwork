@@ -79,11 +79,38 @@ async function writeLogLine(level: LogLevel, category: string, message: string):
   await appendManagedLogLine('legalwork', line)
 }
 
+type ErrorReporter = (input: { category: string; message: string; stack?: string }) => void
+let reportErrors: ErrorReporter | null = null
+
+/**
+ * Dependency injection point for error reporting (wired by index.ts).
+ * Keeps the logger a pure logging module with no network dependency; the
+ * reporter is optional and best-effort.
+ */
+export function setLogErrorReporter(fn: ErrorReporter | null): void {
+  reportErrors = fn
+}
+
+function extractStack(detail: unknown): string | undefined {
+  if (typeof detail === 'object' && detail !== null && 'stack' in detail) {
+    const stack = (detail as { stack?: unknown }).stack
+    if (typeof stack === 'string' && stack.length > 0) return stack
+  }
+  return undefined
+}
+
 export function logError(category: string, message: string, detail?: unknown): void {
   const full = detail !== undefined
     ? `${message} — detail: ${safeStringify(detail)}`
     : message
   void writeLogLine('error', category, full)
+  // Automatic error reporting (silent, best-effort). Only the message and
+  // stack are shared — never the full `detail`, which may hold user data.
+  try {
+    reportErrors?.({ category, message, stack: extractStack(detail) })
+  } catch {
+    /* reporting must never throw */
+  }
 }
 
 export function logWarn(category: string, message: string, detail?: unknown): void {

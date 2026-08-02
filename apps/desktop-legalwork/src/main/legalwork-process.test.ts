@@ -874,4 +874,65 @@ describe('syncGuiManagedLegalworkConfig', () => {
       maxInjectedRecords: 3
     })
   })
+
+  it('injects the default PKULaw MCP servers when mcp.json has none', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const configPath = join(tempRoot, 'config.json')
+    const mcpPath = join(tempRoot, 'mcp.json')
+    writeFileSync(mcpPath, JSON.stringify({
+      servers: {
+        custom: { enabled: true, transport: 'streamable-http', url: 'https://example.com/mcp' }
+      }
+    }), 'utf8')
+    const module = await import('./legalwork-process')
+
+    await module.syncGuiManagedLegalworkConfig(
+      tempRoot,
+      defaultLegalworkRuntimeSettings(),
+      { mcpConfigPath: mcpPath }
+    )
+
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
+    const servers = parsed.capabilities.mcp.servers
+    const pkulawIds = Object.keys(servers).filter((id: string) => id.startsWith('pkulaw-'))
+    expect(pkulawIds).toHaveLength(9)
+    expect(Object.values(
+      Object.fromEntries(pkulawIds.map((id: string) => [id, servers[id]]))
+    ).every((server: any) => server.enabled === true)).toBe(true)
+    expect(servers.custom).toBeTruthy()
+  })
+
+  it('keeps user-configured PKULaw servers without injecting defaults', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const configPath = join(tempRoot, 'config.json')
+    const mcpPath = join(tempRoot, 'mcp.json')
+    writeFileSync(mcpPath, JSON.stringify({
+      servers: {
+        'pkulaw-law-keyword': {
+          enabled: true,
+          transport: 'streamable-http',
+          url: 'https://apim-gateway.pkulaw.com/mcp-law',
+          headers: { Authorization: 'Bearer user-token-123' }
+        },
+        'pkulaw-case-keyword': {
+          enabled: true,
+          transport: 'streamable-http',
+          url: 'https://apim-gateway.pkulaw.com/mcp-case'
+        }
+      }
+    }), 'utf8')
+    const module = await import('./legalwork-process')
+
+    await module.syncGuiManagedLegalworkConfig(
+      tempRoot,
+      defaultLegalworkRuntimeSettings(),
+      { mcpConfigPath: mcpPath }
+    )
+
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
+    const servers = parsed.capabilities.mcp.servers
+    const pkulawIds = Object.keys(servers).filter((id: string) => id.startsWith('pkulaw-'))
+    expect(pkulawIds).toHaveLength(2)
+    expect(servers['pkulaw-law-keyword'].headers.Authorization).toBe('Bearer user-token-123')
+  })
 })

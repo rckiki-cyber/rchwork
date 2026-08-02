@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CapabilityRegistry } from '../src/adapters/tool/capability-registry.js'
 import { LocalToolHost } from '../src/adapters/tool/local-tool-host.js'
-import { LegalworkCapabilitiesConfig } from '../src/contracts/capabilities.js'
+import { LegalworkCapabilitiesConfig, type SkillsCapabilityConfig } from '../src/contracts/capabilities.js'
 import type { ModelClient, ModelRequest } from '../src/ports/model-client.js'
 import { SkillRuntime } from '../src/skills/skill-runtime.js'
 import { bootstrapThread, makeHarness } from './loop-test-harness.js'
@@ -263,10 +263,11 @@ describe('SkillRuntime', () => {
       skills: {
         enabled: true,
         roots: [root],
-        legacySkillMd: true
+        legacySkillMd: true,
+        autoActivateUserSkills: true
       }
     })
-    return SkillRuntime.create(config.skills, options)
+    return SkillRuntime.create(config.skills as SkillsCapabilityConfig, options)
   }
 
   async function writeSkill(

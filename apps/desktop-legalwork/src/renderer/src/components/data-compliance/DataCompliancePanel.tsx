@@ -36,6 +36,7 @@ import { useChatStore } from '../../store/chat-store'
 import { formatWorkspacePickerError } from '../../lib/format-workspace-picker-error'
 import { AstryxSegmentedControl } from '../astryx/AstryxSegmentedControl'
 import { SidebarCommandRow } from '../sidebar/SidebarPrimitives'
+import { ThinkingOrbStatus } from '../chat/ThinkingOrbStatus'
 
 export type DataComplianceSection = 'review' | 'desensitize' | 'history' | 'results'
 export type DesensitizeSection = 'material' | 'history' | 'results'
@@ -598,9 +599,9 @@ function ProgressModal({ state, onDismiss, modeScope = 'review' }: { state: Prog
               ? 'bg-red-500/12 text-red-500'
               : completed
                 ? 'bg-emerald-500/12 text-emerald-500'
-                : 'bg-[var(--ds-accent-soft)] text-[var(--ds-accent)]'
+                : ''
           }`}>
-            {failed ? <AlertCircle className="h-5 w-5" /> : completed ? <CheckCircle2 className="h-5 w-5" /> : <Loader2 className="ds-progress-spinner h-5 w-5" />}
+            {failed ? <AlertCircle className="h-5 w-5" /> : completed ? <CheckCircle2 className="h-5 w-5" /> : <ThinkingOrbStatus state={isDesensitize ? 'composing' : 'working'} size={20} />}
           </div>
           <div>
             <h3 className="text-[15px] font-semibold text-ds-ink">{title}</h3>
@@ -662,7 +663,18 @@ function InstallProgressBanner({
   return (
     <div className="rounded-[14px] border border-ds-border-muted bg-ds-card p-4 shadow-sm">
       <div className="flex items-center gap-3">
-        <Loader2 className="h-5 w-5 animate-spin text-[var(--ds-accent)]" />
+        <ThinkingOrbStatus
+          state={
+            state.kind === 'installing'
+              ? state.step === 'detecting'
+                ? 'searching'
+                : state.step === 'installing'
+                  ? 'composing'
+                  : 'working'
+              : 'working'
+          }
+          size={20}
+        />
         <div className="min-w-0 flex-1">
           <div className="text-[14px] font-medium text-ds-ink">正在准备数据合规环境</div>
           <div className="text-[12px] text-ds-muted">{state.message}</div>
@@ -1434,7 +1446,6 @@ export function DataComplianceSidebarNav({
   onSectionChange: (section: DataComplianceSection) => void
 }): ReactElement {
   const selectedTaskId = useComplianceHistoryStore((state) => state.selectedReviewTaskId)
-  const select = useComplianceHistoryStore((state) => state.select)
   const historyActive = activeSection === 'history' || (activeSection === 'results' && Boolean(selectedTaskId))
 
   return (
@@ -1461,15 +1472,6 @@ export function DataComplianceSidebarNav({
           active={historyActive}
           onHistoryOpen={() => onSectionChange('history')}
           onTaskOpen={() => onSectionChange('results')}
-        />
-        <SidebarCommandRow
-          icon={<FileSearch className="h-4 w-4" strokeWidth={1.8} />}
-          label="结果查询"
-          active={activeSection === 'results' && !selectedTaskId}
-          onClick={() => {
-            select('review', '')
-            onSectionChange('results')
-          }}
         />
       </div>
     </div>
@@ -1763,6 +1765,36 @@ export function DataCompliancePanel({
       console.error('[DataCompliancePanel] refreshHistory failed:', error)
     })
   }, [refreshHistory, modeScope])
+
+  // Auto-refresh the history lists while any compliance/desensitize task is
+  // still running, so status changes appear without a manual refresh click.
+  // Stops polling once no task is in flight.
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | null = null
+
+    const isInFlight = (task: ComplianceTask): boolean => {
+      const status = (task.status ?? '').toLowerCase()
+      return status === 'running' || status === 'processing' || status === 'pending'
+    }
+
+    const poll = async (): Promise<void> => {
+      if (cancelled) return
+      await refreshHistory()
+      if (cancelled) return
+      const { reviewTasks, desensitizeTasks } = useComplianceHistoryStore.getState()
+      const anyRunning = reviewTasks.some(isInFlight) || desensitizeTasks.some(isInFlight)
+      if (anyRunning) {
+        timer = window.setTimeout(() => { void poll() }, 5000)
+      }
+    }
+
+    void poll()
+    return () => {
+      cancelled = true
+      if (timer !== null) window.clearTimeout(timer)
+    }
+  }, [refreshHistory])
 
   const addSelectedFiles = useCallback((nextFiles: File[]): void => {
     if (nextFiles.length === 0) return

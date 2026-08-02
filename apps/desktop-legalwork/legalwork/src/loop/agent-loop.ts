@@ -154,12 +154,100 @@ const PLAN_READ_ONLY_TOOL_NAMES = new Set([
   'web_fetch'
 ])
 
+/**
+ * Hard ceiling for how long a single `model.stream()` may stay silent before
+ * the loop force-fails the turn. The model client already has a per-read idle
+ * timeout, but that only covers "stalled mid-stream". If the request is sent
+ * and the connection opens but no byte ever arrives (or the async iterator
+ * simply never yields again), the `for await` would hang forever and the turn
+ * would stay `running` indefinitely. This bounds that gap so complex turns
+ * (many tool calls, large context) always terminate instead of wedging.
+ */
+export const MODEL_STREAM_HARD_TIMEOUT_MS_ENV = 'LEGALWORK_MODEL_STREAM_HARD_TIMEOUT_MS'
+export const DEFAULT_MODEL_STREAM_HARD_TIMEOUT_MS = 150_000
+
+export function resolveModelStreamHardTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[MODEL_STREAM_HARD_TIMEOUT_MS_ENV]?.trim()
+  if (!raw) return DEFAULT_MODEL_STREAM_HARD_TIMEOUT_MS
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_MODEL_STREAM_HARD_TIMEOUT_MS
+  return Math.min(parsed, 600_000)
+}
+
 export function resolveMaxAgentLoopSteps(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env[MAX_AGENT_LOOP_STEPS_ENV]?.trim()
   if (!raw) return DEFAULT_MAX_AGENT_LOOP_STEPS
   const parsed = Number.parseInt(raw, 10)
   if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_MAX_AGENT_LOOP_STEPS
   return Math.min(parsed, MAX_AGENT_LOOP_STEPS_ENV_CAP)
+}
+
+export const INEFFICIENT_TURN_THRESHOLD_ENV = 'LEGALWORK_INEFFICIENT_TURN_THRESHOLD'
+export const DEFAULT_INEFFICIENT_TURN_THRESHOLD = 25
+
+/** 简单问题复杂化检测阈值：执行超过该步数仍未完成即视为低效。 */
+export function resolveInefficientTurnThreshold(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[INEFFICIENT_TURN_THRESHOLD_ENV]?.trim()
+  if (!raw) return DEFAULT_INEFFICIENT_TURN_THRESHOLD
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_INEFFICIENT_TURN_THRESHOLD
+}
+
+/**
+ * Wraps a model stream with an idle timeout that covers the entire iterator —
+ * including "request sent, connection open, zero bytes ever" and "stream was
+ * active then went permanently silent without a terminal chunk". The timer is
+ * reset on every yielded chunk, so an active but slow stream (long reasoning,
+ * big tool results) is never killed; only a fully-silent stream times out and
+ * yields an error chunk so the turn's existing `stopReason === 'error'` path
+ * marks it `failed` instead of hanging forever in `running`.
+ */
+async function* withModelStreamIdleTimeout(
+  source: AsyncIterable<ModelStreamChunk>,
+  timeoutMs: number,
+  signal: AbortSignal
+): AsyncIterable<ModelStreamChunk> {
+  const iterator = source[Symbol.asyncIterator]()
+  let finished = false
+  const settle = (): void => {
+    if (finished) return
+    finished = true
+    // 吞掉 iterator.return() 的 rejection，避免未处理的 promise rejection
+    // 打穿进程（unhandledRejection）或把 abort 误判为 failed。
+    try {
+      const result = iterator.return?.()
+      if (result && typeof result.then === 'function') {
+        void result.then(undefined, () => undefined)
+      }
+    } catch {
+      // 同步抛错也忽略：settle 只是尽力收尾。
+    }
+  }
+  const onAbort = (): void => settle()
+  signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    for (;;) {
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      const idle = new Promise<'timeout'>((resolve) => {
+        timeout = setTimeout(() => resolve('timeout'), timeoutMs)
+      })
+      const next = await Promise.race([iterator.next(), idle])
+      if (timeout) clearTimeout(timeout)
+      if (next === 'timeout') {
+        yield {
+          kind: 'error',
+          message: `model stream produced no output for ${timeoutMs}ms; turn terminated to avoid hanging`,
+          code: 'model_stream_idle_timeout'
+        }
+        return
+      }
+      if (next.done) return
+      yield next.value
+    }
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+    settle()
+  }
 }
 
 /**
@@ -171,6 +259,19 @@ export function resolveMaxAgentLoopSteps(env: NodeJS.ProcessEnv = process.env): 
  * - Step 0 (investigation): read-only tools + create_plan.
  * - Step > 0 (must produce plan): only create_plan.
  */
+function extractToolError(output: unknown): string {
+  if (output && typeof output === 'object') {
+    const error = (output as Record<string, unknown>).error
+    if (typeof error === 'string' && error.trim()) return error.trim()
+  }
+  try {
+    const text = JSON.stringify(output)
+    return text && text !== '{}' ? text.slice(0, 400) : 'unknown tool error'
+  } catch {
+    return String(output ?? 'unknown tool error')
+  }
+}
+
 export function resolvePlanModeToolSpecs(
   toolSpecs: ModelToolSpec[],
   options: {
@@ -380,6 +481,20 @@ export type AgentLoopOptions = {
     relativePath: string
     markdown: string
   }) => Promise<void>
+  /** 工具调用返回错误时触发（仅 toolName + 错误摘要，不含参数/对话内容）。 */
+  onToolError?: (input: {
+    threadId: string
+    turnId: string
+    toolName: string
+    error: string
+  }) => void
+  /** 一轮执行过多步骤仍未完成（简单问题复杂化）时触发（仅步数/工具数，无对话内容）。 */
+  onInefficientTurn?: (input: {
+    threadId: string
+    turnId: string
+    steps: number
+    toolCalls: number
+  }) => void
 }
 
 /**
@@ -520,6 +635,9 @@ export class AgentLoop {
     signal: AbortSignal
   ): Promise<'completed' | 'failed' | 'aborted'> {
     const maxSteps = resolveMaxAgentLoopSteps()
+    // 简单问题复杂化检测：执行步数超过阈值仍未完成 → 触发一次上报（仅步数，无对话内容）。
+    const inefficientThreshold = resolveInefficientTurnThreshold()
+    let inefficientReported = false
     for (let step = 0; step < maxSteps; step += 1) {
       if (signal.aborted) return 'aborted'
       await this.drainSteering(threadId, turnId, signal)
@@ -527,6 +645,15 @@ export class AgentLoop {
       if (stepResult === 'stop') return 'completed'
       if (stepResult === 'failed') return 'failed'
       if (stepResult === 'aborted') return 'aborted'
+      const stepsExecuted = step + 1
+      if (!inefficientReported && stepsExecuted >= inefficientThreshold) {
+        inefficientReported = true
+        try {
+          this.opts.onInefficientTurn?.({ threadId, turnId, steps: stepsExecuted, toolCalls: 0 })
+        } catch {
+          // 上报失败绝不影响 agent 主流程
+        }
+      }
     }
     const message = `Stopped turn after ${maxSteps} model/tool steps to avoid an infinite agent loop.`
     await this.opts.events.record({
@@ -813,7 +940,11 @@ export class AgentLoop {
     await this.recordPipelineStage(threadId, turnId, 'post_send', {
       model: request.model
     })
-    for await (const chunk of this.opts.model.stream(request)) {
+    for await (const chunk of withModelStreamIdleTimeout(
+      this.opts.model.stream(request),
+      resolveModelStreamHardTimeoutMs(),
+      signal
+    )) {
       if (signal.aborted) return 'aborted'
       switch (chunk.kind) {
         case 'assistant_text_delta':
@@ -1364,6 +1495,20 @@ export class AgentLoop {
     call: ToolCallLike,
     result: ToolHostResult
   ): Promise<void> {
+    // 工具调用返回错误 → 通过 onToolError 回调上报（仅工具名+错误摘要，
+    // 不含工具参数/对话内容，避免敏感信息外传）。
+    if (result.item.kind === 'tool_result' && result.item.isError === true) {
+      try {
+        this.opts.onToolError?.({
+          threadId,
+          turnId,
+          toolName: call.toolName,
+          error: extractToolError(result.item.output)
+        })
+      } catch {
+        // 上报失败绝不影响 agent 主流程
+      }
+    }
     await this.opts.turns.updateItem(threadId, `item_tool_${turnId}_${call.callId}`, {
       status: result.item.kind === 'tool_result' && result.item.isError ? 'failed' : 'completed',
       finishedAt: this.opts.nowIso()

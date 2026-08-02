@@ -1974,9 +1974,14 @@
                         <p class="download-meta" id="downloadMeta">检测到您的系统：<span id="detectedOS">正在检测…</span></p>
                         <a class="btn-download-mirror" id="mirrorDownloadBtn" href="javascript:void(0)" rel="noopener" style="display:none;">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polyline></svg>
-                            <span id="mirrorDownloadText">国内加速下载</span>
+                            <span id="mirrorDownloadText">备用下载链接</span>
                         </a>
-                        <p class="download-mirror-hint" id="mirrorHint" style="display:none;">GitHub 直连卡住 / 下载中断时改用此入口：经国内可达的 GitHub 镜像回源，文件与官方完全一致。</p>
+                        <p class="download-mirror-hint" id="mirrorHint" style="display:none;">GitHub 直连卡住 / 下载中断时改用此备用链接，文件与官方完全一致。</p>
+                        <a class="btn-download-mirror" id="cosDownloadBtn" href="javascript:void(0)" rel="noopener" style="display:none;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polyline></svg>
+                            <span id="cosDownloadText">腾讯云下载</span>
+                        </a>
+                        <p class="download-mirror-hint" id="cosHint" style="display:none;">国内用户直连 GitHub 不畅时，可使用腾讯云 CDN 下载，文件与官方完全一致。</p>
                     </div>
 
                     <div class="download-recommendation" id="downloadRecommendation">
@@ -2967,11 +2972,57 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
         const releasePageSize = 100;
         const latestReleaseUrl = 'https://github.com/sunyifeisb-art/legalwork/releases/latest';
 
-        // 国内加速下载：文件仍托管在 GitHub Release，仅经国内可达的 GitHub 镜像回源，
-        // 解决直连 github.com 下大文件卡一半的问题。代理失效时可一行替换此前缀。
-        const GH_MIRROR_PREFIX = 'https://ghfast.top/';
+        // 备用下载链接：文件仍托管在 GitHub Release，经国内可达的 GitHub 镜像回源。
+        // 多镜像列表。用户点击备用按钮时逐个探测，自动跳到第一个可下载的镜像；
+        // 避免某个镜像失效时用户手动重试。
+        const GH_MIRRORS = [
+            'https://ghfast.top/',
+            'https://ghproxy.net/',
+            'https://gh-proxy.com/',
+            'https://cors.isteed.cc/'
+        ];
+        let ghMirrorPrefix = GH_MIRRORS[0];
+
+        function probeMirror(base, probeUrl) {
+            return fetch(base + probeUrl, { method: 'HEAD', redirect: 'follow', mode: 'no-cors' })
+                .then(() => true)
+                .catch(() => false);
+        }
+
+        // 异步探测镜像，把 ghMirrorPrefix 指向第一个可达的（用于按钮初始 href）。
+        (async function selectGhMirror() {
+            const probePath = '/https://github.com/sunyifeisb-art/legalwork/releases/latest';
+            for (const candidate of GH_MIRRORS) {
+                if (await probeMirror(candidate, probePath)) {
+                    ghMirrorPrefix = candidate;
+                    return;
+                }
+            }
+        })();
+
         function buildMirrorUrl(url) {
-            return url ? GH_MIRROR_PREFIX + url : '';
+            return url ? ghMirrorPrefix + url : '';
+        }
+
+        // 备用按钮点击：遍历所有镜像，第一个 HEAD 可达就用它下载。
+        // 若全部失败，回退到第一个镜像。
+        async function downloadViaMirror(url) {
+            const probePath = '/' + url;
+            for (const candidate of GH_MIRRORS) {
+                if (await probeMirror(candidate, probePath)) {
+                    window.open(candidate + url, '_blank');
+                    return;
+                }
+            }
+            window.open(ghMirrorPrefix + url, '_blank');
+        }
+
+        // 腾讯云 COS/CDN 直链下载入口（国内可达）。发布脚本把安装包同步到
+        // COS，URL 形如 <base>/legalwork/channels/<channel>/latest/<文件名>。
+        const COS_BASE = 'https://download.example.com'; // TODO: 改为你的已备案 CDN 域名
+        const COS_CHANNEL = 'frontier'; // 发布默认 channel（与 release.local.env 的 RELEASE_CHANNEL 一致）
+        function buildCosUrl(assetName) {
+            return assetName ? COS_BASE + '/legalwork/channels/' + COS_CHANNEL + '/latest/' + assetName : '';
         }
 
         let releaseData = null;
@@ -3456,6 +3507,10 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
             const hideMirror = () => {
                 if (mirrorBtn) mirrorBtn.style.display = 'none';
                 if (mirrorHint) mirrorHint.style.display = 'none';
+                const cosBtnEl = document.getElementById('cosDownloadBtn');
+                const cosHintEl = document.getElementById('cosHint');
+                if (cosBtnEl) cosBtnEl.style.display = 'none';
+                if (cosHintEl) cosHintEl.style.display = 'none';
             };
 
             document.querySelectorAll('.platform-btn').forEach(p => {
@@ -3504,13 +3559,37 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
             btn.removeAttribute('download');
             btn.removeAttribute('target');
 
-            // 国内加速入口：直连卡住时可改用经 GitHub 镜像回源的链接。
+            // 备用下载入口：直连卡住时可改用经 GitHub 镜像回源的链接。
+            // 点击时自动探测可用镜像并跳转（见 downloadViaMirror）。
             if (mirrorBtn) {
-                mirrorBtn.href = buildMirrorUrl(asset.browser_download_url);
-                mirrorBtn.target = '_blank';
+                mirrorBtn.href = 'javascript:void(0)';
+                mirrorBtn.removeAttribute('target');
+                mirrorBtn.dataset.rawUrl = asset.browser_download_url;
+                if (!mirrorBtn.__mirrorClickBound) {
+                    mirrorBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const raw = mirrorBtn.dataset.rawUrl;
+                        if (raw) downloadViaMirror(raw);
+                    });
+                    mirrorBtn.__mirrorClickBound = true;
+                }
                 mirrorBtn.style.display = 'inline-flex';
             }
             if (mirrorHint) mirrorHint.style.display = 'block';
+
+            // 腾讯云 CDN 直链下载（国内可达，发布脚本会把安装包同步到 COS）。
+            const cosBtn = document.getElementById('cosDownloadBtn');
+            const cosHint = document.getElementById('cosHint');
+            const cosUrl = buildCosUrl(asset.name);
+            if (cosBtn && cosUrl && !cosUrl.startsWith('https://download.example.com')) {
+                cosBtn.href = cosUrl;
+                cosBtn.target = '_blank';
+                cosBtn.style.display = 'inline-flex';
+                if (cosHint) cosHint.style.display = 'block';
+            } else if (cosBtn) {
+                cosBtn.style.display = 'none';
+                if (cosHint) cosHint.style.display = 'none';
+            }
         }
 
         function selectPlatform(platform) {

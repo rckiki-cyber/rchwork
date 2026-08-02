@@ -245,13 +245,18 @@ function readConfig({ dryRun = false } = {}) {
   }
 
   const resolvedEndpoint = endpoint || `https://${accountId}.r2.cloudflarestorage.com`
+  // region/forcePathStyle 可配置：R2 用 region=auto + forcePathStyle=true；
+  // 腾讯云 COS 用真实地域（如 ap-guangzhou）+ forcePathStyle=false（虚拟主机风格）。
+  const region = firstEnv('S3_REGION', 'R2_REGION', 'auto')
+  const forcePathStyle = firstEnv('S3_FORCE_PATH_STYLE', 'R2_FORCE_PATH_STYLE', 'true')
+    .trim().toLowerCase() !== 'false'
   const client = dryRun
     ? null
     : new S3Client({
-        region: 'auto',
+        region,
         endpoint: resolvedEndpoint,
         credentials: { accessKeyId, secretAccessKey },
-        forcePathStyle: true
+        forcePathStyle
       })
 
   return { bucket, publicBaseUrl: normalizeBaseUrl(publicBaseUrl), prefix, client }

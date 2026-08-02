@@ -10,6 +10,7 @@ import {
   DEFAULT_LEGALWORK_DATA_DIR,
   WRITE_INLINE_COMPLETION_MODEL_IDS,
   defaultModelProviderSettings,
+  inferEndpointFormatFromBaseUrl,
   isLegalworkRuntimeInsecure
 } from '@shared/app-settings'
 import type { GuiUpdateChannel } from '@shared/gui-update'
@@ -661,6 +662,7 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
       name: t('modelProviderNewName', { index }),
       apiKey: '',
       baseUrl: 'https://api.example.com/v1',
+      endpointFormat: inferEndpointFormatFromBaseUrl('https://api.example.com/v1'),
       models: []
     }
     updateModelProviders([...modelProviders, nextProvider])
@@ -770,7 +772,28 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                                 className="w-full min-w-0 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[14px] font-normal text-ds-ink shadow-sm focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/30"
                                 value={activeProvider.baseUrl}
                                 placeholder={t('baseUrlPlaceholder')}
-                                onChange={(e) => updateModelProvider(activeProvider.id, { baseUrl: e.target.value })}
+                                onChange={(e) => {
+                                  const nextBaseUrl = e.target.value
+                                  // Auto-infer the protocol from the endpoint unless the user
+                                  // has manually chosen one that differs from what the previous
+                                  // base URL implied.
+                                  const inferredFromPrevious = inferEndpointFormatFromBaseUrl(
+                                    activeProvider.baseUrl,
+                                    activeProvider.id
+                                  )
+                                  const userPickedManually =
+                                    activeProvider.endpointFormat &&
+                                    activeProvider.endpointFormat !== inferredFromPrevious
+                                  updateModelProvider(activeProvider.id, {
+                                    baseUrl: nextBaseUrl,
+                                    ...(userPickedManually ? {} : {
+                                      endpointFormat: inferEndpointFormatFromBaseUrl(
+                                        nextBaseUrl,
+                                        activeProvider.id
+                                      )
+                                    })
+                                  })
+                                }}
                               />
                             </label>
                             <label className="grid gap-1.5 text-[12px] font-semibold text-ds-muted">

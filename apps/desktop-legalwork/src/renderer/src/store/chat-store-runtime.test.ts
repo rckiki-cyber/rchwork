@@ -25,6 +25,7 @@ function makeSinkHarness(overrides: Partial<ChatState> = {}): {
     liveReasoning: '',
     liveAssistant: '',
     lastSeq: 0,
+    appliedSeq: 0,
     usageRefreshKey: 0,
     busy: true,
     error: null,
@@ -98,7 +99,7 @@ describe('thread event sink binding', () => {
     sink.onDeltas([{ kind: 'agent_reasoning', text: 'fresh reasoning', seq: 9 }])
 
     expect(getState().liveReasoning).toBe('fresh reasoning')
-    expect(getState().lastSeq).toBe(9)
+    expect(getState().appliedSeq).toBe(9)
     expect(getState().turnReasoningFirstAtByUserId['user-current']).toEqual(expect.any(Number))
   })
 })
@@ -306,5 +307,127 @@ describe('watched completion notifications', () => {
 
     expect(completionNotificationDedupeKeyForWatchedThread('thread-1', 999)).toBe('watch:thread-1:999')
     expect(completionNotificationDedupeKeyForWatchedThread('thread-0', 999)).toBe('watch:thread-0:1000')
+  })
+})
+
+describe('thread event sink delta dedupe (duplicate-text fix)', () => {
+  it('appends only the first occurrence of a seq when reconnected deltas overlap', () => {
+    const { getState, set, get } = makeSinkHarness({ activeThreadId: 'thread-current' })
+    const controller = new AbortController()
+    const sink = buildThreadEventSink(set, get, {
+      threadId: 'thread-current',
+      signal: controller.signal
+    })
+
+    // 第一批：正常投递 seq 1-3
+    sink.onDeltas([
+      { kind: 'agent_message', text: '人工', seq: 1 },
+      { kind: 'agent_message', text: '智能', seq: 2 },
+      { kind: 'agent_message', text: '对行政法', seq: 3 }
+    ])
+    expect(getState().liveAssistant).toBe('人工智能对行政法')
+    expect(getState().appliedSeq).toBe(3)
+
+    // 断线重连：服务端 since_seq 重拉，重叠窗口 seq 2-3 被再次投递 + 新增 seq 4
+    sink.onDeltas([
+      { kind: 'agent_message', text: '智能', seq: 2 }, // 重复投递，应被跳过
+      { kind: 'agent_message', text: '对行政法', seq: 3 }, // 重复投递，应被跳过
+      { kind: 'agent_message', text: '的根本影响', seq: 4 } // 新增，应追加
+    ])
+
+    // 关键断言：没有字符重复交错
+    expect(getState().liveAssistant).toBe('人工智能对行政法的根本影响')
+    expect(getState().appliedSeq).toBe(4)
+  })
+
+  it('skips replayed deltas with seq <= lastSeq after a mid-stream reconnect', () => {
+    const { getState, set, get } = makeSinkHarness({ activeThreadId: 'thread-current' })
+    const controller = new AbortController()
+    const sink = buildThreadEventSink(set, get, {
+      threadId: 'thread-current',
+      signal: controller.signal
+    })
+
+    // 正常投递到 seq 5
+    sink.onDeltas([
+      { kind: 'agent_message', text: '数字', seq: 5 }
+    ])
+    expect(getState().liveAssistant).toBe('数字')
+    expect(getState().appliedSeq).toBe(5)
+
+    // 重连后整段重放 seq 3-6（seq 3-5 已处理过，只有 6 是新的）
+    sink.onDeltas([
+      { kind: 'agent_message', text: '行政法', seq: 3 }, // 旧，跳过
+      { kind: 'agent_message', text: '数字', seq: 5 }, // 旧，跳过
+      { kind: 'agent_message', text: '行政法', seq: 6 } // 新，追加
+    ])
+
+    expect(getState().liveAssistant).toBe('数字行政法')
+    expect(getState().appliedSeq).toBe(6)
+  })
+
+  it('still appends deltas without a seq (cannot dedupe, keep old behavior)', () => {
+    const { getState, set, get } = makeSinkHarness({ activeThreadId: 'thread-current' })
+    const controller = new AbortController()
+    const sink = buildThreadEventSink(set, get, {
+      threadId: 'thread-current',
+      signal: controller.signal
+    })
+
+    sink.onDeltas([
+      { kind: 'agent_message', text: '无seq' },
+      { kind: 'agent_message', text: '仍追加' }
+    ])
+
+    expect(getState().liveAssistant).toBe('无seq仍追加')
+    expect(getState().lastSeq).toBe(0)
+  })
+
+  it('dedupes reasoning deltas too on reconnect', () => {
+    const { getState, set, get } = makeSinkHarness({ activeThreadId: 'thread-current' })
+    const controller = new AbortController()
+    const sink = buildThreadEventSink(set, get, {
+      threadId: 'thread-current',
+      signal: controller.signal
+    })
+
+    sink.onDeltas([
+      { kind: 'agent_reasoning', text: '思考', seq: 1 },
+      { kind: 'agent_reasoning', text: '中', seq: 2 }
+    ])
+    expect(getState().liveReasoning).toBe('思考中')
+
+    // 重连重放 seq 1-2
+    sink.onDeltas([
+      { kind: 'agent_reasoning', text: '思考', seq: 1 },
+      { kind: 'agent_reasoning', text: '中', seq: 2 }
+    ])
+    expect(getState().liveReasoning).toBe('思考中')
+    expect(getState().appliedSeq).toBe(2)
+  })
+
+  it('does not drop boundary deltas when onSeq advances lastSeq past non-delta events', () => {
+    // 审查发现的边界：onSeq（心跳/工具事件）会把 lastSeq 推到非 delta 的 seq。
+    // 若用 lastSeq 做去重阈值，乱序后到的合法 delta 会被误跳过（丢字）。
+    // 修复：去重阈值用 appliedSeq（只随真正 append 的 delta 推进）。
+    const { getState, set, get } = makeSinkHarness({ activeThreadId: 'thread-current' })
+    const controller = new AbortController()
+    const sink = buildThreadEventSink(set, get, {
+      threadId: 'thread-current',
+      signal: controller.signal
+    })
+
+    // 心跳/工具事件把 lastSeq 推到 10（订阅水位）
+    sink.onSeq(10)
+    expect(getState().lastSeq).toBe(10)
+    expect(getState().appliedSeq).toBe(0)
+
+    // 随后 delta seq 5（< 10）才到——因为 appliedSeq 仍是 0，不应被跳过
+    sink.onDeltas([{ kind: 'agent_message', text: '边界文本', seq: 5 }])
+
+    expect(getState().liveAssistant).toBe('边界文本')
+    expect(getState().appliedSeq).toBe(5)
+    // lastSeq 保持订阅水位，不被 delta 推进（由 onSeq 管理）
+    expect(getState().lastSeq).toBe(10)
   })
 })

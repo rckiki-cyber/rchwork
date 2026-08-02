@@ -27,6 +27,8 @@ import {
 } from 'lucide-react'
 import { getProvider } from '../../agent/registry'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
+import { resolveOrbState } from '../chat/orb-state'
+import { ThinkingOrbStatus } from '../chat/ThinkingOrbStatus'
 import {
   LEGALWORK_KNOWLEDGE_CLASSIFY_PATH,
   LEGALWORK_KNOWLEDGE_CREATE_FOLDER_PATH,
@@ -1947,7 +1949,14 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
                 {chatSending && !liveAssistant && !liveReasoning ? (
                   <KnowledgeChatMessage role="assistant">
                     <div className="flex items-center gap-2 text-[var(--ds-muted)]">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
+                      <ThinkingOrbStatus
+                        state={resolveOrbState({
+                          busy: true,
+                          liveReasoning,
+                          waitingForUserInput: false
+                        })}
+                        size={20}
+                      />
                       <span>AI 思考中...</span>
                     </div>
                   </KnowledgeChatMessage>

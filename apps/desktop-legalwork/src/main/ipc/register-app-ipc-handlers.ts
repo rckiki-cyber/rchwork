@@ -150,6 +150,7 @@ import { fillDocxTemplateWithMarkdown } from '../services/template-docx-export-s
 import { exportMarkdownDocument } from '../services/markdown-export-service'
 import { importGuiSkillFromPath, listGuiSkills, readGuiSkillFile } from '../services/skill-service'
 import { CodexAuthManager } from '../codex-auth-manager'
+import { DEFAULT_PKULAW_MCP_CONFIG_TEXT } from '../pkulaw-default-servers'
 import {
   loadImaAuth,
   clearImaAuth,
@@ -611,33 +612,51 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         }
       }
 
-      // 3. Install dependencies via pip with per-package progress
+      // 3. Install dependencies via pip with per-package progress.
+      //    Retry once on failure: PaddlePaddle/spacy are large and download
+      //    intermittently fails (esp. in regions with slow PyPI access). An
+      //    optional mirror index (LEGALWORK_PIP_INDEX_URL) sidesteps that.
       if (existsSync(requirementsPath)) {
         const reqText = readFileSync(requirementsPath, 'utf8')
         const reqLines = reqText.split('\n').filter((l: string) => l.trim() && !l.trim().startsWith('#')).length
-        sendProgress({ step: 'installing', percent: 36, message: `正在下载并安装 ${reqLines} 个 Python 依赖包（首次需要几分钟）…` })
-        let completedPkgs = 0
-        const installResult = await runCommand(
-          venvPython,
-          ['-m', 'pip', 'install', '-r', requirementsPath, '--verbose'],
-          {
-            cwd: webRoot,
-            timeout: 600_000,
-            onStderr: (line: string) => {
-              // pip verbose output: "Collecting package_name==version" or "Installing collected packages: ..."
-              const collectMatch = line.match(/^Collecting\s+(\S+)/)
-              const installMatch = line.match(/^(Successfully installed|Installing collected packages)/)
-              if (collectMatch || installMatch) completedPkgs += 1
-              const pct = Math.min(88, 36 + Math.round((completedPkgs / Math.max(reqLines, 1)) * 52))
-              sendProgress({ step: 'installing', percent: pct, message: `正在安装依赖包 (${Math.min(completedPkgs, reqLines)}/${reqLines})…` })
+        const pipIndexUrl = (process.env.LEGALWORK_PIP_INDEX_URL || '').trim()
+        const pipArgs = ['-m', 'pip', 'install', '-r', requirementsPath, '--verbose']
+        if (pipIndexUrl) {
+          pipArgs.push('-i', pipIndexUrl, '--trusted-host', new URL(pipIndexUrl).hostname)
+        }
+
+        const runPipInstall = async (attempt: number): Promise<boolean> => {
+          sendProgress({ step: 'installing', percent: 36, message: `正在下载并安装 ${reqLines} 个 Python 依赖包（首次需要几分钟）${attempt > 1 ? '，重试中…' : ''}` })
+          let completedPkgs = 0
+          const result = await runCommand(
+            venvPython,
+            pipArgs,
+            {
+              cwd: webRoot,
+              timeout: 900_000,
+              onStderr: (line: string) => {
+                // pip verbose output: "Collecting package_name==version" or "Installing collected packages: ..."
+                const collectMatch = line.match(/^Collecting\s+(\S+)/)
+                const installMatch = line.match(/^(Successfully installed|Installing collected packages)/)
+                if (collectMatch || installMatch) completedPkgs += 1
+                const pct = Math.min(88, 36 + Math.round((completedPkgs / Math.max(reqLines, 1)) * 52))
+                sendProgress({ step: 'installing', percent: pct, message: `正在安装依赖包 (${Math.min(completedPkgs, reqLines)}/${reqLines})…` })
+              }
             }
-          }
-        )
-        if (installResult.exitCode !== 0) {
+          )
+          return result.exitCode === 0
+        }
+
+        let installed = await runPipInstall(1)
+        if (!installed) {
+          sendProgress({ step: 'installing', percent: 36, message: '首次安装失败，正在重试一次…' })
+          installed = await runPipInstall(2)
+        }
+        if (!installed) {
           sendProgress({
             step: 'error',
             percent: 0,
-            message: `安装 Python 依赖失败: ${installResult.stderr || installResult.stdout || '未知错误'}`
+            message: `安装 Python 依赖失败。若为网络原因，可设置 LEGALWORK_PIP_INDEX_URL 使用镜像源（如 https://pypi.tuna.tsinghua.edu.cn/simple）后重试。`
           })
           return false
         }
@@ -725,7 +744,14 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       }
     }
     const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
-    return mapping[process.platform]?.[arch] ?? null
+    const direct = mapping[process.platform]?.[arch]
+    if (!direct) return null
+    // Optional GitHub mirror prefix. python-build-standalone lives on GitHub,
+    // which is intermittently slow/blocked in some regions (common for Chinese
+    // users). A mirror prefix like "https://ghproxy.com/" retries via a faster
+    // path. Set LEGALWORK_PYTHON_MIRROR_PREFIX to opt in.
+    const mirror = (process.env.LEGALWORK_PYTHON_MIRROR_PREFIX || '').trim()
+    return mirror ? `${mirror.replace(/\/+$/, '')}/${direct}` : direct
   }
 
   async function downloadFileWithProgress(
@@ -894,26 +920,45 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     const fileName = `python-standalone-${process.platform}-${process.arch}.tar.gz`
     const tarPath = join(tmpDir, fileName)
 
-    // Download if not cached.
+    // Download if not cached. Retry a few times: the tarball comes from
+    // GitHub, which is intermittently slow/blocked in some regions — a single
+    // transient failure would otherwise abort the whole environment install.
     if (!existsSync(tarPath)) {
       sendProgress({ step: 'detecting', percent: 10, message: `未找到 Python，正在下载 ${platformLabel} 版 Python…` })
-      try {
-        await downloadFileWithProgress(url, tarPath, (downloaded, total) => {
-          const percent = Math.round((downloaded / total) * 20) // 10-30%
-          sendProgress({
-            step: 'detecting',
-            percent,
-            message: `正在下载 Python (${Math.round(downloaded / 1024 / 1024)}MB / ${Math.round(total / 1024 / 1024)}MB)…`
-          })
-        })
-      } catch (error) {
-        // Clean up partial download so retry can start fresh.
+      const MAX_DOWNLOAD_ATTEMPTS = 3
+      let lastDownloadError: unknown = null
+      for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt += 1) {
         try {
-          rmSync(tarPath, { force: true })
-        } catch {
-          // ignore
+          await downloadFileWithProgress(url, tarPath, (downloaded, total) => {
+            const percent = Math.round((downloaded / total) * 20) // 10-30%
+            sendProgress({
+              step: 'detecting',
+              percent,
+              message: `正在下载 Python (${Math.round(downloaded / 1024 / 1024)}MB / ${Math.round(total / 1024 / 1024)}MB)…`
+            })
+          })
+          lastDownloadError = null
+          break
+        } catch (error) {
+          lastDownloadError = error
+          // Clean up partial download so the next attempt starts fresh.
+          try {
+            rmSync(tarPath, { force: true })
+          } catch {
+            // ignore
+          }
+          if (attempt < MAX_DOWNLOAD_ATTEMPTS) {
+            sendProgress({
+              step: 'detecting',
+              percent: 10 + attempt * 2,
+              message: `下载失败，正在重试 (${attempt}/${MAX_DOWNLOAD_ATTEMPTS})…`
+            })
+            await new Promise((resolve) => setTimeout(resolve, 1_000 * attempt))
+          }
         }
-        throw error
+      }
+      if (lastDownloadError) {
+        throw lastDownloadError
       }
     }
 
@@ -1303,6 +1348,26 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     }
   })
 
+  /**
+   * 通知运行中的 legalwork runtime 重新扫描 skill 根，使新保存/导入的
+   * skill 立即可用（无需重启）。失败静默——不影响保存本身。
+   */
+  const refreshRuntimeSkills = async (): Promise<void> => {
+    try {
+      await runtimeRequest('/v1/skills/refresh', 'POST')
+    } catch {
+      // runtime 可能未运行或暂不可达——忽略
+    }
+  }
+
+  /** 从 SKILL.md frontmatter 提取 description。 */
+  const skillDescriptionFromFrontmatter = (content: string): string | null => {
+    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+    if (!match) return null
+    const desc = match[1].match(/^description:\s*(.+)$/m)?.[1]?.trim()
+    return desc || null
+  }
+
   ipcMain.handle(
     'skill:save-file',
     async (_, payload: unknown) => {
@@ -1317,6 +1382,15 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         const filePath = join(skillDir, 'SKILL.md')
         await mkdir(skillDir, { recursive: true })
         await writeFile(filePath, request.content, 'utf8')
+        // 生成 skill.json（仅 name/description）。runtime 的 SkillManifest schema
+        // 是 .strict()：多余字段（如 keywords）会导致整个 manifest 解析失败、
+        // skill 无法加载。关键词匹配由 runtime 从 name/description 自动提取。
+        await writeFile(join(skillDir, 'skill.json'), `${JSON.stringify({
+          name: skillName,
+          description: skillDescriptionFromFrontmatter(request.content) ?? skillName
+        }, null, 2)}\n`, 'utf8')
+        // 通知运行中的 runtime 重新扫描 skill 根，让新 skill 立即可用。
+        void refreshRuntimeSkills().catch(() => {})
         return { ok: true as const, path: filePath }
       } catch (error) {
         return {
@@ -1358,7 +1432,12 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     if (!sourcePath) {
       return { ok: false as const, message: '未选择 Skill 文件夹或 zip。' }
     }
-    return importGuiSkillFromPath(sourcePath)
+    const imported = await importGuiSkillFromPath(sourcePath)
+    if (imported.ok) {
+      // 导入成功 → 通知运行中的 runtime 重新扫描，让新 skill 立即可用。
+      void refreshRuntimeSkills().catch(() => {})
+    }
+    return imported
   })
 
   ipcMain.handle('skill:open-root', async (_, rootPath: unknown) => {
@@ -1385,7 +1464,8 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       return { path, content, exists: true as const }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return { path, content: '', exists: false as const }
+        // mcp.json 尚未创建：返回默认预装的北大法宝配置，插件市场据此显示"已预装"。
+        return { path, content: DEFAULT_PKULAW_MCP_CONFIG_TEXT, exists: false as const }
       }
       throw error
     }

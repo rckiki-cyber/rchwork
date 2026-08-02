@@ -156,9 +156,14 @@ def paragraph_style_stats(document: ET.Element) -> tuple[Counter[str], int, int,
         styles[pstyle or "(none)"] += 1
         if re.search(r"[ \u3000]{3,}", text):
             repeated_space_count += 1
-        if re.match(r"^\s*(?:[一二三四五六七八九十]+、|（[一二三四五六七八九十]+）|\d+[.、]|[-•●○])", text):
-            if ppr is None or ppr.find("w:numPr", NS) is None:
-                fake_list_count += 1
+        # 标题（Heading1-3 / Title）即使带"一、"（一）"1."前缀也是合法层级，不算手打编号。
+        is_heading = bool(pstyle) and (pstyle.startswith("Heading") or pstyle == "Title")
+        if (
+            not is_heading
+            and re.match(r"^\s*(?:[一二三四五六七八九十]+、|（[一二三四五六七八九十]+）|\d+[.、]|[-•●○])", text)
+            and (ppr is None or ppr.find("w:numPr", NS) is None)
+        ):
+            fake_list_count += 1
         if not text and paragraph.find(".//w:drawing", NS) is None:
             empty_run += 1
     return styles, repeated_space_count, fake_list_count, empty_run
@@ -354,9 +359,9 @@ def audit_package(path: Path, profile: str) -> dict[str, object]:
                 "empty_body_paragraphs": empty_paragraphs,
             }
             if repeated_spaces:
-                add(findings, "warning", "space-alignment", f"{repeated_spaces} 个正文段落疑似用连续空格对齐。")
+                add(findings, "info", "space-alignment", f"{repeated_spaces} 个正文段落疑似用连续空格对齐。")
             if fake_lists:
-                add(findings, "warning", "fake-numbering", f"{fake_lists} 个段落疑似手打编号或项目符号。")
+                add(findings, "info", "fake-numbering", f"{fake_lists} 个段落疑似手打编号或项目符号。")
             if empty_paragraphs > max(8, int(sum(styles_used.values()) * 0.08)):
                 add(findings, "warning", "empty-paragraphs", f"正文有 {empty_paragraphs} 个空段落，检查是否用空段推版。")
 

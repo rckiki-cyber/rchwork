@@ -853,8 +853,23 @@ async function callMcpToolWithReconnect(
   }
 }
 
+// 重连超时：stdio 冷启动（spawn 子进程 + 可能首次启动）需要更宽预算，
+// 网络型（sse/http）则更快超时避免拖死调用。
+const MCP_RECONNECT_TIMEOUT_MS = 15_000
+const MCP_RECONNECT_STDIO_TIMEOUT_MS = 45_000
+
 async function reconnectMcpConnection(state: McpConnectionState): Promise<McpClientLike> {
-  await state.client.close().catch(() => undefined)
+  const isStdio = state.server.transport === 'stdio'
+  const reconnectTimeoutMs = isStdio ? MCP_RECONNECT_STDIO_TIMEOUT_MS : MCP_RECONNECT_TIMEOUT_MS
+  // 给 close 加超时，避免客户端卡在关闭流程导致调用挂死；同时清理 timer。
+  let closeTimer: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([
+    state.client.close().catch(() => undefined),
+    new Promise<void>((resolve) => {
+      closeTimer = setTimeout(resolve, reconnectTimeoutMs)
+    })
+  ])
+  if (closeTimer) clearTimeout(closeTimer)
   const nextIndex = hasNextConnectionCandidate(state)
     ? state.activeCandidateIndex + 1
     : state.activeCandidateIndex
@@ -868,8 +883,18 @@ async function reconnectMcpConnection(state: McpConnectionState): Promise<McpCli
   let lastError: unknown
   for (const index of indexes) {
     const server = state.connectionCandidates[index]!
+    let connecting: Promise<McpClientLike> | undefined
     try {
-      const client = await state.clientFactory(state.serverId, server)
+      connecting = state.clientFactory(state.serverId, server)
+      const client = await Promise.race([
+        connecting,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`MCP reconnect to ${server.command ?? server.url ?? index} timed out after ${reconnectTimeoutMs}ms`)),
+            reconnectTimeoutMs
+          )
+        )
+      ])
       state.server = server
       state.activeCandidateIndex = index
       state.client = client
@@ -877,8 +902,22 @@ async function reconnectMcpConnection(state: McpConnectionState): Promise<McpCli
       state.lastError = undefined
       return client
     } catch (error) {
+      // 超时/失败时，若 clientFactory 仍在后台建立连接，把随后连上的 client
+      // 关闭掉，避免孤儿连接/子进程泄漏（stdio transport 会 spawn 进程）。
+      if (connecting) {
+        void connecting
+          .then((leaked) => leaked.close().catch(() => undefined))
+          .catch(() => undefined)
+      }
       lastError = error
     }
+  }
+  // 所有候选都失败：旧的 state.client 可能已处于半关闭状态，不能再复用。
+  // 清理掉，避免后续调用复用一个损坏的连接。
+  const staleClient = state.client
+  if (staleClient) {
+    state.client = undefined as unknown as McpClientLike
+    void staleClient.close().catch(() => undefined)
   }
   // No viable candidate found; throw the last error or a clear fallback
   if (lastError) throw redactedMcpError(lastError, state.connectionCandidates)

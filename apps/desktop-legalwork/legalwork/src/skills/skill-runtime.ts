@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { cp, mkdir, readdir, readFile, stat } from 'node:fs/promises'
-import { basename, dirname, extname, join, relative, resolve } from 'node:path'
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { z } from 'zod'
 import type { SkillsCapabilityConfig } from '../contracts/capabilities.js'
@@ -133,10 +133,17 @@ export class SkillRuntime {
   }
 
   static async create(
-    config: SkillsCapabilityConfig | undefined,
+    config: SkillsCapabilityConfig | Omit<SkillsCapabilityConfig, 'autoActivateUserSkills'> | undefined,
     options: SkillRuntimeOptions = {}
   ): Promise<SkillRuntime> {
-    const normalized = config ?? { enabled: false, roots: [], legacySkillMd: true }
+    const autoActivate =
+      config && 'autoActivateUserSkills' in config ? config.autoActivateUserSkills : true
+    const normalized: SkillsCapabilityConfig = {
+      enabled: config?.enabled ?? false,
+      roots: config?.roots ?? [],
+      legacySkillMd: config?.legacySkillMd ?? true,
+      autoActivateUserSkills: autoActivate
+    }
     const resolvedOptions = {
       activeLimit: options.activeLimit ?? DEFAULT_ACTIVE_LIMIT,
       instructionBudgetBytes: options.instructionBudgetBytes ?? DEFAULT_INSTRUCTION_BUDGET_BYTES,
@@ -358,6 +365,16 @@ export class SkillRuntime {
       if (fileType) {
         matches.push({ skill, skillId: skill.id, reason: `fileType:${fileType}`, score: 300 + skill.priority })
         continue
+      }
+      // 用户上传 skill（~/.legalwork/skills 下）在对话提到相关关键词时自动激活，
+      // 让 agent 无需用户强调即可用上自定义 skill。可用 autoActivateUserSkills 关闭（省 token）。
+      if (this.config.autoActivateUserSkills !== false && isUnderUserSkillRoot(skill.root)) {
+        const promptTerms = tokenizeForSkillMatch(prompt)
+        const keywordScore = scoreKeywordMatch(skill.keywords, promptTerms, lowerPrompt)
+        if (keywordScore > 0) {
+          matches.push({ skill, skillId: skill.id, reason: 'keywords', score: 200 + keywordScore + skill.priority })
+          continue
+        }
       }
     }
     return matches.sort((a, b) => b.score - a.score || a.skill.id.localeCompare(b.skill.id))
@@ -618,6 +635,13 @@ function shouldSkipSkillDiscoveryDirectory(name: string): boolean {
     name === '.venv' ||
     name === 'venv' ||
     name === '_template'
+}
+
+/** 判断 skill 是否位于用户 skill 根（~/.legalwork/skills）下，用于自动激活判定。 */
+function isUnderUserSkillRoot(skillRoot: string): boolean {
+  const resolvedSkillRoot = resolve(skillRoot)
+  const resolvedUserRoot = resolve(DEFAULT_USER_SKILL_ROOT)
+  return resolvedSkillRoot === resolvedUserRoot || resolvedSkillRoot.startsWith(`${resolvedUserRoot}${sep}`)
 }
 
 function scoreKeywordMatch(keywords: readonly string[], promptTerms: Set<string>, lowerPrompt: string): number {

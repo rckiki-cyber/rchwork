@@ -27,6 +27,7 @@ import { UsageService } from './usage-service.js'
 import { resolveReviewTargetPrompt } from '../review/git-review-target.js'
 import { parseReviewOutput, renderReviewOutput } from '../review/review-output.js'
 import { LEGALWORK_REVIEW_PROMPT } from '../review/review-prompt.js'
+import { reportToolErrorNow, reportInefficientTurnNow } from '../cli/tool-error-reporter.js'
 
 export type ReviewServiceDeps = {
   threadStore: ThreadStore
@@ -179,7 +180,9 @@ export class ReviewService {
       ...(this.deps.contextCompaction ? { contextCompaction: this.deps.contextCompaction } : {}),
       ...(this.deps.tokenEconomy ? { tokenEconomy: this.deps.tokenEconomy } : {}),
       ...(this.deps.runtime?.toolStorm ? { toolStorm: this.deps.runtime.toolStorm } : {}),
-      ...(this.deps.runtime?.toolArgumentRepair ? { toolArgumentRepair: this.deps.runtime.toolArgumentRepair } : {})
+      ...(this.deps.runtime?.toolArgumentRepair ? { toolArgumentRepair: this.deps.runtime.toolArgumentRepair } : {}),
+      onToolError: (info) => reportToolErrorNow(info),
+    onInefficientTurn: (info) => reportInefficientTurnNow(info)
     })
 
     const childThread = await threads.create({

@@ -210,6 +210,10 @@ def main() -> int:
     core.save_task_state(task_id)
 
     input_path = Path(input_path_str)
+    # 未显式指定输出目录时，默认落在输入文件所在目录（而非 worker 内部 taskDir），
+    # 避免脱敏产物掉进 ~/.legalwork/legalwork/data-compliance/tasks 犄角旮旯。
+    if not output_dir_raw and input_path.is_file():
+        output_dir_raw = str(input_path.parent)
     is_text = input_type == 'text'
     is_batch = input_type == 'batch'
 

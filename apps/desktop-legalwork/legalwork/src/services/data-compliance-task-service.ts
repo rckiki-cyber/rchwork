@@ -408,13 +408,28 @@ export class DataComplianceTaskService {
       return
     }
 
-    const result = await this.runCommand(
-      venvPython,
-      ['-m', 'pip', 'install', '-r', requirementsPath],
-      { cwd: this.webRoot }
-    )
-    if (result.exitCode !== 0) {
-      throw new Error(`安装依赖失败: ${result.stderr || result.stdout}`)
+    // PaddlePaddle/spacy are large; download intermittently fails (esp. in
+    // regions with slow PyPI access). Retry once, and honor an optional mirror
+    // index (LEGALWORK_PIP_INDEX_URL) to sidestep network issues.
+    const pipIndexUrl = (process.env.LEGALWORK_PIP_INDEX_URL || '').trim()
+    const pipArgs = ['-m', 'pip', 'install', '-r', requirementsPath]
+    if (pipIndexUrl) {
+      pipArgs.push('-i', pipIndexUrl, '--trusted-host', new URL(pipIndexUrl).hostname)
+    }
+    const pipInstall = async (): Promise<{ exitCode: number | null; stderr: string }> => {
+      const result = await this.runCommand(venvPython, pipArgs, { cwd: this.webRoot })
+      return { exitCode: result.exitCode, stderr: result.stderr || result.stdout || '' }
+    }
+
+    let pipResult = await pipInstall()
+    if (pipResult.exitCode !== 0) {
+      pipResult = await pipInstall()
+    }
+    if (pipResult.exitCode !== 0) {
+      throw new Error(
+        `安装依赖失败: ${pipResult.stderr}. ` +
+        '若为网络原因，可设置 LEGALWORK_PIP_INDEX_URL 使用镜像源（如 https://pypi.tuna.tsinghua.edu.cn/simple）后重试。'
+      )
     }
 
     const stillMissing = await this.findMissingPackages(CORE_REQUIRED_PYTHON_PACKAGES, venvPython)

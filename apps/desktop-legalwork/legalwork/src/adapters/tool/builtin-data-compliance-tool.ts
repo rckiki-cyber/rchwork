@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { basename, extname } from 'node:path'
+import { basename, dirname, extname, join } from 'node:path'
 import { LocalToolHost, type LocalTool } from './local-tool-host.js'
 import { withToolBoundary } from './builtin-tool-utils.js'
 import type { DataComplianceTask, DataComplianceTaskService } from '../../services/data-compliance-task-service.js'
@@ -42,6 +42,18 @@ function formatTaskResult(task: DataComplianceTask | null): unknown {
     error: task.error
   }
   if (task.status === 'completed') {
+    // The worker writes its artifacts to an internal task dir, then (when an
+    // output_dir was provided) copies the desensitized file + subject map into
+    // the user-facing output directory. Surface those user-facing paths so the
+    // agent doesn't point the user at the internal task dir.
+    const outputDir = task.output_dir?.trim()
+    const result = task.result ?? {}
+    const desensitized = outputDir && result.desensitized_output
+      ? join(outputDir, basename(result.desensitized_output))
+      : result.desensitized_output
+    const subjectMapMd = outputDir
+      ? join(outputDir, 'subject_mapping.md')
+      : result.subject_mapping_md
     return {
       ...base,
       message:
@@ -51,7 +63,9 @@ function formatTaskResult(task: DataComplianceTask | null): unknown {
       downloadable_file_keys:
         task.product_type === 'desensitize'
           ? ['desensitized_output', 'desensitization_report', 'desensitization_report_md', 'subject_mapping_md', 'subject_mapping_json']
-          : ['report', 'report_md', 'remediation', 'evidence', 'code_suggestions']
+          : ['report', 'report_md', 'remediation', 'evidence', 'code_suggestions'],
+      ...(desensitized ? { desensitized_output: desensitized } : {}),
+      ...(subjectMapMd ? { subject_mapping_md: subjectMapMd } : {})
     }
   }
   if (task.status === 'failed') {
@@ -207,16 +221,29 @@ export function createDataComplianceLocalTool(options: DataComplianceLocalToolOp
           inputText = text.trim()
         }
 
+        const explicitOutputDir =
+          action === 'desensitize' && typeof args.output_dir === 'string'
+            ? args.output_dir.trim() || undefined
+            : undefined
+        // 脱敏默认输出目录 = 当前对话 workspace（项目文件夹）。
+        // 用户未显式指定时，永远落到 workspace，而不是 worker 内部 taskDir。
+        // workspace 为空时兜底到输入文件所在目录（mode=file 时），
+        // 避免产物掉进 ~/.legalwork 内部目录。
+        let defaultOutputDir: string | undefined
+        if (action === 'desensitize' && !explicitOutputDir) {
+          defaultOutputDir = context.workspace?.trim() || undefined
+          if (!defaultOutputDir && mode === 'file' && typeof args.file_path === 'string' && args.file_path.trim()) {
+            defaultOutputDir = dirname(args.file_path.trim())
+          }
+        }
+
         const taskInput = {
           mode: action as 'review' | 'desensitize',
           documentName,
           inputText,
           reviewType:
             action === 'review' && args.review_type === 'code' ? ('code' as const) : ('document' as const),
-          outputDir:
-            action === 'desensitize' && typeof args.output_dir === 'string'
-              ? args.output_dir.trim() || undefined
-              : undefined,
+          outputDir: explicitOutputDir ?? defaultOutputDir,
           outputFormat:
             action === 'desensitize' &&
             (args.output_format === 'md' || args.output_format === 'docx' || args.output_format === 'txt')

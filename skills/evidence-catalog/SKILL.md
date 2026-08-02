@@ -77,6 +77,46 @@ description: 证据目录生成：对案件证据材料进行系统化整理、�
 
 按照法院或仲裁机构的格式要求进行排版。通用格式要求包括：使用表格形式呈现，表头包含完整的信息列，字体和字号统一，表格线条清晰，页码连续编号。输出完成后进行交叉核对，确保证据目录的内容与提交的证据材料完全对应。
 
+### 2.6 Excel 证据清单一键生成（officecli，首选）
+
+默认输出 **.xlsx**。用 officecli MCP 工具（`mcp_officecli_officecli`）。**核心纪律：所有单元格写入塞进同一个 `batch` 命令的 commands 数组，一次提交完成，不逐条 create/sheet、不 help、不 find。**
+
+**完整命令结构（一个 batch 写完整个证据目录）：**
+
+```
+第1步  create <文件路径>                         # 默认已含 Sheet1
+第2步  batch <文件路径>  commands=[ ...全部cell写入... ]   # 见下方
+第3步  save <文件路径>
+第4步  validate <文件路径>  （或 view text 抽查一次）
+```
+
+**batch 命令模板（把 N 条证据依次追加即可）：**
+
+```json
+{ "command": "batch", "file": "/path/证据目录_案件名.xlsx", "commands": [
+  { "command": "set", "path": "/Sheet1/A1", "props": { "value": "序号", "bold": true, "fill": "D9D9D9" } },
+  { "command": "set", "path": "/Sheet1/B1", "props": { "value": "证据名称", "bold": true, "fill": "D9D9D9" } },
+  { "command": "set", "path": "/Sheet1/C1", "props": { "value": "证据种类", "bold": true, "fill": "D9D9D9" } },
+  { "command": "set", "path": "/Sheet1/D1", "props": { "value": "证据来源", "bold": true, "fill": "D9D9D9" } },
+  { "command": "set", "path": "/Sheet1/E1", "props": { "value": "证明目的", "bold": true, "fill": "D9D9D9" } },
+  { "command": "set", "path": "/Sheet1/F1", "props": { "value": "页码", "bold": true, "fill": "D9D9D9" } },
+  { "command": "set", "path": "/Sheet1/A2", "props": { "value": 1 } },
+  { "command": "set", "path": "/Sheet1/B2", "props": { "value": "买卖合同" } },
+  { "command": "set", "path": "/Sheet1/C2", "props": { "value": "书证" } },
+  { "command": "set", "path": "/Sheet1/D2", "props": { "value": "原告提交" } },
+  { "command": "set", "path": "/Sheet1/E2", "props": { "value": "证明原被告之间存在买卖合同关系" } },
+  { "command": "set", "path": "/Sheet1/F2", "props": { "value": "P1-P5" } }
+] }
+```
+
+**关键语法（实测）：**
+- 单元格路径：`/Sheet1/A1`、`/Sheet1/B2`……（sheet 名默认 `Sheet1`）
+- 文本用 `value`；表头加 `bold:true` + `fill:"D9D9D9"`（浅灰底）即可，不需要逐格调字体
+- 数值直接 `value: 1`（数字不用引号）
+- **不要**用 `data`/`values` 做二维批量——xlsx 不支持，会把整串塞进一个 cell。必须逐 cell set，但全部塞进一个 batch 的 commands 数组，对 agent 来说仍是一次调用。
+- 需要新 sheet 时：`add / --type sheet --prop name=第二组`
+- 列宽：`set /Sheet1/col[1] --prop width=...`（按需，非必须）
+
 ## 三、输出规范
 
 ### 3.1 证据目录标准模板

@@ -4,6 +4,7 @@ import {
   DEFAULT_MODEL_PROVIDER_ID,
   getBuiltinModelProviderPreset,
   getModelProviderProfile,
+  inferEndpointFormatFromBaseUrl,
   legalworkSettingsPatch
 } from '@shared/app-settings'
 import type { CodexAuthStatus } from '@shared/ds-gui-api'
@@ -319,7 +320,25 @@ export function ModelSettingsSection({ ctx }: { ctx: Record<string, any> }): Rea
                   className="w-full min-w-0 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[14px] text-ds-ink shadow-sm focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/30 md:max-w-md"
                   placeholder={t('baseUrlPlaceholder')}
                   value={activeProvider.baseUrl}
-                  onChange={(e) => updateActiveProviderProfile({ baseUrl: e.target.value })}
+                  onChange={(e) => {
+                    const nextBaseUrl = e.target.value
+                    // Auto-infer the protocol from the endpoint unless the user
+                    // has manually chosen a protocol that differs from what the
+                    // previous base URL implied.
+                    const inferredFromPrevious = inferEndpointFormatFromBaseUrl(
+                      activeProvider.baseUrl,
+                      activeProvider.id
+                    )
+                    const userPickedManually =
+                      activeProvider.endpointFormat &&
+                      activeProvider.endpointFormat !== inferredFromPrevious
+                    updateActiveProviderProfile({
+                      baseUrl: nextBaseUrl,
+                      ...(userPickedManually ? {} : {
+                        endpointFormat: inferEndpointFormatFromBaseUrl(nextBaseUrl, activeProvider.id)
+                      })
+                    })
+                  }}
                 />
               }
             />

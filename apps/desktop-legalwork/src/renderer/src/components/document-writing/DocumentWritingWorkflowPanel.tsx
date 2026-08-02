@@ -1,5 +1,8 @@
 import type { ReactElement } from 'react'
-import { Check, ChevronDown, ChevronUp, Circle, Loader2, SearchCheck, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Circle, SearchCheck, X } from 'lucide-react'
+import { ThinkingOrbStatus } from '../chat/ThinkingOrbStatus'
+import { orbStateForToolName } from '../chat/orb-state'
+import { extractToolName } from '../chat/tool-summary'
 import { useDocumentWriting, type DocumentWritingStageStatus } from './DocumentWritingContext'
 
 function StageMark({ status }: { status: DocumentWritingStageStatus }): ReactElement {
@@ -7,12 +10,27 @@ function StageMark({ status }: { status: DocumentWritingStageStatus }): ReactEle
     return <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white"><Check className="h-3 w-3" strokeWidth={2.6} /></span>
   }
   if (status === 'running') {
-    return <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white"><Loader2 className="h-3 w-3 animate-spin" strokeWidth={2.2} /></span>
+    return <span className="flex h-5 w-5 items-center justify-center"><ThinkingOrbStatus state="composing" size={20} /></span>
   }
   if (status === 'error') {
     return <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white"><X className="h-3 w-3" strokeWidth={2.6} /></span>
   }
   return <span className="flex h-5 w-5 items-center justify-center rounded-full border border-ds-border bg-ds-subtle text-ds-faint"><Circle className="h-2 w-2 fill-current" /></span>
+}
+
+/**
+ * The orb state for a running document-writing workflow. Defaults to composing
+ * (the whole flow drafts a document); a research/search tool running switches
+ * to searching, and non-empty reasoning switches to solving.
+ */
+function runningWorkflowOrbState(reasoning: string, lastTool: string | undefined): 'composing' | 'searching' | 'solving' {
+  if (reasoning.trim()) return 'solving'
+  if (lastTool) {
+    const toolName = extractToolName(lastTool)
+    const fromTool = orbStateForToolName(toolName)
+    if (fromTool === 'searching') return 'searching'
+  }
+  return 'composing'
 }
 
 export function DocumentWritingWorkflowPanel(): ReactElement | null {
@@ -27,7 +45,7 @@ export function DocumentWritingWorkflowPanel(): ReactElement | null {
         className="ds-no-drag fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full border border-ds-border bg-ds-card/95 px-3 py-2 text-[12px] font-semibold text-ds-ink shadow-[0_14px_34px_rgba(15,23,42,0.16)] backdrop-blur-xl"
         title="展开文书工作流"
       >
-        {workflow.status === 'running' ? <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" /> : <SearchCheck className="h-3.5 w-3.5 text-emerald-500" />}
+        {workflow.status === 'running' ? <ThinkingOrbStatus state={runningWorkflowOrbState(workflow.reasoning, workflow.lastTool)} size={20} /> : <SearchCheck className="h-3.5 w-3.5 text-emerald-500" />}
         {workflow.status === 'running' ? '文书研究进行中' : '文书研究已完成'}
         <ChevronUp className="h-3.5 w-3.5 text-ds-faint" />
       </button>
@@ -39,7 +57,7 @@ export function DocumentWritingWorkflowPanel(): ReactElement | null {
     <aside className="ds-no-drag fixed bottom-5 right-5 z-40 w-[min(360px,calc(100vw-2.5rem))] overflow-hidden rounded-[18px] border border-ds-border bg-ds-card/95 shadow-[0_22px_58px_rgba(15,23,42,0.2)] backdrop-blur-xl dark:shadow-[0_28px_72px_rgba(0,0,0,0.42)]">
       <div className="flex items-start gap-3 border-b border-ds-border-muted px-4 py-3">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-accent/12 text-accent">
-          {workflow.status === 'running' ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <SearchCheck className="h-4 w-4" strokeWidth={2} />}
+          {workflow.status === 'running' ? <ThinkingOrbStatus state={runningWorkflowOrbState(workflow.reasoning, workflow.lastTool)} size={20} /> : <SearchCheck className="h-4 w-4" strokeWidth={2} />}
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-semibold text-ds-ink">AI 文书工作流</div>
