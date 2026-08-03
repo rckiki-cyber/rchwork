@@ -53,7 +53,7 @@ let childLogCapture: LegalworkChildLogCapture | null = null
 let childStartupPromise: Promise<void> | null = null
 let lastResolvedBinary: string | null = null
 const LEGALWORK_READY_PREFIX = 'LEGALWORK_READY '
-const LEGALWORK_STARTUP_TIMEOUT_MS = 4_000
+const LEGALWORK_STARTUP_TIMEOUT_MS = 12_000
 const LEGALWORK_STARTUP_HEALTH_POLL_MS = 500
 const LEGALWORK_STARTUP_HEALTH_REQUEST_TIMEOUT_MS = 1_000
 const LEGALWORK_STOP_GRACE_MS = 800
@@ -389,7 +389,9 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
   child = spawn(resolution.command, args, {
     env: childEnvironment,
     stdio: ['ignore', 'pipe', 'pipe'],
-    detached: false
+    detached: false,
+    // Windows: 隐藏子进程控制台窗口，避免每次启动 runtime 时弹出黑框。
+    windowsHide: true
   })
   const startedChild = child
   const startedLogCapture = createLegalworkChildLogCapture(startedChild.pid)
@@ -642,7 +644,16 @@ function buildOfficeCliLegalworkMcpServer(
     transport: 'stdio',
     command,
     args,
-    env: {},
+    env: {
+      // OfficeCLI 自带后台自更新（启动时 + 每小时检查，会 spawn 子进程做下载/验证/应用）。
+      // 在 Windows 上这些后台子进程即使被 CREATE_NO_WINDOW 启动，仍可能弹出"命令提示符"窗口。
+      // officecli 是 legalwork 内置的版本化二进制，版本由打包控制，自更新没有意义反而有风险，
+      // 用官方 OFFICECLI_SKIP_UPDATE=1 彻底关闭，消除弹窗源。
+      OFFICECLI_SKIP_UPDATE: '1',
+      // 防止 officecli 为文件操作自动拉起常驻服务进程（resident）产生新窗口。officecli mcp
+      // 默认即 opt-out，此处显式注入兜底（未来版本改默认行为时仍生效）。
+      OFFICECLI_NO_AUTO_RESIDENT: '1'
+    },
     trustScope: 'user',
     trustedWorkspaceRoots: [],
     timeoutMs: LEGALWORK_OFFICECLI_MCP_TIMEOUT_MS

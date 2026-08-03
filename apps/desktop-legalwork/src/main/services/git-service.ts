@@ -12,7 +12,8 @@ async function runGit(
   const { stdout, stderr } = await execFileAsync('git', args, {
     cwd,
     timeout,
-    maxBuffer: 1024 * 1024
+    maxBuffer: 1024 * 1024,
+    windowsHide: true
   })
   return { stdout: String(stdout), stderr: String(stderr) }
 }

@@ -10,8 +10,7 @@ type Props = {
   onUpload: (file: File) => Promise<void>
 }
 
-const ALLOWED_EXTENSIONS = ['.docx', '.pdf', '.txt', '.md']
-const MAX_TEMPLATE_FILE_BYTES = 10 * 1024 * 1024
+const ALLOWED_EXTENSIONS = ['.docx', '.doc', '.pdf', '.txt', '.md']
 const OCR_LIKE_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff'])
 
 function getFileExt(name: string): string {
@@ -52,9 +51,6 @@ export function DocumentTemplateUploader({
     const ext = getFileExt(file.name)
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
       return t('documentWritingUploadInvalidType')
-    }
-    if (file.size > MAX_TEMPLATE_FILE_BYTES) {
-      return t('documentWritingUploadTooLarge')
     }
     return null
   }, [t])

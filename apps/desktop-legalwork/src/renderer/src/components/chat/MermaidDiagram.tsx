@@ -43,7 +43,35 @@ type RenderState =
   | { status: 'ready'; svg: string; width: number }
   | { status: 'error'; message: string }
 
+/**
+ * Last successfully rendered diagram, scoped to its source+theme so a
+ * re-render (theme switch, retry) only reuses a diagram that belongs to the
+ * same source. Without the scope, an error/retry or a new message could flash
+ * an unrelated diagram from an earlier message.
+ */
+type LastReadyDiagram = {
+  source: string
+  theme: DiagramTheme
+  svg: string
+  width: number
+}
+
 let mermaidRenderQueue: Promise<void> = Promise.resolve()
+
+/**
+ * Render results are cached per (source, theme) so scrolling back to a
+ * diagram, a theme re-render, or a streamed source settling on its final
+ * text does not re-run the expensive Mermaid render or flash back to the
+ * loading spinner. Bounded FIFO to keep memory from growing unbounded on
+ * long chats.
+ */
+type MermaidRenderResult = { svg: string; width: number }
+const MERMAID_SVG_CACHE_MAX = 24
+const mermaidSvgCache = new Map<string, MermaidRenderResult>()
+
+function mermaidCacheKey(source: string, theme: DiagramTheme): string {
+  return `${theme}:${source}`
+}
 
 function enqueueMermaidRender<T>(job: () => Promise<T>): Promise<T> {
   const result = mermaidRenderQueue.then(job, job)
@@ -341,13 +369,31 @@ export function MermaidDiagram({
   const renderAttemptRef = useRef(0)
   const [retryKey, setRetryKey] = useState(0)
   const [renderState, setRenderState] = useState<RenderState>({ status: 'idle' })
+  const lastReadyRef = useRef<LastReadyDiagram | null>(null)
   const [copied, setCopied] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const copyResetRef = useRef<number | null>(null)
 
+  // A cached result maps 1:1 to its source+theme, so a stored last-ready only
+  // stays reusable while the current source+theme match it.
+  const lastReadyMatches = lastReadyRef.current !== null
+    && lastReadyRef.current.source === source
+    && lastReadyRef.current.theme === theme
+  const shownReady: MermaidRenderResult | null = renderState.status === 'ready'
+    ? renderState
+    : (lastReadyMatches ? lastReadyRef.current : null)
+
   useEffect(() => {
     if (isIncomplete || !source.trim()) {
       setRenderState({ status: 'idle' })
+      return
+    }
+
+    const cacheKey = mermaidCacheKey(source, theme)
+    const cached = mermaidSvgCache.get(cacheKey)
+    if (cached) {
+      lastReadyRef.current = { source, theme, ...cached }
+      setRenderState({ status: 'ready', ...cached })
       return
     }
 
@@ -357,7 +403,14 @@ export function MermaidDiagram({
 
     void renderMermaid(source, theme, `legalwork-mermaid-${reactId}-${attempt}`).then(
       (result) => {
-        if (!cancelled) setRenderState({ status: 'ready', ...result })
+        if (cancelled) return
+        mermaidSvgCache.set(cacheKey, result)
+        if (mermaidSvgCache.size > MERMAID_SVG_CACHE_MAX) {
+          const oldestKey = mermaidSvgCache.keys().next().value
+          if (oldestKey !== undefined) mermaidSvgCache.delete(oldestKey)
+        }
+        lastReadyRef.current = { source, theme, ...result }
+        setRenderState({ status: 'ready', ...result })
       },
       (error: unknown) => {
         if (cancelled) return
@@ -444,11 +497,13 @@ export function MermaidDiagram({
 
       {isIncomplete ? (
         <div className="ds-mermaid-status">{t('mermaidReceiving')}</div>
-      ) : renderState.status === 'loading' || renderState.status === 'idle' ? (
-        <div className="ds-mermaid-status">
-          <span className="ds-mermaid-spinner" aria-hidden="true" />
-          {t('mermaidRendering')}
-        </div>
+      ) : shownReady ? (
+        // shownReady is either the freshly rendered result or, while a
+        // re-render is in flight for the same source+theme, the last rendered
+        // diagram. Keeping the viewport mounted (instead of swapping to the
+        // spinner) prevents the scroll/zoom state from resetting and avoids a
+        // flash back to the loading state.
+        <DiagramViewport svg={shownReady.svg} width={shownReady.width} />
       ) : renderState.status === 'error' ? (
         <div className="ds-mermaid-error" role="alert">
           <div>
@@ -463,9 +518,12 @@ export function MermaidDiagram({
             <pre>{source}</pre>
           </details>
         </div>
-      ) : ready ? (
-        <DiagramViewport svg={ready.svg} width={ready.width} />
-      ) : null}
+      ) : (
+        <div className="ds-mermaid-status">
+          <span className="ds-mermaid-spinner" aria-hidden="true" />
+          {t('mermaidRendering')}
+        </div>
+      )}
 
       {fullscreen && ready && typeof document !== 'undefined'
         ? createPortal(

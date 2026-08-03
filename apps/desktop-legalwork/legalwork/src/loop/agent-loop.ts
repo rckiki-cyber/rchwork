@@ -88,6 +88,35 @@ const MAX_PARALLEL_TOOL_CALLS = 3
 export const DEFAULT_MAX_AGENT_LOOP_STEPS = 1024
 export const MAX_AGENT_LOOP_STEPS_ENV = 'LEGALWORK_MAX_AGENT_LOOP_STEPS'
 export const MAX_AGENT_LOOP_STEPS_ENV_CAP = 4_096
+/**
+ * Per-turn cumulative input-token budget. Every model step re-sends the full
+ * history, so a research turn that never converges can bill millions of input
+ * tokens (cache-hit price or not). Once a turn's cumulative input tokens
+ * exceed this budget, the loop injects a "stop researching, synthesize what
+ * you have" instruction instead of letting the model keep searching. This is a
+ * cost guardrail, NOT a step-count cap — the 1024-step loop ceiling is
+ * untouched.
+ */
+export const DEFAULT_TURN_TOKEN_BUDGET = 500_000
+export const TURN_TOKEN_BUDGET_ENV = 'LEGALWORK_TURN_TOKEN_BUDGET'
+export const TURN_TOKEN_BUDGET_ENV_CAP = 10_000_000
+
+export function resolveTurnTokenBudget(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[TURN_TOKEN_BUDGET_ENV]?.trim()
+  if (!raw) return DEFAULT_TURN_TOKEN_BUDGET
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_TURN_TOKEN_BUDGET
+  return Math.min(parsed, TURN_TOKEN_BUDGET_ENV_CAP)
+}
+
+/**
+ * 预算闸门触发后注入的收尾指令。放在 contextInstructions（history 之后）末尾，
+ * 作为对模型最高优先级的收敛压力：停止继续检索、综合现有材料作答。
+ */
+const TURN_BUDGET_WRAPUP_INSTRUCTION =
+  '【成本预算提醒】本轮已累计消耗大量输入 token，请立即停止继续检索、搜索、抓取或读取新资料。' +
+  '基于当前已经获取的全部材料，直接综合、组织并给出完整、最终的回答。' +
+  '如信息确有不足，请明确列出已获得的信息与仍缺失的部分，但不要为补足信息而继续调用工具。'
 const MAX_GOAL_NO_TOOL_CONTINUATIONS = 2
 const DEFAULT_COMPACTION_SUMMARY_TIMEOUT_MS = 15_000
 const DEFAULT_COMPACTION_SUMMARY_MAX_TOKENS = 1_200
@@ -270,6 +299,29 @@ function extractToolError(output: unknown): string {
   } catch {
     return String(output ?? 'unknown tool error')
   }
+}
+
+/**
+ * Decide whether a tool failure should be forwarded to the error-reporting
+ * pipeline. Some tool errors are expected, agent-visible results rather than
+ * product defects; reporting them just floods the report queue with noise.
+ *
+ * bash 特判：
+ * - 命令进程正常执行完毕（payload 含 exit_code / session_id，无 error 字段）时，
+ *   无论退出码是否非零，都是 agent 能自行处理的业务结果（探测命令 `grep`/`where`
+ *   返回 1、缺依赖的 `pip install` 失败等），不属于 runtime 缺陷，不上报。
+ * - `command aborted` 是用户/上层主动取消，属正常操作，不上报。
+ * - 仅进程启动失败、超时等带 error 字段的真异常才上报。
+ */
+function shouldReportToolError(toolName: string, output: unknown): boolean {
+  if (toolName !== 'bash') return true
+  if (!output || typeof output !== 'object') return true
+  const record = output as Record<string, unknown>
+  if (record.error && typeof record.error === 'string') {
+    return record.error !== 'command aborted'
+  }
+  if ('exit_code' in record || 'session_id' in record) return false
+  return true
 }
 
 export function resolvePlanModeToolSpecs(
@@ -458,6 +510,13 @@ export type AgentLoopOptions = {
   memoryStore?: MemoryStore
   tokenEconomy?: TokenEconomyConfig
   contextCompaction?: ContextCompactionConfig
+  /**
+   * Per-turn cumulative input-token budget. When a single turn's summed model
+   * input tokens exceed this, the loop injects a "synthesize now" instruction
+   * to force convergence instead of unbounded research. 0/undefined uses the
+   * default (or LEGALWORK_TURN_TOKEN_BUDGET env).
+   */
+  turnTokenBudget?: number
   toolStorm?: ToolStormBreakerOptions & { enabled?: boolean }
   toolArgumentRepair?: {
     maxStringBytes?: number
@@ -516,6 +575,10 @@ export class AgentLoop {
   private readonly toolStormBreakers = new Map<string, ToolStormBreaker>()
   private readonly toolCatalogSnapshots = new Map<string, ToolCatalogSnapshot>()
   private readonly retrievalLedgers = new Map<string, RetrievalLedger>()
+  /** 单 turn 累计 input token（keyed by turnId），用于成本闸门。 */
+  private readonly turnInputTokenSpend = new Map<string, number>()
+  /** 单 turn 是否已注入"强制收尾"指令，避免每步重复注入污染 history。 */
+  private readonly turnBudgetInstructionInjected = new Set<string>()
 
   constructor(opts: AgentLoopOptions) {
     this.opts = opts
@@ -557,6 +620,8 @@ export class AgentLoop {
       await this.finishGoalElapsedTimer(threadId, goalTimer)
       this.autoModelRoutes.delete(autoModelRouteKey(threadId, turnId))
       this.toolStormBreakers.delete(turnId)
+      this.turnInputTokenSpend.delete(turnId)
+      this.turnBudgetInstructionInjected.delete(turnId)
     }
   }
 
@@ -685,6 +750,9 @@ export class AgentLoop {
     if (shouldVerifyImmutablePrefix()) {
       verifyImmutablePrefix(this.opts.prefix)
     }
+    // 本步模型请求的 input token（流式期间 usage 可能上报多次，取最大值，
+    // 因为一次请求的 input 在发出时就已固定）。循环结束后累加到 turn 级闸门。
+    let stepPromptTokens = 0
     const [thread, turn] = await Promise.all([
       this.opts.threadStore.get(threadId),
       this.opts.turns.getTurn(threadId, turnId)
@@ -878,7 +946,8 @@ export class AgentLoop {
       ...(imaRouteAction ? [imaRouteAction.instruction] : []),
       ...(officeWorkflowInstruction ? [officeWorkflowInstruction] : []),
       ...(requestToolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
-      ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : [])
+      ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : []),
+      ...(this.armTurnBudgetWrapUp(turnId) ? [TURN_BUDGET_WRAPUP_INSTRUCTION] : [])
     ]
     await this.recordPipelineStage(threadId, turnId, 'input_remembered', {
       memoryCount: memories.length,
@@ -1029,6 +1098,9 @@ export class AgentLoop {
         }
         case 'usage': {
           this.recordPromptPressure(threadId, request.model, chunk.usage.promptTokens)
+          if (chunk.usage.promptTokens > stepPromptTokens) {
+            stepPromptTokens = chunk.usage.promptTokens
+          }
           const usage = this.opts.usage.record(threadId, chunk.usage)
           await this.opts.events.record({
             kind: 'usage',
@@ -1053,6 +1125,9 @@ export class AgentLoop {
           stopReason = 'error'
           break
       }
+    }
+    if (stepPromptTokens > 0) {
+      this.turnInputTokenSpend.set(turnId, (this.turnInputTokenSpend.get(turnId) ?? 0) + stepPromptTokens)
     }
     await this.recordPipelineStage(threadId, turnId, 'response_received', {
       stopReason,
@@ -1497,7 +1572,7 @@ export class AgentLoop {
   ): Promise<void> {
     // 工具调用返回错误 → 通过 onToolError 回调上报（仅工具名+错误摘要，
     // 不含工具参数/对话内容，避免敏感信息外传）。
-    if (result.item.kind === 'tool_result' && result.item.isError === true) {
+    if (result.item.kind === 'tool_result' && result.item.isError === true && shouldReportToolError(call.toolName, result.item.output)) {
       try {
         this.opts.onToolError?.({
           threadId,
@@ -1708,14 +1783,20 @@ export class AgentLoop {
       keepRecent: plan.keepRecent
     })
     if (result.replacedTokens > 0) {
-      const modelSummary = await this.summarizeCompactionWithModel({
-        threadId,
-        turnId,
-        model,
-        items,
-        heuristicSummary: result.summaryItem.kind === 'compaction' ? result.summaryItem.summary : '',
-        signal
-      })
+      // 默认使用确定性启发式摘要（buildCompactionSummary），它产出字节稳定、
+      // 不消耗额外模型调用的摘要，且压缩后历史可复用 prompt 缓存。仅当显式配置
+      // summaryMode: 'model' 时才调用模型生成摘要（更贵，且每次压缩都会清缓存）。
+      const useModelSummary = this.opts.contextCompaction?.summaryMode === 'model'
+      const modelSummary = useModelSummary
+        ? await this.summarizeCompactionWithModel({
+            threadId,
+            turnId,
+            model,
+            items,
+            heuristicSummary: result.summaryItem.kind === 'compaction' ? result.summaryItem.summary : '',
+            signal
+          })
+        : undefined
       if (signal.aborted) return items
       if (modelSummary) {
         result = this.opts.compactor.compact({
@@ -1912,6 +1993,27 @@ export class AgentLoop {
     const current = this.promptTokenPressure.get(threadId)
     if (current && current.promptTokens >= promptTokens) return
     this.promptTokenPressure.set(threadId, { model, promptTokens })
+  }
+
+  /** 单 turn 累计 input token 预算。0/负数 = 关闭闸门。 */
+  private turnTokenBudget(): number {
+    const configured = this.opts.turnTokenBudget
+    if (typeof configured === 'number' && configured > 0) return configured
+    return resolveTurnTokenBudget()
+  }
+
+  /**
+   * 预算闸门触发检查：本 turn 累计 input token 是否已超预算。首次触发返回 true
+   * （并向模型注入收尾指令），之后保持 false 避免每步重复注入污染 history。
+   */
+  private armTurnBudgetWrapUp(turnId: string): boolean {
+    if (this.turnBudgetInstructionInjected.has(turnId)) return false
+    const budget = this.turnTokenBudget()
+    if (budget <= 0) return false
+    const spent = this.turnInputTokenSpend.get(turnId) ?? 0
+    if (spent < budget) return false
+    this.turnBudgetInstructionInjected.add(turnId)
+    return true
   }
 
   private async recordToolCatalogDrift(input: {

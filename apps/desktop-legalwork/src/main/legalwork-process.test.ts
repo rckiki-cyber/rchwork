@@ -419,6 +419,11 @@ describe('syncGuiManagedLegalworkConfig', () => {
       join('/Applications/legalwork.app/Contents/Resources/app.asar.unpacked', 'legalwork', 'node_modules', '@officecli', 'officecli', 'vendor', 'officecli')
     )
     expect(parsed.capabilities.mcp.servers.officecli.args).toEqual(['mcp'])
+    // 禁用 OfficeCLI 自更新与 resident 常驻进程：Windows 上后台子进程会弹"命令提示符"窗口。
+    expect(parsed.capabilities.mcp.servers.officecli.env).toMatchObject({
+      OFFICECLI_SKIP_UPDATE: '1',
+      OFFICECLI_NO_AUTO_RESIDENT: '1'
+    })
   })
 
   it('places the bundled OfficeCLI ahead of system binaries in the runtime PATH', async () => {

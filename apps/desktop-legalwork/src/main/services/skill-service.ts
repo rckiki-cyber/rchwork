@@ -515,7 +515,7 @@ async function extractSkillZip(zipPath: string): Promise<string> {
         'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force',
         zipPath,
         target
-      ], { timeout: 120_000 })
+      ], { timeout: 120_000, windowsHide: true })
     } else {
       await execFileAsync('unzip', ['-q', zipPath, '-d', target], { timeout: 120_000 })
     }
@@ -535,7 +535,7 @@ async function ensureSafeZipEntries(zipPath: string): Promise<void> {
         '-Command',
         '[Reflection.Assembly]::LoadWithPartialName("System.IO.Compression.FileSystem") | Out-Null; [IO.Compression.ZipFile]::OpenRead($args[0]).Entries | ForEach-Object { $_.FullName }',
         zipPath
-      ], { encoding: 'utf8', timeout: 30_000 })
+      ], { encoding: 'utf8', timeout: 30_000, windowsHide: true })
     : await execFileAsync('unzip', ['-Z1', zipPath], { encoding: 'utf8', timeout: 30_000 })
   for (const line of output.stdout.split(/\r?\n/)) {
     const entry = line.trim()

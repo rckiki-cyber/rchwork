@@ -878,6 +878,25 @@ async function restartManagedRuntimeForMcpConfigChange(settings: AppSettingsV1):
   }
 }
 
+/**
+ * 健康/探测类端点在 runtime 启动竞态（服务尚未就绪或正在重启）期间失败是预期行为，
+ * 用路径白名单 + 仅 GET 判定，命中时只记录 warn 日志、不触发错误上报，避免刷屏；
+ * 业务写入（POST）失败仍正常上报。
+ */
+function isRuntimeProbePath(pathAndQuery: string): boolean {
+  const pathname = pathAndQuery.split('?')[0] ?? ''
+  return (
+    pathname === '/health' ||
+    pathname === '/v1/runtime/info' ||
+    pathname === '/v1/runtime/tools' ||
+    pathname === '/v1/threads' ||
+    pathname.startsWith('/v1/threads/') ||
+    pathname === '/v1/memory' ||
+    pathname === '/v1/usage' ||
+    pathname.startsWith('/data-compliance/')
+  )
+}
+
 async function runtimeRequest(
   settings: AppSettingsV1,
   pathAndQuery: string,
@@ -887,7 +906,11 @@ async function runtimeRequest(
     return await runtimeRequestViaHost(settings, pathAndQuery, init, ensureRuntime)
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
-    logError('runtime-request', `HTTP request to ${pathAndQuery} failed`, { message })
+    if (isRuntimeProbePath(pathAndQuery) && (init.method ?? 'GET') === 'GET') {
+      logWarn('runtime-request', `HTTP request to ${pathAndQuery} failed (probe, not reported)`, { message })
+    } else {
+      logError('runtime-request', `HTTP request to ${pathAndQuery} failed`, { message })
+    }
     const parsed = parseRuntimeErrorBody(message, message)
     if (parsed.code !== 'unknown' || parsed.message !== message) {
       return runtimeFailure(parsed.code, parsed.message, 0, parsed.details)

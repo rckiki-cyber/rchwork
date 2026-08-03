@@ -139,7 +139,8 @@ function canRunSupportedPython(command: string, env: NodeJS.ProcessEnv = buildOc
       env,
       shell: false,
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     })
     return result.status === 0 &&
       isSupportedDataCompliancePythonVersion(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
@@ -237,7 +238,8 @@ function resolveTesseractCommand(env: NodeJS.ProcessEnv): string | undefined {
     const output = execSync(command, {
       encoding: 'utf8',
       env,
-      stdio: ['ignore', 'pipe', 'ignore']
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true
     }).split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0]
     return output || undefined
   } catch {
@@ -252,7 +254,8 @@ function canRunTesseract(env: NodeJS.ProcessEnv): boolean {
     execSync(`${shellQuote(command)} --version`, {
       encoding: 'utf8',
       env,
-      stdio: ['ignore', 'pipe', 'ignore']
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true
     })
     return true
   } catch {
@@ -317,7 +320,8 @@ async function runCommand(
     const child = spawn(command, args, {
       cwd: options.cwd,
       env: options.env ?? buildOcrRuntimeEnvironment(),
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     })
     child.stdout?.pipe(log, { end: false })
     child.stderr?.pipe(log, { end: false })
@@ -721,7 +725,8 @@ export class DataComplianceRuntime {
         COMPLIANCEAI_PYTHON: venvPython,
         COMPLIANCEAI_LOG_PATH: logPath
       },
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     })
 
     // If ensure was aborted while we were spawning, kill the new child

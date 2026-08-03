@@ -735,8 +735,7 @@ export function createMaintenanceActions(
       }))
     } catch (e) {
       const msg = formatRuntimeError(e)
-      void window.dsGui.logError('user-input', 'Failed to resolve user input', {
-        message: msg,
+      void window.dsGui.logError('user-input', `Failed to resolve user input: ${msg}`, {
         blockId
       }).catch(() => undefined)
       set((s) => ({

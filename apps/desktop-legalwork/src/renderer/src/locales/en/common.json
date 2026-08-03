@@ -158,7 +158,6 @@
   "documentWritingUploadDragHint": "Drag & drop a file here, or click to select",
   "documentWritingUploadFormats": "Supports docx, pdf, txt, md",
   "documentWritingUploadInvalidType": "Unsupported file format",
-  "documentWritingUploadTooLarge": "File is too large. Please upload a file smaller than 10MB.",
   "documentWritingUploadError": "Upload failed. Please try again.",
   "documentWritingUpload": "Upload",
   "documentWritingUploading": "Uploading...",

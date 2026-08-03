@@ -160,7 +160,8 @@ async function runGit(
     const result = await execFileAsync('git', [...args], {
       cwd,
       timeout: GIT_COMMAND_TIMEOUT_MS,
-      maxBuffer: GIT_COMMAND_MAX_BUFFER
+      maxBuffer: GIT_COMMAND_MAX_BUFFER,
+      windowsHide: true
     })
     return {
       stdout: normalizeOutput(result.stdout),

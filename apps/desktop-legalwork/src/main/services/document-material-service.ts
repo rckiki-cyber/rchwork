@@ -168,7 +168,8 @@ async function runOcrAgent(pdfPath: string): Promise<{ text: string; engine?: st
       const child = spawn(python, [ocrAgentPath, 'auto', pdfPath], {
         cwd: dirname(ocrAgentPath),
         env: ocrRuntimeEnv(ocrAgentPath),
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
       })
       const timer = setTimeout(() => {
         if (settled) return
@@ -266,6 +267,28 @@ export async function extractDocumentMaterial(
       return { ok: true, content }
     }
 
+    if (ext === 'doc') {
+      // word-extractor is a CJS module; read both the default and the
+      // namespace shape so the packaged bundle keeps working regardless of
+      // ESM→CJS interop (same defensive pattern as the docx/mammoth branch).
+      const mod = await import('word-extractor') as {
+        default?: unknown
+        WordExtractor?: unknown
+      }
+      const WordExtractor = (mod.default ?? mod.WordExtractor) as
+        | (new (options?: unknown) => {
+            extract: (source: Buffer) => Promise<{ getBody: () => string }>
+          })
+        | undefined
+      if (typeof WordExtractor !== 'function') {
+        return { ok: false, message: '当前环境缺少 doc 文本解析能力。' }
+      }
+      const document = await new WordExtractor().extract(buffer)
+      const content = document.getBody()?.trim() ?? ''
+      if (!content) return { ok: false, message: '未能从 doc 材料中提取到文字。' }
+      return { ok: true, content }
+    }
+
     if (ext === 'pdf') {
       const textResult = await extractPdfTextLayer(buffer)
       if (!textResult.ok) return textResult
@@ -275,7 +298,7 @@ export async function extractDocumentMaterial(
       return extractScannedPdfWithOcr(request.fileName, buffer)
     }
 
-    return { ok: false, message: '该材料格式暂不能作为文书事实来源，请上传 txt、md、docx 或可复制文字的 PDF。' }
+    return { ok: false, message: '该材料格式暂不能作为文书事实来源，请上传 txt、md、docx、doc 或可复制文字的 PDF。' }
   } catch (error) {
     return {
       ok: false,

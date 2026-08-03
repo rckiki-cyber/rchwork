@@ -303,7 +303,7 @@ export async function buildMcpToolProviders(
     connectedServers,
     toolCount,
     close: async () => {
-      await Promise.all(connected.map((state) => state.client.close().catch(() => undefined)))
+      await Promise.all(connected.map((state) => closeMcpClient(state.client)))
     }
   }
 }
@@ -529,30 +529,38 @@ function normalizeMcpInputSchema(
   const properties = typeof schema.properties === 'object' && schema.properties !== null
     ? schema.properties as Record<string, unknown>
     : {}
+  const commandProperty = typeof properties.command === 'object' && properties.command !== null
+    ? properties.command as Record<string, unknown>
+    : {}
   return {
     ...schema,
     properties: {
       ...properties,
+      command: {
+        ...commandProperty,
+        description:
+          'The full OfficeCLI command — a single string or an argv array. This is the ONLY required field; always populate it with the complete command including the document path. The optional fields below (file/path/parent/...) are helpers used only when command is a single verb like add/set.'
+      },
       file: {
         type: 'string',
-        description: 'Document path. May be omitted after a successful create/open in this task.'
+        description: 'Document path helper — only used together with a single-verb command (add/set/open/...); command is still required.'
       },
       parent: {
         type: 'string',
-        description: 'Parent document element path for a bare add command, such as /body.'
+        description: 'Parent document element path for a bare add command, such as /body. Only used with a single-verb command; command is still required.'
       },
       path: {
         type: 'string',
-        description: 'Document element path for a bare get/set/remove command.'
+        description: 'Document element path for a bare get/set/remove command. Only used with a single-verb command; command is still required.'
       },
       type: {
         type: 'string',
-        description: 'Element type for a bare add command.'
+        description: 'Element type for a bare add command. Only used with a single-verb command; command is still required.'
       },
       props: {
         type: 'object',
         additionalProperties: true,
-        description: 'Element properties for a bare add/set command.'
+        description: 'Element properties for a bare add/set command. Only used with a single-verb command; command is still required.'
       },
       commands: {
         type: 'array',
@@ -596,15 +604,23 @@ export function normalizeOfficeCliArguments(
 ): OfficeCliNormalization {
   const rawCommand = input.command
   const parsedArray = parseJsonStringArray(rawCommand)
-  if (parsedArray) return { arguments: { command: parsedArray } }
+  if (parsedArray) {
+    if (parsedArray.length === 0 || parsedArray.every((part) => !part.trim())) {
+      return missingOfficeCliCommandResult()
+    }
+    return { arguments: { command: parsedArray } }
+  }
   if (Array.isArray(rawCommand)) {
     if (!rawCommand.every((part) => typeof part === 'string')) {
       return { arguments: {}, error: 'OfficeCLI command arrays may only contain strings.' }
     }
+    if (rawCommand.length === 0 || rawCommand.every((part) => !part.trim())) {
+      return missingOfficeCliCommandResult()
+    }
     return { arguments: { command: rawCommand } }
   }
   if (typeof rawCommand !== 'string' || !rawCommand.trim()) {
-    return { arguments: {}, error: 'OfficeCLI command is required.' }
+    return missingOfficeCliCommandResult()
   }
 
   const words = officeCliCommandWords(rawCommand)
@@ -641,6 +657,19 @@ export function normalizeOfficeCliArguments(
   }
   appendOfficeCliOptions(command, input)
   return { arguments: { command } }
+}
+
+/**
+ * Actionable error for a missing/blank OfficeCLI command. Models read tool
+ * errors on the next turn, so the message shows the exact shape to resend
+ * instead of a bare "command is required".
+ */
+function missingOfficeCliCommandResult(): OfficeCliNormalization {
+  return {
+    arguments: {},
+    error:
+      'OfficeCLI command is required. Send the full command as one string, e.g. "get C:/path/报告.docx /body/p[1] --json", or as an argv array, e.g. ["get","C:/path/报告.docx","/body/p[1]","--json"].'
+  }
 }
 
 const OFFICECLI_FILE_COMMANDS = new Set([
@@ -858,13 +887,26 @@ async function callMcpToolWithReconnect(
 const MCP_RECONNECT_TIMEOUT_MS = 15_000
 const MCP_RECONNECT_STDIO_TIMEOUT_MS = 45_000
 
+/**
+ * 安全关闭一个可能未初始化（undefined）的 MCP 客户端。`client.close()` 在 client
+ * 为 undefined 时会同步抛 TypeError（"Cannot read properties of undefined (reading
+ * 'close')"），必须用可选链 + try/catch 兜底；关闭失败不影响重连/调用主流程。
+ */
+async function closeMcpClient(client: McpClientLike | undefined): Promise<void> {
+  try {
+    await client?.close()
+  } catch {
+    // close 失败绝不能影响主流程（曾出现连接中途被清理导致 close 抛错）
+  }
+}
+
 async function reconnectMcpConnection(state: McpConnectionState): Promise<McpClientLike> {
   const isStdio = state.server.transport === 'stdio'
   const reconnectTimeoutMs = isStdio ? MCP_RECONNECT_STDIO_TIMEOUT_MS : MCP_RECONNECT_TIMEOUT_MS
   // 给 close 加超时，避免客户端卡在关闭流程导致调用挂死；同时清理 timer。
   let closeTimer: ReturnType<typeof setTimeout> | undefined
   await Promise.race([
-    state.client.close().catch(() => undefined),
+    closeMcpClient(state.client),
     new Promise<void>((resolve) => {
       closeTimer = setTimeout(resolve, reconnectTimeoutMs)
     })
@@ -906,7 +948,7 @@ async function reconnectMcpConnection(state: McpConnectionState): Promise<McpCli
       // 关闭掉，避免孤儿连接/子进程泄漏（stdio transport 会 spawn 进程）。
       if (connecting) {
         void connecting
-          .then((leaked) => leaked.close().catch(() => undefined))
+          .then((leaked) => closeMcpClient(leaked))
           .catch(() => undefined)
       }
       lastError = error
@@ -917,7 +959,7 @@ async function reconnectMcpConnection(state: McpConnectionState): Promise<McpCli
   const staleClient = state.client
   if (staleClient) {
     state.client = undefined as unknown as McpClientLike
-    void staleClient.close().catch(() => undefined)
+    void closeMcpClient(staleClient)
   }
   // No viable candidate found; throw the last error or a clear fallback
   if (lastError) throw redactedMcpError(lastError, state.connectionCandidates)

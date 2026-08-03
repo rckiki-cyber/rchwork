@@ -131,6 +131,12 @@ type Props = {
   onRemoveSelectedSkill?: () => void
   onPickAttachments?: (files: File[]) => void
   onPasteClipboardImage?: (options?: { silentNoImage?: boolean }) => void | Promise<void>
+  /**
+   * When provided, long plain-text pastes are handed to this callback as a
+   * whole (instead of being inserted into the input) so the host can upload
+   * them as a text attachment. Wired up for the main chat composer only.
+   */
+  onPasteLongText?: (text: string) => void | Promise<void>
   onRemoveAttachment?: (id: string) => void
   onAddFileReference?: (reference: ComposerFileReference) => void
   onRemoveFileReference?: (relativePath: string) => void
@@ -478,23 +484,45 @@ export function imageTransferHasImages(source: ComposerImageTransferSource | nul
   )
 }
 
+/**
+ * Plain-text pastes at or above this many characters are treated as an
+ * attachment upload instead of being inserted into the composer input.
+ */
+const COMPOSER_PASTE_TEXT_ATTACHMENT_MIN_CHARS = 200
+
 export function handleComposerAttachmentPaste({
   canPickAttachment,
   clipboardData,
   preventDefault,
   onPickAttachments,
-  onPasteClipboardImage
+  onPasteClipboardImage,
+  onPasteLongText,
+  textAttachmentMinChars = COMPOSER_PASTE_TEXT_ATTACHMENT_MIN_CHARS
 }: {
   canPickAttachment: boolean
   clipboardData: ComposerClipboardImageSource
   preventDefault: () => void
   onPickAttachments?: (files: File[]) => void
   onPasteClipboardImage?: (options?: { silentNoImage?: boolean }) => void | Promise<void>
+  onPasteLongText?: (text: string) => void | Promise<void>
+  textAttachmentMinChars?: number
 }): boolean {
-  if (!canPickAttachment || (!onPickAttachments && !onPasteClipboardImage)) return false
+  if (!canPickAttachment || (!onPickAttachments && !onPasteClipboardImage && !onPasteLongText)) return false
   const files = filesFromTransfer(clipboardData)
-  const hasPlainText = Boolean(clipboardData.getData?.('text/plain'))
+  const rawText = clipboardData.getData?.('text/plain') ?? ''
+  const plainText = rawText.trim()
+  const hasPlainText = rawText.length > 0
   const hasImageTransfer = imageTransferHasImages(clipboardData)
+  // Long pasted text is uploaded as a whole attachment instead of being
+  // dropped into the composer input (main chat only, see onPasteLongText).
+  // Checked BEFORE the file branch so a rich-text paste that carries both a
+  // long body and inline images still uploads the body (not just the images,
+  // which would drop the pasted text).
+  if (onPasteLongText && plainText.length >= textAttachmentMinChars) {
+    preventDefault()
+    void onPasteLongText(plainText)
+    return true
+  }
   if (files.length > 0) {
     preventDefault()
     onPickAttachments?.(files)
@@ -563,6 +591,7 @@ export function FloatingComposer({
   onRemoveSelectedSkill,
   onPickAttachments,
   onPasteClipboardImage,
+  onPasteLongText,
   onRemoveAttachment,
   onAddFileReference,
   onRemoveFileReference,
@@ -1328,7 +1357,8 @@ export function FloatingComposer({
       clipboardData: event.clipboardData,
       preventDefault: () => event.preventDefault(),
       onPickAttachments,
-      onPasteClipboardImage
+      onPasteClipboardImage,
+      onPasteLongText
     })
   }
 

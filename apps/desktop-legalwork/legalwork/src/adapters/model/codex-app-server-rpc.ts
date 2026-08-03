@@ -126,7 +126,8 @@ export class CodexAppServerRpc {
         ...(isNodeEntrypoint ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
         ...(this.options.env ?? {})
       },
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true
     })
     this.child = child
     child.stderr.setEncoding('utf8')

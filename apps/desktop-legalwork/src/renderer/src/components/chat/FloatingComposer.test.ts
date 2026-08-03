@@ -383,6 +383,110 @@ describe('FloatingComposer image transfer helpers', () => {
     expect(preventDefault).toHaveBeenCalledTimes(1)
     expect(onPasteClipboardImage).toHaveBeenCalledWith({ silentNoImage: false })
   })
+
+  it('uploads long pasted text as a whole attachment instead of inserting it', () => {
+    const longText = '本案系一起房屋租赁合同纠纷。'.repeat(40)
+    const preventDefault = vi.fn()
+    const onPasteLongText = vi.fn()
+    const onPasteClipboardImage = vi.fn()
+    const handled = handleComposerImagePaste({
+      canPickAttachment: true,
+      clipboardData: {
+        getData: (format) => format === 'text/plain' ? longText : ''
+      },
+      preventDefault,
+      onPasteClipboardImage,
+      onPasteLongText
+    })
+
+    expect(handled).toBe(true)
+    expect(preventDefault).toHaveBeenCalledTimes(1)
+    expect(onPasteLongText).toHaveBeenCalledWith(longText)
+    expect(onPasteClipboardImage).not.toHaveBeenCalled()
+  })
+
+  it('trims leading and trailing whitespace before handing long text to the callback', () => {
+    const longText = '甲公司与乙公司签订采购合同。'.repeat(40)
+    const onPasteLongText = vi.fn()
+    const handled = handleComposerImagePaste({
+      canPickAttachment: true,
+      clipboardData: {
+        getData: (format) => format === 'text/plain' ? `  \n${longText}\t ` : ''
+      },
+      preventDefault: vi.fn(),
+      onPasteLongText
+    })
+
+    expect(handled).toBe(true)
+    expect(onPasteLongText).toHaveBeenCalledWith(longText)
+  })
+
+  it('prefers the long-text attachment over image files when both are present', () => {
+    const longText = '本合同由甲乙双方自愿签订。'.repeat(40)
+    const preventDefault = vi.fn()
+    const inlineImage = new File([new Uint8Array([1])], 'inline.png', { type: 'image/png' })
+    const onPasteLongText = vi.fn()
+    const onPickAttachments = vi.fn()
+    const handled = handleComposerImagePaste({
+      canPickAttachment: true,
+      clipboardData: {
+        getData: (format) => format === 'text/plain' ? longText : '',
+        items: {
+          length: 2,
+          0: { kind: 'file', type: 'text/plain', getAsFile: () => new File([''], 'note.txt', { type: 'text/plain' }) },
+          1: { kind: 'file', type: 'image/png', getAsFile: () => inlineImage }
+        },
+        files: {
+          length: 1,
+          0: inlineImage
+        }
+      },
+      preventDefault,
+      onPickAttachments,
+      onPasteLongText
+    })
+
+    expect(handled).toBe(true)
+    expect(preventDefault).toHaveBeenCalledTimes(1)
+    expect(onPasteLongText).toHaveBeenCalledWith(longText)
+    expect(onPickAttachments).not.toHaveBeenCalled()
+  })
+
+  it('keeps short text paste as ordinary input even when a long-text callback exists', () => {
+    const preventDefault = vi.fn()
+    const onPasteLongText = vi.fn()
+    const onPasteClipboardImage = vi.fn()
+    const handled = handleComposerImagePaste({
+      canPickAttachment: true,
+      clipboardData: {
+        getData: (format) => format === 'text/plain' ? '请分析这个案件' : ''
+      },
+      preventDefault,
+      onPasteClipboardImage,
+      onPasteLongText
+    })
+
+    expect(handled).toBe(false)
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(onPasteLongText).not.toHaveBeenCalled()
+    expect(onPasteClipboardImage).toHaveBeenCalledWith({ silentNoImage: true })
+  })
+
+  it('does not intercept long text when attachment picking is disabled', () => {
+    const longText = '这是很长的一段粘贴文本。'.repeat(40)
+    const onPasteLongText = vi.fn()
+    const handled = handleComposerImagePaste({
+      canPickAttachment: false,
+      clipboardData: {
+        getData: (format) => format === 'text/plain' ? longText : ''
+      },
+      preventDefault: vi.fn(),
+      onPasteLongText
+    })
+
+    expect(handled).toBe(false)
+    expect(onPasteLongText).not.toHaveBeenCalled()
+  })
 })
 
 describe('FloatingComposer capability controls', () => {

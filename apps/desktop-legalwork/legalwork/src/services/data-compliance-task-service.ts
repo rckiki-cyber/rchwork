@@ -325,7 +325,8 @@ export class DataComplianceTaskService {
         shell: false,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: PYTHON_VERSION_TIMEOUT_MS
+        timeout: PYTHON_VERSION_TIMEOUT_MS,
+        windowsHide: true
       })
       return result.status === 0 &&
         isSupportedDataCompliancePythonVersion(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
@@ -472,7 +473,8 @@ export class DataComplianceTaskService {
     return new Promise((resolve, reject) => {
       const child = spawn(command, args, {
         cwd: options.cwd,
-        env: buildDataCompliancePythonEnv()
+        env: buildDataCompliancePythonEnv(),
+        windowsHide: true
       })
       let settled = false
       const finish = (value: { exitCode: number; stdout: string; stderr: string }): void => {
@@ -737,6 +739,7 @@ export class DataComplianceTaskService {
           LEGALWORK_BASE_URL: process.env.LEGALWORK_BASE_URL ?? '',
           LEGALWORK_MODEL: process.env.LEGALWORK_MODEL ?? ''
         },
+        windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
       }
     )

@@ -101,6 +101,11 @@ type StreamReadResult =
 
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 45_000
 const DEFAULT_MAX_TOKENS = 4096
+/**
+ * 默认消息窗口（item 数）。与 deepseek-compat-model-client 保持一致：
+ * 长回合默认裁剪到最近的 N 条 + 早期 compaction 摘要，降低每步全量重发的成本。
+ */
+const DEFAULT_HISTORY_LIMIT = 240
 
 /**
  * Anthropic-compatible model client.
@@ -218,7 +223,7 @@ export class AnthropicCompatModelClient implements ModelClient {
       if (instruction.trim()) systemParts.push(instruction.trim())
     }
     const messages: AnthropicMessage[] = []
-    const windowSize = this.config.historyLimit
+    const windowSize = this.config.historyLimit ?? DEFAULT_HISTORY_LIMIT
     const history = windowSize
       ? limitHistoryPreservingCompaction(request.history, windowSize)
       : request.history

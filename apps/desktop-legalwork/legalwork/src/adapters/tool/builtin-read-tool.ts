@@ -106,7 +106,14 @@ export function createReadLocalTool(options: ReadLocalToolOptions = {}): LocalTo
         : { text: fileBuffer.toString('utf8').replace(/\r\n/g, '\n') }
       const text = typeof extracted === 'string' ? extracted : extracted.text
       if (isExtractableDocument && !text.trim()) {
-        return { output: { error: 'document text extraction returned no readable text', path: absolutePath }, isError: true }
+        return {
+          output: {
+            error: 'document text extraction returned no readable text',
+            hint: 'This is likely a scanned (image-based) document with no text layer. Try: (1) convert each page to an image and read the image, or (2) ask the user to upload the scanned page images / provide the text version. Do not keep retrying read on the same file.',
+            path: absolutePath
+          },
+          isError: true
+        }
       }
       const allLines = text.split('\n')
       const offset = Math.max(1, normalizePositiveInteger(args.offset, 1))

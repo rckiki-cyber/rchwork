@@ -501,8 +501,7 @@ export class LearningIterationRuntime {
         })
       })
       this.message = `学习迭代失败：${errorMessage(error)}`
-      this.deps.logError('learning-iteration', 'Learning iteration failed', {
-        message: errorMessage(error),
+      this.deps.logError('learning-iteration', `Learning iteration failed: ${errorMessage(error)}`, {
         runId: this.activeRunId
       })
     } finally {

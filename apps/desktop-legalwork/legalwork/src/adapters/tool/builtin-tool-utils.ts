@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, type Dirent } from 'node:fs'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -372,7 +372,8 @@ function executableResponds(candidate: string): boolean {
   const probe = spawnSync(candidate, ['--version'], {
     encoding: 'utf8',
     stdio: 'ignore',
-    timeout: 1000
+    timeout: 1000,
+    windowsHide: true
   })
   return !probe.error && probe.status === 0
 }
@@ -414,7 +415,16 @@ export async function collectPaths(root: string, options: { includeDirectories?:
   while (queue.length > 0 && results.length < options.limit) {
     const current = queue.shift()
     if (!current) break
-    const entries = await readdir(current, { withFileTypes: true })
+    let entries: Dirent[]
+    try {
+      entries = await readdir(current, { withFileTypes: true })
+    } catch (error) {
+      // 权限拒绝（EPERM/EACCES，如 Windows 系统目录）、目录缺失（ENOENT）或
+      // 目标不是目录（ENOTDIR）时跳过该目录继续遍历，避免整个搜索失败。
+      const code = (error as NodeJS.ErrnoException)?.code
+      if (code === 'EPERM' || code === 'EACCES' || code === 'ENOENT' || code === 'ENOTDIR') continue
+      throw error
+    }
     entries.sort((a, b) => a.name.localeCompare(b.name))
     for (const entry of entries) {
       const next = join(current, entry.name)

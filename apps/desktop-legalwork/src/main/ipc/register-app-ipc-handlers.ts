@@ -850,7 +850,8 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         execSync(`powershell -NoProfile -NonInteractive -Command "${script}"`, {
           encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'ignore'],
-          timeout: 20_000
+          timeout: 20_000,
+          windowsHide: true
         })
       } else {
         // Escape double quotes and backslashes for the shell, and match the
@@ -2314,7 +2315,8 @@ function runCommand(
       stdio: ['ignore', 'pipe', 'pipe'],
       cwd: options?.cwd,
       env: options?.env,
-      timeout: options?.timeout ?? 120_000 // 2 min default
+      timeout: options?.timeout ?? 120_000, // 2 min default
+      windowsHide: true
     })
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []

@@ -110,7 +110,8 @@ async function runCommandHook(
   const child = spawn(hook.command, {
     cwd: hook.cwd || invocation.context.workspace || undefined,
     shell: true,
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true
   })
   child.stdin.end(payload)
   let stdout = ''

@@ -71,3 +71,61 @@ describe('Codex quota parsing', () => {
     })
   })
 })
+
+describe('friendlyChatgptErrorMessage', () => {
+  it('maps reqwest transport errors to a friendly network message', async () => {
+    const { friendlyChatgptErrorMessage } = await import('./codex-auth-manager')
+    expect(
+      friendlyChatgptErrorMessage('Tokenexchange failed:error sending request (https://auth.openai.com/oauth/token)')
+    ).toBe('无法连接到 OpenAI 服务器，请检查网络或代理设置后重试。')
+  })
+
+  it('leaves account-level errors untouched', async () => {
+    const { friendlyChatgptErrorMessage } = await import('./codex-auth-manager')
+    expect(friendlyChatgptErrorMessage('invalid_grant: The authorization code is invalid.')).toBe(
+      'invalid_grant: The authorization code is invalid.'
+    )
+  })
+
+  it('maps connection/timeout failures', async () => {
+    const { friendlyChatgptErrorMessage } = await import('./codex-auth-manager')
+    expect(friendlyChatgptErrorMessage('connection timed out')).toBe(
+      '无法连接到 OpenAI 服务器，请检查网络或代理设置后重试。'
+    )
+    expect(friendlyChatgptErrorMessage('Failed to resolve host (dns error)')).toBe(
+      '无法连接到 OpenAI 服务器，请检查网络或代理设置后重试。'
+    )
+  })
+})
+
+describe('mergeProxyEnv', () => {
+  it('injects the detected system proxy when nothing is set', async () => {
+    const { mergeProxyEnv } = await import('./codex-auth-manager')
+    const merged = mergeProxyEnv(
+      {},
+      { HTTPS_PROXY: 'http://127.0.0.1:1082', HTTP_PROXY: 'http://127.0.0.1:1082', NO_PROXY: 'localhost' }
+    )
+    expect(merged).toEqual({
+      HTTPS_PROXY: 'http://127.0.0.1:1082',
+      HTTP_PROXY: 'http://127.0.0.1:1082',
+      NO_PROXY: 'localhost'
+    })
+  })
+
+  it('never overrides an explicit user proxy', async () => {
+    const { mergeProxyEnv } = await import('./codex-auth-manager')
+    const merged = mergeProxyEnv(
+      { HTTPS_PROXY: 'http://corp:8080' },
+      { HTTPS_PROXY: 'http://127.0.0.1:1082', HTTP_PROXY: 'http://127.0.0.1:1082' }
+    )
+    // HTTPS_PROXY is already set by the user, so it is not overridden
+    expect(merged?.HTTPS_PROXY).toBeUndefined()
+    // HTTP_PROXY was not set by the user, so it is injected
+    expect(merged?.HTTP_PROXY).toBe('http://127.0.0.1:1082')
+  })
+
+  it('returns undefined when no system proxy is configured', async () => {
+    const { mergeProxyEnv } = await import('./codex-auth-manager')
+    expect(mergeProxyEnv({}, null)).toBeUndefined()
+  })
+})

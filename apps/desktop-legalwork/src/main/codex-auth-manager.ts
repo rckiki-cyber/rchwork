@@ -13,6 +13,7 @@ import type {
   CodexQuotaWindow
 } from '../shared/ds-gui-api'
 import { CodexAppServerRpc } from '../../legalwork/src/adapters/model/codex-app-server-rpc.js'
+import { detectSystemProxy, type SystemProxy } from './system-proxy'
 
 type JsonObject = Record<string, unknown>
 type CredentialSource = 'local' | 'legalwork'
@@ -165,6 +166,75 @@ export function parseCodexQuota(value: unknown): CodexQuotaStatus | null {
   }
 }
 
+const NETWORK_ERROR_MARKERS = [
+  'error sending request',
+  'connection refused',
+  'connection reset',
+  'connection timed out',
+  'timed out',
+  'dns',
+  'tls handshake',
+  'ssl',
+  'network',
+  'temporary failure in name resolution',
+  'no such host',
+  'unreachable',
+  'getaddrinfo',
+  'reqwest'
+]
+const ACCOUNT_ERROR_MARKERS = [
+  'invalid_grant',
+  'invalid client',
+  'unauthorized',
+  'forbidden',
+  'access denied',
+  'token expired',
+  'authentication failed',
+  'login failed',
+  'account locked',
+  'rate limit'
+]
+
+/**
+ * Turn low-level codex login failures into a message an end user can act on.
+ * `error sending request` is a reqwest transport error — the token exchange
+ * never reached OpenAI (usually no proxy/network path). Account problems come
+ * back as OAuth error codes like `invalid_grant`, which we leave untouched.
+ */
+export function friendlyChatgptErrorMessage(raw: string): string {
+  const message = raw.trim()
+  const lower = message.toLowerCase()
+  const isNetwork = NETWORK_ERROR_MARKERS.some((marker) => lower.includes(marker))
+  const isAccount = ACCOUNT_ERROR_MARKERS.some((marker) => lower.includes(marker))
+  if (isNetwork && !isAccount) {
+    return '无法连接到 OpenAI 服务器，请检查网络或代理设置后重试。'
+  }
+  return message
+}
+
+/**
+ * Merge a detected system proxy into the codex process environment, but only
+ * for variables the user hasn't already set. Explicitly-provided env (by the
+ * user or the runtime) always wins.
+ */
+export function mergeProxyEnv(
+  current: NodeJS.ProcessEnv,
+  systemProxy: SystemProxy | null | undefined
+): NodeJS.ProcessEnv | undefined {
+  if (!systemProxy) return undefined
+  const merged: NodeJS.ProcessEnv = {}
+  if (!current.HTTPS_PROXY && !current.https_proxy && systemProxy.HTTPS_PROXY) {
+    merged.HTTPS_PROXY = systemProxy.HTTPS_PROXY
+  }
+  if (!current.HTTP_PROXY && !current.http_proxy && systemProxy.HTTP_PROXY) {
+    merged.HTTP_PROXY = systemProxy.HTTP_PROXY
+  }
+  if (!current.NO_PROXY && !current.no_proxy && systemProxy.NO_PROXY) {
+    merged.NO_PROXY = systemProxy.NO_PROXY
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined
+}
+
 export class CodexAuthManager {
   private rpc: CodexAppServerRpc | null = null
   private binaryPath = ''
@@ -248,10 +318,13 @@ export class CodexAuthManager {
       const authUrl = typeof started.authUrl === 'string' ? started.authUrl : ''
       if (!loginId || !authUrl) throw new Error('Codex did not return a login URL.')
       const result = await this.openLoginWindow(rpc, loginId, authUrl, parent)
-      if (!result.ok) return result
+      if (!result.ok) {
+        return { ok: false, message: friendlyChatgptErrorMessage(result.message) }
+      }
       return { ok: true, status: await this.status(settings, true) }
     } catch (error) {
-      return { ok: false, message: error instanceof Error ? error.message : String(error) }
+      const raw = error instanceof Error ? error.message : String(error)
+      return { ok: false, message: friendlyChatgptErrorMessage(raw) }
     }
   }
 
@@ -288,9 +361,10 @@ export class CodexAuthManager {
       return this.rpc
     }
     await this.close()
+    const env = this.buildCodexEnv(source)
     const rpc = new CodexAppServerRpc({
       binaryPath,
-      ...(source === 'legalwork' ? { env: { CODEX_HOME: ensureLegalworkCodexHome() } } : {}),
+      ...(env ? { env } : {}),
       requestTimeoutMs: 60_000
     })
     await rpc.start()
@@ -298,6 +372,23 @@ export class CodexAuthManager {
     this.binaryPath = binaryPath
     this.credentialSource = source
     return rpc
+  }
+
+  /**
+   * Mirror the system proxy into the codex process environment. The login
+   * window (Chromium) honours the system proxy, but codex only reads env vars —
+   * on a proxy-based VPN the browser login succeeds and the token exchange
+   * fails with `error sending request`. Explicitly-set process env wins, so we
+   * never override a proxy the user (or the runtime) already provided.
+   */
+  private buildCodexEnv(source: CredentialSource): NodeJS.ProcessEnv | undefined {
+    const env: NodeJS.ProcessEnv = {
+      ...(source === 'legalwork' ? { CODEX_HOME: ensureLegalworkCodexHome() } : {})
+    }
+    const systemProxy = detectSystemProxy()
+    const merged = mergeProxyEnv(process.env, systemProxy)
+    if (merged) Object.assign(env, merged)
+    return Object.keys(env).length > 0 ? env : undefined
   }
 
   private openLoginWindow(

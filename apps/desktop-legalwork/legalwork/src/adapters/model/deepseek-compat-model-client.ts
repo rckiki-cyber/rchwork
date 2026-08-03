@@ -134,6 +134,20 @@ type StreamReadResult =
 
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 45_000
 const DEFAULT_MESSAGES_MAX_TOKENS = 4096
+/**
+ * 默认消息窗口（item 数）。不设窗口时每步都把全部历史重发给模型，长调研回合
+ * 的重发量会滚雪球。窗口裁剪保留"最近的 windowSize 条 + 早期 compaction 摘要"，
+ * 在低成本重发与不丢关键上下文之间取平衡。
+ */
+const DEFAULT_HISTORY_LIMIT = 240
+
+function resolveHistoryLimit(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.LEGALWORK_HISTORY_LIMIT?.trim()
+  if (!raw) return DEFAULT_HISTORY_LIMIT
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_HISTORY_LIMIT
+  return Math.floor(parsed)
+}
 
 /**
  * DeepSeek-compatible model client.
@@ -465,7 +479,7 @@ export class DeepseekCompatModelClient implements ModelClient {
     if (request.modeInstruction) {
       out.push({ role: 'system', content: request.modeInstruction })
     }
-    const windowSize = this.config.historyLimit
+    const windowSize = this.config.historyLimit ?? resolveHistoryLimit()
     const history = windowSize
       ? limitHistoryPreservingCompaction(request.history, windowSize)
       : request.history

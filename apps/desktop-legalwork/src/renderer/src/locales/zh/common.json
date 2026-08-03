@@ -158,7 +158,6 @@
   "documentWritingUploadDragHint": "拖拽文件到此处，或点击选择文件",
   "documentWritingUploadFormats": "支持 docx、pdf、txt、md 格式",
   "documentWritingUploadInvalidType": "不支持的文件格式",
-  "documentWritingUploadTooLarge": "文件过大，请上传 10MB 以内的文件",
   "documentWritingUploadError": "上传失败，请重试",
   "documentWritingUpload": "上传",
   "documentWritingUploading": "上传中...",

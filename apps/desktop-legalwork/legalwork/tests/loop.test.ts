@@ -1710,16 +1710,16 @@ describe('AgentLoop', () => {
 
   it('keeps a 1M context window but compacts DeepSeek history well below it', () => {
     const compactor = new ContextCompactor()
-    // ~50K tokens (charsPerToken=4); above the 40K soft threshold.
+    // ~110K tokens (charsPerToken=4); above the 100K soft threshold.
     const longItems = [
       makeUserItem({
         id: 'long_history',
         turnId: 'turn_1',
         threadId: 'thr_1',
-        text: 'x'.repeat(200_000)
+        text: 'x'.repeat(440_000)
       })
     ]
-    // ~20K tokens; below the 40K soft threshold — ordinary turns stay uncompacted.
+    // ~20K tokens; below the 100K soft threshold — ordinary turns stay uncompacted.
     const moderateItems = [
       makeUserItem({
         id: 'moderate_history',
@@ -1728,18 +1728,29 @@ describe('AgentLoop', () => {
         text: 'x'.repeat(80_000)
       })
     ]
+    // ~60K tokens; would have compacted under the old 40K threshold but stays
+    // uncompacted now that soft=100K, cutting compaction-driven cache clears.
+    const midItems = [
+      makeUserItem({
+        id: 'mid_history',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: 'x'.repeat(240_000)
+      })
+    ]
 
     expect(resolveModelContextProfile('deepseek-v4-pro')?.contextWindowTokens).toBe(1_000_000)
     expect(resolveModelContextProfile('provider/deepseek-v4-flash')?.contextWindowTokens).toBe(1_000_000)
     expect(resolveModelContextProfile('deepseek-chat')?.canonicalModel).toBe('deepseek-v4-flash')
     expect(resolveModelContextProfile('deepseek-reasoner')?.canonicalModel).toBe('deepseek-v4-flash')
-    // Long history (50K tokens) compacts for DeepSeek — much earlier than the
-    // previous 980K threshold — so runaway re-billing is bounded.
+    // Long history (110K tokens) still compacts for DeepSeek — well below the 1M
+    // context window — so runaway re-billing stays bounded.
     expect(compactor.shouldCompact(longItems, { model: 'deepseek-v4-pro' })).toBe(true)
     expect(compactor.shouldCompact(longItems, { model: 'deepseek-v4-flash' })).toBe(true)
-    // Moderate history (20K tokens) stays uncompacted to avoid churn.
+    // Moderate (20K) and mid (60K) history stay uncompacted to avoid churn.
     expect(compactor.shouldCompact(moderateItems, { model: 'deepseek-v4-flash' })).toBe(false)
-    expect(compactor.hardCap('deepseek-v4-flash')).toBe(60_000)
+    expect(compactor.shouldCompact(midItems, { model: 'deepseek-v4-flash' })).toBe(false)
+    expect(compactor.hardCap('deepseek-v4-flash')).toBe(130_000)
   })
 
   it('uses reported prompt tokens as a compaction pressure signal', () => {

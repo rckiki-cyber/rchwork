@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { relative, resolve } from 'node:path'
 import { LocalToolHost, type LocalTool } from './local-tool-host.js'
 import type { FindLocalToolOptions, GrepLocalToolOptions, GrepMatch, LsLocalToolOptions } from './builtin-tool-types.js'
@@ -24,6 +24,15 @@ import {
   withToolBoundary
 } from './builtin-tool-utils.js'
 
+/** Extract a Node error code (ENOENT/ENOTDIR/EPERM/...) from an unknown error. */
+function errorCodeOf(error: unknown): string | undefined {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = (error as { code?: unknown }).code
+    return typeof code === 'string' ? code : undefined
+  }
+  return undefined
+}
+
 export function createLsLocalTool(options: LsLocalToolOptions = {}): LocalTool {
   const statOp = options.operations?.stat ?? defaultLsLocalToolOperations.stat!
   const readdirOp = options.operations?.readdir ?? defaultLsLocalToolOperations.readdir!
@@ -44,7 +53,40 @@ export function createLsLocalTool(options: LsLocalToolOptions = {}): LocalTool {
       const rawPath = typeof args.path === 'string' && args.path.trim() ? args.path : '.'
       const limit = normalizePositiveInteger(args.limit, options.defaultLimit ?? DEFAULT_LIST_LIMIT)
       const { workspaceRoot: root, absolutePath, relativePath } = resolveWorkspacePath(rawPath, context)
-      const targetStat = await statOp(absolutePath)
+      let targetStat
+      try {
+        targetStat = await statOp(absolutePath)
+      } catch (error) {
+        const code = errorCodeOf(error)
+        if (code === 'ENOENT') {
+          return {
+            output: {
+              error: `directory does not exist: ${absolutePath}`,
+              path: absolutePath
+            },
+            isError: true
+          }
+        }
+        if (code === 'ENOTDIR') {
+          return {
+            output: {
+              error: `not a directory: ${absolutePath}`,
+              path: absolutePath
+            },
+            isError: true
+          }
+        }
+        if (code === 'EPERM' || code === 'EACCES') {
+          return {
+            output: {
+              error: `permission denied while listing: ${absolutePath}`,
+              path: absolutePath
+            },
+            isError: true
+          }
+        }
+        throw error
+      }
       if (!targetStat.isDirectory()) {
         return {
           output: {
@@ -178,6 +220,41 @@ export function createFindLocalTool(options: FindLocalToolOptions = {}): LocalTo
 export const createFindTool = createFindLocalTool
 export const createFindToolDefinition = createFindLocalTool
 
+/** 在单个文件上执行正则匹配并返回 GrepMatch 列表。二进制文件视为无匹配。 */
+async function grepSingleFile(input: {
+  matcher: RegExp
+  filePath: string
+  relativePath: string
+  limit: number
+  contextLines: number
+}): Promise<GrepMatch[]> {
+  const { matcher, filePath, relativePath, limit, contextLines } = input
+  const buffer = await readFile(filePath)
+  if (isBinaryBuffer(buffer)) return []
+  const fileLines = buffer.toString('utf8').replace(/\r\n/g, '\n').split('\n')
+  const matches: GrepMatch[] = []
+  for (let index = 0; index < fileLines.length; index += 1) {
+    if (matches.length >= limit) break
+    const line = fileLines[index] ?? ''
+    const result = matcher.exec(line)
+    if (!result) continue
+    matches.push({
+      path: filePath,
+      relative_path: relativePath,
+      line: index + 1,
+      column: (result.index ?? 0) + 1,
+      text: line,
+      ...(contextLines > 0
+        ? {
+            context_before: fileLines.slice(Math.max(0, index - contextLines), index),
+            context_after: fileLines.slice(index + 1, index + 1 + contextLines)
+          }
+        : {})
+    })
+  }
+  return matches
+}
+
 export function createGrepLocalTool(options: GrepLocalToolOptions = {}): LocalTool {
   return LocalToolHost.defineTool({
     name: 'grep',
@@ -214,6 +291,7 @@ export function createGrepLocalTool(options: GrepLocalToolOptions = {}): LocalTo
         : new RegExp(pattern, flags)
       const globMatcher = glob ? globToRegExp(glob.includes('/') ? glob : `**/${glob}`) : null
       const { workspaceRoot: root, absolutePath, relativePath } = resolveWorkspacePath(rawPath, context)
+      // 优先走注入的自定义 search backend（若有），保持依赖注入语义不变。
       if (options.operations?.search) {
         const matches = await options.operations.search({
           pattern,
@@ -237,6 +315,65 @@ export function createGrepLocalTool(options: GrepLocalToolOptions = {}): LocalTo
             matches,
             truncated: matches.length >= limit,
             match_limit_reached: matches.length >= limit ? limit : null
+          }
+        }
+      }
+      // path 指向单个文件时直接搜索该文件，避免把文件当目录遍历报 ENOTDIR。
+      let targetStat
+      try {
+        targetStat = await stat(absolutePath)
+      } catch (error) {
+        const code = errorCodeOf(error)
+        if (code === 'ENOENT') {
+          return {
+            output: {
+              error: `path does not exist: ${absolutePath}`,
+              path: absolutePath
+            },
+            isError: true
+          }
+        }
+        if (code === 'ENOTDIR') {
+          return {
+            output: {
+              error: `not a directory: ${absolutePath}`,
+              path: absolutePath
+            },
+            isError: true
+          }
+        }
+        if (code === 'EPERM' || code === 'EACCES') {
+          return {
+            output: {
+              error: `permission denied while searching: ${absolutePath}`,
+              path: absolutePath
+            },
+            isError: true
+          }
+        }
+        throw error
+      }
+      if (targetStat.isFile()) {
+        const fileMatches = await grepSingleFile({
+          matcher: effectiveMatcher,
+          filePath: absolutePath,
+          relativePath,
+          limit,
+          contextLines
+        })
+        return {
+          output: {
+            path: absolutePath,
+            relative_path: relativePath,
+            pattern,
+            glob,
+            ignore_case: ignoreCase,
+            literal,
+            context: contextLines,
+            backend: 'file',
+            matches: fileMatches,
+            truncated: fileMatches.length >= limit,
+            match_limit_reached: fileMatches.length >= limit ? limit : null
           }
         }
       }

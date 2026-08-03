@@ -852,6 +852,21 @@ export function Workbench(): ReactElement {
     await handlePickAttachments([clipboardImageToFile(image)])
   }
 
+  /**
+   * Long plain-text paste → upload the whole text as a `text/plain`
+   * attachment named "粘贴文本.txt". Rendered by the existing non-image
+   * attachment card with a "文本" type badge in both the composer and the
+   * sent message bubble.
+   */
+  const handlePasteLongText = async (text: string): Promise<void> => {
+    if (!attachmentUploadEnabled) return
+    const trimmed = text.trim()
+    if (!trimmed) return
+    await handlePickAttachments([
+      new File([trimmed], '粘贴文本.txt', { type: 'text/plain' })
+    ])
+  }
+
   const readComposerFileContextEntries = async (
     references: ComposerFileReference[],
     workspace: string
@@ -1676,6 +1691,7 @@ export function Workbench(): ReactElement {
                 onRemoveSelectedSkill={() => setSelectedComposerSkill(null)}
                 onPickAttachments={(files) => void handlePickAttachments(files)}
                 onPasteClipboardImage={(options) => void handlePasteClipboardImage(options)}
+                onPasteLongText={(text) => void handlePasteLongText(text)}
                 onRemoveAttachment={removeComposerAttachment}
                 onAddFileReference={addComposerFileReference}
                 onRemoveFileReference={removeComposerFileReference}

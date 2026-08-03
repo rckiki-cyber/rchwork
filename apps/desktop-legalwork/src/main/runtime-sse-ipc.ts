@@ -22,6 +22,8 @@ type SseControllerState = {
 const SSE_RECONNECT_BASE_MS = 750
 const SSE_RECONNECT_MAX_MS = 5_000
 const SSE_START_TIMEOUT_MS = 15_000
+// 重连次数上限：防止 runtime 反复崩溃时无限重连空转。60 次 × ≤5s 退避 ≈ 数分钟。
+const SSE_MAX_RECONNECTS = 60
 const SSE_BATCH_FLUSH_MS = 40
 const SSE_BATCH_MAX_EVENTS = 120
 
@@ -238,6 +240,7 @@ export function registerRuntimeSseIpc(options: {
       })
       let nextSinceSeq = request.sinceSeq
       let reconnectDelayMs = SSE_RECONNECT_BASE_MS
+      let reconnectAttempts = 0
       try {
         while (!state.stoppedByClient && !ac.signal.aborted) {
           const url = new URL(`${base}${legalworkThreadEventsPath(request.threadId)}`)
@@ -265,6 +268,7 @@ export function registerRuntimeSseIpc(options: {
               continue
             }
             reconnectDelayMs = SSE_RECONNECT_BASE_MS
+            reconnectAttempts = 0
             const reader = res.body.getReader()
             const dec = new TextDecoder()
             let buffer = ''
@@ -303,14 +307,34 @@ export function registerRuntimeSseIpc(options: {
           } catch (e) {
             if (state.stoppedByClient || ac.signal.aborted) return
             const msg = e instanceof Error ? e.message : String(e)
-            if (/sse start timeout/i.test(msg) || /fetch failed/i.test(msg) || /network/i.test(msg)) {
+            // 连接中断类错误（网络失败、runtime 重启导致流被掐断）属于可恢复场景，
+            // 按退避策略自动重连而不是直接上报；重连超过上限才上报，避免刷屏。
+            const isInterruption =
+              /sse start timeout/i.test(msg) ||
+              /fetch failed/i.test(msg) ||
+              /network/i.test(msg) ||
+              /terminated/i.test(msg) ||
+              /premature close/i.test(msg) ||
+              /socket hang up/i.test(msg) ||
+              /ECONNRESET/i.test(msg) ||
+              /aborted/i.test(msg)
+            if (isInterruption) {
+              reconnectAttempts += 1
+              if (reconnectAttempts > SSE_MAX_RECONNECTS) {
+                flushSseEventBatch(state, wc, id)
+                safeSend(wc, 'runtime:sse-error', { streamId: id, message: msg })
+                logError('sse', `SSE stream error for thread ${request.threadId} (reconnect exhausted): ${msg}`, {
+                  streamId: id
+                })
+                return
+              }
               await sleepWithAbort(reconnectDelayMs, ac.signal)
               reconnectDelayMs = Math.min(reconnectDelayMs * 2, SSE_RECONNECT_MAX_MS)
               continue
             }
             flushSseEventBatch(state, wc, id)
             safeSend(wc, 'runtime:sse-error', { streamId: id, message: msg })
-            logError('sse', `SSE stream error for thread ${request.threadId}`, { message: msg, streamId: id })
+            logError('sse', `SSE stream error for thread ${request.threadId}: ${msg}`, { streamId: id })
             return
           }
         }

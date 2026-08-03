@@ -3004,17 +3004,12 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
             return url ? ghMirrorPrefix + url : '';
         }
 
-        // 备用按钮点击：遍历所有镜像，第一个 HEAD 可达就用它下载。
-        // 若全部失败，回退到第一个镜像。
-        async function downloadViaMirror(url) {
-            const probePath = '/' + url;
-            for (const candidate of GH_MIRRORS) {
-                if (await probeMirror(candidate, probePath)) {
-                    window.open(candidate + url, '_blank');
-                    return;
-                }
-            }
-            window.open(ghMirrorPrefix + url, '_blank');
+        // 备用按钮点击：同步用当前可用镜像（ghMirrorPrefix 已在加载时探测过）。
+        // 用 location.href 当前页跳转而非 window.open —— 镜像返回 octet-stream
+        // 时浏览器会直接下载；window.open 新标签去加载 340MB 文件会一直转圈，
+        // 表现为"加载不出来"。
+        function downloadViaMirror(url) {
+            window.location.href = ghMirrorPrefix + url;
         }
 
         // 腾讯云 COS/CDN 直链下载入口（国内可达）。发布脚本把安装包同步到

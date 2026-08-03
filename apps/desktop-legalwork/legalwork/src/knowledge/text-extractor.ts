@@ -155,7 +155,8 @@ async function extractXlsxText(filePath: string): Promise<string> {
 async function extractTextutilText(filePath: string): Promise<string> {
   try {
     const { stdout } = await execFileAsync('textutil', ['-convert', 'txt', '-stdout', filePath], {
-      maxBuffer: OCR_OUTPUT_BUFFER_BYTES
+      maxBuffer: OCR_OUTPUT_BUFFER_BYTES,
+      windowsHide: true
     })
     return normalizeExtractedText(stdout)
   } catch {
@@ -291,7 +292,8 @@ except Exception as exc:
   try {
     const { stdout } = await execFileAsync(process.env.PYTHON || process.env.PYTHON3 || 'python3', ['-c', script, filePath], {
       maxBuffer: OCR_OUTPUT_BUFFER_BYTES,
-      timeout: OCR_TIMEOUT_MS
+      timeout: OCR_TIMEOUT_MS,
+      windowsHide: true
     })
     const parsed = JSON.parse(stdout.trim() || '{}') as { ok?: boolean; text?: string }
     return parsed.ok && parsed.text ? normalizeExtractedText(parsed.text) : ''
@@ -322,7 +324,8 @@ async function extractWithLegalworkOcrAgent(filePath: string): Promise<string> {
         {
           maxBuffer: OCR_OUTPUT_BUFFER_BYTES,
           timeout: OCR_TIMEOUT_MS,
-          env: process.env
+          env: process.env,
+          windowsHide: true
         }
       )
       const parsed = parseOcrAgentResult(stdout)
@@ -359,7 +362,8 @@ async function extractWithTesseract(filePath: string): Promise<string> {
         {
           maxBuffer: OCR_OUTPUT_BUFFER_BYTES,
           timeout: OCR_TIMEOUT_MS,
-          env: process.env
+          env: process.env,
+          windowsHide: true
         }
       )
       const text = normalizeExtractedText(stdout)

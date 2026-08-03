@@ -537,4 +537,54 @@ describe('normalizeOfficeCliArguments', () => {
       }
     })
   })
+
+  it('rejects a missing command with an actionable error instead of executing', () => {
+    const result = normalizeOfficeCliArguments({
+      file: '/tmp/报告.docx',
+      path: '/body/p[1]'
+    }, '/tmp/报告.docx')
+    expect(result.error).toContain('OfficeCLI command is required')
+    expect(result.error).toContain('"get C:/path/报告.docx /body/p[1] --json"')
+    expect(result.arguments).toEqual({})
+  })
+
+  it('treats an empty command array as a missing command', () => {
+    expect(normalizeOfficeCliArguments({
+      command: []
+    })).toMatchObject({
+      error: expect.stringContaining('OfficeCLI command is required')
+    })
+  })
+
+  it('treats an all-blank command array as a missing command', () => {
+    expect(normalizeOfficeCliArguments({
+      command: ['', '  ']
+    })).toMatchObject({
+      error: expect.stringContaining('OfficeCLI command is required')
+    })
+  })
+
+  it('treats a blank string command as a missing command', () => {
+    expect(normalizeOfficeCliArguments({
+      command: '   '
+    })).toMatchObject({
+      error: expect.stringContaining('OfficeCLI command is required')
+    })
+  })
+
+  it('treats a JSON-stringified empty array as a missing command', () => {
+    expect(normalizeOfficeCliArguments({
+      command: '[]'
+    })).toMatchObject({
+      error: expect.stringContaining('OfficeCLI command is required')
+    })
+  })
+
+  it('treats a JSON-stringified all-blank array as a missing command', () => {
+    expect(normalizeOfficeCliArguments({
+      command: '["", "  "]'
+    })).toMatchObject({
+      error: expect.stringContaining('OfficeCLI command is required')
+    })
+  })
 })

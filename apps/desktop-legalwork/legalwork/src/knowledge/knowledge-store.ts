@@ -102,6 +102,7 @@ const RERANK_POOL_SIZE = 80
 const MAX_PER_DOCUMENT = 2
 const CLASSIFY_TEXT_LIMIT = 6000
 const CLASSIFY_MODEL_TIMEOUT_MS = 18_000
+const MAX_CLASSIFICATION_CACHE_SIZE = 500
 
 const DEFAULT_CLASSIFICATION_CATEGORIES = [
   '论文',
@@ -128,6 +129,12 @@ type ScoredChunk = {
 
 export class FileKnowledgeStore implements KnowledgeStore {
   private lastSelectedIds: string[] = []
+  /**
+   * 分类模型调用缓存：key = relPath + textPreview 的 hash。同一文件内容未变时
+   * 重复 classify（如 dryRun 后正式分类、反复点击）直接复用结果，不重复调模型。
+   * 有界缓存，避免无限增长。
+   */
+  private readonly classificationCache = new Map<string, KnowledgeClassification>()
 
   constructor(
     private readonly options: {
@@ -300,13 +307,22 @@ export class FileKnowledgeStore implements KnowledgeStore {
       const name = basename(absolute)
       const textPreview = await this.readClassificationText(absolute)
       const fallbackClassification = classifyKnowledgeFile(name, relPath, textPreview)
-      const classification = await this.classifyWithModel({
-        relativePath: relPath,
-        name,
-        textPreview,
-        candidateCategories,
-        fallback: fallbackClassification
-      })
+      // 内容未变时复用已分类结果，避免同一文件重复调用分类模型。
+      const cacheKey = hashId(`${relPath}::${textPreview}`)
+      let classification = this.classificationCache.get(cacheKey)
+      if (!classification) {
+        classification = await this.classifyWithModel({
+          relativePath: relPath,
+          name,
+          textPreview,
+          candidateCategories,
+          fallback: fallbackClassification
+        })
+        this.classificationCache.set(cacheKey, classification)
+        if (this.classificationCache.size > MAX_CLASSIFICATION_CACHE_SIZE) {
+          this.classificationCache.clear()
+        }
+      }
       const currentFolder = dirname(relPath).replaceAll('\\', '/')
       const destFolder = joinKnowledgeRelative(targetRoot, classification.category)
       if (currentFolder === destFolder) {
