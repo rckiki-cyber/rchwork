@@ -696,15 +696,21 @@ function uniqueStrings(values: string[]): string[] {
 
 /**
  * 读取 GUI mcp.json 顶层的"首要法律调研源"选择（pkulaw/yuandian）。
- * 非 pkulaw/yuandian 值或缺失时返回 undefined（保持默认北大法宝的现有行为）。
+ * 非 pkulaw/yuandian 值、缺失或读取失败时返回 undefined（保持默认北大法宝的现有行为，
+ * 绝不因读取失败阻断 runtime 启动）。
  */
 async function readGuiManagedPrimaryLegalSource(
   path: string
 ): Promise<'pkulaw' | 'yuandian' | undefined> {
-  const parsed = await readJsonObjectIfExists(path)
-  if (!parsed) return undefined
-  const value = (parsed as Record<string, unknown>).primaryLegalSource
-  return value === 'pkulaw' || value === 'yuandian' ? value : undefined
+  try {
+    const parsed = await readJsonObjectIfExists(path)
+    if (!parsed) return undefined
+    const value = (parsed as Record<string, unknown>).primaryLegalSource
+    return value === 'pkulaw' || value === 'yuandian' ? value : undefined
+  } catch {
+    // 读取失败（如 EACCES）降级为默认，不影响 runtime 启动。
+    return undefined
+  }
 }
 
 async function readGuiManagedMcpServers(path: string): Promise<Record<string, unknown>> {

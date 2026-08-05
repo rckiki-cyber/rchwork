@@ -1406,18 +1406,29 @@ export function PluginMarketplaceView({
   }
 
   const applyPrimaryLegalSource = async (source: 'pkulaw' | 'yuandian'): Promise<void> => {
-    const content = mcpLoaded ? mcpConfigText : await readMcpConfig()
-    const parsed = parseMcpJsonConfig(content)
-    const next = { ...parsed, primaryLegalSource: source }
-    const text = `${JSON.stringify(next, null, 2)}\n`
-    await window.dsGui.setDeepseekConfigFile(text)
-    setMcpConfigText(text)
-    setMcpLoaded(true)
-    setPrimaryLegalSource(source)
-    setNotice({
-      tone: 'success',
-      message: t(source === 'pkulaw' ? 'pluginMcpPrimarySetPkulaw' : 'pluginMcpPrimarySetYuandian')
-    })
+    // 写 mcp.json 会触发 runtime 重启；若当前有任务在跑（busy），重启会中断它。
+    // 此时明确提示用户，让用户决定是否继续。
+    const runtimeBusy = useChatStore.getState().busy
+    if (runtimeBusy) {
+      const ok = window.confirm(t('pluginMcpPrimaryBusyConfirm'))
+      if (!ok) return
+    }
+    try {
+      const content = mcpLoaded ? mcpConfigText : await readMcpConfig()
+      const parsed = parseMcpJsonConfig(content)
+      const next = { ...parsed, primaryLegalSource: source }
+      const text = `${JSON.stringify(next, null, 2)}\n`
+      await window.dsGui.setDeepseekConfigFile(text)
+      setMcpConfigText(text)
+      setMcpLoaded(true)
+      setPrimaryLegalSource(source)
+      setNotice({
+        tone: 'success',
+        message: t(source === 'pkulaw' ? 'pluginMcpPrimarySetPkulaw' : 'pluginMcpPrimarySetYuandian')
+      })
+    } catch (error) {
+      setNotice({ tone: 'error', message: error instanceof Error ? error.message : String(error) })
+    }
   }
 
   const persistImaConnection = async (): Promise<boolean> => {

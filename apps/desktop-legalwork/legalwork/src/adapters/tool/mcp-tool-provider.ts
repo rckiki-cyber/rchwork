@@ -233,12 +233,26 @@ export async function buildMcpToolProviders(
       })
       return outcome
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      // 北大法宝未配用户 token、走内置 fallback 时，若 fallback 账号配额/积分耗尽
+      // （401/90001/remaining points），明确提示用户自配 Token，而不是笼统地显示
+      // "鉴权失败"，避免用户误以为只是自己没配 token。
+      const hasUserAuthorization = Object.entries(server.headers ?? {}).some(
+        ([key]) => key.toLowerCase() === 'authorization'
+      )
+      const isPkulawFallbackQuota =
+        serverId.startsWith('pkulaw') &&
+        !hasUserAuthorization &&
+        isMcpAuthQuotaErrorText(message)
+      const lastError = isPkulawFallbackQuota
+        ? '北大法宝内置备用额度已耗尽（401/积分不足）。请在插件市场中配置你自己的北大法宝 Token 后重试。'
+        : redactMcpErrorMessage(error, [server])
       const outcome: McpServerBuildOutcome = {
         diagnostic: serverDiagnostic(
           { serverId, server },
           'error',
           0,
-          redactMcpErrorMessage(error, [server])
+          lastError
         )
       }
       await options.onServerSettled?.({ serverId, diagnostic: outcome.diagnostic })
@@ -995,8 +1009,17 @@ function hasNextConnectionCandidate(state: McpConnectionState): boolean {
  * 覆盖通用 HTTP 鉴权码、北大法宝特有的 90001 / remaining points / 积分 等。
  */
 function isMcpAuthQuotaErrorText(text: string): boolean {
-  return /\b(401|403|429)\b|unauthori[sz]ed|forbidden|invalid[^.\n]*(token|credential)|quota|鉴权|认证|令牌|权限|额度|余额|积分|90001|remaining\s+points|insufficient/i
-    .test(text)
+  // 只匹配明确指向"源级认证/配额"的错误，避免把工具正文里恰好出现"权限/余额/积分"
+  // 等词的正常业务响应误判为鉴权失败（那会让模型放弃一个其实可用的源）。
+  // 要求额度/余额/积分等词必须伴随"不足/耗尽/用尽"等否定语境；英文 quota/balance 同理。
+  return (
+    /\b(401|403|429)\b|unauthori[sz]ed|forbidden|invalid[^.\n]*(token|credential)/i.test(text) ||
+    /\b90001\b|remaining\s+points/i.test(text) ||
+    /(?:额度|余额|积分|points|credits)\s*(?:已\s*)?(?:不足|耗尽|用尽|用完)/i.test(text) ||
+    /(?:不足|耗尽|用尽|用完)\s*(?:额度|余额|积分|points|credits)/i.test(text) ||
+    /(?:quota|balance|credit|funds).{0,24}(?:exhausted|insufficient|depleted)/i.test(text) ||
+    /(?:insufficient|exhausted|depleted).{0,24}(?:balance|quota|credit|funds)/i.test(text)
+  )
 }
 
 function mcpResultRequiresCredentialFallback(result: unknown): boolean {

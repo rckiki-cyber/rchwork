@@ -179,4 +179,70 @@ describe('createThreadActions recovery', () => {
     expect(state.error).toBeNull()
     expect(drainQueuedMessages).toHaveBeenCalledTimes(1)
   })
+
+  it('settles residual running blocks when threadStatus is not running (recovery loop guard)', async () => {
+    const provider = {
+      getThreadDetail: vi.fn(async () => ({
+        blocks: [
+          { kind: 'user', id: 'user_1', text: 'run research' },
+          {
+            kind: 'tool',
+            id: 'tool_1',
+            summary: 'Searching',
+            status: 'running',
+            toolKind: 'command_execution'
+          }
+        ],
+        latestSeq: 9,
+        threadStatus: 'idle'
+      })),
+      subscribeThreadEvents: vi.fn(async () => undefined)
+    }
+    registryMock.getProvider.mockReturnValue(provider)
+
+    const state = {
+      activeThreadId: 'thr_1',
+      activeThreadGoal: null,
+      activeThreadTodos: null,
+      blocks: [
+        { kind: 'user', id: 'user_1', text: 'run research' },
+        {
+          kind: 'tool',
+          id: 'tool_1',
+          summary: 'Searching',
+          status: 'running',
+          toolKind: 'command_execution'
+        }
+      ],
+      busy: true,
+      currentTurnId: 'turn_1',
+      currentTurnUserId: 'user_1',
+      error: null,
+      lastSeq: 0,
+      liveAssistant: '',
+      liveReasoning: '',
+      queuedMessages: [],
+      turnDurationByUserId: {}
+    } as unknown as ChatState
+    const get: ChatStoreGet = () => state
+    const set: ChatStoreSet = (partial) => {
+      const update = typeof partial === 'function' ? partial(state) : partial
+      Object.assign(state, update)
+    }
+    const actions = createThreadActions({
+      set,
+      get,
+      sseAbortRef: { current: null }
+    })
+    state.recoverActiveTurn = actions.recoverActiveTurn
+
+    const recovered = await actions.recoverActiveTurn()
+
+    // 服务端 thread 已 idle，但本地有残留 running 块：应结算为 error 而非误判仍在跑。
+    expect(recovered).toBe(false)
+    expect(state.busy).toBe(false)
+    expect(state.blocks.find((block) => block.id === 'tool_1')).toMatchObject({
+      status: 'error'
+    })
+  })
 })

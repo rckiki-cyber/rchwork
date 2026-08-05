@@ -729,6 +729,7 @@
   "pluginMcpPrimaryHint": "优先使用此源检索；其鉴权/配额失败时自动改用另一源",
   "pluginMcpPrimarySetPkulaw": "已设为首要调研源：北大法宝",
   "pluginMcpPrimarySetYuandian": "已设为首要调研源：元典",
+  "pluginMcpPrimaryBusyConfirm": "当前有任务正在运行，切换首要调研源会重启运行时并中断当前任务。确定继续吗？",
   "pluginMcpSourcePkulaw": "北大法宝(PKULaw)",
   "pluginMcpSourceYuandian": "元典(Yuandian)",
   "pluginMcpYuandianTitle": "元典法律智能",

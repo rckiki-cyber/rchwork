@@ -729,6 +729,7 @@
   "pluginMcpPrimaryHint": "This source is tried first; if its auth/quota fails, the other source is used automatically",
   "pluginMcpPrimarySetPkulaw": "Primary research source set: PKULaw",
   "pluginMcpPrimarySetYuandian": "Primary research source set: Yuandian",
+  "pluginMcpPrimaryBusyConfirm": "A task is currently running. Switching the primary research source will restart the runtime and interrupt it. Continue?",
   "pluginMcpSourcePkulaw": "PKULaw",
   "pluginMcpSourceYuandian": "Yuandian",
   "pluginMcpYuandianTitle": "Yuandian Legal Intelligence",

@@ -1,5 +1,5 @@
 const { execFileSync } = require('node:child_process')
-const { chmodSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, statSync } = require('node:fs')
+const { chmodSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 
 const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
@@ -116,7 +116,6 @@ function projectDir(context) {
 
 function restoreBundledOfficeCli(context) {
   const source = join(projectDir(context), 'legalwork', 'node_modules', '@officecli', 'officecli')
-  const sourceBinary = join(source, 'vendor', 'officecli')
   const target = join(
     unpackedAppRoot(context),
     'legalwork',
@@ -125,14 +124,60 @@ function restoreBundledOfficeCli(context) {
     'officecli'
   )
   const targetBinary = join(target, 'vendor', 'officecli')
-  if (!existsSync(sourceBinary)) {
-    console.warn(`[after-pack] OfficeCLI native binary not found at ${sourceBinary}; skipping bundled binary restore. The launcher shim will download it on first run.`)
+  if (!existsSync(source)) {
+    console.warn(`[after-pack] OfficeCLI package not found at ${source}; skipping bundled restore.`)
     return
   }
   cpSync(source, target, { recursive: true, force: true })
   if (existsSync(targetBinary)) {
     chmodSync(targetBinary, 0o755)
+    // 打包机的 host 二进制只适用于构建机自身架构。目标平台与构建机平台不一致时
+    // （例如在 macOS 开发机上打 Windows 包，host 二进制是 Mach-O），这个二进制在
+    // 目标平台不可执行：保留它会让 resolveOfficeCliBinaryPath 误判"二进制存在"而走
+    // direct 路径（Windows 上 CreateProcess 直接失败）。删除它，回落到 officecli.js
+    // shim，由 shim 在目标平台首次运行时下载正确的原生二进制。
+    // 仅当"构建机是 darwin 且目标非 darwin"才删：在 Windows/Linux 打包机上，host
+    // 二进制本就可用于同平台目标，删除反而迫使走需联网下载的 shim 通道。
+    const hostPlatform = process.platform
+    const targetPlatform = normalizePlatform(context.electronPlatformName)
+    if (hostPlatform === 'darwin' && targetPlatform !== 'darwin') {
+      rmSync(targetBinary, { force: true })
+      console.warn(
+        '[after-pack] Removed macOS host-arch OfficeCLI binary for non-darwin target; launcher shim will download the correct binary on first run.'
+      )
+    }
   }
+  patchOfficeCliShimWindowsHide(target)
+}
+
+/**
+ * Patch the bundled officecli.js launcher shim so its child-process spawn never
+ * pops a console window on Windows. The shim runs `spawnSync(bin, argv, { stdio:
+ * 'inherit' })` to exec the native binary; on Windows, launching a console app
+ * this way without `windowsHide` shows a command-prompt window (titled
+ * "Default: <path>"). MCP starts officecli through this shim whenever the native
+ * binary is absent / not-yet-downloaded, so this is the reliable place to hide it.
+ */
+function patchOfficeCliShimWindowsHide(targetDir) {
+  const shimPath = join(targetDir, 'officecli.js')
+  if (!existsSync(shimPath)) {
+    console.warn(`[after-pack] officecli.js shim not found at ${shimPath}; cannot apply windowsHide patch.`)
+    return
+  }
+  const original = readFileSync(shimPath, 'utf8')
+  // 用宽松正则匹配（容忍空格/引号差异），避免 officecli 升级改格式后补丁静默失效。
+  const patched = original.replace(
+    /(\{[\s'"]*stdio[\s'"]*:[\s'"]*inherit[\s'"]*)(\})/,
+    "$1, windowsHide: true }"
+  )
+  if (patched === original) {
+    console.warn(
+      '[after-pack] FAILED to patch officecli.js shim: did not find the `{ stdio: "inherit" }` spawn options. Windows console popup may still occur.'
+    )
+    return
+  }
+  writeFileSync(shimPath, patched, 'utf8')
+  console.warn('[after-pack] Patched officecli.js shim: spawnSync now uses windowsHide (no console popup on Windows).')
 }
 
 function validateBundledLegalworkRuntime(context) {

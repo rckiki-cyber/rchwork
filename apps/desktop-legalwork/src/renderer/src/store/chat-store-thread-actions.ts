@@ -42,6 +42,7 @@ import {
   findReusableEmptyThreadId,
   hasPendingRuntimeWork,
   reconcileOptimisticUserBlock,
+  settlePendingRuntimeWorkAfterInterrupt,
   threadSnapshotLooksRunning,
   threadBelongsToWorkspace
 } from './chat-store-runtime-helpers'
@@ -239,8 +240,16 @@ export function createThreadActions(
         if (get().activeThreadId !== activeThreadId) return false
         const blocks = hydrateBlockModelLabels(activeThreadId, rawBlocks)
         const busy = threadSnapshotLooksRunning(blocks, threadStatus)
+        // 当服务端 thread 状态明确非 running（turn 已结束，例如 codex 崩溃后
+        // turn 已 failed），但本地 blocks 仍有残留的 running/pending 块时，以
+        // threadStatus 为准：结算这些陈旧块，避免 `recoverActiveTurn` 每次都读到
+        // "还在跑"信号而陷入"正在恢复运行时事件流…"死循环（GPT/codex 账号高发）。
+        const settledBlocks =
+          !busy && threadStatus != null && threadStatus.trim()
+            ? settlePendingRuntimeWorkAfterInterrupt(blocks)
+            : blocks
         const currentTurnUserId = busy
-          ? state.currentTurnUserId ?? latestUserMessageId ?? findLatestUserBlockId(blocks)
+          ? state.currentTurnUserId ?? latestUserMessageId ?? findLatestUserBlockId(settledBlocks)
           : null
         const currentTurnId = busy ? state.currentTurnId ?? latestTurnId ?? null : null
 
@@ -248,7 +257,7 @@ export function createThreadActions(
           activeThreadId,
           activeThreadGoal: goal ?? null,
           activeThreadTodos: todos ?? null,
-          blocks,
+          blocks: settledBlocks,
           lastSeq: latestSeq,
           appliedSeq: 0,
           liveReasoning: '',

@@ -1003,10 +1003,17 @@ export function buildThreadEventSink(
         }
         return out
       })
-      // 余额不足时发一次系统通知，明确提醒用户充值。
-      if (insufficientBalance && state.currentTurnId && typeof window.dsGui?.showTurnCompleteNotification === 'function') {
+      // 余额不足时发一次系统通知，明确提醒用户充值。用 activeThreadId（而非 turnId）
+      // 作为通知目标，并通过 rememberCompletionNotificationKey 去重，避免同一次余额
+      // 失败重复弹通知。
+      if (
+        insufficientBalance &&
+        state.activeThreadId &&
+        typeof window.dsGui?.showTurnCompleteNotification === 'function' &&
+        rememberCompletionNotificationKey(`insufficient_balance:${state.activeThreadId}`)
+      ) {
         void window.dsGui.showTurnCompleteNotification({
-          threadId: state.currentTurnId,
+          threadId: state.activeThreadId,
           title: i18n.t('common:runtimeInsufficientBalanceNotificationTitle'),
           body: i18n.t('common:runtimeInsufficientBalanceNotificationBody')
         }).catch(() => undefined)
