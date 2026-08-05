@@ -153,6 +153,14 @@ export class AnthropicCompatModelClient implements ModelClient {
     }
     if (!response.ok) {
       const text = await response.text()
+      if (response.status === 402 || /insufficient balance|balance is insufficient|insufficient_balance|quota.*(exhausted|insufficient)|余额不足|额度不足/i.test(text)) {
+        yield {
+          kind: 'error',
+          message: `model API 余额不足或配额已耗尽 (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          code: 'insufficient_balance'
+        }
+        return
+      }
       yield {
         kind: 'error',
         message: `model request failed with status ${response.status}: ${text.slice(0, 500)}`,

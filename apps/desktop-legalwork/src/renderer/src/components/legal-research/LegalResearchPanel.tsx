@@ -73,6 +73,8 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
   const [exportFormat, setExportFormat] = useState<'word' | 'markdown' | null>(null)
   const [exportNotice, setExportNotice] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
+  // 北大法宝 + 元典 都未配置 token 时提示用户去插件市场配置（不阻断调研启动）。
+  const [legalSourcesMissingToken, setLegalSourcesMissingToken] = useState(false)
   const {
     activeRecord,
     isResearching,
@@ -83,6 +85,26 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
 
   useEffect(() => {
     inputRef.current?.focus()
+  }, [])
+
+  // 读取 MCP 配置，检测北大法宝与元典是否都未配置访问 Token。
+  // 若都未配置，显示引导提示（不影响调研启动）。
+  useEffect(() => {
+    let cancelled = false
+    async function checkLegalSourceTokens(): Promise<void> {
+      try {
+        if (typeof window.dsGui?.getDeepseekConfigFile !== 'function') return
+        const file = await window.dsGui.getDeepseekConfigFile()
+        if (cancelled || !file?.content) return
+        setLegalSourcesMissingToken(!hasAnyLegalSourceToken(file.content))
+      } catch {
+        // 读取配置失败时保持不提示，调研不受影响。
+      }
+    }
+    void checkLegalSourceTokens()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -402,6 +424,22 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
             )}
           </div>
           <p className="mt-2 px-1 text-[11px] text-[var(--ds-faint)]">{t('legalResearchHint')}</p>
+          {legalSourcesMissingToken && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-[12px] border border-[var(--ds-accent)]/20 bg-[var(--ds-accent)]/[0.06] px-3 py-2 text-[11px] leading-4 text-[var(--ds-muted)]">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--ds-accent)]" strokeWidth={1.75} />
+              <span>
+                {t('legalResearchTokenTip')}
+                <a
+                  href="https://mcp.pkulaw.com/console/apps"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-1 text-[var(--ds-accent)] underline hover:opacity-80"
+                >
+                  {t('legalResearchTokenTipConfigure')}
+                </a>
+              </span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -682,4 +720,39 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
       )}
     </div>
   )
+}
+
+/** 北大法宝 / 元典 MCP 端点的 id 前缀（与插件市场 PluginMarketplaceView 保持一致）。 */
+const LEGAL_SOURCE_SERVER_ID_PREFIXES = ['pkulaw', 'yuandian']
+
+/**
+ * 判断 MCP 配置中北大法宝与元典是否至少有一个配置了访问 Token。
+ * 返回 true = 至少有一个已配置；false = 两个都未配置（应提示用户）。
+ * 仅读取配置 JSON，不涉及任何 token 明文。
+ */
+export function hasAnyLegalSourceToken(configContent: string): boolean {
+  try {
+    const parsed = JSON.parse(configContent) as {
+      servers?: Record<string, { headers?: Record<string, string> }>
+      capabilities?: { mcp?: { servers?: Record<string, { headers?: Record<string, string> }> } }
+    }
+    const servers =
+      (typeof parsed === 'object' && parsed !== null && parsed.servers
+        ? parsed.servers
+        : parsed.capabilities?.mcp?.servers) ?? {}
+    return LEGAL_SOURCE_SERVER_ID_PREFIXES.some((prefix) => {
+      const matched = Object.entries(servers).filter(([id]) => id.startsWith(prefix))
+      if (matched.length === 0) return false
+      return matched.some(([, server]) => {
+        const headers = server?.headers ?? {}
+        const authorization = Object.entries(headers).find(
+          ([key]) => key.toLowerCase() === 'authorization'
+        )?.[1]
+        return typeof authorization === 'string' && authorization.trim().length > 0
+      })
+    })
+  } catch {
+    // 配置解析失败时保守判定为"已配置"，避免误提示打扰用户。
+    return true
+  }
 }

@@ -68,6 +68,46 @@ describe('AgentLoop', () => {
     expect(request.contextInstructions?.join('\n')).toContain('shell commands appropriate for the host platform')
   })
 
+  it('injects the primary legal research source instruction when configured', async () => {
+    let observedRequest: ModelRequest | null = null
+    const h = makeHarness({
+      provider: 'primary-source',
+      model: 'primary-source',
+      async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
+        observedRequest = request
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { primaryLegalSource: 'pkulaw' })
+    await bootstrapThread(h)
+    await h.loop.runTurn(h.threadId, h.turnId)
+
+    const request = observedRequest as ModelRequest | null
+    if (!request) throw new Error('expected model request')
+    const instructions = request.contextInstructions?.join('\n') ?? ''
+    expect(instructions).toContain('北大法宝(PKULaw)')
+    expect(instructions).toContain('元典(Yuandian)')
+    expect(instructions).toContain('优先使用')
+  })
+
+  it('does not inject the primary source instruction when unset', async () => {
+    let observedRequest: ModelRequest | null = null
+    const h = makeHarness({
+      provider: 'no-primary-source',
+      model: 'no-primary-source',
+      async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
+        observedRequest = request
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h)
+    await h.loop.runTurn(h.threadId, h.turnId)
+
+    const request = observedRequest as ModelRequest | null
+    if (!request) throw new Error('expected model request')
+    const instructions = request.contextInstructions?.join('\n') ?? ''
+    expect(instructions).not.toContain('首要来源')
+  })
+
   it('records elapsed seconds for active goals after a turn finishes', async () => {
     let nowMs = 1_000
     const h = makeHarness(

@@ -301,6 +301,14 @@ export class DeepseekCompatModelClient implements ModelClient {
         code: 'rate_limited'
       }
     }
+    // 402/余额不足/配额耗尽：确定性失败，重试无意义，需用户充值。用专用 code
+    // 让 GUI 能明确提醒"余额不足"而不是显示一串英文错误原文。
+    if (status === 402 || /insufficient balance|balance is insufficient|insufficient_balance|quota.*(exhausted|insufficient)|余额不足|额度不足/i.test(body)) {
+      return {
+        message: `model API 余额不足或配额已耗尽 (HTTP ${status}): ${body}`,
+        code: 'insufficient_balance'
+      }
+    }
     if (status >= 500 && isDeepSeekHost(this.config.baseUrl)) {
       const probe = await probeDeepSeekReachable({
         baseUrl: this.config.baseUrl,

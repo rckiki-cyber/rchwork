@@ -557,10 +557,11 @@ describe('cli', () => {
       .find((candidate) => candidate.canonicalModel === 'deepseek-v4-pro')
 
     // Context window stays 1M; compaction thresholds are deliberately far below
-    // it (40K/60K) so history is folded before it grows into runaway re-billing.
+    // it (100K/130K) so history is folded before it grows into runaway re-billing
+    // while avoiding too-frequent compaction that clears the prompt cache.
     expect(profile?.contextWindowTokens).toBe(1_000_000)
-    expect(profile?.softThreshold).toBe(40_000)
-    expect(profile?.hardThreshold).toBe(60_000)
+    expect(profile?.softThreshold).toBe(100_000)
+    expect(profile?.hardThreshold).toBe(130_000)
   })
 
   it('keeps built-in DeepSeek v4 models text-only', () => {
@@ -650,6 +651,25 @@ describe('cli', () => {
     expect(parsed.port).toBe(8899)
     expect(parsed.storage.backend).toBe('hybrid')
     expect(parsed.capabilities.mcp.enabled).toBe(false)
+  })
+
+  it('accepts primaryLegalSource on the MCP capability and rejects unknown values', () => {
+    const withPrimary = LegalworkCapabilitiesConfig.parse({
+      mcp: {
+        enabled: true,
+        primaryLegalSource: 'yuandian'
+      }
+    })
+    expect(withPrimary.mcp?.primaryLegalSource).toBe('yuandian')
+
+    const defaulted = LegalworkCapabilitiesConfig.parse({ mcp: { enabled: true } })
+    expect(defaulted.mcp?.primaryLegalSource).toBeUndefined()
+
+    // .strict() 拒绝非枚举值
+    const bad = LegalworkCapabilitiesConfig.safeParse({
+      mcp: { enabled: true, primaryLegalSource: 'other' }
+    })
+    expect(bad.success).toBe(false)
   })
 
   it('exposes a usage string', () => {

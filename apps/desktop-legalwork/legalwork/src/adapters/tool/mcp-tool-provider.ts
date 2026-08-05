@@ -475,11 +475,30 @@ function createMcpLocalTool(
           isError: true
         }
       }
-      const result = await callMcpToolWithReconnect(
-        state,
-        { name: descriptor.name, arguments: normalized.arguments },
-        context.abortSignal
-      )
+      let result: unknown
+      try {
+        result = await callMcpToolWithReconnect(
+          state,
+          { name: descriptor.name, arguments: normalized.arguments },
+          context.abortSignal
+        )
+      } catch (error) {
+        // 认证/配额/积分不足类错误是确定性的：该源的 token 无效或额度用尽，
+        // 重试不会恢复。转换成清晰的换源引导，避免模型误以为参数错误而反复重试
+        // （既浪费 token 又得不到结果），并提示用户可配置自己的 Token。
+        const message = error instanceof Error ? error.message : String(error)
+        if (isMcpAuthQuotaErrorText(message)) {
+          return {
+            output: {
+              error: `${state.serverId} 鉴权失败或配额/积分不足（${message.slice(0, 200)}）`,
+              hint: `此 MCP 源的 Token 无效或账号额度已用尽，重试不会恢复。不要再调用此源的任何工具。` +
+                `请改用其他可用来源（如元典、本地知识库、IMA），或提示用户在插件市场中配置此源的访问 Token。`
+            },
+            isError: true
+          }
+        }
+        throw error
+      }
       if (officeCliDocuments && !mcpResultIsError(result)) {
         rememberOfficeCliDocument(
           officeCliDocuments,
@@ -588,7 +607,7 @@ function officeCliToolDescription(baseDescription?: string): string {
     '- Equivalent argv form: ["batch","/path/report.docx","--commands","<JSON array>","--json"].',
     '- Batch items use a bare verb with sibling fields (parent/path/type/props); do not put a full CLI string inside an item command.',
     '- If a batch partially fails, retry only failed items. Never repeat identical failed arguments.',
-    '- Save and validate after substantive writing. Once validation passes, only repair remaining issues that materially affect requested content, structure, or visible formatting.'
+    '- After substantive writing, flush the document (save) then validate. Note: the save command is only available in recent officecli builds; if you get Unknown command save, use close instead. Once validation passes, only repair remaining issues that materially affect requested content, structure, or visible formatting.'
   ].join('\n')
 }
 
@@ -970,10 +989,19 @@ function hasNextConnectionCandidate(state: McpConnectionState): boolean {
   return state.activeCandidateIndex + 1 < state.connectionCandidates.length
 }
 
+/**
+ * 判定一段 MCP 错误文本是否属于"认证/配额/积分不足"类。这类错误是确定性的
+ * （该源的 token 无效或账号额度用尽），重试不会恢复，模型应当换源而不是反复重试。
+ * 覆盖通用 HTTP 鉴权码、北大法宝特有的 90001 / remaining points / 积分 等。
+ */
+function isMcpAuthQuotaErrorText(text: string): boolean {
+  return /\b(401|403|429)\b|unauthori[sz]ed|forbidden|invalid[^.\n]*(token|credential)|quota|鉴权|认证|令牌|权限|额度|余额|积分|90001|remaining\s+points|insufficient/i
+    .test(text)
+}
+
 function mcpResultRequiresCredentialFallback(result: unknown): boolean {
   if (!mcpResultIsError(result)) return false
-  return /\b(401|403|429)\b|unauthori[sz]ed|forbidden|invalid[^.\n]*(token|credential)|quota|鉴权|认证|令牌|权限|额度/i
-    .test(stringifyForSecretScan(result))
+  return isMcpAuthQuotaErrorText(stringifyForSecretScan(result))
 }
 
 function isFlintChartServer(serverId: string): boolean {

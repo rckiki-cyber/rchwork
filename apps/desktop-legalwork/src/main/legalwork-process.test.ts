@@ -715,6 +715,31 @@ describe('syncGuiManagedLegalworkConfig', () => {
       },
       trustScope: 'user'
     })
+    // 未配置 primaryLegalSource 时不出现在 capabilities.mcp（向后兼容）。
+    expect(parsed.capabilities.mcp.primaryLegalSource).toBeUndefined()
+  })
+
+  it('propagates the GUI primaryLegalSource into runtime capabilities', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const configPath = join(tempRoot, 'config.json')
+    const mcpConfigPath = join(tempRoot, 'mcp.json')
+    writeFileSync(mcpConfigPath, JSON.stringify({
+      primaryLegalSource: 'yuandian',
+      servers: {
+        'yuandian-law': {
+          url: 'https://open.chineselaw.com/mcp/law/stream',
+          headers: { Authorization: 'Bearer yd-token' }
+        }
+      }
+    }), 'utf8')
+    const module = await import('./legalwork-process')
+
+    await module.syncGuiManagedLegalworkConfig(tempRoot, defaultLegalworkRuntimeSettings(), {
+      mcpConfigPath
+    })
+
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
+    expect(parsed.capabilities.mcp.primaryLegalSource).toBe('yuandian')
   })
 
   it('rebinds the bundled IMA MCP script to the currently running app', async () => {

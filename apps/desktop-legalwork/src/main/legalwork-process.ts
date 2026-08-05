@@ -450,9 +450,9 @@ export async function syncGuiManagedLegalworkConfig(
 ): Promise<boolean> {
   const configPath = join(dataDir, 'config.json')
   const existing = sanitizeLegalworkConfigSections(await readJsonObjectIfExists(configPath))
-  const importedMcpServers = await readGuiManagedMcpServers(
-    options?.mcpConfigPath ?? resolveLegalworkMcpJsonPath()
-  )
+  const guiMcpConfigPath = options?.mcpConfigPath ?? resolveLegalworkMcpJsonPath()
+  const importedMcpServers = await readGuiManagedMcpServers(guiMcpConfigPath)
+  const guiPrimaryLegalSource = await readGuiManagedPrimaryLegalSource(guiMcpConfigPath)
   const hasImportedEnabledMcpServer = Object.values(importedMcpServers).some(
     (server) => objectValue(server).enabled !== false
   )
@@ -531,6 +531,7 @@ export async function syncGuiManagedLegalworkConfig(
         ...(options?.scheduleMcp || mcpSearch.enabled || hasImportedEnabledMcpServer
           ? { enabled: mcp.enabled === false ? false : true }
           : {}),
+        ...(guiPrimaryLegalSource ? { primaryLegalSource: guiPrimaryLegalSource } : {}),
         servers: runtimeMcpServers,
         search: {
           ...search,
@@ -691,6 +692,19 @@ function uniqueStrings(values: string[]): string[] {
     out.push(value)
   }
   return out
+}
+
+/**
+ * 读取 GUI mcp.json 顶层的"首要法律调研源"选择（pkulaw/yuandian）。
+ * 非 pkulaw/yuandian 值或缺失时返回 undefined（保持默认北大法宝的现有行为）。
+ */
+async function readGuiManagedPrimaryLegalSource(
+  path: string
+): Promise<'pkulaw' | 'yuandian' | undefined> {
+  const parsed = await readJsonObjectIfExists(path)
+  if (!parsed) return undefined
+  const value = (parsed as Record<string, unknown>).primaryLegalSource
+  return value === 'pkulaw' || value === 'yuandian' ? value : undefined
 }
 
 async function readGuiManagedMcpServers(path: string): Promise<Record<string, unknown>> {

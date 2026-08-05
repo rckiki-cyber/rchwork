@@ -301,6 +301,9 @@ export async function createLegalworkServeRuntime(
           tokenEconomy,
           ...(options.runtime ? { runtime: options.runtime } : {}),
           ...(memoryStore ? { memoryStore } : {}),
+          ...(options.capabilities?.mcp.primaryLegalSource
+            ? { primaryLegalSource: options.capabilities.mcp.primaryLegalSource }
+            : {}),
           nowIso
         }),
         recordExternalUsage: (threadId, usage) => {
@@ -461,6 +464,9 @@ export async function createLegalworkServeRuntime(
     contextCompaction: options.contextCompaction,
     ...(options.runtime?.toolStorm ? { toolStorm: options.runtime.toolStorm } : {}),
     ...(options.runtime?.toolArgumentRepair ? { toolArgumentRepair: options.runtime.toolArgumentRepair } : {}),
+    ...(options.capabilities?.mcp.primaryLegalSource
+      ? { primaryLegalSource: options.capabilities.mcp.primaryLegalSource }
+      : {}),
     ...(attachmentStore ? { attachmentStore } : {}),
     ...(memoryStore ? { memoryStore } : {}),
     onPlanWritten: async ({ threadId, planId, relativePath, markdown }) => {

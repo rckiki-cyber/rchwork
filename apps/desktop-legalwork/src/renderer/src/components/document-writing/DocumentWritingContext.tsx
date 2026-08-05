@@ -124,18 +124,6 @@ function userTemplateToLegalTemplate(ut: UserTemplate): LegalTemplate {
   })
 }
 
-function explicitRequiredFieldMissing(template: LegalTemplate, fieldValues: Record<string, string>): string[] {
-  return template.fields
-    .filter((field) => field.required && field.type === 'select' && !fieldValues[field.id]?.trim())
-    .map((field) => field.label)
-}
-
-function missingRequiredFields(template: LegalTemplate, fieldValues: Record<string, string>): string[] {
-  return template.fields
-    .filter((field) => field.required && !fieldValues[field.id]?.trim())
-    .map((field) => field.label)
-}
-
 function loadedMaterials(materials: UploadedMaterial[]): Array<{ fileName: string; content: string }> {
   return materials
     .filter((material) => material.loaded && material.content.trim())
@@ -326,24 +314,14 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
   const handleGenerate = useCallback(async () => {
     if (!activeTemplate) return
     const materials = loadedMaterials(uploadedMaterials)
-    const documentSubject = fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim()
-    if (materials.length > 0 && !documentSubject) {
-      setError('请先填写“文书涉及主体（我方/委托方）”，明确本次文书代表哪一方。')
-      return
-    }
-    if (materials.length > 0 && !instruction.trim()) {
-      setError(t('documentWritingSupplementalRequirementsValidation'))
-      return
-    }
-    if (materials.length === 0) {
-      const explicitMissing = explicitRequiredFieldMissing(activeTemplate, fieldValues)
-      if (explicitMissing.length > 0) {
-        setError(`请先选择必填身份/方向字段：${explicitMissing.join('、')}`)
-        return
-      }
-      const missing = missingRequiredFields(activeTemplate, fieldValues)
-      if (missing.length > 0) {
-        setError(`请填写必填字段，或上传可供提取事实的案件材料：${missing.join('、')}`)
+    const hasMaterial = materials.length > 0
+    const hasPastedText = instruction.trim().length > 0
+    // 生成依据可以是上传材料、粘贴文字、或用户填写的任一字段，三者择一即可。
+    // 都不满足时，点击生成才提醒用户补充，而不是预先禁止。
+    if (!hasMaterial && !hasPastedText) {
+      const hasAnyFieldFilled = Object.values(fieldValues).some((value) => value.trim())
+      if (!hasAnyFieldFilled) {
+        setError('请上传案件材料、粘贴案情文字，或填写必要的文书信息后再生成。')
         return
       }
     }

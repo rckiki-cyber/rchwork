@@ -292,6 +292,17 @@ function parseMcpJsonConfig(content: string): JsonRecord {
   return parsed
 }
 
+/** 读取配置顶层的"首要法律调研源"。缺省为 'pkulaw'。 */
+function readPrimaryLegalSourceFromConfig(content: string): 'pkulaw' | 'yuandian' {
+  try {
+    const parsed = parseMcpJsonConfig(content)
+    const value = parsed.primaryLegalSource
+    return value === 'yuandian' ? 'yuandian' : 'pkulaw'
+  } catch {
+    return 'pkulaw'
+  }
+}
+
 function buildStdioMcpServer(
   command: string,
   args: string[],
@@ -1076,6 +1087,7 @@ export function PluginMarketplaceView({
   const [mcpConfigText, setMcpConfigText] = useState('')
   const [mcpLoaded, setMcpLoaded] = useState(false)
   const [configuringItemId, setConfiguringItemId] = useState<string | null>(null)
+  const [primaryLegalSource, setPrimaryLegalSource] = useState<'pkulaw' | 'yuandian'>('pkulaw')
   const [pkulawToken, setPkulawToken] = useState('')
   const [yuandianApiKey, setYuandianApiKey] = useState('')
   const [anysearchApiKey, setAnysearchApiKey] = useState('')
@@ -1393,6 +1405,21 @@ export function PluginMarketplaceView({
     setNotice({ tone: 'success', message: t('pluginMcpTokenUpdated', { path: result.path }) })
   }
 
+  const applyPrimaryLegalSource = async (source: 'pkulaw' | 'yuandian'): Promise<void> => {
+    const content = mcpLoaded ? mcpConfigText : await readMcpConfig()
+    const parsed = parseMcpJsonConfig(content)
+    const next = { ...parsed, primaryLegalSource: source }
+    const text = `${JSON.stringify(next, null, 2)}\n`
+    await window.dsGui.setDeepseekConfigFile(text)
+    setMcpConfigText(text)
+    setMcpLoaded(true)
+    setPrimaryLegalSource(source)
+    setNotice({
+      tone: 'success',
+      message: t(source === 'pkulaw' ? 'pluginMcpPrimarySetPkulaw' : 'pluginMcpPrimarySetYuandian')
+    })
+  }
+
   const persistImaConnection = async (): Promise<boolean> => {
     const mcpConfig = await window.dsGui.imaGetMcpConfig()
     if ('error' in mcpConfig) {
@@ -1433,6 +1460,9 @@ export function PluginMarketplaceView({
 
   const addItem = async (item: MarketplaceItem): Promise<void> => {
     if (item.configurable) {
+      if (item.id === PKULAW_MCP_GROUP_ID || item.id === YUANDIAN_MCP_GROUP_ID) {
+        setPrimaryLegalSource(readPrimaryLegalSourceFromConfig(mcpConfigText))
+      }
       if (item.id === PKULAW_MCP_GROUP_ID) {
         const existing = readTokenFromConfig(PKULAW_MCP_ENDPOINTS[0].url)
         setPkulawToken(existing)
@@ -1788,6 +1818,8 @@ export function PluginMarketplaceView({
             setPkulawToken('')
           }}
           busy={busyId === storageKey('mcp', 'pkulaw')}
+          isPrimary={primaryLegalSource === 'pkulaw'}
+          onSetPrimary={() => void applyPrimaryLegalSource('pkulaw')}
           t={t}
         />
       )
@@ -1803,6 +1835,8 @@ export function PluginMarketplaceView({
             setYuandianApiKey('')
           }}
           busy={busyId === storageKey('mcp', YUANDIAN_MCP_GROUP_ID)}
+          isPrimary={primaryLegalSource === 'yuandian'}
+          onSetPrimary={() => void applyPrimaryLegalSource('yuandian')}
           t={t}
         />
       )
@@ -2699,6 +2733,8 @@ function PkulawConfigPanel({
   onAdd,
   onCancel,
   busy,
+  isPrimary,
+  onSetPrimary,
   t
 }: {
   token: string
@@ -2706,6 +2742,8 @@ function PkulawConfigPanel({
   onAdd: () => void
   onCancel: () => void
   busy: boolean
+  isPrimary: boolean
+  onSetPrimary: () => void
   t: (key: string, values?: Record<string, unknown>) => string
 }): ReactElement {
   const [showToken, setShowToken] = useState(false)
@@ -2736,6 +2774,31 @@ function PkulawConfigPanel({
           <p className="mt-2 text-[12px] leading-5 text-ds-faint">
             {t('pluginMcpPkulawTokenHint')}
           </p>
+          <p className="mt-1.5 text-[12px] leading-5">
+            <a
+              href="https://mcp.pkulaw.com/console/apps"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent underline hover:opacity-80"
+            >
+              {t('pluginMcpPkulawTokenGetLink')}
+            </a>
+          </p>
+          {isPrimary ? (
+            <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-ds-userbubble/10 px-2.5 py-1 text-[12px] font-semibold text-ds-userbubble">
+              <Check className="h-3.5 w-3.5" strokeWidth={2} />
+              {t('pluginMcpPrimaryCurrent', { source: t('pluginMcpSourcePkulaw') })}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onSetPrimary}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-ds-border bg-ds-card px-2.5 py-1 text-[12px] font-medium text-ds-ink transition hover:bg-ds-hover"
+            >
+              {t('pluginMcpPrimarySet')}
+            </button>
+          )}
+          <p className="mt-1.5 text-[11px] leading-4 text-ds-faint">{t('pluginMcpPrimaryHint')}</p>
         </div>
         <div data-control-hover-root className="flex shrink-0 items-center gap-2 md:pt-5">
           <button
@@ -2767,6 +2830,8 @@ function YuandianConfigPanel({
   onAdd,
   onCancel,
   busy,
+  isPrimary,
+  onSetPrimary,
   t
 }: {
   apiKey: string
@@ -2774,6 +2839,8 @@ function YuandianConfigPanel({
   onAdd: () => void
   onCancel: () => void
   busy: boolean
+  isPrimary: boolean
+  onSetPrimary: () => void
   t: (key: string, values?: Record<string, unknown>) => string
 }): ReactElement {
   const [showKey, setShowKey] = useState(false)
@@ -2804,6 +2871,16 @@ function YuandianConfigPanel({
           <p className="mt-2 text-[12px] leading-5 text-ds-faint">
             {t('pluginMcpYuandianKeyHint')}
           </p>
+          <p className="mt-1.5 text-[12px] leading-5">
+            <a
+              href="https://open.chineselaw.com/user/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent underline hover:opacity-80"
+            >
+              {t('pluginMcpYuandianKeyGetLink')}
+            </a>
+          </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {YUANDIAN_MCP_ENDPOINTS.map((endpoint) => (
               <span
@@ -2814,6 +2891,21 @@ function YuandianConfigPanel({
               </span>
             ))}
           </div>
+          {isPrimary ? (
+            <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-ds-userbubble/10 px-2.5 py-1 text-[12px] font-semibold text-ds-userbubble">
+              <Check className="h-3.5 w-3.5" strokeWidth={2} />
+              {t('pluginMcpPrimaryCurrent', { source: t('pluginMcpSourceYuandian') })}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onSetPrimary}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-ds-border bg-ds-card px-2.5 py-1 text-[12px] font-medium text-ds-ink transition hover:bg-ds-hover"
+            >
+              {t('pluginMcpPrimarySet')}
+            </button>
+          )}
+          <p className="mt-1.5 text-[11px] leading-4 text-ds-faint">{t('pluginMcpPrimaryHint')}</p>
         </div>
         <div data-control-hover-root className="flex shrink-0 items-center gap-2 md:pt-5">
           <button

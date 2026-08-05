@@ -47,6 +47,18 @@ function runtimeErrorCode(payload: RuntimeErrorPayload | null, raw: string): str
   if (lowered.includes('runtime unhealthy')) return 'runtime_unhealthy'
   if (lowered.includes('active turn')) return 'turn_in_progress'
   if (lowered.includes('preload bridge missing')) return 'preload_bridge_missing'
+  // 模型 API 余额不足：即使 code 未随错误透传，也能从消息文本反解。
+  if (
+    lowered.includes('insufficient_balance') ||
+    lowered.includes('insufficient balance') ||
+    lowered.includes('balance is insufficient') ||
+    lowered.includes('余额不足') ||
+    lowered.includes('额度不足') ||
+    /(^|[\s(])http 402(\s|$|[:，,])/.test(lowered) ||
+    lowered.includes('quota') && /(exhausted|insufficient)/.test(lowered)
+  ) {
+    return 'insufficient_balance'
+  }
   if (
     lowered.includes('managed runtime npm package missing') ||
     lowered.includes('legalwork npm package missing') ||
@@ -82,6 +94,10 @@ function localizedRuntimeSummary(code: string | null, text: string): string | nu
 
   if (code === 'fetch_failed' || lowered.includes('fetch failed')) {
     return i18n.t('common:runtimeFetchFailed')
+  }
+
+  if (code === 'insufficient_balance') {
+    return i18n.t('common:runtimeInsufficientBalance')
   }
 
   if (code === 'missing_api_key') {

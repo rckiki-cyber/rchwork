@@ -138,18 +138,13 @@ const MATERIAL_DOCUMENT_SUBJECT_FIELD: LegalTemplateField = {
 }
 
 export function canGenerateDocument(options: {
-  missingRequiredFieldCount: number
-  missingExplicitFieldCount: number
-  missingDocumentSubjectCount?: number
-  missingInstructionCount?: number
-  loadedMaterialCount: number
+  hasMaterial: boolean
+  hasPastedText: boolean
+  hasAnyFieldFilled: boolean
 }): boolean {
-  return (
-    (options.missingDocumentSubjectCount ?? 0) === 0 &&
-    (options.missingInstructionCount ?? 0) === 0 &&
-    options.missingExplicitFieldCount === 0 &&
-    (options.missingRequiredFieldCount === 0 || options.loadedMaterialCount > 0)
-  )
+  // 生成依据可以是「上传材料」「粘贴/输入的文字」或「用户填写的任一字段」，
+  // 三者择一即可。都不满足时才认为需要补充。
+  return options.hasMaterial || options.hasPastedText || options.hasAnyFieldFilled
 }
 
 export function getDocumentWordExportSuccessMessage(result: {
@@ -243,27 +238,7 @@ export function DocumentWritingEditor({
     [uploadedMaterials]
   )
   const hasLoadedMaterials = loadedMaterialCount > 0
-  const documentSubjectMissing =
-    hasLoadedMaterials && !fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim()
-  const instructionMissing = hasLoadedMaterials && !instruction.trim()
-
-  const missingRequiredFields = useMemo(() => {
-    if (!template) return []
-    if (hasLoadedMaterials) {
-      return documentSubjectMissing ? [MATERIAL_DOCUMENT_SUBJECT_FIELD.label] : []
-    }
-    return template.fields
-      .filter((f) => f.required && !fieldValues[f.id]?.trim())
-      .map((f) => f.label)
-  }, [documentSubjectMissing, fieldValues, hasLoadedMaterials, template])
-
-  const missingExplicitFields = useMemo(() => {
-    if (!template) return []
-    if (hasLoadedMaterials) return []
-    return template.fields
-      .filter((f) => f.required && f.type === 'select' && !fieldValues[f.id]?.trim())
-      .map((f) => f.label)
-  }, [fieldValues, hasLoadedMaterials, template])
+  const hasPastedText = instruction.trim().length > 0
 
   const visibleFields = useMemo(() => {
     if (!template) return []
@@ -277,17 +252,20 @@ export function DocumentWritingEditor({
   const completedFieldCount = useMemo(
     () =>
       (template?.fields.filter((field) => fieldValues[field.id]?.trim()).length ?? 0) +
-      (hasLoadedMaterials && fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim() ? 1 : 0) +
-      (hasLoadedMaterials && instruction.trim() ? 1 : 0),
-    [fieldValues, hasLoadedMaterials, instruction, template]
+      (fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim() ? 1 : 0),
+    [fieldValues, template]
   )
-  const displayedFieldCount = (template?.fields.length ?? 0) + (hasLoadedMaterials ? 2 : 0)
+  const displayedFieldCount = (template?.fields.length ?? 0) + 1
+  const hasAnyFieldFilled = useMemo(
+    () =>
+      Boolean(fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim()) ||
+      Boolean(template?.fields.some((field) => fieldValues[field.id]?.trim())),
+    [fieldValues, template]
+  )
   const canGenerate = canGenerateDocument({
-    missingRequiredFieldCount: missingRequiredFields.length,
-    missingExplicitFieldCount: missingExplicitFields.length,
-    missingDocumentSubjectCount: documentSubjectMissing ? 1 : 0,
-    missingInstructionCount: instructionMissing ? 1 : 0,
-    loadedMaterialCount
+    hasMaterial: hasLoadedMaterials,
+    hasPastedText,
+    hasAnyFieldFilled
   })
 
   if (!template) {
@@ -458,9 +436,9 @@ export function DocumentWritingEditor({
                         <FileUp className="h-[18px] w-[18px]" strokeWidth={1.8} />
                       </span>
                       <div>
-                        <h3 className="text-[14px] font-semibold text-[var(--ds-ink)]">上传案件材料</h3>
+                        <h3 className="text-[14px] font-semibold text-[var(--ds-ink)]">上传材料 / 粘贴案情</h3>
                         <p className="mt-0.5 text-[11.5px] leading-4 text-[var(--ds-faint)]">
-                          AI 会优先读取材料，并自动补充下方信息
+                          二选一即可，也可并用；AI 会从这些内容中自动提取事实并撰写文书
                         </p>
                       </div>
                     </div>
@@ -529,6 +507,28 @@ export function DocumentWritingEditor({
                       className="hidden"
                     />
                   </div>
+
+                  {onUpdateInstruction && (
+                    <div className="mt-4">
+                      <label className="mb-1.5 block text-[12px] font-medium text-[var(--ds-ink)]">
+                        粘贴/输入案情文字
+                        <span className="ml-1 font-normal text-[var(--ds-faint)]">（可选）</span>
+                      </label>
+                      <div className="document-writing-control-shell min-h-[96px]">
+                        <textarea
+                          value={instruction}
+                          onChange={(event) => onUpdateInstruction(event.target.value)}
+                          placeholder="可直接粘贴案情描述、争议焦点或需要 AI 参考的文字……"
+                          rows={3}
+                          maxLength={5000}
+                          className="document-writing-control min-h-[94px] w-full resize-none border-0 bg-transparent px-3.5 py-3 text-[13px] text-[var(--ds-ink)] placeholder-[var(--ds-faint)] outline-none"
+                        />
+                      </div>
+                      <p className="mt-1.5 text-[10.5px] leading-4 text-[var(--ds-faint)]">
+                        与上传材料择一即可，也可并用；AI 会从这些内容中提取事实并撰写文书。
+                      </p>
+                    </div>
+                  )}
                 </section>
               )}
 
@@ -548,48 +548,19 @@ export function DocumentWritingEditor({
                 </div>
 
                 <div className="document-writing-fields px-5 pb-5">
-                  {hasLoadedMaterials && (
-                    <>
-                      <div className="document-writing-field-wide">
-                        <label className="mb-1.5 block text-[12px] font-medium text-[var(--ds-ink)]">
-                          {MATERIAL_DOCUMENT_SUBJECT_FIELD.label}
-                          <span className="ml-1 text-red-500">*</span>
-                        </label>
-                        <FieldInput
-                          field={MATERIAL_DOCUMENT_SUBJECT_FIELD}
-                          value={fieldValues[DOCUMENT_SUBJECT_FIELD_ID] ?? ''}
-                          onChange={(value) => onFieldChange(DOCUMENT_SUBJECT_FIELD_ID, value)}
-                        />
-                        <p className="mt-1.5 text-[10.5px] leading-4 text-[var(--ds-faint)]">
-                          请明确本次代表哪一方；其余空缺信息由 Agent 从已上传材料中提取。
-                        </p>
-                      </div>
-
-                      {onUpdateInstruction && (
-                        <div className="document-writing-field-wide">
-                          <label className="mb-1.5 block text-[12px] font-medium text-[var(--ds-ink)]">
-                            {t('documentWritingSupplementalRequirements')}
-                            <span className="ml-1 text-red-500">*</span>
-                          </label>
-                          <div className="document-writing-control-shell min-h-[96px]">
-                            <textarea
-                              value={instruction}
-                              onChange={(event) => onUpdateInstruction(event.target.value)}
-                              placeholder={t('documentWritingSupplementalRequirementsPlaceholder')}
-                              rows={3}
-                              maxLength={5000}
-                              required
-                              aria-required="true"
-                              className="document-writing-control min-h-[94px] w-full resize-none border-0 bg-transparent px-3.5 py-3 text-[13px] text-[var(--ds-ink)] placeholder-[var(--ds-faint)] outline-none"
-                            />
-                          </div>
-                          <p className="mt-1.5 text-[10.5px] leading-4 text-[var(--ds-faint)]">
-                            {t('documentWritingSupplementalRequirementsHint')}
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  )}
+                  <div className="document-writing-field-wide">
+                    <label className="mb-1.5 block text-[12px] font-medium text-[var(--ds-ink)]">
+                      {MATERIAL_DOCUMENT_SUBJECT_FIELD.label}
+                    </label>
+                    <FieldInput
+                      field={MATERIAL_DOCUMENT_SUBJECT_FIELD}
+                      value={fieldValues[DOCUMENT_SUBJECT_FIELD_ID] ?? ''}
+                      onChange={(value) => onFieldChange(DOCUMENT_SUBJECT_FIELD_ID, value)}
+                    />
+                    <p className="mt-1.5 text-[10.5px] leading-4 text-[var(--ds-faint)]">
+                      可留空；AI 会从材料或粘贴文字中识别我方立场。
+                    </p>
+                  </div>
                   {visibleFields.map((field) => (
                     <div
                       key={field.id}
@@ -597,7 +568,6 @@ export function DocumentWritingEditor({
                     >
                       <label className="mb-1.5 block text-[12px] font-medium text-[var(--ds-ink)]">
                         {field.label}
-                        {!hasLoadedMaterials && field.required && <span className="ml-1 text-red-500">*</span>}
                       </label>
                       <FieldInput
                         field={field}
@@ -619,24 +589,6 @@ export function DocumentWritingEditor({
                   </button>
                 )}
               </section>
-
-              {onUpdateInstruction && !hasLoadedMaterials && (
-                <section className="document-writing-card p-5">
-                  <label className="mb-3 block">
-                    <span className="block text-[14px] font-semibold text-[var(--ds-ink)]">补充要求</span>
-                    <span className="mt-0.5 block text-[11.5px] text-[var(--ds-faint)]">可选，用于说明表达风格或需要重点呈现的事实</span>
-                  </label>
-                  <div className="document-writing-control-shell min-h-[96px]">
-                    <textarea
-                      value={instruction}
-                      onChange={(event) => onUpdateInstruction(event.target.value)}
-                      placeholder="例如：使用正式法律语言，重点说明我方当事人无过错……"
-                      rows={3}
-                      className="document-writing-control min-h-[94px] w-full resize-none border-0 bg-transparent px-3.5 py-3 text-[13px] text-[var(--ds-ink)] placeholder-[var(--ds-faint)] outline-none"
-                    />
-                  </div>
-                </section>
-              )}
             </main>
 
             <aside className="min-w-0">
@@ -671,7 +623,7 @@ export function DocumentWritingEditor({
                 <button
                   type="button"
                   onClick={onGenerate}
-                  disabled={generating || !canGenerate}
+                  disabled={generating}
                   className="document-writing-primary-button w-full"
                 >
                   {generating ? (
@@ -682,29 +634,17 @@ export function DocumentWritingEditor({
                   <span>{generating ? t('documentWritingGenerating') : t('documentWritingGenerate')}</span>
                 </button>
 
-                {documentSubjectMissing ? (
-                  <div className="mt-3 flex items-start gap-2 px-1 text-[11px] leading-[1.55] text-[var(--ds-faint)]">
-                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
-                    <span>请填写文书涉及主体，明确本次代表哪一方；其他字段由 Agent 从材料提取。</span>
-                  </div>
-                ) : instructionMissing ? (
-                  <div className="mt-3 flex items-start gap-2 px-1 text-[11px] leading-[1.55] text-[var(--ds-faint)]">
-                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
-                    <span>{t('documentWritingSupplementalRequirementsMissing')}</span>
-                  </div>
-                ) : missingRequiredFields.length > 0 ? (
-                  <div className="mt-3 flex items-start gap-2 px-1 text-[11px] leading-[1.55] text-[var(--ds-faint)]">
-                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
-                    <span>
-                      {missingExplicitFields.length > 0
-                        ? `请先选择：${missingExplicitFields.join('、')}`
-                        : '请填写必填内容，或上传一份可读取的案件材料，由 Agent 自动提取并撰写。'}
-                    </span>
-                  </div>
-                ) : (
+                {canGenerate ? (
                   <div className="mt-3 flex items-center gap-2 px-1 text-[11px] text-[var(--ds-success)]">
                     <CircleCheck className="h-3.5 w-3.5" strokeWidth={1.9} />
-                    {hasLoadedMaterials ? t('documentWritingMaterialGuidanceReady') : '关键信息已就绪'}
+                    {hasLoadedMaterials || hasPastedText
+                      ? '已就绪，AI 会从材料/文字中提取并撰写'
+                      : '关键信息已就绪'}
+                  </div>
+                ) : (
+                  <div className="mt-3 flex items-start gap-2 px-1 text-[11px] leading-[1.55] text-[var(--ds-faint)]">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+                    <span>请上传材料、粘贴案情文字，或填写必要的文书信息后再生成。</span>
                   </div>
                 )}
               </div>

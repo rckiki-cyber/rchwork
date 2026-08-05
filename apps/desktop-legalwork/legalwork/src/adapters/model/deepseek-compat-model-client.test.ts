@@ -75,4 +75,57 @@ describe('DeepseekCompatModelClient Kimi Code compatibility', () => {
     expect(body.reasoning_effort).toBe('medium')
     expect(body).not.toHaveProperty('thinking')
   })
+
+  it('classifies HTTP 402 as insufficient_balance', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response('Insufficient Balance', { status: 402 })
+    )
+    const client = new DeepseekCompatModelClient({
+      baseUrl: 'https://api.kimi.com/coding/v1',
+      apiKey: 'sk-kimi',
+      model: 'kimi-for-coding',
+      endpointFormat: 'chat_completions',
+      nonStreaming: true,
+      modelCapabilities: modelCapabilitiesForModel,
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    })
+
+    const chunks = []
+    for await (const chunk of client.stream(request())) {
+      chunks.push(chunk)
+    }
+
+    const error = chunks.find((chunk) => chunk.kind === 'error')
+    expect(error?.kind).toBe('error')
+    if (error?.kind === 'error') {
+      expect(error.code).toBe('insufficient_balance')
+      expect(error.message).toContain('余额不足')
+    }
+  })
+
+  it('classifies HTTP 429 as rate_limited', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response('Too Many Requests', { status: 429 })
+    )
+    const client = new DeepseekCompatModelClient({
+      baseUrl: 'https://api.kimi.com/coding/v1',
+      apiKey: 'sk-kimi',
+      model: 'kimi-for-coding',
+      endpointFormat: 'chat_completions',
+      nonStreaming: true,
+      modelCapabilities: modelCapabilitiesForModel,
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    })
+
+    const chunks = []
+    for await (const chunk of client.stream(request())) {
+      chunks.push(chunk)
+    }
+
+    const error = chunks.find((chunk) => chunk.kind === 'error')
+    expect(error?.kind).toBe('error')
+    if (error?.kind === 'error') {
+      expect(error.code).toBe('rate_limited')
+    }
+  })
 })

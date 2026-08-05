@@ -6,49 +6,44 @@ import {
 } from './DocumentWritingEditor'
 
 describe('document-writing generation readiness', () => {
-  it('does not claim generation is ready when required fields and materials are both absent', () => {
+  it('does not claim generation is ready when there is no material, no pasted text, and no filled field', () => {
     expect(canGenerateDocument({
-      missingRequiredFieldCount: 1,
-      missingExplicitFieldCount: 0,
-      loadedMaterialCount: 0
+      hasMaterial: false,
+      hasPastedText: false,
+      hasAnyFieldFilled: false
     })).toBe(false)
   })
 
-  it('allows the Agent to fill missing text fields from a loaded material', () => {
+  it('allows generation from a loaded material even with no fields filled', () => {
     expect(canGenerateDocument({
-      missingRequiredFieldCount: 3,
-      missingExplicitFieldCount: 0,
-      missingDocumentSubjectCount: 0,
-      loadedMaterialCount: 1
+      hasMaterial: true,
+      hasPastedText: false,
+      hasAnyFieldFilled: false
     })).toBe(true)
   })
 
-  it('requires the user to identify the represented party when materials are present', () => {
+  it('allows generation from pasted text even with no material and no fields filled', () => {
     expect(canGenerateDocument({
-      missingRequiredFieldCount: 3,
-      missingExplicitFieldCount: 0,
-      missingDocumentSubjectCount: 1,
-      loadedMaterialCount: 2
-    })).toBe(false)
+      hasMaterial: false,
+      hasPastedText: true,
+      hasAnyFieldFilled: false
+    })).toBe(true)
   })
 
-  it('requires supplementary instructions when materials are present', () => {
+  it('allows generation from a filled field even with no material and no pasted text', () => {
     expect(canGenerateDocument({
-      missingRequiredFieldCount: 0,
-      missingExplicitFieldCount: 0,
-      missingDocumentSubjectCount: 0,
-      missingInstructionCount: 1,
-      loadedMaterialCount: 1
-    })).toBe(false)
+      hasMaterial: false,
+      hasPastedText: false,
+      hasAnyFieldFilled: true
+    })).toBe(true)
   })
 
-  it('still requires explicit select fields when the no-material flow uses them', () => {
+  it('allows generation when material and pasted text are both present', () => {
     expect(canGenerateDocument({
-      missingRequiredFieldCount: 1,
-      missingExplicitFieldCount: 1,
-      missingDocumentSubjectCount: 0,
-      loadedMaterialCount: 0
-    })).toBe(false)
+      hasMaterial: true,
+      hasPastedText: true,
+      hasAnyFieldFilled: false
+    })).toBe(true)
   })
 
   it('keeps legal-document list markers close to their text in the preview', () => {

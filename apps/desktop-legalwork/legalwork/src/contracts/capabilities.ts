@@ -151,9 +151,15 @@ export const McpServerConfig = z
   })
 export type McpServerConfig = z.infer<typeof McpServerConfig>
 
+/** 首要法律调研 MCP 源：北大法宝(pkulaw) 或 元典(yuandian)。 */
+export const LegalResearchPrimarySource = z.enum(['pkulaw', 'yuandian'])
+export type LegalResearchPrimarySource = z.infer<typeof LegalResearchPrimarySource>
+
 export const McpCapabilityConfig = CapabilityToggleConfig.extend({
   servers: z.record(z.string().min(1), McpServerConfig).default({}),
-  search: McpSearchConfig.default(() => McpSearchConfig.parse({}))
+  search: McpSearchConfig.default(() => McpSearchConfig.parse({})),
+  /** 首选的法律调研 MCP 源。缺省时不注入指引（保持默认北大法宝为先是系统提示词的默认行为）。 */
+  primaryLegalSource: LegalResearchPrimarySource.optional()
 }).strict()
 export type McpCapabilityConfig = z.infer<typeof McpCapabilityConfig>
 

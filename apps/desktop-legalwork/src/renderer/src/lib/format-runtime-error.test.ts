@@ -35,4 +35,21 @@ describe('format runtime error', () => {
     expect(getRuntimeErrorCode(error)).toBe('fetch_failed')
     expect(formatRuntimeError(error)).toBe(i18n.t('common:runtimeFetchFailed'))
   })
+
+  it('detects insufficient balance from code field and shows localized summary', () => {
+    const error = new Error(JSON.stringify({
+      code: 'insufficient_balance',
+      message: 'model API 余额不足或配额已耗尽 (HTTP 402): Insufficient Balance'
+    }))
+
+    expect(getRuntimeErrorCode(error)).toBe('insufficient_balance')
+    expect(formatRuntimeError(error)).toBe(i18n.t('common:runtimeInsufficientBalance'))
+  })
+
+  it('detects insufficient balance from plain HTTP 402 message without code', () => {
+    const error = new Error('model request failed with status 402: Insufficient Balance')
+
+    expect(getRuntimeErrorCode(error)).toBe('insufficient_balance')
+    expect(formatRuntimeError(error)).toBe(i18n.t('common:runtimeInsufficientBalance'))
+  })
 })

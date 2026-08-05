@@ -41,6 +41,8 @@ export type ChildAgentExecutorOptions = {
   modelCapabilities?: (model: string) => ModelCapabilityMetadata
   skillRuntime?: SkillRuntime
   memoryStore?: MemoryStore
+  /** 首选的法律调研 MCP 源。透传给子 agent 的 AgentLoop，保持首要源指引一致。 */
+  primaryLegalSource?: 'pkulaw' | 'yuandian'
 }
 
 export function createChildAgentExecutor(options: ChildAgentExecutorOptions): ChildRunExecutor {
@@ -103,6 +105,7 @@ export function createChildAgentExecutor(options: ChildAgentExecutorOptions): Ch
       ...(options.tokenEconomy ? { tokenEconomy: options.tokenEconomy } : {}),
       ...(options.runtime?.toolStorm ? { toolStorm: options.runtime.toolStorm } : {}),
       ...(options.runtime?.toolArgumentRepair ? { toolArgumentRepair: options.runtime.toolArgumentRepair } : {}),
+      ...(options.primaryLegalSource ? { primaryLegalSource: options.primaryLegalSource } : {}),
       onToolError: (info) => reportToolErrorNow(info),
     onInefficientTurn: (info) => reportInefficientTurnNow(info)
     })

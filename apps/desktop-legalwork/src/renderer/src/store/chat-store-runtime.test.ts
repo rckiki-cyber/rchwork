@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import i18n from '../i18n'
 import type { ChatBlock } from '../agent/types'
 import {
   buildThreadEventSink,
@@ -180,6 +181,52 @@ describe('thread event sink runtime errors', () => {
       'user',
       'error'
     ])
+  })
+
+  it('clears busy on insufficient balance even when the turn is mid-flight', () => {
+    const blocks: ChatBlock[] = [
+      { kind: 'user', id: 'user-1', text: 'run research' },
+      {
+        kind: 'tool',
+        id: 'tool-1',
+        summary: 'Searching',
+        status: 'running',
+        toolKind: 'command_execution'
+      }
+    ]
+    const state = {
+      activeThreadId: 'thr-1',
+      blocks,
+      busy: true,
+      currentTurnId: 'turn-1',
+      currentTurnUserId: 'user-1',
+      error: null,
+      liveAssistant: '',
+      liveReasoning: '',
+      turnStartedAtByUserId: { 'user-1': Date.now() - 1000 },
+      turnDurationByUserId: {},
+      turnReasoningFirstAtByUserId: {},
+      turnReasoningLastAtByUserId: {}
+    } as unknown as ChatState
+    const set = (partial: Partial<ChatState> | ((value: ChatState) => Partial<ChatState>)): void => {
+      Object.assign(state, typeof partial === 'function' ? partial(state) : partial)
+    }
+    // mock showTurnCompleteNotification so the notification branch does not throw
+    ;(globalThis as { window?: { dsGui?: Record<string, unknown> } }).window = {
+      dsGui: {
+        showTurnCompleteNotification: vi.fn().mockResolvedValue({ ok: true })
+      }
+    }
+
+    buildThreadEventSink(set, () => state).onError(
+      new Error('model API 余额不足或配额已耗尽 (HTTP 402): Insufficient Balance')
+    )
+
+    expect(state.busy).toBe(false)
+    expect(state.currentTurnId).toBeNull()
+    expect(state.currentTurnUserId).toBeNull()
+    expect(state.error).toBe(i18n.t('common:runtimeInsufficientBalance'))
+    delete (globalThis as { window?: unknown }).window
   })
 })
 

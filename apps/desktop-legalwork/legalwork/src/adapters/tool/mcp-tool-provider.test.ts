@@ -445,6 +445,7 @@ describe('buildMcpToolProviders', () => {
 
     expect(tool.inputSchema).toMatchObject({ additionalProperties: false })
     expect(tool.description).toContain('prefer one batch call')
+    expect(tool.description).toContain('Unknown command save')
     expect(tool.inputSchema).toMatchObject({
       properties: {
         commands: { type: 'array' },

@@ -94,24 +94,41 @@ export function documentWritingStageForTool(summary: string, toolName?: string):
   return 'analysis'
 }
 
+/**
+ * Escape content embedded inside a ```text code fence so a stray ``` in the
+ * pasted text or material cannot break out of the fence and inject raw
+ * markdown/instructions into the prompt.
+ */
+function escapeFencedText(value: string): string {
+  return value.replace(/```/g, '\\`\\`\\`')
+}
+
 function fieldsForPrompt(request: TemplateGenerateWithMaterialsRequest): string {
   return request.template.fields
     .map((field) => {
       const value = request.fieldValues[field.id]?.trim()
-      return `- ${field.label}：${value || '（未填写；有材料时由 Agent 主动提取，不代表该事实缺失）'}`
+      return `- ${field.label}：${value || '（未填写；有材料或粘贴文字时由 Agent 主动提取，不代表该事实缺失）'}`
     })
     .join('\n')
 }
 
 function materialsForPrompt(request: TemplateGenerateWithMaterialsRequest): string {
-  if (!request.materials?.length) return '（用户尚未上传案件材料，请仅基于已填写信息并明确标注待核实内容。）'
+  if (!request.materials?.length) {
+    return '（用户未上传案件材料；若下方提供了粘贴文字，请同样将其视为事实来源，仅基于已填写信息与粘贴文字并明确标注待核实内容。）'
+  }
   return request.materials
-    .map((material) => `### ${material.fileName}\n\`\`\`text\n${material.content.slice(0, 20_000)}\n\`\`\``)
+    .map((material) => `### ${material.fileName}\n\`\`\`text\n${escapeFencedText(material.content.slice(0, 20_000))}\n\`\`\``)
     .join('\n\n')
+}
+
+function pastedTextForPrompt(request: TemplateGenerateWithMaterialsRequest): string | null {
+  const text = request.instructions?.trim()
+  return text ? escapeFencedText(text.slice(0, 20_000)) : null
 }
 
 export function buildDocumentWritingAgentPrompt(request: TemplateGenerateWithMaterialsRequest): string {
   const hasMaterials = Boolean(request.materials?.length)
+  const hasPastedText = Boolean(request.instructions?.trim())
   const documentSubject = request.fieldValues[DOCUMENT_SUBJECT_FIELD_ID]?.trim()
   const legalBasis = request.template.legalBasis?.length
     ? request.template.legalBasis.map((item) => `- ${item}`).join('\n')
@@ -123,19 +140,19 @@ export function buildDocumentWritingAgentPrompt(request: TemplateGenerateWithMat
     ? '本任务已提供用户上传模板，属于最高优先级。必须以该模板为主，不得调用或改用隐藏内置模板；最终正文的段落、标题、表格单元格及签署区顺序应与模板逐项对应，避免随意增删结构，以便原位写回原 DOCX。'
     : '本任务没有用户上传模板。起草民事起诉状或民事答辩状时，必须先调用 resolve_legal_document_template；匹配成功则以内置模板为主，未匹配时才根据材料自主组织结构。'
 
-  const materialFactInstruction = hasMaterials
-    ? `用户已经上传案件材料。必须先完成“材料事实台账”，再开始写文书：
-- 判决书、裁定书等材料在当事人栏、审理查明、法院认为、裁判主文及落款中明确载明的姓名/名称、身份、法定代表人、地址、案号、法院、案由、诉讼请求、裁判结果和日期，均属于可以直接写入文书的材料记载事实；无需等待用户再次填写，也不得仅因尚未用营业执照等其他材料二次核验而拒绝填写。必要时可表述为“据判决书载明”。
-- 对每个界面空字段，必须逐一在全部材料中检索同义信息；字段为空只表示用户未手工填写，不表示材料没有该事实。
-- 只要材料中存在明确答案，就直接写入正文。严禁输出“待核实：请填写”“结合判决书请填写”“请与营业执照核对”等把材料分析工作退回用户的提示。
-- 只有全部材料都没有记载、无法由上下文唯一确定且该项对文书确有必要时，才可使用【待核实：具体缺失事项】；非必要的未知栏目应省略，不得成片保留模板占位语。
-- 材料间存在实质冲突时，列明具体冲突内容并标注待核实；不得把单一材料中已明确记载的信息误判为冲突。`
-    : '用户未上传案件材料。仅对现有字段也未提供且文书确有必要的信息使用【待核实：具体缺失事项】，不要输出泛泛的“请填写”。'
+  const materialFactInstruction = hasMaterials || hasPastedText
+    ? `用户已提供事实来源（上传材料${hasPastedText ? '或粘贴的案情文字' : ''}）。必须先完成“事实台账”，再开始写文书：
+- 材料或粘贴文字中明确载明的姓名/名称、身份、法定代表人、地址、案号、法院、案由、诉讼请求、裁判结果和日期，均属于可以直接写入文书的事实；无需等待用户再次填写，也不得仅因尚未二次核验而拒绝填写。必要时可表述为“据材料载明”。
+- 对每个界面空字段，必须逐一在全部事实来源中检索同义信息；字段为空只表示用户未手工填写，不表示材料没有该事实。
+- 只要事实来源中存在明确答案，就直接写入正文。严禁输出“待核实：请填写”“请补充材料”等把分析工作退回用户的提示。
+- 只有全部事实来源都没有记载、无法由上下文唯一确定且该项对文书确有必要时，才可使用【待核实：具体缺失事项】；非必要的未知栏目应省略，不得成片保留模板占位语。
+- 事实来源间存在实质冲突时，列明具体冲突内容并标注待核实；不得把单一来源中已明确记载的信息误判为冲突。`
+    : '用户未提供任何事实来源（无上传材料、无粘贴文字）。仅对现有字段也未提供且文书确有必要的信息使用【待核实：具体缺失事项】，不要输出泛泛的“请填写”。'
 
   return `你正在执行 LegalWork 文书写作任务。界面已收集用户的文书类型、字段和写作要求；不要再次要求用户填写偏好。
 
-0. 确认立场：用户明确指定本次文书代表的主体为“${documentSubject || '（未确认）'}”。这是判断委托人、我方当事人、诉讼立场和行文视角的最高优先级依据；不得根据材料自行猜测用户代表哪一方。
-1. 落实用户要求：将“用户补充要求”作为确定诉讼目标、表达倾向、论证重点和行文取舍的高优先级依据，不得写出与用户明确倾向相反的立场；但不得据此篡改事实、法律或材料原意。
+0. 确认立场：用户指定本次文书代表的主体为“${documentSubject || '（未指定）'}”。若用户已填写，以该主体作为判断委托人、我方当事人、诉讼立场和行文视角的最高优先级依据；若用户未指定但提供了上传材料或粘贴文字，则从其中明确记载的当事人中识别本次文书所代表的一方，并以“据材料载明”表述；两者都无法确定时，才使用【待核实：我方主体】。
+1. 落实用户要求：将“用户补充要求/粘贴文字”作为确定诉讼目标、表达倾向、论证重点和行文取舍的高优先级依据，不得写出与用户明确倾向相反的立场；但不得据此篡改事实、法律或材料原意。
 2. 理解材料：先阅读全部材料，提取当事人、事实、时间线、证据、已知诉求与真正缺失的信息；区分裁判文书记载事实、当事人主张和确实无法确认的信息。
 3. 归纳争议：列出文书必须回应的争议焦点、证明责任和需要补充的事实。
 4. 选择模板：${templatePriorityInstruction}
@@ -158,12 +175,17 @@ ${legalBasis}
 ## 用户填写信息
 ${fieldsForPrompt(request)}
 
-## 用户确认的文书涉及主体（必须据此确定我方立场）
-${documentSubject || '（未确认；有材料时应在生成前阻止）'}
+## 文书涉及主体（未指定时从材料/粘贴文字中识别）
+${documentSubject || '（未指定）'}
 
 ## 案件材料
 ${materialsForPrompt(request)}
 
+${hasPastedText ? `## 用户粘贴的案情文字（与上传材料同样作为事实来源）
+\`\`\`text
+${pastedTextForPrompt(request)}
+\`\`\`
+` : ''}
 ## 模板结构参考
 ${request.template.content.slice(0, 3_000)}
 

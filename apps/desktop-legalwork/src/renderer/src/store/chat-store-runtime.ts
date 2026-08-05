@@ -157,6 +157,11 @@ function isInterruptSettledError(error: unknown, message: string): boolean {
     lowered.includes('canceled')
 }
 
+/** 判断错误是否为"模型 API 余额不足/配额耗尽"（确定性失败，需用户充值）。 */
+function isInsufficientBalanceError(error: unknown): boolean {
+  return getRuntimeErrorCode(error) === 'insufficient_balance'
+}
+
 export function runtimeErrorDetail(error: unknown): string {
   const view = describeRuntimeError(error)
   if (view.detail) return view.detail
@@ -976,6 +981,7 @@ export function buildThreadEventSink(
       const message = formatRuntimeError(err)
       const detail = runtimeErrorDetail(err)
       const interrupted = isInterruptSettledError(err, message)
+      const insufficientBalance = isInsufficientBalanceError(err)
       takePendingClawFeishuMirror(state.currentTurnId)
       set((s) => {
         const wasBusy = s.busy
@@ -988,7 +994,8 @@ export function buildThreadEventSink(
         // should stay visible so the user can interrupt a stuck turn. The
         // watchdog (re-armed below) will eventually time out if the turn
         // never recovers.
-        if (!wasBusy || interrupted) {
+        // 余额不足是确定性失败：立即退出 busy，避免界面一直"思考中"且无提示。
+        if (!wasBusy || interrupted || insufficientBalance) {
           out.busy = false
           out.currentTurnId = null
           out.currentTurnUserId = null
@@ -996,6 +1003,14 @@ export function buildThreadEventSink(
         }
         return out
       })
+      // 余额不足时发一次系统通知，明确提醒用户充值。
+      if (insufficientBalance && state.currentTurnId && typeof window.dsGui?.showTurnCompleteNotification === 'function') {
+        void window.dsGui.showTurnCompleteNotification({
+          threadId: state.currentTurnId,
+          title: i18n.t('common:runtimeInsufficientBalanceNotificationTitle'),
+          body: i18n.t('common:runtimeInsufficientBalanceNotificationBody')
+        }).catch(() => undefined)
+      }
       // Re-arm the watchdog so a stuck SSE stream doesn't leave the UI
       // permanently in the busy state.
       if (get().busy) armBusyWatchdog(set, get)

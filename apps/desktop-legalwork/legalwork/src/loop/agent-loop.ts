@@ -517,6 +517,8 @@ export type AgentLoopOptions = {
    * default (or LEGALWORK_TURN_TOKEN_BUDGET env).
    */
   turnTokenBudget?: number
+  /** 首选的法律调研 MCP 源。有值时在每轮注入"优先使用 + 失败回退"指引。 */
+  primaryLegalSource?: 'pkulaw' | 'yuandian'
   toolStorm?: ToolStormBreakerOptions & { enabled?: boolean }
   toolArgumentRepair?: {
     maxStringBytes?: number
@@ -947,6 +949,7 @@ export class AgentLoop {
       ...(officeWorkflowInstruction ? [officeWorkflowInstruction] : []),
       ...(requestToolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
       ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : []),
+      ...(this.opts.primaryLegalSource ? [primaryLegalSourceInstruction(this.opts.primaryLegalSource)] : []),
       ...(this.armTurnBudgetWrapUp(turnId) ? [TURN_BUDGET_WRAPUP_INSTRUCTION] : [])
     ]
     await this.recordPipelineStage(threadId, turnId, 'input_remembered', {
@@ -2564,6 +2567,17 @@ function memoryInstructions(memories: Array<{ id: string; content: string; scope
       ...memories.map((memory) => `- [${memory.id}] (${memory.scope}) ${memory.content}`)
     ].join('\n')
   ]
+}
+
+/** 首选法律调研源的指引：优先使用首要源，其鉴权/配额失败时换用另一源。 */
+function primaryLegalSourceInstruction(source: 'pkulaw' | 'yuandian'): string {
+  const primary = source === 'pkulaw' ? '北大法宝(PKULaw)' : '元典(Yuandian)'
+  const fallback = source === 'pkulaw' ? '元典(Yuandian)' : '北大法宝(PKULaw)'
+  return (
+    `法律调研时默认优先使用 ${primary} 作为首要来源。` +
+    `若 ${primary} 返回鉴权失败(401/403)、配额不足、积分不足("remaining points")等确定性错误，` +
+    `立即换用已配置的 ${fallback} 或本地知识库/IMA 继续检索，并在回答中如实标注未能核实的来源；不要反复重试同一来源或触发浏览器自动化。`
+  )
 }
 
 function prefixVolatilityStageDetails(
