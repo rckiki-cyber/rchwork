@@ -49,5 +49,7 @@ describe('data compliance history navigation', () => {
     expect(html).toContain('Agent 增强')
     expect(html).toContain('不读取完整原文')
     expect(html).toContain('PDF 文档 (.pdf)')
+    expect(html).toContain('选择文件夹')
+    expect(html).toContain('一次导入整批材料')
   })
 })
