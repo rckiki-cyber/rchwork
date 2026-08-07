@@ -90,6 +90,17 @@ const cumulativeReleaseOverrides = {
       '法律调研更稳定：修了规划后卡住、只出规划没检索、规划跑进总结等问题；仅生成规划未检索会明确提示；阶段播报编号对齐；调研记录不再混进主页对话。'
     ],
   },
+  'v0.3.15': {
+    summary: '知识库检索升级（SQLite FTS 索引）、新增 12 个内嵌法律技能库、自定义 Skill 增强，以及一批稳定性修复。',
+    categories: ['知识库', '技能库', '模型兼容', '稳定性', '体验优化'],
+    highlights: [
+      '知识库检索升级：新增增量 SQLite FTS 索引 + 修订感知缓存 + 结构化分块，按标题层级切分、带出处与哈希，检索更快更准（LEGALWORK_KNOWLEDGE_SQLITE=1 开启）。',
+      '新增 12 个内嵌法律技能库：商标助手、Open-Kimi-PPT、法律可视化、元典法律检索、专利申请/下载、法律问答抽取、引注核查、OPC 法务顾问、裁判文书、代码转专利等。',
+      '自定义 Skill 增强：支持上传纯 Markdown skill，只有 SKILL.md 的 skill 导入后自动补 skill.json，可用 /命令 显式触发、也能关键词自动激活。',
+      '中转站 Claude 调用失败原因透传：不再只报笼统 "Agent turn failed"，余额不足 / HTTP 错误 / 流中断等真实原因会显示出来。',
+      '稳定性与体验修复：脱敏环境 Python 压缩包损坏自动重下；学习线程 Windows 写状态失败自动重试；不影响功能的工具报错不再红色告警；知识库侧栏恢复可拖动；Apple/Windows 字体排版自适应。'
+    ],
+  },
 };
 
 function normalizeReleaseLine(line) {
