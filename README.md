@@ -29,6 +29,17 @@
 > 🏛️ 面向法律专业人士的 AI 赋能平台<br>
 > 集成 OCR 文档识别、敏感信息脱敏、智能案情分析、法律检索、文书生成、合规审查等完整法律 AI 能力
 
+## 🆕 0.3.15 功能更新
+
+- **知识库检索升级**：新增增量 SQLite FTS 索引 + 修订感知缓存 + 结构化分块（按标题层级切分、带出处/哈希），检索更快更准；可用 `LEGALWORK_KNOWLEDGE_SQLITE=1` 开启。
+- **新增 12 个法律技能库内嵌**：商标助手、Open-Kimi-PPT、法律可视化、元典法律检索、专利申请/下载、法律问答抽取、裁判文书、OPC 法务顾问、引注核查等。
+- **支持上传纯 Markdown skill**：只有 SKILL.md 的 skill 导入后自动补 skill.json，可用 `/命令` 显式触发、也能关键词自动激活。
+- **中转站 Claude 调用失败原因透传**：不再只报笼统 "Agent turn failed"，余额不足 / HTTP 错误 / 流中断等真实原因会显示出来。
+- **脱敏环境安装更稳**：Python 压缩包损坏自动校验并重新下载，不再卡在同一个坏文件上反复失败。
+- **界面体验优化**：主对话里不影响功能的工具报错不再红色告警；知识库文件侧栏恢复可拖动调整宽度。
+- **稳定修复**：学习线程 Windows 写状态失败自动重试；Windows/Apple 字体排版自适应。
+- 完整变更见下方「🔄 更新记录 → v0.3.15」。
+
 ## 🆕 0.3.13 功能更新
 
 - **文书写作改版**：上传材料置于首位，下方新增「粘贴/输入案情文字」框；材料/粘贴文字/填写字段三选一即可生成，也可并用；去掉所有字段的必填标记；未提供任何素材时点生成会提醒补充。
@@ -669,6 +680,18 @@ legalwork/
 ## 🔄 更新记录
 
 > 每次代码更新在此追加条目，正式发布 release 时以对应版本号归档。
+
+### v0.3.15
+
+- **知识库检索升级（SQLite FTS）**：新增增量 SQLite FTS 索引（`LEGALWORK_KNOWLEDGE_SQLITE=1` 开启，默认关闭灰度）、修订感知检索缓存、结构化分块（按 `第N章`/标题层级切分，带 headingPath/provenanceId/chunkHash）。检索用 SQLite 粗召回 + 内存精排，与旧评分字节级兼容，失败自动降级。
+- **新增 12 个内嵌法律技能库**：trademark-assistant（商标申请/审查/异议）、open-kimi-ppt（演示文稿）、legal-visualization（可视化）、yuandian-law-search（元典检索）、patent-analysis / patent-download、legal-qa-extractor、legal-visualization、chinese-legal-citation（引注核查）、opc-legal-counsel、court-sms、code2patent 等。
+- **纯 Markdown skill 自动补全**：导入只有 SKILL.md 的 skill 时自动生成最小 skill.json（含 `/命令` 触发 + frontmatter id 迁移），补齐自动调用能力。
+- **中转站 Claude 错误原因透传**：`stop_reason=error` 时产出带原因的 error chunk，turn_failed 透传真实原因（余额不足 / HTTP 4xx / 流中断），不再笼统 "Agent turn failed"。
+- **脱敏环境安装 gzip 校验**：Python 压缩包下载后先校验完整性，损坏自动删除缓存重下（跨平台，Windows 无需 gzip 命令）；校验加 30s 超时兜底。
+- **学习线程 EPERM 修复**：state.json 写入改用 atomicWriteFile（EPERM/EACCES/EBUSY 重试 + 直写降级），Windows 上不再因文件占用导致学习失败。
+- **对话界面优化**：不影响软件功能的工具报错改为中性展示（不再红色告警）；知识库文件侧栏删除 CSS 强制宽度、恢复 JS 拖动；失败的文件修改不再误渲染成 diff。
+- **Apple/Windows 字体排版自适应**：平台自适应字体栈（SF Pro / PingFang / Segoe UI + Cascadia Mono），CJK 渲染修复。
+- **no-project 工作区 / PDF AI 侧栏响应式 / knowledge chat 修复**：合并多项稳定性修复。
 
 ### v0.3.13
 
