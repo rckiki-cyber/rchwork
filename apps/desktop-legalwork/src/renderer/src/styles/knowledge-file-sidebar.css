@@ -1,0 +1,178 @@
+/*
+ * Knowledge-base file preview layout.
+ *
+ * The file viewer currently renders the chat width as a fixed inline pixel value.
+ * Keep the component logic untouched here, but make the actual layout follow the
+ * available preview area so resizing the Electron window never creates a rigid,
+ * overflowing right rail.
+ */
+
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical']) {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+/* Let the document canvas shrink with the window instead of preserving 720 px. */
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > :first-child {
+  min-width: 0 !important;
+  border-right: 0 !important;
+}
+
+/* Automatic proportional sizing replaces the brittle fixed-width drag rail. */
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > [role='separator'][aria-orientation='vertical'] {
+  display: none;
+}
+
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > aside {
+  width: clamp(20rem, 30cqw, 30rem) !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: 0 0 clamp(20rem, 30cqw, 30rem) !important;
+  border-left: 0 !important;
+  background: var(--ds-surface-elevated, var(--ds-bg-canvas));
+  box-shadow: inset 1px 0 0 var(--ds-border);
+  transition:
+    width 180ms ease,
+    flex-basis 180ms ease;
+}
+
+/* Keep the chat chrome visually quieter than the document toolbar. */
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > aside
+  > div:first-child {
+  min-height: 44px;
+  padding-inline: 12px;
+  background: var(--ds-card-ghost, transparent);
+}
+
+/* The panel title duplicated the toolbar label and wrapped into two lines. */
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > aside
+  > div:first-child
+  > div:first-child
+  > span {
+  display: none;
+}
+
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > aside
+  > div:first-child
+  > div:last-child {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > aside
+  > div:last-child {
+  padding: 10px 12px 12px;
+  background: var(--ds-card-ghost, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > aside
+  > div:last-child
+  input {
+  min-width: 0;
+}
+
+/*
+ * On compact windows the chat becomes a right-side drawer. The PDF keeps the
+ * whole canvas width and the existing toolbar button still closes the drawer.
+ */
+@container (max-width: 980px) {
+  .ds-no-drag
+    > header
+    + div:has(> [role='separator'][aria-orientation='vertical'])
+    > aside {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 30;
+    width: min(23rem, calc(100cqw - 3rem)) !important;
+    max-width: 100% !important;
+    flex: none !important;
+    border-left: 1px solid var(--ds-border) !important;
+    box-shadow:
+      -18px 0 44px rgba(15, 23, 42, 0.12),
+      inset 1px 0 0 rgba(255, 255, 255, 0.38);
+  }
+}
+
+@container (max-width: 620px) {
+  .ds-no-drag
+    > header
+    + div:has(> [role='separator'][aria-orientation='vertical'])
+    > aside {
+    width: 100cqw !important;
+    border-left: 0 !important;
+    box-shadow: none;
+  }
+}
+
+/* Prevent the file title and two toolbar actions from colliding on small windows. */
+@media (max-width: 860px) {
+  .ds-no-drag
+    > header:has(+ div > [role='separator'][aria-orientation='vertical']) {
+    gap: 8px;
+    padding-inline: 12px;
+  }
+
+  .ds-no-drag
+    > header:has(+ div > [role='separator'][aria-orientation='vertical'])
+    > div:last-child
+    button {
+    width: 32px;
+    padding-inline: 0;
+    justify-content: center;
+  }
+
+  .ds-no-drag
+    > header:has(+ div > [role='separator'][aria-orientation='vertical'])
+    > div:last-child
+    button
+    span {
+    display: none;
+  }
+}
+
+[data-theme='dark']
+  .ds-no-drag
+  > header
+  + div:has(> [role='separator'][aria-orientation='vertical'])
+  > aside {
+  box-shadow: inset 1px 0 0 var(--ds-border);
+}
+
+@container (max-width: 980px) {
+  [data-theme='dark']
+    .ds-no-drag
+    > header
+    + div:has(> [role='separator'][aria-orientation='vertical'])
+    > aside {
+    box-shadow: -18px 0 46px rgba(0, 0, 0, 0.38);
+  }
+}

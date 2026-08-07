@@ -7,6 +7,7 @@ import './styles/markdown-code.css'
 import './styles/write-editor.css'
 import './styles/apple-typography.css'
 import './styles/apple-liquid-glass.css'
+import './styles/knowledge-file-sidebar.css'
 import App from './App'
 import './i18n'
 
