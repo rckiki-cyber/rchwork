@@ -946,7 +946,7 @@ ${KNOWLEDGE_DIRECT_ANSWER_INSTRUCTION}
                 <AssistantMarkdown
                   text={fileContent.content}
                   streaming={false}
-                  className="ds-markdown ds-chat-answer break-words px-6 py-5 leading-7 text-[15px] text-[var(--ds-ink)]"
+                  className="ds-markdown ds-chat-answer break-words px-6 py-5 leading-7 text-[var(--ds-ink)]"
                 />
               ) : fileContent.type === 'text' ? (
                 <pre className="whitespace-pre-wrap p-6 font-mono text-[14px] leading-[26px] text-[var(--ds-ink)]">
