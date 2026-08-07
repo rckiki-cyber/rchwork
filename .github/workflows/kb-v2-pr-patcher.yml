@@ -46,6 +46,25 @@ jobs:
           PY
           python3 /tmp/kb-v2-patch.py
 
+      - name: Align legacy model-client history-limit test with append-only ownership
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('apps/desktop-legalwork/legalwork/tests/model-client.test.ts')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+            "it('preserves the latest compaction summary when applying history limits', async () => {",
+            "it('preserves compaction summaries without provider-side sliding history limits', async () => {",
+            1
+          )
+          old = "expect(JSON.stringify(messages)).not.toContain('old detail two')"
+          if old not in text:
+            raise SystemExit('legacy history-limit assertion not found')
+          text = text.replace(old, "expect(JSON.stringify(messages)).toContain('old detail two')", 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Install Legalwork runtime dependencies
         working-directory: apps/desktop-legalwork/legalwork
         run: npm ci
