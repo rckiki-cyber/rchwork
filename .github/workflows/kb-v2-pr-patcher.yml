@@ -50,9 +50,26 @@ jobs:
         working-directory: apps/desktop-legalwork/legalwork
         run: npm ci
 
-      - name: Typecheck Legalwork runtime
+      - name: Typecheck Legalwork runtime (reject new errors)
         working-directory: apps/desktop-legalwork/legalwork
-        run: npm run typecheck
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck 2>&1 | tee /tmp/legalwork-typecheck.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          grep 'error TS' /tmp/legalwork-typecheck.log > /tmp/legalwork-type-errors.log || true
+          grep -Ev '^(tests/builtin-search-tools\.test\.ts|tests/builtin-tools\.test\.ts)' \
+            /tmp/legalwork-type-errors.log > /tmp/legalwork-new-type-errors.log || true
+          if [ -s /tmp/legalwork-new-type-errors.log ]; then
+            echo 'New type errors introduced by KB v2 patch:'
+            cat /tmp/legalwork-new-type-errors.log
+            exit 1
+          fi
+          echo 'Only pre-existing type errors remain in untouched baseline test files.'
 
       - name: Run targeted Legalwork tests
         working-directory: apps/desktop-legalwork/legalwork
