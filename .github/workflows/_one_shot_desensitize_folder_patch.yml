@@ -1,16 +1,16 @@
 name: one-shot desensitize folder patch
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/desensitize-folder-batch
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event.pull_request.head.ref == 'feature/desensitize-folder-batch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,14 +85,14 @@ jobs:
             const [dragActive, setDragActive] = useState(false)
             const fileInputRef = useRef<HTMLInputElement>(null)
             const [busy, setBusy] = useState(false)
-          """,
+          """.replace('    const', '  const'),
           """  const [files, setFiles] = useState<File[]>([])
             const [folderRoot, setFolderRoot] = useState('')
             const [dragActive, setDragActive] = useState(false)
             const fileInputRef = useRef<HTMLInputElement>(null)
             const folderInputRef = useRef<HTMLInputElement>(null)
             const [busy, setBusy] = useState(false)
-          """,
+          """.replace('    const', '  const'),
           'folder state'
           )
 
@@ -106,7 +106,7 @@ jobs:
 
             useEffect(() => {
               if (typeof window.dsGui?.onDataComplianceInstallProgress !== 'function') return
-          """,
+          """.replace('\n    useEffect', '\n  useEffect').replace('\n      if', '\n    if'),
           """  useEffect(() => {
             const input = folderInputRef.current
             if (!input) return
@@ -125,7 +125,7 @@ jobs:
 
             useEffect(() => {
               if (typeof window.dsGui?.onDataComplianceInstallProgress !== 'function') return
-          """,
+          """.replace('\n    useEffect', '\n  useEffect').replace('\n      if', '\n    if').replace('\n      const parentDir', '\n    const parentDir').replace('\n      const nextOutputDir', '\n    const nextOutputDir').replace('\n        ?', '\n      ?').replace('\n        :', '\n      :').replace('\n      setOutputDir', '\n    setOutputDir'),
           'folder input effect and default output dir'
           )
 
@@ -138,7 +138,7 @@ jobs:
           }
 
             const onDropFile = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
-          """,
+          """.replace('\n    const onDropFile', '\n  const onDropFile'),
           """  const onPickFile = (event: ChangeEvent<HTMLInputElement>): void => {
             const nextFiles = Array.from(event.target.files ?? [])
             addSelectedFiles(nextFiles)
@@ -164,7 +164,7 @@ jobs:
             }
 
             const onDropFile = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
-          """,
+          """.replace('\n    const onPickFolder', '\n  const onPickFolder').replace('\n      const', '\n    const').replace('\n      if', '\n    if').replace('\n      set', '\n    set').replace('\n        setDocumentName', '\n      setDocumentName').replace('\n      }', '\n    }').replace('\n        setOutputDir', '\n      setOutputDir').replace('\n    const onDropFile', '\n  const onDropFile'),
           'folder picker handler'
           )
 
@@ -183,7 +183,7 @@ jobs:
                 )
               )
             }, [])
-          """,
+          """.replace('\n    const removeFile', '\n  const removeFile').replace('\n      setFiles', '\n    setFiles').replace('\n        current', '\n      current').replace('\n          item', '\n        item').replace('\n        )', '\n      )').replace('\n      )', '\n    )'),
           """  const clearFile = useCallback((): void => {
             setFiles([])
             setFolderRoot('')
@@ -202,7 +202,7 @@ jobs:
                 return next
               })
             }, [])
-          """,
+          """.replace('\n    const removeFile', '\n  const removeFile').replace('\n      setFiles', '\n    setFiles').replace('\n        const next', '\n      const next').replace('\n          item', '\n        item').replace('\n        )', '\n      )').replace('\n        if', '\n      if').replace('\n        return', '\n      return').replace('\n      })', '\n    })'),
           'clear and remove folder state'
           )
 
@@ -286,17 +286,23 @@ jobs:
           test_path = Path('apps/desktop-legalwork/src/renderer/src/components/data-compliance/DataCompliancePanel.test.ts')
           test_source = test_path.read_text(encoding='utf-8')
           old = """    expect(html).toContain('不读取完整原文')
-              expect(html).toContain('PDF 文档 (.pdf)')
-          """
+            expect(html).toContain('PDF 文档 (.pdf)')
+          """.replace('\n    expect', '\n    expect')
           new = """    expect(html).toContain('不读取完整原文')
-              expect(html).toContain('PDF 文档 (.pdf)')
-              expect(html).toContain('选择文件夹')
-              expect(html).toContain('一次导入整批材料')
-          """
+            expect(html).toContain('PDF 文档 (.pdf)')
+            expect(html).toContain('选择文件夹')
+            expect(html).toContain('一次导入整批材料')
+          """.replace('\n    expect', '\n    expect')
           if test_source.count(old) != 1:
-              raise SystemExit('test expectations: expected exactly one match')
+              raise SystemExit(f'test expectations: expected exactly one match, got {test_source.count(old)}')
           test_path.write_text(test_source.replace(old, new, 1), encoding='utf-8')
           PY
+
+      - name: Verify patch markers
+        shell: bash
+        run: |
+          grep -q "选择文件夹" apps/desktop-legalwork/src/renderer/src/components/data-compliance/DataCompliancePanel.tsx
+          grep -q "脱敏后文件" apps/desktop-legalwork/src/renderer/src/components/data-compliance/DataCompliancePanel.tsx
 
       - name: Commit patched source and remove one-shot workflow
         shell: bash
