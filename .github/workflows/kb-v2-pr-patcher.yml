@@ -1,0 +1,69 @@
+name: KB v2 PR patcher
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    if: github.head_ref == 'agent/knowledge-base-v2' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/knowledge-base-v2
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Extract and apply first-round patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/kb-v2-patcher.yml').read_text(encoding='utf-8').splitlines()
+          start = next(i for i, line in enumerate(source) if "python3 <<'PY'" in line) + 1
+          end = next(i for i in range(start, len(source)) if source[i].strip() == 'PY')
+          lines = source[start:end]
+          indent = min((len(line) - len(line.lstrip()) for line in lines if line.strip()), default=0)
+          patch = '\n'.join(line[indent:] for line in lines) + '\n'
+          Path('/tmp/kb-v2-patch.py').write_text(patch, encoding='utf-8')
+          PY
+          python3 /tmp/kb-v2-patch.py
+
+      - name: Install Legalwork runtime dependencies
+        working-directory: apps/desktop-legalwork/legalwork
+        run: npm ci
+
+      - name: Typecheck Legalwork runtime
+        working-directory: apps/desktop-legalwork/legalwork
+        run: npm run typecheck
+
+      - name: Run targeted Legalwork tests
+        working-directory: apps/desktop-legalwork/legalwork
+        run: npx vitest run src/knowledge/knowledge-store.test.ts src/knowledge/knowledge-file-reader.test.ts src/loop/knowledge-qa-mode.test.ts tests/model-client.test.ts
+
+      - name: Install desktop dependencies for typecheck
+        working-directory: apps/desktop-legalwork
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck desktop renderer/main
+        working-directory: apps/desktop-legalwork
+        run: npm run typecheck
+
+      - name: Commit validated patch and remove temporary workflows
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/kb-v2-patcher.yml .github/workflows/kb-v2-pr-patcher.yml
+          git add apps/desktop-legalwork/legalwork/src apps/desktop-legalwork/legalwork/tests apps/desktop-legalwork/src/renderer/src/components/knowledge-base/KnowledgeBaseView.tsx
+          git commit -m 'refactor(knowledge): fix QA retrieval and indexing correctness'
+          git push origin HEAD:agent/knowledge-base-v2
