@@ -900,8 +900,11 @@ function getProcessDetail(block: ChatBlock, summaryText?: string): ProcessDetail
     // Tool execution errors don't break the software — they render as amber
     // warnings (isError false) so the detail panel is not alarming red.
     const isError = block.status === 'error' && !isSelfCorrectableToolError(block)
+    // Only a successful file_change renders as a unified diff. A failed one
+    // carries the raw error text (403/stack, not a patch) — never force it
+    // through extractUnifiedDiffText even though isError is false here.
     const patchText =
-      block.toolKind === 'file_change' && !isError
+      block.toolKind === 'file_change' && block.status !== 'error'
         ? extractUnifiedDiffText(detailText)
         : undefined
     return {

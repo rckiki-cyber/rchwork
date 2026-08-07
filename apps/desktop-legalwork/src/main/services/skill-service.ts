@@ -508,23 +508,26 @@ async function ensureLegacySkillManifest(root: string, fallbackName: string): Pr
   const description = frontmatter.description
   const taskId = frontmatter.taskId
 
-  const keywords = [name, description, taskId]
-    .filter((value): value is string => Boolean(value))
-    .flatMap((value) => value.split(/[\s,，、;；/]+/))
-    .map((token) => token.replace(/^[#*_`~]+|[#*_`~]+$/g, '').trim())
-    .filter((token) => token.length >= 2)
-  const uniqueKeywords = [...new Set(keywords)]
+  // frontmatter 的 id/task_id 要搬进 manifest.id：GUI 和 runtime 都用它算 skill id，
+  // 不搬会导致两侧 id 漂移，/skill:<id> 显式引用失效。
+  const manifestId = frontmatter.id || frontmatter.taskId
 
   // 生成一个基于名称的斜杠命令（如 /商标 /证据整理），让用户能显式触发、
   // agent 也能在 prompt 以该命令开头时强命中（900 分档），弥补纯 md 无
-  // triggers 导致只有关键词弱匹配（200 分档）的问题。
-  const command = `/ ${name}`.replace(/\s+/g, '').toLowerCase()
+  // triggers 导致只有关键词弱匹配（200 分档）的问题。name 过短/纯标点时
+  // 不生成命令，避免产出 "/" 这种会污染自动激活的空语义命令。
+  const trimmedName = (name || '').trim()
+  const command =
+    trimmedName.length >= 2
+      ? `/ ${trimmedName}`.replace(/\s+/g, '').toLowerCase()
+      : ''
   const manifest: Record<string, unknown> = {
+    ...(manifestId ? { id: manifestId } : {}),
     name,
     ...(description ? { description } : {}),
     version: 'legacy',
     triggers: {
-      commands: [command],
+      commands: command ? [command] : [],
       promptPatterns: [],
       fileTypes: []
     }

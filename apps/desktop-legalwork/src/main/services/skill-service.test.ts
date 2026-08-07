@@ -186,11 +186,34 @@ describe('skill-service', () => {
 
     const manifest = JSON.parse(
       await readFile(join(targetRoot, 'md-only-skill', 'skill.json'), 'utf8')
-    ) as { name: string; triggers: { commands: string[]; promptPatterns: string[]; fileTypes: string[] } }
+    ) as { id?: string; name: string; triggers: { commands: string[]; promptPatterns: string[]; fileTypes: string[] } }
 
+    expect(manifest.id).toBe('evidence-org') // task_id 应迁移到 id，避免 GUI/runtime id 漂移
     expect(manifest.name).toBe('证据整理')
     expect(manifest.triggers.commands).toContain('/证据整理')
     expect(manifest.triggers.promptPatterns).toEqual([])
+  })
+
+  it('skips generating a slash command when the fallback name is a single character', async () => {
+    const sourceRoot = join(tempRoot, 'x') // 目录名单字符 → fallbackName 长度 < 2
+    const targetRoot = join(tempRoot, 'user-skills')
+    await mkdir(sourceRoot, { recursive: true })
+    await writeFile(join(sourceRoot, 'SKILL.md'), [
+      '---',
+      'description: No name in frontmatter.',
+      '---',
+      '',
+      'Body text.'
+    ].join('\n'), 'utf8')
+
+    const result = await importGuiSkillFromPath(sourceRoot, targetRoot)
+    expect(result.ok).toBe(true)
+
+    const manifest = JSON.parse(
+      await readFile(join(targetRoot, 'x', 'skill.json'), 'utf8')
+    ) as { triggers: { commands: string[]; promptPatterns: string[]; fileTypes: string[] } }
+
+    expect(manifest.triggers.commands).toEqual([]) // name 过短 → 不生成 "/" 空命令
   })
 
   it('skips macOS TCC-protected media locations during skill scans', () => {

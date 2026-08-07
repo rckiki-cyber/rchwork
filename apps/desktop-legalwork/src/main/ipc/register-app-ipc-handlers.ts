@@ -869,17 +869,40 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
    * command would fail with ENOENT and be misread as "archive corrupt", deleting
    * and re-downloading a perfectly good cached tarball.
    */
+  const GZIP_VERIFY_TIMEOUT_MS = 30_000
+  /**
+   * Verify a gzip file is intact by decompressing it in-memory.
+   *
+   * Used to detect truncated/corrupt tar.gz downloads (content-length can match
+   * even when bytes were damaged in transit, and a missing content-length skips
+   * the download byte-count check entirely). Must use Node's built-in zlib
+   * rather than an external `gzip -t`: Windows ships no gzip executable, so the
+   * command would fail with ENOENT and be misread as "archive corrupt", deleting
+   * and re-downloading a perfectly good cached tarball.
+   *
+   * A timeout guards against a stalled stream that never emits end/error (e.g.
+   * disk IO wedged) — without it the returned Promise never settles and the
+   * install hangs at "正在解压 Python…" forever. On timeout we treat the file
+   * as corrupt so the caller re-downloads it.
+   */
   function verifyGzipIntegrity(filePath: string): Promise<boolean> {
     return new Promise((resolve) => {
       let settled = false
+      let readStream: ReturnType<typeof createReadStream> | null = null
+      let gunzip: ReturnType<typeof createGunzip> | null = null
       const settle = (ok: boolean): void => {
         if (settled) return
         settled = true
+        clearTimeout(timer)
+        readStream?.destroy()
+        gunzip?.destroy()
         resolve(ok)
       }
+      const timer = setTimeout(() => settle(false), GZIP_VERIFY_TIMEOUT_MS)
+      timer.unref?.()
       try {
-        const readStream = createReadStream(filePath)
-        const gunzip = createGunzip()
+        readStream = createReadStream(filePath)
+        gunzip = createGunzip()
         gunzip.on('error', () => settle(false))
         readStream.on('error', () => settle(false))
         gunzip.on('end', () => settle(true))

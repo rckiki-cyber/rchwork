@@ -22,6 +22,7 @@ import type {
   KnowledgeTreeNode
 } from '../contracts/knowledge.js'
 import { inferLayerFromMeta } from './knowledge-pyramid-router.js'
+import { KnowledgeSqliteIndex } from './knowledge-sqlite-index.js'
 
 export interface KnowledgeStore {
   sync(input?: KnowledgeSyncRequest): Promise<KnowledgeSyncResult>
@@ -140,6 +141,9 @@ export class FileKnowledgeStore implements KnowledgeStore {
    */
   private readonly classificationCache = new Map<string, KnowledgeClassification>()
 
+  private sqliteIndex: KnowledgeSqliteIndex | null = null
+  private sqliteEnabled: boolean
+
   constructor(
     private readonly options: {
       rootDir: string
@@ -148,11 +152,42 @@ export class FileKnowledgeStore implements KnowledgeStore {
       managedRoot?: string
       model?: ModelClient
       classifyModel?: string
+      /** Opt-in SQLite FTS retrieval index (LEGALWORK_KNOWLEDGE_SQLITE or explicit). */
+      sqliteIndex?: { enabled?: boolean }
     }
   ) {
     // Default managed root: {rootDir}/files
     if (!this.options.managedRoot) {
       this.options.managedRoot = join(this.options.rootDir, 'files')
+    }
+    this.sqliteEnabled = this.options.sqliteIndex?.enabled === true
+  }
+
+  /**
+   * Lazily create the SQLite FTS index (disabled by default). Returns null when
+   * SQLite retrieval is opted out or fails to initialize — callers fall back to
+   * the in-memory index.json path.
+   */
+  private async ensureSqliteIndex(): Promise<KnowledgeSqliteIndex | null> {
+    if (!this.sqliteEnabled) return null
+    if (this.sqliteIndex) return this.sqliteIndex
+    try {
+      const index = new KnowledgeSqliteIndex(this.options.rootDir)
+      await index.ready()
+      this.sqliteIndex = index
+      return index
+    } catch {
+      // SQLite unavailable (missing native module, corrupt DB) — fall back to memory.
+      return null
+    }
+  }
+
+  /** Release the SQLite DB handle (WAL checkpoint on exit). */
+  close(): void {
+    try {
+      this.sqliteIndex?.close()
+    } finally {
+      this.sqliteIndex = null
     }
   }
 
@@ -426,6 +461,48 @@ export class FileKnowledgeStore implements KnowledgeStore {
       failedFileCount,
       truncatedFileCount
     }
+    // Mirror the index into the SQLite FTS store (opt-in). SQLite only performs
+    // candidate recall; final ranking still uses the in-memory scorer, so a
+    // failure here must never abort the sync. Uses the structured chunker.
+    const sqlite = await this.ensureSqliteIndex()
+    if (sqlite) {
+      try {
+        const { chunkKnowledgeDocument } = await import('./knowledge-structured-chunker.js')
+        for (const document of documents) {
+          const sourcePath = document.path
+          let content = ''
+          try {
+            content = existsSync(sourcePath)
+              ? TEXT_EXTENSIONS.has(document.extension)
+                ? await readFile(sourcePath, 'utf8')
+                : (await extractDocumentText(sourcePath)).text
+              : ''
+          } catch {
+            content = ''
+          }
+          if (!content.trim()) {
+            await sqlite.upsertDocument(document, [])
+            continue
+          }
+          const documentHash = createHash('sha256').update(content).digest('hex')
+          const structuredChunks = chunkKnowledgeDocument(document, content, documentHash)
+          await sqlite.upsertDocument(document, structuredChunks)
+        }
+        await sqlite.deleteDocumentsNotIn(documents.map((doc) => doc.id))
+        await sqlite.setSyncMetadata({
+          syncedAt,
+          roots: roots.map(String),
+          skippedCount,
+          candidateFileCount: coverage.candidateFileCount,
+          attemptedFileCount: coverage.attemptedFileCount,
+          failedFileCount: coverage.failedFileCount,
+          truncatedFileCount: coverage.truncatedFileCount
+        })
+        await sqlite.recomputeRevision()
+      } catch {
+        // SQLite indexing failed (corrupt DB, disk full) — keep memory index intact.
+      }
+    }
     await this.writeIndex({
       syncedAt,
       roots,
@@ -449,6 +526,65 @@ export class FileKnowledgeStore implements KnowledgeStore {
   async search(input: { query: string; limit: number; includeContent?: boolean; layer?: KnowledgeLayer; layers?: KnowledgeLayer[]; pathPrefix?: string }): Promise<KnowledgeSearchHit[]> {
     const query = input.query.trim()
     if (!query) return []
+    // Prefer the SQLite FTS index for candidate recall (opt-in). Final ranking
+    // still runs through the same in-memory scorer, so scores and ordering stay
+    // byte-compatible with the memory path. Any failure falls back to memory.
+    if (this.sqliteEnabled) {
+      const viaSqlite = await this.searchViaSqlite(input, query)
+      if (viaSqlite) return viaSqlite
+    }
+    return this.searchViaMemory(input, query)
+  }
+
+  private async searchViaSqlite(
+    input: { query: string; limit: number; includeContent?: boolean; layer?: KnowledgeLayer; layers?: KnowledgeLayer[]; pathPrefix?: string },
+    query: string
+  ): Promise<KnowledgeSearchHit[] | null> {
+    try {
+      const sqlite = await this.ensureSqliteIndex()
+      if (!sqlite) return null
+      // If the SQLite index is empty (sync has not run through the sqlite path
+      // yet), fall back so the memory index auto-sync still kicks in.
+      const diagnostics = await sqlite.diagnostics().catch(() => null)
+      if (!diagnostics || diagnostics.documentCount === 0) return null
+
+      const pathPrefix = normalizeRelativePath(input.pathPrefix ?? '')
+      const layers = input.layer ? [input.layer] : input.layers
+      const recallLimit = Math.max(1, Math.min(500, RERANK_POOL_SIZE * 3))
+      const candidates = await sqlite.searchCandidates({
+        query,
+        limit: recallLimit,
+        ...(layers?.length ? { layers } : {}),
+        ...(pathPrefix ? { pathPrefix } : {})
+      })
+      if (candidates.length === 0) return null
+
+      // Same scoring as the memory path — SQLite only narrows the recall pool.
+      const targetLayers = new Set<KnowledgeLayer>()
+      if (input.layer) targetLayers.add(input.layer)
+      if (input.layers) input.layers.forEach((l) => targetLayers.add(l))
+      const terms = queryTerms(query)
+      const lowerQuery = query.toLowerCase()
+      const queryTermSet = new Set(terms)
+      const primaryLayer = input.layer ?? (targetLayers.size === 1 ? [...targetLayers][0] : undefined)
+      const deduped = [...new Map(candidates.map((chunk) => [chunk.id, chunk])).values()]
+      const hits = rerankChunks(deduped
+        .map((chunk) => scoreChunk(chunk, lowerQuery, terms, queryTermSet, primaryLayer))
+        .filter((entry) => entry.score > 0)
+        .sort((a, b) => b.score - a.score || a.chunk.relativePath.localeCompare(b.chunk.relativePath))
+        .slice(0, RERANK_POOL_SIZE), Math.max(1, input.limit))
+        .map(({ chunk, score, rankReason }) => this.formatHit(chunk, input, lowerQuery, terms, score, rankReason))
+      this.setLastSelected(hits.map((hit) => hit.documentId))
+      return hits
+    } catch {
+      return null
+    }
+  }
+
+  private async searchViaMemory(
+    input: { query: string; limit: number; includeContent?: boolean; layer?: KnowledgeLayer; layers?: KnowledgeLayer[]; pathPrefix?: string },
+    query: string
+  ): Promise<KnowledgeSearchHit[]> {
     let index = await this.readIndex()
     if (index.chunks.length === 0 && (this.options.sourceRoots?.length ?? 0) > 0) {
       await this.sync()
@@ -492,26 +628,35 @@ export class FileKnowledgeStore implements KnowledgeStore {
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score || a.chunk.relativePath.localeCompare(b.chunk.relativePath))
       .slice(0, RERANK_POOL_SIZE), Math.max(1, input.limit))
-      .map(({ chunk, score, rankReason }) => {
-        const relativePath = knowledgeSearchRelativePath(chunk, this.managedRoot)
-        return {
-          documentId: chunk.documentId,
-          chunkId: chunk.id,
-          title: chunk.title,
-          path: chunk.path,
-          relativePath,
-          ...(chunk.category ? { category: chunk.category } : {}),
-          ...(chunk.tags?.length ? { tags: chunk.tags } : {}),
-          ...(chunk.keywords?.length ? { keywords: chunk.keywords } : {}),
-          ...(chunk.layer ? { layer: chunk.layer } : {}),
-          score,
-          rankReason,
-          snippet: makeSnippet(chunk.content, lowerQuery, terms),
-          ...(input.includeContent ? { content: chunk.content } : {})
-        }
-      })
+      .map(({ chunk, score, rankReason }) => this.formatHit(chunk, input, lowerQuery, terms, score, rankReason))
     this.setLastSelected(hits.map((hit) => hit.documentId))
     return hits
+  }
+
+  private formatHit(
+    chunk: KnowledgeChunk,
+    input: { includeContent?: boolean },
+    lowerQuery: string,
+    terms: string[],
+    score: number,
+    rankReason: string
+  ): KnowledgeSearchHit {
+    const relativePath = knowledgeSearchRelativePath(chunk, this.managedRoot)
+    return {
+      documentId: chunk.documentId,
+      chunkId: chunk.id,
+      title: chunk.title,
+      path: chunk.path,
+      relativePath,
+      ...(chunk.category ? { category: chunk.category } : {}),
+      ...(chunk.tags?.length ? { tags: chunk.tags } : {}),
+      ...(chunk.keywords?.length ? { keywords: chunk.keywords } : {}),
+      ...(chunk.layer ? { layer: chunk.layer } : {}),
+      score,
+      rankReason,
+      snippet: makeSnippet(chunk.content, lowerQuery, terms),
+      ...(input.includeContent ? { content: chunk.content } : {})
+    }
   }
 
   async diagnostics(): Promise<KnowledgeDiagnostics> {

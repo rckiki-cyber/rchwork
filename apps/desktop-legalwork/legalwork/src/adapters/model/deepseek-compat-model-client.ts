@@ -29,8 +29,6 @@ export type DeepseekCompatConfig = {
   headers?: Record<string, string>
   /** HTTP fetch implementation. Defaults to global `fetch`. */
   fetchImpl?: typeof fetch
-  /** Maximum number of messages to send. Defaults to the entire history. */
-  historyLimit?: number
   /** When true, the client requests a non-streaming response. */
   nonStreaming?: boolean
   /** Maximum idle time between streaming chunks before the turn fails. */
@@ -134,20 +132,6 @@ type StreamReadResult =
 
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 45_000
 const DEFAULT_MESSAGES_MAX_TOKENS = 4096
-/**
- * 默认消息窗口（item 数）。不设窗口时每步都把全部历史重发给模型，长调研回合
- * 的重发量会滚雪球。窗口裁剪保留"最近的 windowSize 条 + 早期 compaction 摘要"，
- * 在低成本重发与不丢关键上下文之间取平衡。
- */
-const DEFAULT_HISTORY_LIMIT = 240
-
-function resolveHistoryLimit(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env.LEGALWORK_HISTORY_LIMIT?.trim()
-  if (!raw) return DEFAULT_HISTORY_LIMIT
-  const parsed = Number(raw)
-  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_HISTORY_LIMIT
-  return Math.floor(parsed)
-}
 
 /**
  * DeepSeek-compatible model client.
@@ -2272,21 +2256,4 @@ function formatAttachmentDimensions(
   attachment: NonNullable<ModelRequest['attachmentTextFallbacks']>[number]
 ): string {
   return attachment.width && attachment.height ? `${attachment.width}x${attachment.height}` : 'unknown'
-}
-
-function limitHistoryPreservingCompaction(history: TurnItem[], windowSize: number): TurnItem[] {
-  if (history.length <= windowSize) return history
-  // 追加式：从最近 compaction 摘要开始保留全部，中间不滑动丢弃。
-  // 滑动窗口每步裁掉最前面的消息会让请求前缀持续变化，击穿 DeepSeek 的
-  // 自动缓存（实测同载荷下滑窗命中率跌到 3%，追加式前缀稳定可到 86%+）。
-  // compaction 前的原始内容已被折叠进摘要，无需再保留。
-  for (let index = history.length - 1; index >= 0; index -= 1) {
-    const item = history[index]
-    if (item.kind === 'compaction' && item.replacedTokens > 0) {
-      return history.slice(index)
-    }
-  }
-  // 无 compaction（如 compaction 被禁用）：保底保留最近 windowSize 条，
-  // 正常不会走到——compaction 的消息条数阈值会在历史超过窗口前先折叠。
-  return history.slice(-windowSize)
 }

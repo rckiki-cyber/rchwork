@@ -3,7 +3,6 @@ import { mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { Database as BetterSqliteDatabase } from 'better-sqlite3'
 import type {
-  KnowledgeChunk,
   KnowledgeDocument,
   KnowledgeLayer
 } from '../contracts/knowledge.js'
@@ -11,12 +10,24 @@ import {
   KNOWLEDGE_INDEX_SCHEMA_VERSION,
   KNOWLEDGE_RETRIEVER_VERSION
 } from './knowledge-index-version.js'
+import type { IndexedKnowledgeChunk } from './knowledge-structured-chunker.js'
 
 export type KnowledgeDocumentState = {
   id: string
   documentHash: string
   sizeBytes: number
   sourceMtimeMs: number
+}
+
+/**
+ * Document metadata that lives only inside the SQLite index. The public
+ * KnowledgeDocument contract does not carry hash/mtime — the index derives
+ * them so it can detect content changes between syncs.
+ */
+export type IndexedKnowledgeDocument = KnowledgeDocument & {
+  documentHash?: string
+  sourceMtimeMs?: number
+  indexedAt?: string
 }
 
 export type KnowledgeIndexSyncMetadata = {
@@ -121,7 +132,7 @@ export class KnowledgeSqliteIndex {
     `).run(input)
   }
 
-  async upsertDocument(document: KnowledgeDocument, chunks: KnowledgeChunk[]): Promise<void> {
+  async upsertDocument(document: IndexedKnowledgeDocument, chunks: IndexedKnowledgeChunk[]): Promise<void> {
     const db = await this.database()
     const transaction = db.transaction(() => {
       const oldChunkIds = db.prepare('SELECT id FROM chunks WHERE document_id = ?').all(document.id) as Array<{ id: string }>
@@ -264,7 +275,7 @@ export class KnowledgeSqliteIndex {
     limit: number
     layers?: KnowledgeLayer[]
     pathPrefix?: string
-  }): Promise<KnowledgeChunk[]> {
+  }): Promise<IndexedKnowledgeChunk[]> {
     const db = await this.database()
     const limit = Math.max(1, Math.min(500, Math.floor(input.limit)))
     const filters = buildFilters(input.layers, input.pathPrefix)
@@ -307,14 +318,14 @@ export class KnowledgeSqliteIndex {
     return rows.map(chunkFromRow)
   }
 
-  async lookupChunks(chunkIds: string[]): Promise<KnowledgeChunk[]> {
+  async lookupChunks(chunkIds: string[]): Promise<IndexedKnowledgeChunk[]> {
     const db = await this.database()
     const ids = [...new Set(chunkIds.filter(Boolean))].slice(0, 100)
     if (ids.length === 0) return []
     const placeholders = ids.map(() => '?').join(',')
     const rows = db.prepare(`SELECT * FROM chunks WHERE id IN (${placeholders})`).all(...ids) as ChunkRow[]
     const byId = new Map(rows.map((row) => [row.id, chunkFromRow(row)]))
-    return ids.map((id) => byId.get(id)).filter((chunk): chunk is KnowledgeChunk => Boolean(chunk))
+    return ids.map((id) => byId.get(id)).filter((chunk): chunk is IndexedKnowledgeChunk => Boolean(chunk))
   }
 
   async setSyncMetadata(metadata: KnowledgeIndexSyncMetadata): Promise<void> {
@@ -502,7 +513,7 @@ export class KnowledgeSqliteIndex {
   }
 }
 
-function chunkFromRow(row: ChunkRow): KnowledgeChunk {
+function chunkFromRow(row: ChunkRow): IndexedKnowledgeChunk {
   return {
     id: row.id,
     documentId: row.document_id,

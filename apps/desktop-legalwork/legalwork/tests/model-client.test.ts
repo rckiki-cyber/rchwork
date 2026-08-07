@@ -1024,8 +1024,7 @@ describe('DeepseekCompatModelClient', () => {
       apiKey: 'k',
       model: 'deepseek-chat',
       fetchImpl,
-      nonStreaming: true,
-      historyLimit: 2
+      nonStreaming: true
     })
     const request = buildRequest(new AbortController().signal)
     request.history = [
@@ -1191,8 +1190,7 @@ describe('DeepseekCompatModelClient', () => {
       apiKey: 'k',
       model: 'deepseek-chat',
       fetchImpl,
-      nonStreaming: true,
-      historyLimit: 1
+      nonStreaming: true
     })
     const request = buildRequest(new AbortController().signal)
     request.history = [

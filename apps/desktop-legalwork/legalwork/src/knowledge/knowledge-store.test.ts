@@ -319,4 +319,53 @@ describe('FileKnowledgeStore', () => {
     }
   })
 
+  it('searches via the SQLite FTS index when sqliteIndex is enabled', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-sqlite-'))
+    const sourceRoot = join(root, 'knowledge-base')
+    const indexRoot = join(root, 'index')
+    try {
+      await mkdir(sourceRoot, { recursive: true })
+      await writeFile(join(sourceRoot, 'contract.md'), [
+        '# 买卖合同',
+        '',
+        '双方应当遵守合同约定，违约方承担赔偿责任。'
+      ].join('\n'), { encoding: 'utf8' })
+      await writeFile(join(sourceRoot, 'case.md'), [
+        '# 案例检索',
+        '',
+        '法院判决支持原告的诉讼请求。'
+      ].join('\n'), { encoding: 'utf8' })
+
+      const store = new FileKnowledgeStore({
+        rootDir: indexRoot,
+        sourceRoots: [sourceRoot],
+        nowIso: () => '2026-06-13T00:00:00.000Z',
+        sqliteIndex: { enabled: true }
+      })
+
+      try {
+        const sync = await store.sync()
+        expect(sync.documentCount).toBe(2)
+
+        // SQLite FTS recall + in-memory rerank should surface the contract doc
+        const hits = await store.search({
+          query: '合同 违约 赔偿',
+          limit: 5,
+          includeContent: true
+        })
+        expect(hits.length).toBeGreaterThan(0)
+        expect(hits[0]?.title).toBe('contract')
+        expect(hits[0]?.content).toContain('违约')
+
+        // layer/pathPrefix filters still apply on the sqlite path
+        const filtered = await store.search({ query: '违约', limit: 5, pathPrefix: 'nonexistent' })
+        expect(filtered).toHaveLength(0)
+      } finally {
+        store.close()
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
 })

@@ -243,7 +243,10 @@ export async function createLegalworkServeRuntime(
     rootDir: join(options.dataDir, 'knowledge'),
     sourceRoots: defaultKnowledgeSourceRoots(options.dataDir),
     nowIso,
-    model: modelClient
+    model: modelClient,
+    ...(process.env.LEGALWORK_KNOWLEDGE_SQLITE === '1'
+      ? { sqliteIndex: { enabled: true } }
+      : {})
   })
   const explicitWebRoot = process.env.LEGALWORK_COMPLIANCE_WEB_ROOT
   const webRootOverride =
@@ -551,7 +554,11 @@ export async function createLegalworkServeRuntime(
         try {
           await modelClient.close?.()
         } finally {
-          await stores.shutdown?.()
+          try {
+            knowledgeStore.close()
+          } finally {
+            await stores.shutdown?.()
+          }
         }
       }
     }

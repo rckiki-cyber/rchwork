@@ -9,6 +9,24 @@ const TARGET_CHUNK_CHARS = 1_800
 const MAX_CHUNK_CHARS = 2_400
 const CHUNK_OVERLAP_CHARS = 160
 
+/**
+ * Chunk metadata that lives only inside the SQLite index (not part of the
+ * public KnowledgeChunk contract). The index needs hash/provenance/offset info
+ * to detect changes and link citations; the strict KnowledgeChunk schema used
+ * by tools/routes must not carry these fields.
+ */
+export type IndexedKnowledgeChunk = KnowledgeChunk & {
+  chunkIndex: number
+  documentHash: string
+  chunkHash: string
+  provenanceId: string
+  headingPath: string[]
+  articleNumber?: string
+  charStart: number
+  charEnd: number
+  chunkerVersion: string
+}
+
 type StructuredSection = {
   start: number
   end: number
@@ -26,10 +44,10 @@ export function chunkKnowledgeDocument(
   document: KnowledgeDocument,
   content: string,
   documentHash: string
-): KnowledgeChunk[] {
+): IndexedKnowledgeChunk[] {
   const normalized = content.replace(/\r\n/g, '\n').replace(/\u0000/g, '')
   const sections = splitStructuredSections(normalized)
-  const chunks: KnowledgeChunk[] = []
+  const chunks: IndexedKnowledgeChunk[] = []
   let chunkIndex = 0
 
   for (const section of sections) {

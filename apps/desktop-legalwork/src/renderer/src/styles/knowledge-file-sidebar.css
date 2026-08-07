@@ -1,10 +1,12 @@
 /*
  * Knowledge-base file preview layout.
  *
- * The file viewer currently renders the chat width as a fixed inline pixel value.
- * Keep the component logic untouched here, but make the actual layout follow the
- * available preview area so resizing the Electron window never creates a rigid,
- * overflowing right rail.
+ * The chat sidebar width is controlled by the JS drag handle via the
+ * `--knowledge-chat-sidebar-width` variable (see KnowledgeBaseFileView's
+ * startChatResize). The rules here only adjust chrome (title, padding,
+ * input sizing) and switch the rail to a right-side drawer on narrow
+ * containers — they must not force a fixed width that would override the
+ * inline variable.
  */
 
 .ds-no-drag
@@ -25,29 +27,6 @@
   border-right: 0 !important;
 }
 
-/* Automatic proportional sizing replaces the brittle fixed-width drag rail. */
-.ds-no-drag
-  > header
-  + div:has(> [role='separator'][aria-orientation='vertical'])
-  > [role='separator'][aria-orientation='vertical'] {
-  display: none;
-}
-
-.ds-no-drag
-  > header
-  + div:has(> [role='separator'][aria-orientation='vertical'])
-  > aside {
-  width: clamp(20rem, 30cqw, 30rem) !important;
-  min-width: 0 !important;
-  max-width: none !important;
-  flex: 0 0 clamp(20rem, 30cqw, 30rem) !important;
-  border-left: 0 !important;
-  background: var(--ds-surface-elevated, var(--ds-bg-canvas));
-  box-shadow: inset 1px 0 0 var(--ds-border);
-  transition:
-    width 180ms ease,
-    flex-basis 180ms ease;
-}
 
 /* Keep the chat chrome visually quieter than the document toolbar. */
 .ds-no-drag
