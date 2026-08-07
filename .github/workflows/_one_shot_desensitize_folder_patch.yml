@@ -35,264 +35,258 @@ jobs:
               source = source.replace(old, new, 1)
 
           replace_once(
-          """function localFileParentDirectory(file: File): string {
-            const filePath = window.dsGui?.getLocalFilePath?.(file)
-            if (!filePath) return ''
-            const separatorIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\\\'))
-            return separatorIndex > 0 ? filePath.slice(0, separatorIndex) : ''
-          }
-          """,
-          """function localParentDirectory(filePath: string): string {
-            if (!filePath) return ''
-            const separatorIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\\\'))
-            return separatorIndex > 0 ? filePath.slice(0, separatorIndex) : ''
-          }
-
-          function localFileParentDirectory(file: File): string {
-            const filePath = window.dsGui?.getLocalFilePath?.(file)
-            return filePath ? localParentDirectory(filePath) : ''
-          }
-
-          function localPathBasename(path: string): string {
-            return path.replace(/[\\\\/]+$/, '').split(/[\\\\/]/).pop() || path
-          }
-
-          function joinLocalPath(directory: string, leaf: string): string {
-            const trimmed = directory.replace(/[\\\\/]+$/, '')
-            if (!trimmed) return leaf
-            const separator = trimmed.includes('\\\\') && !trimmed.includes('/') ? '\\\\' : '/'
-            return `${trimmed}${separator}${leaf}`
-          }
-
-          function localFolderRootFromFile(file: File): string {
-            const filePath = window.dsGui?.getLocalFilePath?.(file)
-            const relativePath = file.webkitRelativePath?.trim()
-            if (!filePath || !relativePath) return ''
-            const parts = relativePath.replace(/\\\\/g, '/').split('/').filter(Boolean)
-            if (parts.length < 2) return localParentDirectory(filePath)
-            let root = filePath
-            for (let index = 1; index < parts.length; index += 1) {
-              root = localParentDirectory(root)
-            }
-            return root
-          }
-          """,
-          'path helpers'
+              "function localFileParentDirectory(file: File): string {\n"
+              "  const filePath = window.dsGui?.getLocalFilePath?.(file)\n"
+              "  if (!filePath) return ''\n"
+              "  const separatorIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\\\'))\n"
+              "  return separatorIndex > 0 ? filePath.slice(0, separatorIndex) : ''\n"
+              "}\n",
+              "function localParentDirectory(filePath: string): string {\n"
+              "  if (!filePath) return ''\n"
+              "  const separatorIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\\\'))\n"
+              "  return separatorIndex > 0 ? filePath.slice(0, separatorIndex) : ''\n"
+              "}\n\n"
+              "function localFileParentDirectory(file: File): string {\n"
+              "  const filePath = window.dsGui?.getLocalFilePath?.(file)\n"
+              "  return filePath ? localParentDirectory(filePath) : ''\n"
+              "}\n\n"
+              "function localPathBasename(path: string): string {\n"
+              "  return path.replace(/[\\\\/]+$/, '').split(/[\\\\/]/).pop() || path\n"
+              "}\n\n"
+              "function joinLocalPath(directory: string, leaf: string): string {\n"
+              "  const trimmed = directory.replace(/[\\\\/]+$/, '')\n"
+              "  if (!trimmed) return leaf\n"
+              "  const separator = trimmed.includes('\\\\') && !trimmed.includes('/') ? '\\\\' : '/'\n"
+              "  return `${trimmed}${separator}${leaf}`\n"
+              "}\n\n"
+              "const MATERIAL_DESENSITIZE_FOLDER_EXTENSIONS = new Set([\n"
+              "  '.txt', '.md', '.markdown', '.log', '.rtf', '.html', '.htm', '.xml', '.yaml', '.yml',\n"
+              "  '.toml', '.ini', '.cfg', '.conf', '.env', '.docx', '.doc', '.pdf', '.csv', '.tsv',\n"
+              "  '.xlsx', '.xls', '.ods', '.json', '.jsonl', '.ndjson', '.png', '.jpg', '.jpeg', '.webp',\n"
+              "  '.bmp', '.tif', '.tiff', '.pptx'\n"
+              "])\n\n"
+              "function isSupportedMaterialFolderFile(file: File): boolean {\n"
+              "  const dotIndex = file.name.lastIndexOf('.')\n"
+              "  if (dotIndex < 0) return false\n"
+              "  return MATERIAL_DESENSITIZE_FOLDER_EXTENSIONS.has(file.name.slice(dotIndex).toLowerCase())\n"
+              "}\n\n"
+              "function isGeneratedDesensitizeFolderFile(file: File): boolean {\n"
+              "  const relativePath = file.webkitRelativePath?.replace(/\\\\/g, '/') || ''\n"
+              "  const segments = relativePath.split('/').filter(Boolean)\n"
+              "  return segments.slice(1, -1).some((segment) => /^脱敏后文件(?:$|[-_（(])/.test(segment))\n"
+              "}\n\n"
+              "function localFolderRootFromFile(file: File): string {\n"
+              "  const filePath = window.dsGui?.getLocalFilePath?.(file)\n"
+              "  const relativePath = file.webkitRelativePath?.trim()\n"
+              "  if (!filePath || !relativePath) return ''\n"
+              "  const parts = relativePath.replace(/\\\\/g, '/').split('/').filter(Boolean)\n"
+              "  if (parts.length < 2) return localParentDirectory(filePath)\n"
+              "  let root = filePath\n"
+              "  for (let index = 1; index < parts.length; index += 1) {\n"
+              "    root = localParentDirectory(root)\n"
+              "  }\n"
+              "  return root\n"
+              "}\n",
+              'path helpers'
           )
 
           replace_once(
-          """  const [files, setFiles] = useState<File[]>([])
-            const [dragActive, setDragActive] = useState(false)
-            const fileInputRef = useRef<HTMLInputElement>(null)
-            const [busy, setBusy] = useState(false)
-          """.replace('    const', '  const'),
-          """  const [files, setFiles] = useState<File[]>([])
-            const [folderRoot, setFolderRoot] = useState('')
-            const [dragActive, setDragActive] = useState(false)
-            const fileInputRef = useRef<HTMLInputElement>(null)
-            const folderInputRef = useRef<HTMLInputElement>(null)
-            const [busy, setBusy] = useState(false)
-          """.replace('    const', '  const'),
-          'folder state'
+              "  const [files, setFiles] = useState<File[]>([])\n"
+              "  const [dragActive, setDragActive] = useState(false)\n"
+              "  const fileInputRef = useRef<HTMLInputElement>(null)\n"
+              "  const [busy, setBusy] = useState(false)\n",
+              "  const [files, setFiles] = useState<File[]>([])\n"
+              "  const [folderRoot, setFolderRoot] = useState('')\n"
+              "  const [dragActive, setDragActive] = useState(false)\n"
+              "  const fileInputRef = useRef<HTMLInputElement>(null)\n"
+              "  const folderInputRef = useRef<HTMLInputElement>(null)\n"
+              "  const [busy, setBusy] = useState(false)\n",
+              'folder state'
           )
 
           replace_once(
-          """  useEffect(() => {
-            if (outputDirTouched) return
-            const parentDir = files[0] ? localFileParentDirectory(files[0]) : ''
-            const nextOutputDir = parentDir || workspaceRoot || ''
-            setOutputDir((current) => current === nextOutputDir ? current : nextOutputDir)
-          }, [files, outputDirTouched, workspaceRoot])
-
-            useEffect(() => {
-              if (typeof window.dsGui?.onDataComplianceInstallProgress !== 'function') return
-          """.replace('\n    useEffect', '\n  useEffect').replace('\n      if', '\n    if'),
-          """  useEffect(() => {
-            const input = folderInputRef.current
-            if (!input) return
-            input.setAttribute('webkitdirectory', '')
-            input.setAttribute('directory', '')
-          }, [])
-
-            useEffect(() => {
-              if (outputDirTouched) return
-              const parentDir = files[0] ? localFileParentDirectory(files[0]) : ''
-              const nextOutputDir = folderRoot
-                ? joinLocalPath(folderRoot, '脱敏后文件')
-                : parentDir || workspaceRoot || ''
-              setOutputDir((current) => current === nextOutputDir ? current : nextOutputDir)
-            }, [files, folderRoot, outputDirTouched, workspaceRoot])
-
-            useEffect(() => {
-              if (typeof window.dsGui?.onDataComplianceInstallProgress !== 'function') return
-          """.replace('\n    useEffect', '\n  useEffect').replace('\n      if', '\n    if').replace('\n      const parentDir', '\n    const parentDir').replace('\n      const nextOutputDir', '\n    const nextOutputDir').replace('\n        ?', '\n      ?').replace('\n        :', '\n      :').replace('\n      setOutputDir', '\n    setOutputDir'),
-          'folder input effect and default output dir'
+              "  useEffect(() => {\n"
+              "    if (outputDirTouched) return\n"
+              "    const parentDir = files[0] ? localFileParentDirectory(files[0]) : ''\n"
+              "    const nextOutputDir = parentDir || workspaceRoot || ''\n"
+              "    setOutputDir((current) => current === nextOutputDir ? current : nextOutputDir)\n"
+              "  }, [files, outputDirTouched, workspaceRoot])\n",
+              "  useEffect(() => {\n"
+              "    const input = folderInputRef.current\n"
+              "    if (!input) return\n"
+              "    input.setAttribute('webkitdirectory', '')\n"
+              "    input.setAttribute('directory', '')\n"
+              "  }, [])\n\n"
+              "  useEffect(() => {\n"
+              "    if (outputDirTouched) return\n"
+              "    const parentDir = files[0] ? localFileParentDirectory(files[0]) : ''\n"
+              "    const nextOutputDir = folderRoot\n"
+              "      ? joinLocalPath(folderRoot, '脱敏后文件')\n"
+              "      : parentDir || workspaceRoot || ''\n"
+              "    setOutputDir((current) => current === nextOutputDir ? current : nextOutputDir)\n"
+              "  }, [files, folderRoot, outputDirTouched, workspaceRoot])\n",
+              'folder input effect and default output dir'
           )
 
           replace_once(
-          """  const onPickFile = (event: ChangeEvent<HTMLInputElement>): void => {
-            const nextFiles = Array.from(event.target.files ?? [])
-            addSelectedFiles(nextFiles)
-            // 允许重复选择同一文件
-            if (event.target) event.target.value = ''
-          }
-
-            const onDropFile = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
-          """.replace('\n    const onDropFile', '\n  const onDropFile'),
-          """  const onPickFile = (event: ChangeEvent<HTMLInputElement>): void => {
-            const nextFiles = Array.from(event.target.files ?? [])
-            addSelectedFiles(nextFiles)
-            // 允许重复选择同一文件
-            if (event.target) event.target.value = ''
-          }
-
-            const onPickFolder = (event: ChangeEvent<HTMLInputElement>): void => {
-              const nextFiles = Array.from(event.target.files ?? [])
-              if (nextFiles.length === 0) return
-              const root = localFolderRootFromFile(nextFiles[0])
-              setFiles(nextFiles)
-              setFolderRoot(root)
-              if (!documentName.trim()) {
-                setDocumentName(root ? localPathBasename(root) : `批量材料 ${nextFiles.length} 个文件`)
-              }
-              setOutputFormat('docx')
-              if (!outputDirTouched && root) {
-                setOutputDir(joinLocalPath(root, '脱敏后文件'))
-              }
-              // 允许重复选择同一文件夹
-              if (event.target) event.target.value = ''
-            }
-
-            const onDropFile = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
-          """.replace('\n    const onPickFolder', '\n  const onPickFolder').replace('\n      const', '\n    const').replace('\n      if', '\n    if').replace('\n      set', '\n    set').replace('\n        setDocumentName', '\n      setDocumentName').replace('\n      }', '\n    }').replace('\n        setOutputDir', '\n      setOutputDir').replace('\n    const onDropFile', '\n  const onDropFile'),
-          'folder picker handler'
+              "  const onPickFile = (event: ChangeEvent<HTMLInputElement>): void => {\n"
+              "    const nextFiles = Array.from(event.target.files ?? [])\n"
+              "    addSelectedFiles(nextFiles)\n"
+              "    // 允许重复选择同一文件\n"
+              "    if (event.target) event.target.value = ''\n"
+              "  }\n",
+              "  const onPickFile = (event: ChangeEvent<HTMLInputElement>): void => {\n"
+              "    const nextFiles = Array.from(event.target.files ?? [])\n"
+              "    setFolderRoot('')\n"
+              "    addSelectedFiles(nextFiles)\n"
+              "    // 允许重复选择同一文件\n"
+              "    if (event.target) event.target.value = ''\n"
+              "  }\n\n"
+              "  const onPickFolder = (event: ChangeEvent<HTMLInputElement>): void => {\n"
+              "    const pickedFiles = Array.from(event.target.files ?? [])\n"
+              "    if (pickedFiles.length === 0) return\n"
+              "    const root = localFolderRootFromFile(pickedFiles[0])\n"
+              "    const nextFiles = pickedFiles.filter((file) =>\n"
+              "      isSupportedMaterialFolderFile(file) && !isGeneratedDesensitizeFolderFile(file)\n"
+              "    )\n"
+              "    if (nextFiles.length === 0) {\n"
+              "      setNotice({ tone: 'error', text: '所选文件夹中没有可脱敏的受支持文件。' })\n"
+              "      event.target.value = ''\n"
+              "      return\n"
+              "    }\n"
+              "    const skippedCount = pickedFiles.length - nextFiles.length\n"
+              "    setFiles(nextFiles)\n"
+              "    setFolderRoot(root)\n"
+              "    if (!documentName.trim()) {\n"
+              "      setDocumentName(root ? localPathBasename(root) : `批量材料 ${nextFiles.length} 个文件`)\n"
+              "    }\n"
+              "    setOutputFormat('docx')\n"
+              "    if (!outputDirTouched && root) {\n"
+              "      setOutputDir(joinLocalPath(root, '脱敏后文件'))\n"
+              "    }\n"
+              "    setNotice(skippedCount > 0\n"
+              "      ? { tone: 'info', text: `已导入 ${nextFiles.length} 个文件，跳过 ${skippedCount} 个不支持或已生成的脱敏文件。` }\n"
+              "      : null)\n"
+              "    // 允许重复选择同一文件夹\n"
+              "    event.target.value = ''\n"
+              "  }\n",
+              'folder picker handler'
           )
 
           replace_once(
-          """  const clearFile = useCallback((): void => {
-            setFiles([])
-            if (fileInputRef.current) fileInputRef.current.value = ''
-          }, [])
-
-            const removeFile = useCallback((fileToRemove: File): void => {
-              setFiles((current) =>
-                current.filter((item) =>
-                  item.name !== fileToRemove.name ||
-                  item.size !== fileToRemove.size ||
-                  item.lastModified !== fileToRemove.lastModified
-                )
-              )
-            }, [])
-          """.replace('\n    const removeFile', '\n  const removeFile').replace('\n      setFiles', '\n    setFiles').replace('\n        current', '\n      current').replace('\n          item', '\n        item').replace('\n        )', '\n      )').replace('\n      )', '\n    )'),
-          """  const clearFile = useCallback((): void => {
-            setFiles([])
-            setFolderRoot('')
-            if (fileInputRef.current) fileInputRef.current.value = ''
-            if (folderInputRef.current) folderInputRef.current.value = ''
-          }, [])
-
-            const removeFile = useCallback((fileToRemove: File): void => {
-              setFiles((current) => {
-                const next = current.filter((item) =>
-                  item.name !== fileToRemove.name ||
-                  item.size !== fileToRemove.size ||
-                  item.lastModified !== fileToRemove.lastModified
-                )
-                if (next.length === 0) setFolderRoot('')
-                return next
-              })
-            }, [])
-          """.replace('\n    const removeFile', '\n  const removeFile').replace('\n      setFiles', '\n    setFiles').replace('\n        const next', '\n      const next').replace('\n          item', '\n        item').replace('\n        )', '\n      )').replace('\n        if', '\n      if').replace('\n        return', '\n      return').replace('\n      })', '\n    })'),
-          'clear and remove folder state'
+              "  const onDropFile = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {\n"
+              "    event.preventDefault()\n"
+              "    event.stopPropagation()\n"
+              "    setDragActive(false)\n"
+              "    const dropped = Array.from(event.dataTransfer.files ?? [])\n"
+              "    addSelectedFiles(dropped)\n"
+              "  }, [addSelectedFiles])\n",
+              "  const onDropFile = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {\n"
+              "    event.preventDefault()\n"
+              "    event.stopPropagation()\n"
+              "    setDragActive(false)\n"
+              "    setFolderRoot('')\n"
+              "    const dropped = Array.from(event.dataTransfer.files ?? [])\n"
+              "    addSelectedFiles(dropped)\n"
+              "  }, [addSelectedFiles])\n",
+              'drop folder reset'
           )
 
           replace_once(
-          """        <div className=\"block\">
-              <span className=\"text-[12px] font-medium text-ds-muted\">上传文件</span>
-              <div
-                onDragOver={onDragOver}
-          """,
-          """        <div className=\"block\">
-              <div className=\"flex items-center justify-between gap-3\">
-                <span className=\"text-[12px] font-medium text-ds-muted\">上传文件</span>
-                {mode === 'desensitize' && effectiveDesensitizeKind === 'material' ? (
-                  <button
-                    type=\"button\"
-                    onClick={() => folderInputRef.current?.click()}
-                    disabled={busy || statusBusy || installProgress.kind === 'installing'}
-                    className=\"inline-flex items-center gap-1.5 rounded-[8px] border border-ds-border-muted bg-ds-subtle px-2.5 py-1.5 text-[12px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink disabled:opacity-55\"
-                  >
-                    <Folder className=\"h-3.5 w-3.5\" strokeWidth={1.8} />
-                    选择文件夹
-                  </button>
-                ) : null}
-              </div>
-              <input
-                ref={folderInputRef}
-                type=\"file\"
-                multiple
-                onChange={onPickFolder}
-                className=\"hidden\"
-              />
-              <div
-                onDragOver={onDragOver}
-          """,
-          'folder picker UI'
+              "  const clearFile = useCallback((): void => {\n"
+              "    setFiles([])\n"
+              "    if (fileInputRef.current) fileInputRef.current.value = ''\n"
+              "  }, [])\n",
+              "  const clearFile = useCallback((): void => {\n"
+              "    setFiles([])\n"
+              "    setFolderRoot('')\n"
+              "    if (fileInputRef.current) fileInputRef.current.value = ''\n"
+              "    if (folderInputRef.current) folderInputRef.current.value = ''\n"
+              "  }, [])\n",
+              'clear folder state'
           )
 
           replace_once(
-          """                  <div className=\"min-w-0 text-[13px] font-medium text-ds-ink\">
-                        已选择 {files.length} 个文件
-                      </div>
-          """,
-          """                  <div className=\"min-w-0 text-[13px] font-medium text-ds-ink\" title={folderRoot || undefined}>
-                        {folderRoot
-                          ? `已选择文件夹「${localPathBasename(folderRoot)}」 · ${files.length} 个文件`
-                          : `已选择 ${files.length} 个文件`}
-                      </div>
-          """,
-          'selected folder summary'
+              "        <div className=\"block\">\n"
+              "          <span className=\"text-[12px] font-medium text-ds-muted\">上传文件</span>\n"
+              "          <div\n"
+              "            onDragOver={onDragOver}\n",
+              "        <div className=\"block\">\n"
+              "          <div className=\"flex items-center justify-between gap-3\">\n"
+              "            <span className=\"text-[12px] font-medium text-ds-muted\">上传文件</span>\n"
+              "            {mode === 'desensitize' && effectiveDesensitizeKind === 'material' ? (\n"
+              "              <button\n"
+              "                type=\"button\"\n"
+              "                onClick={() => folderInputRef.current?.click()}\n"
+              "                disabled={busy || statusBusy || installProgress.kind === 'installing'}\n"
+              "                className=\"inline-flex items-center gap-1.5 rounded-[8px] border border-ds-border-muted bg-ds-subtle px-2.5 py-1.5 text-[12px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink disabled:opacity-55\"\n"
+              "              >\n"
+              "                <Folder className=\"h-3.5 w-3.5\" strokeWidth={1.8} />\n"
+              "                选择文件夹\n"
+              "              </button>\n"
+              "            ) : null}\n"
+              "          </div>\n"
+              "          <input\n"
+              "            ref={folderInputRef}\n"
+              "            type=\"file\"\n"
+              "            multiple\n"
+              "            onChange={onPickFolder}\n"
+              "            className=\"hidden\"\n"
+              "          />\n"
+              "          <div\n"
+              "            onDragOver={onDragOver}\n",
+              'folder picker UI'
           )
 
           replace_once(
-          """                <div className=\"text-[13px] font-medium text-ds-ink\">拖拽文件到此处</div>
-                    <div className=\"text-[12px] text-ds-muted\">或点击选择文件，可一次选择多个</div>
-          """,
-          """                <div className=\"text-[13px] font-medium text-ds-ink\">拖拽文件到此处</div>
-                    <div className=\"text-[12px] text-ds-muted\">或点击选择文件，可一次选择多个</div>
-                    {mode === 'desensitize' && effectiveDesensitizeKind === 'material' ? (
-                      <div className=\"text-[11.5px] text-ds-faint\">也可使用右上角“选择文件夹”一次导入整批材料。</div>
-                    ) : null}
-          """,
-          'folder picker empty hint'
+              "                  <div className=\"min-w-0 text-[13px] font-medium text-ds-ink\">\n"
+              "                    已选择 {files.length} 个文件\n"
+              "                  </div>\n",
+              "                  <div className=\"min-w-0 text-[13px] font-medium text-ds-ink\" title={folderRoot || undefined}>\n"
+              "                    {folderRoot\n"
+              "                      ? `已选择文件夹「${localPathBasename(folderRoot)}」 · ${files.length} 个文件`\n"
+              "                      : `已选择 ${files.length} 个文件`}\n"
+              "                  </div>\n",
+              'selected folder summary'
           )
 
           replace_once(
-          """              <p className=\"mt-1.5 text-[11.5px] text-ds-faint\">
-                    脱敏后的文件和主体映射表将保存到该目录。
-                  </p>
-          """,
-          """              <p className=\"mt-1.5 text-[11.5px] text-ds-faint\">
-                    {folderRoot && !outputDirTouched
-                      ? '选择文件夹时，默认在原文件夹内新建“脱敏后文件”目录，批量脱敏文件统一保存到其中。'
-                      : '脱敏后的文件和主体映射表将保存到该目录。'}
-                  </p>
-          """,
-          'output directory hint'
+              "                <div className=\"text-[13px] font-medium text-ds-ink\">拖拽文件到此处</div>\n"
+              "                <div className=\"text-[12px] text-ds-muted\">或点击选择文件，可一次选择多个</div>\n",
+              "                <div className=\"text-[13px] font-medium text-ds-ink\">拖拽文件到此处</div>\n"
+              "                <div className=\"text-[12px] text-ds-muted\">或点击选择文件，可一次选择多个</div>\n"
+              "                {mode === 'desensitize' && effectiveDesensitizeKind === 'material' ? (\n"
+              "                  <div className=\"text-[11.5px] text-ds-faint\">也可使用右上角“选择文件夹”一次导入整批材料。</div>\n"
+              "                ) : null}\n",
+              'folder picker empty hint'
+          )
+
+          replace_once(
+              "              <p className=\"mt-1.5 text-[11.5px] text-ds-faint\">\n"
+              "                脱敏后的文件和主体映射表将保存到该目录。\n"
+              "              </p>\n",
+              "              <p className=\"mt-1.5 text-[11.5px] text-ds-faint\">\n"
+              "                {folderRoot && !outputDirTouched\n"
+              "                  ? '选择文件夹时，默认在原文件夹内新建“脱敏后文件”目录，批量脱敏文件统一保存到其中。'\n"
+              "                  : '脱敏后的文件和主体映射表将保存到该目录。'}\n"
+              "              </p>\n",
+              'output directory hint'
           )
 
           panel_path.write_text(source, encoding='utf-8')
 
           test_path = Path('apps/desktop-legalwork/src/renderer/src/components/data-compliance/DataCompliancePanel.test.ts')
           test_source = test_path.read_text(encoding='utf-8')
-          old = """    expect(html).toContain('不读取完整原文')
-            expect(html).toContain('PDF 文档 (.pdf)')
-          """.replace('\n    expect', '\n    expect')
-          new = """    expect(html).toContain('不读取完整原文')
-            expect(html).toContain('PDF 文档 (.pdf)')
-            expect(html).toContain('选择文件夹')
-            expect(html).toContain('一次导入整批材料')
-          """.replace('\n    expect', '\n    expect')
+          old = (
+              "    expect(html).toContain('不读取完整原文')\n"
+              "    expect(html).toContain('PDF 文档 (.pdf)')\n"
+          )
+          new = (
+              "    expect(html).toContain('不读取完整原文')\n"
+              "    expect(html).toContain('PDF 文档 (.pdf)')\n"
+              "    expect(html).toContain('选择文件夹')\n"
+              "    expect(html).toContain('一次导入整批材料')\n"
+          )
           if test_source.count(old) != 1:
               raise SystemExit(f'test expectations: expected exactly one match, got {test_source.count(old)}')
           test_path.write_text(test_source.replace(old, new, 1), encoding='utf-8')
@@ -303,6 +297,22 @@ jobs:
         run: |
           grep -q "选择文件夹" apps/desktop-legalwork/src/renderer/src/components/data-compliance/DataCompliancePanel.tsx
           grep -q "脱敏后文件" apps/desktop-legalwork/src/renderer/src/components/data-compliance/DataCompliancePanel.tsx
+          grep -q "webkitdirectory" apps/desktop-legalwork/src/renderer/src/components/data-compliance/DataCompliancePanel.tsx
+
+      - name: Install desktop dependencies
+        shell: bash
+        run: npm ci --ignore-scripts
+        working-directory: apps/desktop-legalwork
+
+      - name: Run targeted test
+        shell: bash
+        run: npx vitest run src/renderer/src/components/data-compliance/DataCompliancePanel.test.ts
+        working-directory: apps/desktop-legalwork
+
+      - name: Run typecheck
+        shell: bash
+        run: npm run typecheck
+        working-directory: apps/desktop-legalwork
 
       - name: Commit patched source and remove one-shot workflow
         shell: bash
