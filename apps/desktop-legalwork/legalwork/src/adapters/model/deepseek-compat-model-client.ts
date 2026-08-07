@@ -487,10 +487,10 @@ export class DeepseekCompatModelClient implements ModelClient {
     if (request.modeInstruction) {
       out.push({ role: 'system', content: request.modeInstruction })
     }
-    const windowSize = this.config.historyLimit ?? resolveHistoryLimit()
-    const history = windowSize
-      ? limitHistoryPreservingCompaction(request.history, windowSize)
-      : request.history
+    // History compaction/capping is owned by AgentLoop. Sliding the
+    // model-client window changes the beginning of the prompt on every step and
+    // destroys provider prefix-cache reuse.
+    const history = request.history
     const thinkingMode = requiresReasoningRoundTrip(
       request.reasoningEffort,
       model,
