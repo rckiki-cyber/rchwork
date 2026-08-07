@@ -1,0 +1,14 @@
+/home/runner/work/legalwork/legalwork/.legalwork-patches/apply_knowledge_chat_fix.py:265: SyntaxWarning: invalid escape sequence '\['
+  """  const sendKnowledgeChatMessage = useCallback(async (question: string): Promise<void> => {
+/home/runner/work/legalwork/legalwork/.legalwork-patches/apply_knowledge_chat_fix.py:359: SyntaxWarning: invalid escape sequence '\['
+  """  const sendKnowledgeChatMessage = useCallback(async (question: string): Promise<void> => {
+/home/runner/work/legalwork/legalwork/.legalwork-patches/apply_knowledge_chat_fix.py:641: SyntaxWarning: invalid escape sequence '\['
+  """      // Convert [来源 N] references to clickable source://N markdown links
+/home/runner/work/legalwork/legalwork/.legalwork-patches/apply_knowledge_chat_fix.py:660: SyntaxWarning: invalid escape sequence '\['
+  """      const encodedScope = encodeURIComponent(sourceScope)
+Traceback (most recent call last):
+  File "/home/runner/work/legalwork/legalwork/.legalwork-patches/apply_knowledge_chat_fix.py", line 171, in <module>
+    replace_once(
+  File "/home/runner/work/legalwork/legalwork/.legalwork-patches/apply_knowledge_chat_fix.py", line 10, in replace_once
+    raise RuntimeError(f"{label}: expected exactly one match, found {count}")
+RuntimeError: stream global knowledge chat progress: expected exactly one match, found 0
