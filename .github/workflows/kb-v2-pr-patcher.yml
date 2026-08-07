@@ -23,6 +23,13 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Restore already-applied coverage files for unified patch validation
+        shell: bash
+        run: |
+          git checkout origin/main -- \
+            apps/desktop-legalwork/legalwork/src/contracts/knowledge.ts \
+            apps/desktop-legalwork/legalwork/src/knowledge/knowledge-store.ts
+
       - name: Extract and apply first-round patch
         shell: bash
         run: |
