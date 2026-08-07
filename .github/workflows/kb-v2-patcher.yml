@@ -1,0 +1,275 @@
+name: KB v2 one-shot patcher
+
+on:
+  push:
+    branches:
+      - agent/knowledge-base-v2
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/knowledge-base-v2
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply first-round knowledge-base patches
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path: str, text: str) -> None:
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}: {old[:100]!r}')
+              write(path, text.replace(old, new, 1))
+
+          def replace_if_present(path: str, old: str, new: str) -> None:
+              text = read(path)
+              if old in text:
+                  write(path, text.replace(old, new, 1))
+
+          # 1) Knowledge sync/diagnostics contracts expose indexing coverage.
+          contracts = 'apps/desktop-legalwork/legalwork/src/contracts/knowledge.ts'
+          replace_once(
+              contracts,
+              """export const KnowledgeSyncResult = z.object({\n  syncedAt: z.string(),\n  roots: z.array(z.string()),\n  documentCount: z.number().int().nonnegative(),\n  chunkCount: z.number().int().nonnegative(),\n  skippedCount: z.number().int().nonnegative()\n}).strict()""",
+              """export const KnowledgeSyncResult = z.object({\n  syncedAt: z.string(),\n  roots: z.array(z.string()),\n  documentCount: z.number().int().nonnegative(),\n  chunkCount: z.number().int().nonnegative(),\n  skippedCount: z.number().int().nonnegative(),\n  candidateFileCount: z.number().int().nonnegative(),\n  attemptedFileCount: z.number().int().nonnegative(),\n  failedFileCount: z.number().int().nonnegative(),\n  truncatedFileCount: z.number().int().nonnegative(),\n  truncated: z.boolean()\n}).strict()"""
+          )
+          replace_once(
+              contracts,
+              """export const KnowledgeDiagnostics = z.object({\n  enabled: z.boolean(),\n  rootDir: z.string(),\n  sourceRoots: z.array(z.string()),\n  documentCount: z.number().int().nonnegative(),\n  chunkCount: z.number().int().nonnegative(),\n  syncedAt: z.string().optional(),\n  lastSelectedIds: z.array(z.string()).default([])\n}).strict()""",
+              """export const KnowledgeDiagnostics = z.object({\n  enabled: z.boolean(),\n  rootDir: z.string(),\n  sourceRoots: z.array(z.string()),\n  documentCount: z.number().int().nonnegative(),\n  chunkCount: z.number().int().nonnegative(),\n  candidateFileCount: z.number().int().nonnegative(),\n  attemptedFileCount: z.number().int().nonnegative(),\n  failedFileCount: z.number().int().nonnegative(),\n  truncatedFileCount: z.number().int().nonnegative(),\n  truncated: z.boolean(),\n  syncedAt: z.string().optional(),\n  lastSelectedIds: z.array(z.string()).default([])\n}).strict()"""
+          )
+
+          # 2) Scan all supported candidate paths for coverage, but keep the current
+          #    processing cap until the JSON index is replaced in phase two.
+          store = 'apps/desktop-legalwork/legalwork/src/knowledge/knowledge-store.ts'
+          replace_once(
+              store,
+              """type KnowledgeIndex = {\n  syncedAt?: string\n  roots: string[]\n  documents: KnowledgeDocument[]\n  chunks: KnowledgeChunk[]\n  edges: KnowledgeEdge[]\n  skippedCount: number\n}""",
+              """type KnowledgeIndex = {\n  syncedAt?: string\n  roots: string[]\n  documents: KnowledgeDocument[]\n  chunks: KnowledgeChunk[]\n  edges: KnowledgeEdge[]\n  skippedCount: number\n  candidateFileCount: number\n  attemptedFileCount: number\n  failedFileCount: number\n  truncatedFileCount: number\n}"""
+          )
+          replace_once(
+              store,
+              """    const maxFiles = input.maxFiles ?? DEFAULT_MAX_FILES\n    const files: string[] = []\n    let skippedCount = 0\n\n    for (const root of roots) {\n      const result = await collectFiles(root, maxFiles - files.length)\n      files.push(...result.files)\n      skippedCount += result.skippedCount\n      if (files.length >= maxFiles) break\n    }\n\n    const documents: KnowledgeDocument[] = []\n    const chunks: KnowledgeChunk[] = []\n    const uniqueFiles = [...new Set(files.map((filePath) => resolve(filePath)))]""",
+              """    const maxFiles = input.maxFiles ?? DEFAULT_MAX_FILES\n    const candidateFiles: string[] = []\n    let skippedCount = 0\n\n    for (const root of roots) {\n      const result = await collectFiles(root)\n      candidateFiles.push(...result.files)\n      skippedCount += result.skippedCount\n    }\n\n    const uniqueCandidates = [...new Set(candidateFiles.map((filePath) => resolve(filePath)))]\n    const uniqueFiles = uniqueCandidates.slice(0, maxFiles)\n    const truncatedFileCount = Math.max(0, uniqueCandidates.length - uniqueFiles.length)\n    const documents: KnowledgeDocument[] = []\n    const chunks: KnowledgeChunk[] = []"""
+          )
+          replace_once(
+              store,
+              """    const syncedAt = this.now()\n    await this.writeIndex({ syncedAt, roots, documents, chunks, edges, skippedCount })\n    return {\n      syncedAt,\n      roots,\n      documentCount: documents.length,\n      chunkCount: chunks.length,\n      skippedCount\n    }""",
+              """    const syncedAt = this.now()\n    const failedFileCount = Math.max(0, uniqueFiles.length - documents.length)\n    const coverage = {\n      candidateFileCount: uniqueCandidates.length,\n      attemptedFileCount: uniqueFiles.length,\n      failedFileCount,\n      truncatedFileCount\n    }\n    await this.writeIndex({\n      syncedAt,\n      roots,\n      documents,\n      chunks,\n      edges,\n      skippedCount,\n      ...coverage\n    })\n    return {\n      syncedAt,\n      roots,\n      documentCount: documents.length,\n      chunkCount: chunks.length,\n      skippedCount,\n      ...coverage,\n      truncated: truncatedFileCount > 0\n    }"""
+          )
+          replace_once(
+              store,
+              """      documentCount: index.documents.length,\n      chunkCount: index.chunks.length,\n      ...(index.syncedAt ? { syncedAt: index.syncedAt } : {}),\n      lastSelectedIds: [...this.lastSelectedIds]""",
+              """      documentCount: index.documents.length,\n      chunkCount: index.chunks.length,\n      candidateFileCount: index.candidateFileCount,\n      attemptedFileCount: index.attemptedFileCount,\n      failedFileCount: index.failedFileCount,\n      truncatedFileCount: index.truncatedFileCount,\n      truncated: index.truncatedFileCount > 0,\n      ...(index.syncedAt ? { syncedAt: index.syncedAt } : {}),\n      lastSelectedIds: [...this.lastSelectedIds]"""
+          )
+          replace_once(
+              store,
+              """  private async readIndex(): Promise<KnowledgeIndex> {\n    try {\n      const text = await readFile(this.indexPath(), 'utf8')\n      const parsed = JSON.parse(text) as Partial<KnowledgeIndex>\n      return {\n        syncedAt: parsed.syncedAt,\n        roots: Array.isArray(parsed.roots) ? parsed.roots.filter((root): root is string => typeof root === 'string') : [],\n        documents: Array.isArray(parsed.documents) ? parsed.documents as KnowledgeDocument[] : [],\n        chunks: Array.isArray(parsed.chunks) ? parsed.chunks as KnowledgeChunk[] : [],\n        edges: Array.isArray(parsed.edges) ? parsed.edges as import('../contracts/knowledge.js').KnowledgeEdge[] : [],\n        skippedCount: typeof parsed.skippedCount === 'number' ? parsed.skippedCount : 0\n      }\n    } catch {\n      return { roots: [], documents: [], chunks: [], edges: [], skippedCount: 0 }\n    }\n  }""",
+              """  private async readIndex(): Promise<KnowledgeIndex> {\n    try {\n      const text = await readFile(this.indexPath(), 'utf8')\n      const parsed = JSON.parse(text) as Partial<KnowledgeIndex>\n      const documents = Array.isArray(parsed.documents) ? parsed.documents as KnowledgeDocument[] : []\n      const candidateFileCount = typeof parsed.candidateFileCount === 'number'\n        ? parsed.candidateFileCount\n        : documents.length\n      const attemptedFileCount = typeof parsed.attemptedFileCount === 'number'\n        ? parsed.attemptedFileCount\n        : documents.length\n      const failedFileCount = typeof parsed.failedFileCount === 'number'\n        ? parsed.failedFileCount\n        : Math.max(0, attemptedFileCount - documents.length)\n      const truncatedFileCount = typeof parsed.truncatedFileCount === 'number'\n        ? parsed.truncatedFileCount\n        : 0\n      return {\n        syncedAt: parsed.syncedAt,\n        roots: Array.isArray(parsed.roots) ? parsed.roots.filter((root): root is string => typeof root === 'string') : [],\n        documents,\n        chunks: Array.isArray(parsed.chunks) ? parsed.chunks as KnowledgeChunk[] : [],\n        edges: Array.isArray(parsed.edges) ? parsed.edges as import('../contracts/knowledge.js').KnowledgeEdge[] : [],\n        skippedCount: typeof parsed.skippedCount === 'number' ? parsed.skippedCount : 0,\n        candidateFileCount,\n        attemptedFileCount,\n        failedFileCount,\n        truncatedFileCount\n      }\n    } catch {\n      return {\n        roots: [],\n        documents: [],\n        chunks: [],\n        edges: [],\n        skippedCount: 0,\n        candidateFileCount: 0,\n        attemptedFileCount: 0,\n        failedFileCount: 0,\n        truncatedFileCount: 0\n      }\n    }\n  }"""
+          )
+          replace_once(
+              store,
+              """async function collectFiles(root: string, remaining: number): Promise<{ files: string[]; skippedCount: number }> {\n  const files: string[] = []\n  let skippedCount = 0\n  async function visit(dir: string): Promise<void> {\n    if (files.length >= remaining) return\n    const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])\n    for (const entry of entries) {\n      if (files.length >= remaining) return\n      const path = join(dir, entry.name)\n      if (entry.isDirectory()) {\n        if (SKIP_DIRS.has(entry.name)) {\n          skippedCount += 1\n          continue\n        }\n        await visit(path)\n      } else if (entry.isFile()) {\n        // Never index our own system files as knowledge documents: index.json\n        // is the search index itself and *.meta.json are sidecar metadata. Both\n        // are internal bookkeeping, not user content, and indexing them pollutes\n        // retrieval results with noise entries titled \"index\".\n        if (entry.name === 'index.json' || entry.name.endsWith('.meta.json')) {\n          skippedCount += 1\n          continue\n        }\n        const ext = extname(entry.name).toLowerCase()\n        if (TEXT_EXTENSIONS.has(ext) || EXTRACTABLE_EXTENSIONS.has(ext)) {\n          files.push(path)\n        } else {\n          skippedCount += 1\n        }\n      }\n    }\n  }\n  await visit(root)\n  return { files, skippedCount }\n}""",
+              """async function collectFiles(root: string): Promise<{ files: string[]; skippedCount: number }> {\n  const files: string[] = []\n  let skippedCount = 0\n  async function visit(dir: string): Promise<void> {\n    const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])\n    for (const entry of entries) {\n      const path = join(dir, entry.name)\n      if (entry.isDirectory()) {\n        if (SKIP_DIRS.has(entry.name)) {\n          skippedCount += 1\n          continue\n        }\n        await visit(path)\n      } else if (entry.isFile()) {\n        // Never index our own system files as knowledge documents: index.json\n        // is the search index itself and *.meta.json are sidecar metadata. Both\n        // are internal bookkeeping, not user content, and indexing them pollutes\n        // retrieval results with noise entries titled \"index\".\n        if (entry.name === 'index.json' || entry.name.endsWith('.meta.json')) {\n          skippedCount += 1\n          continue\n        }\n        const ext = extname(entry.name).toLowerCase()\n        if (TEXT_EXTENSIONS.has(ext) || EXTRACTABLE_EXTENSIONS.has(ext)) {\n          files.push(path)\n        } else {\n          skippedCount += 1\n        }\n      }\n    }\n  }\n  await visit(root)\n  return { files, skippedCount }\n}"""
+          )
+
+          # 3) UI must disclose when the current 5000-file guard truncates coverage.
+          view = 'apps/desktop-legalwork/src/renderer/src/components/knowledge-base/KnowledgeBaseView.tsx'
+          replace_once(
+              view,
+              """    try {\n      await requestJson(LEGALWORK_KNOWLEDGE_SYNC_PATH, 'POST', { maxFiles: 5000 })\n      if (showToast) {\n        setToast('知识库索引已同步')\n        window.setTimeout(() => setToast(null), 2200)\n      }\n    } catch (err) {""",
+              """    try {\n      const result = await requestJson<{\n        documentCount: number\n        candidateFileCount?: number\n        truncatedFileCount?: number\n        truncated?: boolean\n      }>(LEGALWORK_KNOWLEDGE_SYNC_PATH, 'POST', { maxFiles: 5000 })\n      if (result.truncated) {\n        const total = result.candidateFileCount ?? result.documentCount + (result.truncatedFileCount ?? 0)\n        const omitted = result.truncatedFileCount ?? Math.max(0, total - result.documentCount)\n        setToast(`索引未覆盖全部文件：已索引 ${result.documentCount}/${total}，${omitted} 个文件受当前上限限制`)\n        window.setTimeout(() => setToast(null), 6000)\n      } else if (showToast) {\n        setToast(`知识库索引已同步（${result.documentCount} 个文件）`)\n        window.setTimeout(() => setToast(null), 2200)\n      }\n    } catch (err) {"""
+          )
+
+          # 4) Model clients no longer own sliding-window truncation. AgentLoop
+          #    compaction is the single history owner, preserving append-only prefix reuse.
+          old_window = """    const windowSize = this.config.historyLimit ?? resolveHistoryLimit()\n    const history = windowSize\n      ? limitHistoryPreservingCompaction(request.history, windowSize)\n      : request.history"""
+          new_window = """    // History compaction/capping is owned by AgentLoop. Sliding the\n    // model-client window changes the beginning of the prompt on every step and\n    // destroys provider prefix-cache reuse.\n    const history = request.history"""
+          deepseek = 'apps/desktop-legalwork/legalwork/src/adapters/model/deepseek-compat-model-client.ts'
+          replace_once(deepseek, old_window, new_window)
+          anthropic = 'apps/desktop-legalwork/legalwork/src/adapters/model/anthropic-compat-model-client.ts'
+          replace_if_present(anthropic, old_window, new_window)
+
+          # 5) AgentLoop: direct knowledge QA, turn-scoped retrieval dedupe, and
+          #    item-count compaction guard before histories become pathological.
+          loop = 'apps/desktop-legalwork/legalwork/src/loop/agent-loop.ts'
+          replace_once(
+              loop,
+              "import { resolveImaRouteAction } from './ima-knowledge-router.js'",
+              "import { resolveImaRouteAction } from './ima-knowledge-router.js'\nimport { isKnowledgeQaThreadTitle, knowledgeQaToolSpecs } from './knowledge-qa-mode.js'"
+          )
+          replace_once(
+              loop,
+              "const DEFAULT_COMPACTION_SUMMARY_INPUT_MAX_BYTES = 96 * 1024",
+              "const DEFAULT_COMPACTION_SUMMARY_INPUT_MAX_BYTES = 96 * 1024\nconst DEFAULT_HISTORY_ITEM_COMPACTION_THRESHOLD = 220\nconst DEFAULT_HISTORY_ITEM_COMPACTION_KEEP_RECENT = 16"
+          )
+          replace_once(
+              loop,
+              """      this.autoModelRoutes.delete(autoModelRouteKey(threadId, turnId))\n      this.toolStormBreakers.delete(turnId)\n      this.turnInputTokenSpend.delete(turnId)""",
+              """      this.autoModelRoutes.delete(autoModelRouteKey(threadId, turnId))\n      this.toolStormBreakers.delete(turnId)\n      this.retrievalLedgers.delete(turnId)\n      this.turnInputTokenSpend.delete(turnId)"""
+          )
+          replace_once(
+              loop,
+              """    // Disable IMA auto-routing for file-scoped knowledge-base Q&A threads\n    // (\"知识库：<file> · ...\"): the file content is already injected locally and\n    // an extra IMA cloud call would add cost with little benefit. Global\n    // knowledge-base Q&A (\"知识库全局对话 · ...\") keeps IMA routing.\n    const isFileKnowledgeThread = thread?.title?.startsWith('知识库：')\n    const imaRouteAction = resolveImaRouteAction({\n      prompt: turn?.prompt ?? '',\n      tools: toolSpecs,\n      items: healed.items,\n      turnId,\n      enabled: !planTurnActive && !isFileKnowledgeThread\n    })\n    const requiredToolName = planRequiredToolName ?? imaRouteAction?.requiredToolName\n    const requestToolSpecs = requiredToolName\n      ? toolSpecs.filter((tool) => tool.name === requiredToolName)\n      : toolSpecs""",
+              """    // Knowledge-base UI threads already contain renderer-produced RAG\n    // evidence. Treat them as direct QA: no second knowledge/IMA/tool pass.\n    const isKnowledgeQaThread = isKnowledgeQaThreadTitle(thread?.title) && !planTurnActive\n    const scopedToolSpecs = knowledgeQaToolSpecs(toolSpecs, {\n      title: thread?.title,\n      planTurnActive\n    })\n    const imaRouteAction = resolveImaRouteAction({\n      prompt: turn?.prompt ?? '',\n      tools: scopedToolSpecs,\n      items: healed.items,\n      turnId,\n      enabled: !planTurnActive && !isKnowledgeQaThread\n    })\n    const requiredToolName = planRequiredToolName ?? imaRouteAction?.requiredToolName\n    const requestToolSpecs = requiredToolName\n      ? scopedToolSpecs.filter((tool) => tool.name === requiredToolName)\n      : scopedToolSpecs"""
+          )
+          replace_once(
+              loop,
+              "...(this.opts.primaryLegalSource ? [primaryLegalSourceInstruction(this.opts.primaryLegalSource)] : []),",
+              "...(!isKnowledgeQaThread && this.opts.primaryLegalSource ? [primaryLegalSourceInstruction(this.opts.primaryLegalSource)] : []),"
+          )
+          replace_once(loop, 'this.retrievalDuplicateFor(input.threadId, input.call)', 'this.retrievalDuplicateFor(input.turnId, input.call)')
+          replace_once(loop, 'this.ledgerFor(input.threadId).record(input.call.toolName, input.call.arguments)', 'this.ledgerFor(input.turnId).record(input.call.toolName, input.call.arguments)')
+          replace_once(
+              loop,
+              """  private ledgerFor(threadId: string): RetrievalLedger {\n    let ledger = this.retrievalLedgers.get(threadId)\n    if (!ledger) {\n      ledger = new RetrievalLedger()\n      this.retrievalLedgers.set(threadId, ledger)\n    }\n    return ledger\n  }\n\n  private retrievalDuplicateFor(threadId: string, call: ToolCallLike): string | null {\n    const toolName = call.toolName\n    // Only dedupe knowledge retrieval tools that pull bulk content into history.\n    if (!DEDUP_TOOL_NAMES.has(toolName)) return null\n    const ledger = this.retrievalLedgers.get(threadId)\n    if (!ledger) return null\n    return ledger.duplicateKey(toolName, call.arguments)\n  }""",
+              """  private ledgerFor(turnId: string): RetrievalLedger {\n    let ledger = this.retrievalLedgers.get(turnId)\n    if (!ledger) {\n      ledger = new RetrievalLedger()\n      this.retrievalLedgers.set(turnId, ledger)\n    }\n    return ledger\n  }\n\n  private retrievalDuplicateFor(turnId: string, call: ToolCallLike): string | null {\n    const toolName = call.toolName\n    // Only dedupe repeated bulk retrievals inside the current turn. A later\n    // turn may legitimately repeat the same query after KB edits/compaction.\n    if (!DEDUP_TOOL_NAMES.has(toolName)) return null\n    const ledger = this.retrievalLedgers.get(turnId)\n    if (!ledger) return null\n    return ledger.duplicateKey(toolName, call.arguments)\n  }"""
+          )
+          replace_once(
+              loop,
+              """    const pressure = this.consumePromptPressure(context.threadId, model)\n    const thresholdModel = pressure?.model || model\n    const plan = this.opts.compactor.planCompaction(items, { model: thresholdModel, promptTokens: pressure?.promptTokens })\n    if (!plan) return items""",
+              """    const pressure = this.consumePromptPressure(context.threadId, model)\n    const thresholdModel = pressure?.model || model\n    const tokenPlan = this.opts.compactor.planCompaction(items, {\n      model: thresholdModel,\n      promptTokens: pressure?.promptTokens\n    })\n    const plan = tokenPlan ?? (items.length >= DEFAULT_HISTORY_ITEM_COMPACTION_THRESHOLD\n      ? {\n          mode: 'normal' as const,\n          keepRecent: DEFAULT_HISTORY_ITEM_COMPACTION_KEEP_RECENT,\n          reason: `history item count ${items.length} reached ${DEFAULT_HISTORY_ITEM_COMPACTION_THRESHOLD}`\n        }\n      : null)\n    if (!plan) return items"""
+          )
+
+          # 6) Regression tests for coverage and append-only model history.
+          kb_test = 'apps/desktop-legalwork/legalwork/src/knowledge/knowledge-store.test.ts'
+          text = read(kb_test)
+          marker = "reports explicit coverage when maxFiles truncates the candidate set"
+          if marker not in text:
+              insertion = r'''
+
+  it('reports explicit coverage when maxFiles truncates the candidate set', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-coverage-'))
+    const sourceRoot = join(root, 'knowledge-base')
+    const indexRoot = join(root, 'index')
+    try {
+      await mkdir(sourceRoot, { recursive: true })
+      await writeFile(join(sourceRoot, 'a.md'), '劳动合同解除规则 A', 'utf8')
+      await writeFile(join(sourceRoot, 'b.md'), '劳动合同解除规则 B', 'utf8')
+      await writeFile(join(sourceRoot, 'c.md'), '劳动合同解除规则 C', 'utf8')
+      const store = new FileKnowledgeStore({ rootDir: indexRoot, sourceRoots: [sourceRoot] })
+
+      const sync = await store.sync({ maxFiles: 2 })
+      expect(sync.candidateFileCount).toBe(3)
+      expect(sync.attemptedFileCount).toBe(2)
+      expect(sync.documentCount).toBe(2)
+      expect(sync.failedFileCount).toBe(0)
+      expect(sync.truncatedFileCount).toBe(1)
+      expect(sync.truncated).toBe(true)
+
+      const diagnostics = await store.diagnostics()
+      expect(diagnostics.candidateFileCount).toBe(3)
+      expect(diagnostics.attemptedFileCount).toBe(2)
+      expect(diagnostics.truncatedFileCount).toBe(1)
+      expect(diagnostics.truncated).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+'''
+              pos = text.rfind('\n})')
+              if pos < 0:
+                  raise SystemExit(f'{kb_test}: describe terminator not found')
+              write(kb_test, text[:pos] + insertion + text[pos:])
+
+          model_test = 'apps/desktop-legalwork/legalwork/tests/model-client.test.ts'
+          text = read(model_test)
+          marker = "keeps full AgentLoop history even when legacy historyLimit is configured"
+          if marker not in text:
+              insertion = r'''
+
+  it('keeps full AgentLoop history even when legacy historyLimit is configured', async () => {
+    const response = {
+      id: 'append-only-history',
+      model: 'deepseek-chat',
+      choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'done' } }]
+    }
+    const sentBodies: Array<Record<string, unknown>> = []
+    const fetchImpl: typeof fetch = async (_url, init) => {
+      sentBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    }
+    const client = new DeepseekCompatModelClient({
+      baseUrl: 'https://example.com/beta',
+      apiKey: 'k',
+      model: 'deepseek-chat',
+      fetchImpl,
+      nonStreaming: true,
+      historyLimit: 1
+    })
+    const request = buildRequest(new AbortController().signal)
+    request.history = [
+      makeUserItem({ id: 'u_old', threadId: 'thr_1', turnId: 'turn_old', text: 'oldest stable prefix' }),
+      makeAssistantTextItem({ id: 'a_old', threadId: 'thr_1', turnId: 'turn_old', text: 'old answer' }),
+      makeUserItem({ id: 'u_new', threadId: 'thr_1', turnId: 'turn_1', text: 'newest user message' })
+    ]
+
+    for await (const _chunk of client.stream(request)) {
+      // drain
+    }
+
+    const serialized = JSON.stringify(sentBodies[0]?.messages ?? [])
+    expect(serialized).toContain('oldest stable prefix')
+    expect(serialized).toContain('old answer')
+    expect(serialized).toContain('newest user message')
+  })
+'''
+              pos = text.rfind('\n})')
+              if pos < 0:
+                  raise SystemExit(f'{model_test}: describe terminator not found')
+              write(model_test, text[:pos] + insertion + text[pos:])
+          PY
+
+      - name: Install Legalwork runtime dependencies
+        working-directory: apps/desktop-legalwork/legalwork
+        run: npm ci
+
+      - name: Typecheck Legalwork runtime
+        working-directory: apps/desktop-legalwork/legalwork
+        run: npm run typecheck
+
+      - name: Run targeted Legalwork tests
+        working-directory: apps/desktop-legalwork/legalwork
+        run: npx vitest run src/knowledge/knowledge-store.test.ts src/knowledge/knowledge-file-reader.test.ts src/loop/knowledge-qa-mode.test.ts tests/model-client.test.ts
+
+      - name: Install desktop dependencies for typecheck
+        working-directory: apps/desktop-legalwork
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck desktop renderer/main
+        working-directory: apps/desktop-legalwork
+        run: npm run typecheck
+
+      - name: Commit validated patch and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/kb-v2-patcher.yml
+          git add apps/desktop-legalwork/legalwork/src apps/desktop-legalwork/legalwork/tests apps/desktop-legalwork/src/renderer/src/components/knowledge-base/KnowledgeBaseView.tsx
+          git commit -m 'refactor(knowledge): fix QA retrieval and indexing correctness'
+          git push origin HEAD:agent/knowledge-base-v2
