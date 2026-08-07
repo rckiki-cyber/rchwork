@@ -32,8 +32,9 @@ jobs:
           start = next(i for i, line in enumerate(source) if "python3 <<'PY'" in line) + 1
           end = next(i for i in range(start, len(source)) if source[i].strip() == 'PY')
           lines = source[start:end]
-          indent = min((len(line) - len(line.lstrip()) for line in lines if line.strip()), default=0)
-          patch = '\n'.join(line[indent:] for line in lines) + '\n'
+          indent = len(lines[0]) - len(lines[0].lstrip()) if lines else 0
+          prefix = ' ' * indent
+          patch = '\n'.join(line[indent:] if line.startswith(prefix) else line for line in lines) + '\n'
           Path('/tmp/kb-v2-patch.py').write_text(patch, encoding='utf-8')
           PY
           python3 /tmp/kb-v2-patch.py
