@@ -998,7 +998,7 @@ describe('DeepseekCompatModelClient', () => {
     expect(messages[2]).toMatchObject({ role: 'user', content: 'continue' })
   })
 
-  it('preserves the latest compaction summary when applying history limits', async () => {
+  it('preserves compaction summaries without provider-side sliding history limits', async () => {
     const sentBodies: Array<{ messages?: Array<Record<string, unknown>> }> = []
     const response = {
       id: 'r1',
@@ -1171,4 +1171,44 @@ describe('DeepseekCompatModelClient', () => {
     })
     expect(chunks.find((chunk) => chunk.kind === 'completed')).toBeUndefined()
   })
+
+  it('keeps full AgentLoop history even when legacy historyLimit is configured', async () => {
+    const response = {
+      id: 'append-only-history',
+      model: 'deepseek-chat',
+      choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'done' } }]
+    }
+    const sentBodies: Array<Record<string, unknown>> = []
+    const fetchImpl: typeof fetch = async (_url, init) => {
+      sentBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    }
+    const client = new DeepseekCompatModelClient({
+      baseUrl: 'https://example.com/beta',
+      apiKey: 'k',
+      model: 'deepseek-chat',
+      fetchImpl,
+      nonStreaming: true,
+      historyLimit: 1
+    })
+    const request = buildRequest(new AbortController().signal)
+    request.history = [
+      makeUserItem({ id: 'u_old', threadId: 'thr_1', turnId: 'turn_old', text: 'oldest stable prefix' }),
+      makeAssistantTextItem({ id: 'a_old', threadId: 'thr_1', turnId: 'turn_old', text: 'old answer' }),
+      makeUserItem({ id: 'u_new', threadId: 'thr_1', turnId: 'turn_1', text: 'newest user message' })
+    ]
+
+    for await (const _chunk of client.stream(request)) {
+      // drain
+    }
+
+    const serialized = JSON.stringify(sentBodies[0]?.messages ?? [])
+    expect(serialized).toContain('oldest stable prefix')
+    expect(serialized).toContain('old answer')
+    expect(serialized).toContain('newest user message')
+  })
+
 })

@@ -78,6 +78,7 @@ import { TODO_LIST_TOOL_NAME, TODO_WRITE_TOOL_NAME } from '../adapters/tool/todo
 import { shellRuntimeInstruction } from '../adapters/tool/builtin-tool-utils.js'
 import { LEGALWORK_SYSTEM_PROMPT } from '../prompt/legalwork-system-prompt.js'
 import { resolveImaRouteAction } from './ima-knowledge-router.js'
+import { isKnowledgeQaThreadTitle, knowledgeQaToolSpecs } from './knowledge-qa-mode.js'
 import {
   OFFICECLI_TOOL_NAME,
   officeDocumentWorkflowInstruction
@@ -121,6 +122,8 @@ const MAX_GOAL_NO_TOOL_CONTINUATIONS = 2
 const DEFAULT_COMPACTION_SUMMARY_TIMEOUT_MS = 15_000
 const DEFAULT_COMPACTION_SUMMARY_MAX_TOKENS = 1_200
 const DEFAULT_COMPACTION_SUMMARY_INPUT_MAX_BYTES = 96 * 1024
+const DEFAULT_HISTORY_ITEM_COMPACTION_THRESHOLD = 220
+const DEFAULT_HISTORY_ITEM_COMPACTION_KEEP_RECENT = 16
 
 const PIPELINE_STAGE_LABELS: Record<PipelineStage, string> = {
   setup: 'Setup',
@@ -624,6 +627,7 @@ export class AgentLoop {
       await this.finishGoalElapsedTimer(threadId, goalTimer)
       this.autoModelRoutes.delete(autoModelRouteKey(threadId, turnId))
       this.toolStormBreakers.delete(turnId)
+      this.retrievalLedgers.delete(turnId)
       this.turnInputTokenSpend.delete(turnId)
       this.turnBudgetInstructionInjected.delete(turnId)
       this.turnReadKeys.delete(turnId)
@@ -909,22 +913,24 @@ export class AgentLoop {
       toolSpecs.some((tool) => tool.name === CREATE_PLAN_TOOL_NAME)
         ? CREATE_PLAN_TOOL_NAME
         : undefined
-    // Disable IMA auto-routing for file-scoped knowledge-base Q&A threads
-    // ("知识库：<file> · ..."): the file content is already injected locally and
-    // an extra IMA cloud call would add cost with little benefit. Global
-    // knowledge-base Q&A ("知识库全局对话 · ...") keeps IMA routing.
-    const isFileKnowledgeThread = thread?.title?.startsWith('知识库：')
+    // Knowledge-base UI threads already contain renderer-produced RAG
+    // evidence. Treat them as direct QA: no second knowledge/IMA/tool pass.
+    const isKnowledgeQaThread = isKnowledgeQaThreadTitle(thread?.title) && !planTurnActive
+    const scopedToolSpecs = knowledgeQaToolSpecs(toolSpecs, {
+      title: thread?.title,
+      planTurnActive
+    })
     const imaRouteAction = resolveImaRouteAction({
       prompt: turn?.prompt ?? '',
-      tools: toolSpecs,
+      tools: scopedToolSpecs,
       items: healed.items,
       turnId,
-      enabled: !planTurnActive && !isFileKnowledgeThread
+      enabled: !planTurnActive && !isKnowledgeQaThread
     })
     const requiredToolName = planRequiredToolName ?? imaRouteAction?.requiredToolName
     const requestToolSpecs = requiredToolName
-      ? toolSpecs.filter((tool) => tool.name === requiredToolName)
-      : toolSpecs
+      ? scopedToolSpecs.filter((tool) => tool.name === requiredToolName)
+      : scopedToolSpecs
     const officeWorkflowInstruction = officeDocumentWorkflowInstruction({
       prompt: latestUserMessageText(healed.items, turnId) || turn?.prompt || '',
       items: healed.items,
@@ -952,7 +958,7 @@ export class AgentLoop {
       ...(officeWorkflowInstruction ? [officeWorkflowInstruction] : []),
       ...(requestToolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
       ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : []),
-      ...(this.opts.primaryLegalSource ? [primaryLegalSourceInstruction(this.opts.primaryLegalSource)] : []),
+      ...(!isKnowledgeQaThread && this.opts.primaryLegalSource ? [primaryLegalSourceInstruction(this.opts.primaryLegalSource)] : []),
       ...(this.armTurnBudgetWrapUp(turnId) ? [TURN_BUDGET_WRAPUP_INSTRUCTION] : [])
     ]
     await this.recordPipelineStage(threadId, turnId, 'input_remembered', {
@@ -1520,7 +1526,7 @@ export class AgentLoop {
           // model asks for the same search query / file again, return a cached
           // pointer instead of re-running the tool (re-running re-bills the full
           // result as cache-miss and adds nothing new).
-          const duplicate = this.retrievalDuplicateFor(input.threadId, input.call)
+          const duplicate = this.retrievalDuplicateFor(input.turnId, input.call)
           if (duplicate) {
             const dedupItem = makeToolResultItem({
               id: `item_${input.call.callId}_dedup`,
@@ -1568,7 +1574,9 @@ export class AgentLoop {
             await this.opts.turns.applyItem(input.threadId, item)
           })
           if (result.item.kind === 'tool_result' && !result.item.isError) {
-            this.ledgerFor(input.threadId).record(input.call.toolName, input.call.arguments)
+            // retrievalLedgers 以 turnId 为 key（retrievalDuplicateFor/清理都按 turnId 查），
+            // 必须用 input.turnId 写入，否则写读不一致，跨 turn 去重失效。
+            this.ledgerFor(input.turnId).record(input.call.toolName, input.call.arguments)
             const doneReadKey = this.readKeyFor(input.call)
             if (doneReadKey) {
               let seen = this.turnReadKeys.get(input.turnId)
@@ -1830,7 +1838,17 @@ export class AgentLoop {
   ): Promise<TurnItem[]> {
     const pressure = this.consumePromptPressure(context.threadId, model)
     const thresholdModel = pressure?.model || model
-    const plan = this.opts.compactor.planCompaction(items, { model: thresholdModel, promptTokens: pressure?.promptTokens })
+    const tokenPlan = this.opts.compactor.planCompaction(items, {
+      model: thresholdModel,
+      promptTokens: pressure?.promptTokens
+    })
+    const plan = tokenPlan ?? (items.length >= DEFAULT_HISTORY_ITEM_COMPACTION_THRESHOLD
+      ? {
+          mode: 'normal' as const,
+          keepRecent: DEFAULT_HISTORY_ITEM_COMPACTION_KEEP_RECENT,
+          reason: `history item count ${items.length} reached ${DEFAULT_HISTORY_ITEM_COMPACTION_THRESHOLD}`
+        }
+      : null)
     if (!plan) return items
     const threadId = context.threadId
     const turnId = context.turnId
@@ -2189,20 +2207,21 @@ export class AgentLoop {
     return 'allow'
   }
 
-  private ledgerFor(threadId: string): RetrievalLedger {
-    let ledger = this.retrievalLedgers.get(threadId)
+  private ledgerFor(turnId: string): RetrievalLedger {
+    let ledger = this.retrievalLedgers.get(turnId)
     if (!ledger) {
       ledger = new RetrievalLedger()
-      this.retrievalLedgers.set(threadId, ledger)
+      this.retrievalLedgers.set(turnId, ledger)
     }
     return ledger
   }
 
-  private retrievalDuplicateFor(threadId: string, call: ToolCallLike): string | null {
+  private retrievalDuplicateFor(turnId: string, call: ToolCallLike): string | null {
     const toolName = call.toolName
-    // Only dedupe knowledge retrieval tools that pull bulk content into history.
+    // Only dedupe repeated bulk retrievals inside the current turn. A later
+    // turn may legitimately repeat the same query after KB edits/compaction.
     if (!DEDUP_TOOL_NAMES.has(toolName)) return null
-    const ledger = this.retrievalLedgers.get(threadId)
+    const ledger = this.retrievalLedgers.get(turnId)
     if (!ledger) return null
     return ledger.duplicateKey(toolName, call.arguments)
   }
