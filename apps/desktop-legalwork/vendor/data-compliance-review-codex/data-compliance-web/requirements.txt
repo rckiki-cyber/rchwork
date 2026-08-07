@@ -14,7 +14,9 @@ odfpy>=1.4.1
 python-pptx>=0.6.23
 PyMuPDF>=1.24.0
 Pillow>=10.0.0
-paddlepaddle>=2.6.0
-paddleocr>=2.7.0
+# 配套的 Paddle 3.x 大版本：锁定 <4 防止 pip 解析出 2.x/3.x 混装
+# （混装会报 cannot import name 'capture_backward_subgraph_guard' from paddle.utils.bwd_graph_utils）
+paddlepaddle>=3.0.0,<4.0.0
+paddleocr>=3.0.0,<4.0.0
 pytesseract>=0.3.10
 gunicorn>=21.2.0

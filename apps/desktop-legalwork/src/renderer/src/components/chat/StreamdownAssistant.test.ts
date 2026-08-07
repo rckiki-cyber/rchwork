@@ -7,6 +7,7 @@ import {
   shouldAnimateStreamingText,
   StreamdownAssistant
 } from './StreamdownAssistant'
+import { headingSlug } from '../../lib/rehype-heading-ids'
 
 describe('shouldAnimateStreamingText', () => {
   it('keeps the lightweight reveal for short single-line text', () => {
@@ -64,5 +65,68 @@ describe('shouldAnimateStreamingText', () => {
     expect(html).toContain('href="#knowledge-source-3"')
     expect(html).toContain('ds-knowledge-source-link')
     expect(html).not.toContain('[blocked]')
+  })
+
+  it('generates GitHub-style slug ids on markdown headings', () => {
+    expect(headingSlug('第一章 概述')).toBe('第一章-概述')
+    expect(headingSlug('1. 概述')).toBe('1-概述')
+    expect(headingSlug('英文字母 Title')).toBe('英文字母-title')
+    expect(headingSlug('')).toBe('')
+  })
+
+  it('renders heading ids so TOC anchor links can jump to them', () => {
+    const html = renderToStaticMarkup(
+      createElement(StreamdownAssistant, {
+        text: '# 第一章 概述\n\n正文内容\n\n## 1. 现状分析\n\n更多内容',
+        streaming: false
+      })
+    )
+
+    expect(html).toContain('id="第一章-概述"')
+    expect(html).toContain('id="1-现状分析"')
+  })
+
+  it('dedupes repeated heading slugs with a numeric suffix', () => {
+    const html = renderToStaticMarkup(
+      createElement(StreamdownAssistant, {
+        text: '## 概述\n\na\n\n## 概述\n\nb',
+        streaming: false
+      })
+    )
+
+    expect(html).toContain('id="概述"')
+    expect(html).toContain('id="概述-2"')
+  })
+
+  it('matches TOC anchor hrefs to generated heading ids for in-page jumps', () => {
+    const text = [
+      '## 目录',
+      '',
+      '- [一、案情概要](#一案情概要)',
+      '- [二、法律分析](#二法律分析)',
+      '',
+      '## 一、案情概要',
+      '',
+      '案件描述',
+      '',
+      '## 二、法律分析',
+      '',
+      '分析内容'
+    ].join('\n')
+    const html = renderToStaticMarkup(
+      createElement(StreamdownAssistant, {
+        text,
+        streaming: false
+      })
+    )
+
+    // 目录里的锚点 href（会被 remark 做 UTF-8 percent-encoding）解码后与标题 id 一致。
+    // 浏览器点击 `#%E4%B8%80...` 会先 decodeURIComponent 再匹配 `id="一案情概要"` → 跳转生效。
+    const anchors = html.match(/href="#[^"]*"/g) ?? []
+    const hrefs = anchors.map((a) => decodeURIComponent(a.replace(/^href="#/, '').replace(/"$/, '')))
+    expect(hrefs).toContain('一案情概要')
+    expect(hrefs).toContain('二法律分析')
+    expect(html).toContain('id="一案情概要"')
+    expect(html).toContain('id="二法律分析"')
   })
 })

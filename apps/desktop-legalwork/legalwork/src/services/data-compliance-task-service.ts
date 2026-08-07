@@ -379,69 +379,104 @@ export class DataComplianceTaskService {
   }
 
   private async ensurePythonEnvironment(): Promise<void> {
-    const venvPython = this.venvPythonPath()
-    const requirementsPath = join(this.webRoot, 'requirements.txt')
-    const markerPath = join(this.venvDir, DATA_COMPLIANCE_CORE_DEPENDENCY_MARKER)
+    // Paddle 2.x/3.x 混装残留（旧 paddle 孤儿文件，pip 无法清理）会让
+    // import paddle 持续失败，表现为"缺少 paddle/paddleocr"。自动重建一次
+    // venv 即可修复，用户无需手动删除目录。
+    let rebuildCount = 0
+    for (;;) {
+      const venvPython = this.venvPythonPath()
+      const requirementsPath = join(this.webRoot, 'requirements.txt')
+      const markerPath = join(this.venvDir, DATA_COMPLIANCE_CORE_DEPENDENCY_MARKER)
 
-    if (!this.canRunPython(venvPython)) {
-      const basePython = this.pythonBin
-      if (!basePython) {
-        throw new Error('未找到可用的 Python 解释器来创建 venv')
+      if (!this.canRunPython(venvPython)) {
+        const basePython = this.pythonBin
+        if (!basePython) {
+          throw new Error('未找到可用的 Python 解释器来创建 venv')
+        }
+        const result = await this.runCommand(basePython, ['-m', 'venv', this.venvDir])
+        if (result.exitCode !== 0) {
+          throw new Error(`创建 venv 失败: ${result.stderr || result.stdout}`)
+        }
       }
-      const result = await this.runCommand(basePython, ['-m', 'venv', this.venvDir])
-      if (result.exitCode !== 0) {
-        throw new Error(`创建 venv 失败: ${result.stderr || result.stdout}`)
+
+      this.pythonBin = venvPython
+
+      if (!existsSync(requirementsPath)) return
+      if (existsSync(markerPath)) {
+        // marker 可能来自旧版安装（残留 paddle 2.x 孤儿文件）。快速探测 paddle：
+        // 若为混装则自动重建一次，避免"标记已装好但实际损坏"的假阳性。
+        const probe = await this.runCommand(venvPython, ['-c', 'import paddle'], {
+          timeoutMs: PYTHON_IMPORT_TIMEOUT_MS
+        })
+        if (probe.exitCode === 0) return
+        const probeText = `${probe.stdout}\n${probe.stderr}`
+        if (/cannot import name [\s\S]{0,120}bwd_graph_utils|capture_backward_subgraph_guard/.test(probeText)) {
+          if (rebuildCount === 0) {
+            rebuildCount += 1
+            await rm(this.venvDir, { recursive: true, force: true })
+            continue
+          }
+        }
+        return
       }
-    }
 
-    this.pythonBin = venvPython
+      const missing = await this.findMissingPackages(CORE_REQUIRED_PYTHON_PACKAGES, venvPython)
+      if (missing.length === 0) {
+        writeFileSync(markerPath, JSON.stringify({
+          checked_at: nowIso(),
+          core_packages: CORE_REQUIRED_PYTHON_PACKAGES,
+          optional_ocr_packages: OPTIONAL_OCR_PYTHON_PACKAGES
+        }, null, 2), 'utf-8')
+        return
+      }
 
-    if (!existsSync(requirementsPath)) return
-    if (existsSync(markerPath)) return
+      // PaddlePaddle/spacy are large; download intermittently fails (esp. in
+      // regions with slow PyPI access). Retry once, and honor an optional mirror
+      // index (LEGALWORK_PIP_INDEX_URL) to sidestep network issues.
+      const pipIndexUrl = (process.env.LEGALWORK_PIP_INDEX_URL || '').trim()
+      const pipArgs = ['-m', 'pip', 'install', '-r', requirementsPath]
+      if (pipIndexUrl) {
+        pipArgs.push('-i', pipIndexUrl, '--trusted-host', new URL(pipIndexUrl).hostname)
+      }
+      const pipInstall = async (): Promise<{ exitCode: number | null; stderr: string }> => {
+        const result = await this.runCommand(venvPython, pipArgs, { cwd: this.webRoot })
+        return { exitCode: result.exitCode, stderr: result.stderr || result.stdout || '' }
+      }
 
-    const missing = await this.findMissingPackages(CORE_REQUIRED_PYTHON_PACKAGES, venvPython)
-    if (missing.length === 0) {
-      writeFileSync(markerPath, JSON.stringify({
-        checked_at: nowIso(),
-        core_packages: CORE_REQUIRED_PYTHON_PACKAGES,
-        optional_ocr_packages: OPTIONAL_OCR_PYTHON_PACKAGES
-      }, null, 2), 'utf-8')
-      return
-    }
+      let pipResult = await pipInstall()
+      if (pipResult.exitCode !== 0) {
+        pipResult = await pipInstall()
+      }
+      if (pipResult.exitCode !== 0) {
+        throw new Error(
+          `安装依赖失败: ${pipResult.stderr}. ` +
+          '若为网络原因，可设置 LEGALWORK_PIP_INDEX_URL 使用镜像源（如 https://pypi.tuna.tsinghua.edu.cn/simple）后重试。'
+        )
+      }
 
-    // PaddlePaddle/spacy are large; download intermittently fails (esp. in
-    // regions with slow PyPI access). Retry once, and honor an optional mirror
-    // index (LEGALWORK_PIP_INDEX_URL) to sidestep network issues.
-    const pipIndexUrl = (process.env.LEGALWORK_PIP_INDEX_URL || '').trim()
-    const pipArgs = ['-m', 'pip', 'install', '-r', requirementsPath]
-    if (pipIndexUrl) {
-      pipArgs.push('-i', pipIndexUrl, '--trusted-host', new URL(pipIndexUrl).hostname)
-    }
-    const pipInstall = async (): Promise<{ exitCode: number | null; stderr: string }> => {
-      const result = await this.runCommand(venvPython, pipArgs, { cwd: this.webRoot })
-      return { exitCode: result.exitCode, stderr: result.stderr || result.stdout || '' }
-    }
-
-    let pipResult = await pipInstall()
-    if (pipResult.exitCode !== 0) {
-      pipResult = await pipInstall()
-    }
-    if (pipResult.exitCode !== 0) {
-      throw new Error(
-        `安装依赖失败: ${pipResult.stderr}. ` +
-        '若为网络原因，可设置 LEGALWORK_PIP_INDEX_URL 使用镜像源（如 https://pypi.tuna.tsinghua.edu.cn/simple）后重试。'
-      )
-    }
-
-    const stillMissing = await this.findMissingPackages(CORE_REQUIRED_PYTHON_PACKAGES, venvPython)
-    if (stillMissing.length > 0) {
+      const stillMissing = await this.findMissingPackages(CORE_REQUIRED_PYTHON_PACKAGES, venvPython)
+      if (stillMissing.length === 0) {
+        writeFileSync(markerPath, JSON.stringify({
+          checked_at: nowIso(),
+          core_packages: CORE_REQUIRED_PYTHON_PACKAGES,
+          optional_ocr_packages: OPTIONAL_OCR_PYTHON_PACKAGES
+        }, null, 2), 'utf-8')
+        return
+      }
+      // paddle/paddleocr 装完仍 import 失败 → 探测是否混装，混装则自动重建 venv
+      if (rebuildCount === 0 && stillMissing.includes('paddle')) {
+        const probe = await this.runCommand(venvPython, ['-c', 'import paddle'], {
+          timeoutMs: PYTHON_IMPORT_TIMEOUT_MS
+        })
+        const probeText = `${probe.stdout}\n${probe.stderr}`
+        if (/cannot import name [\s\S]{0,120}bwd_graph_utils|capture_backward_subgraph_guard/.test(probeText)) {
+          rebuildCount += 1
+          await rm(this.venvDir, { recursive: true, force: true })
+          continue
+        }
+      }
       throw new Error(`安装依赖后仍缺少核心包: ${stillMissing.join(', ')}`)
     }
-    writeFileSync(markerPath, JSON.stringify({
-      checked_at: nowIso(),
-      core_packages: CORE_REQUIRED_PYTHON_PACKAGES,
-      optional_ocr_packages: OPTIONAL_OCR_PYTHON_PACKAGES
-    }, null, 2), 'utf-8')
   }
 
   private async findMissingPackages(packages: string[], python: string): Promise<string[]> {

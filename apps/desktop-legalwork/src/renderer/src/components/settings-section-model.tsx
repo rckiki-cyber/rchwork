@@ -16,6 +16,31 @@ import {
 } from './settings-controls'
 import { ModelListPicker } from './settings-model-list-picker'
 
+function formatCodexQuotaDuration(minutes: number, locale: string): string {
+  const language = locale.startsWith('zh') ? 'zh-CN' : 'en-US'
+  const number = new Intl.NumberFormat(language, { maximumFractionDigits: 1 })
+  if (minutes >= 1_440 && minutes % 1_440 === 0) {
+    const value = number.format(minutes / 1_440)
+    return locale.startsWith('zh') ? `${value} 天` : `${value}d`
+  }
+  if (minutes >= 60 && minutes % 60 === 0) {
+    const value = number.format(minutes / 60)
+    return locale.startsWith('zh') ? `${value} 小时` : `${value}h`
+  }
+  const value = number.format(minutes)
+  return locale.startsWith('zh') ? `${value} 分钟` : `${value}m`
+}
+
+function formatCodexQuotaReset(timestamp: number | null, locale: string): string {
+  if (!timestamp) return ''
+  return new Intl.DateTimeFormat(locale.startsWith('zh') ? 'zh-CN' : 'en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(timestamp * 1_000))
+}
+
 /**
  * Model configuration: authentication mode (API key vs ChatGPT account),
  * the active provider, its credentials/endpoint/protocol/model list, and the
@@ -249,48 +274,86 @@ export function ModelSettingsSection({ ctx }: { ctx: Record<string, any> }): Rea
                   {codexAuthError ? (
                     <p className="mt-3 text-[12px] leading-5 text-red-700 dark:text-red-300">{codexAuthError}</p>
                   ) : null}
+                  {codexAuthStatus?.loggedIn && codexAuthStatus.quota ? (
+                    <div className="mt-3 space-y-1.5 border-t border-ds-border-muted pt-3">
+                      <div className="text-[12px] font-semibold text-ds-ink">{t('codexQuotaTitle')}</div>
+                      {codexAuthStatus.quota.buckets.map((bucket) => (
+                        <div key={bucket.limitId} className="text-[12px] leading-5 text-ds-muted">
+                          {bucket.limitName ? (
+                            <span className="mr-2 text-ds-ink/80">{bucket.limitName}</span>
+                          ) : null}
+                          {bucket.primary ? (
+                            <span>
+                              {t('codexQuotaUsed', { percent: bucket.primary.usedPercent })}
+                              {' · '}
+                              {t('codexQuotaWindow', {
+                                duration: formatCodexQuotaDuration(bucket.primary.windowDurationMins, navigator.language)
+                              })}
+                              {bucket.primary.resetsAt
+                                ? ` · ${t('codexQuotaResets', { time: formatCodexQuotaReset(bucket.primary.resetsAt, navigator.language) })}`
+                                : ''}
+                            </span>
+                          ) : bucket.credits ? (
+                            bucket.credits.unlimited
+                              ? t('codexQuotaUnlimited')
+                              : t('codexQuotaCreditBalance', { balance: bucket.credits.balance ?? '' })
+                          ) : null}
+                          {bucket.rateLimitReachedType ? (
+                            <span className="block text-red-700 dark:text-red-300">{t('codexQuotaReached')}</span>
+                          ) : null}
+                        </div>
+                      ))}
+                      {codexAuthStatus.quota.resetCreditsAvailable > 0 ? (
+                        <div className="text-[12px] text-ds-muted">
+                          {t('codexQuotaResetCredits', { count: codexAuthStatus.quota.resetCreditsAvailable })}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
           }
         />
 
-        {/* Provider */}
-        <SettingRow
-          title={t('modelProvider')}
-          description={t('modelProviderDesc')}
-          control={
-            <div className="w-full min-w-0 md:max-w-md">
-              <select
-                className={selectControlClass}
-                value={activeProvider.id}
-                onChange={(e) => selectModelProvider(e.target.value)}
-              >
-                {BUILTIN_MODEL_PROVIDER_PRESETS.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.name}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {BUILTIN_MODEL_PROVIDER_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => selectModelProvider(preset.id)}
-                    className={`rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition ${
-                      activeProvider.id === preset.id
-                        ? 'border-accent/35 bg-accent/10 text-accent'
-                        : 'border-ds-border bg-ds-card text-ds-muted hover:bg-ds-hover hover:text-ds-ink'
-                    }`}
-                  >
-                    {preset.name}
-                  </button>
-                ))}
+        {/* Provider (仅 API Key 认证方式需要选择模型归属；ChatGPT 账号由 Codex 决定) */}
+        {legalwork.authMode !== 'chatgpt' ? (
+          <SettingRow
+            title={t('modelProvider')}
+            description={t('modelProviderDesc')}
+            control={
+              <div className="w-full min-w-0 md:max-w-md">
+                <select
+                  className={selectControlClass}
+                  value={activeProvider.id}
+                  onChange={(e) => selectModelProvider(e.target.value)}
+                >
+                  {BUILTIN_MODEL_PROVIDER_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {BUILTIN_MODEL_PROVIDER_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => selectModelProvider(preset.id)}
+                      className={`rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition ${
+                        activeProvider.id === preset.id
+                          ? 'border-accent/35 bg-accent/10 text-accent'
+                          : 'border-ds-border bg-ds-card text-ds-muted hover:bg-ds-hover hover:text-ds-ink'
+                      }`}
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          }
-        />
+            }
+          />
+        ) : null}
 
         {/* API key + base URL + protocol (only relevant in API-key mode) */}
         {legalwork.authMode !== 'chatgpt' ? (
@@ -360,22 +423,24 @@ export function ModelSettingsSection({ ctx }: { ctx: Record<string, any> }): Rea
           </>
         ) : null}
 
-        {/* Model list */}
-        <SettingRow
-          title={t('modelProviderModels')}
-          description={t('modelProviderModelsDesc')}
-          control={
-            <ModelListPicker
-              providerId={activeProvider.id}
-              endpointFormat={activeProvider.endpointFormat}
-              baseUrl={activeProvider.baseUrl}
-              apiKey={activeProvider.apiKey}
-              models={activeProvider.models}
-              onChange={(models) => updateActiveProviderProfile({ models })}
-              t={t}
-            />
-          }
-        />
+        {/* Model list (仅 API Key 认证方式需要配置模型列表；ChatGPT 账号从 Codex 拉取) */}
+        {legalwork.authMode !== 'chatgpt' ? (
+          <SettingRow
+            title={t('modelProviderModels')}
+            description={t('modelProviderModelsDesc')}
+            control={
+              <ModelListPicker
+                providerId={activeProvider.id}
+                endpointFormat={activeProvider.endpointFormat}
+                baseUrl={activeProvider.baseUrl}
+                apiKey={activeProvider.apiKey}
+                models={activeProvider.models}
+                onChange={(models) => updateActiveProviderProfile({ models })}
+                t={t}
+              />
+            }
+          />
+        ) : null}
 
         {/* Current model (composer) */}
         <SettingRow

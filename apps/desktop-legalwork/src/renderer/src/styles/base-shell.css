@@ -511,8 +511,7 @@ body {
   @apply antialiased;
   position: relative;
   isolation: isolate;
-  font-family:
-    -apple-system, 'SF Pro Text', 'SF Pro Display', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--font-apple-ui);
   background-color: var(--ds-bg-main);
   color: var(--ds-text);
   user-select: none;

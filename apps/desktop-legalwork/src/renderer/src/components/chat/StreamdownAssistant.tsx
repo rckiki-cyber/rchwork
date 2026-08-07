@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { harden } from 'rehype-harden'
 import 'streamdown/styles.css'
 import { parseFileReferenceHref, rehypeFileReferences } from '../../lib/file-references'
+import { rehypeHeadingIds } from '../../lib/rehype-heading-ids'
 import { useValidatedFileReference } from '../../lib/file-reference-validation'
 import { openWorkspacePathInEditor } from '../../lib/open-workspace-path'
 import { previewWorkspaceFile } from '../../lib/workspace-file-preview'
@@ -26,6 +27,7 @@ const STREAMING_ANIMATED: AnimateOptions = {
 }
 
 const rehypePlugins = [
+  rehypeHeadingIds,
   rehypeFileReferences,
   [
     harden,

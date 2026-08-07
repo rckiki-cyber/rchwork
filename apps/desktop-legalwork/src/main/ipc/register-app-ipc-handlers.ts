@@ -1,6 +1,7 @@
 import { app, dialog, ipcMain, shell, type BrowserWindow, type WebContents } from 'electron'
 import { watch, type FSWatcher } from 'node:fs'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createGunzip } from 'node:zlib'
 import { execSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { dirname, extname, join } from 'node:path'
@@ -591,32 +592,52 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         return false
       }
 
-      // 2. Create venv if needed
-      if (existsSync(venvPython) && !(await isSupportedPythonExecutable(venvPython))) {
-        sendProgress({ step: 'venv', percent: 34, message: '检测到旧版 Python 虚拟环境，正在重建…' })
-        // The venv python.exe may still be referenced on Windows; kill first, then retry removal.
-        killProcessesUsingDirectory(venvDir)
-        await rmPathWithRetry(venvDir)
-      }
-      if (!existsSync(venvPython)) {
-        sendProgress({ step: 'venv', percent: 35, message: '正在创建 Python 虚拟环境…' })
-        mkdirSync(venvDir, { recursive: true })
-        const venvResult = await runCommand(pythonCmd, ['-m', 'venv', venvDir])
-        if (venvResult.exitCode !== 0) {
-          sendProgress({
-            step: 'error',
-            percent: 0,
-            message: `创建 venv 失败: ${venvResult.stderr || venvResult.stdout || '未知错误'}`
-          })
-          return false
+      // 2. Create venv, install deps, verify imports. Paddle 2.x/3.x mixed
+      //    installs (orphan files from an old paddle that pip cannot remove)
+      //    fail import verification with bwd_graph_utils; rebuild the venv
+      //    once automatically so the user needs no manual cleanup step.
+      const requiredImports = [
+        'flask',
+        'docx',
+        'fitz',
+        'openpyxl',
+        'pptx',
+        'pypdf',
+        'pandas',
+        'PIL',
+        'paddle',
+        'paddleocr',
+        'pytesseract',
+        'presidio_analyzer',
+        'presidio_anonymizer'
+      ]
+      let rebuildCount = 0
+      for (;;) {
+        if (existsSync(venvPython) && !(await isSupportedPythonExecutable(venvPython))) {
+          sendProgress({ step: 'venv', percent: 34, message: '检测到旧版 Python 虚拟环境，正在重建…' })
+          // The venv python.exe may still be referenced on Windows; kill first, then retry removal.
+          killProcessesUsingDirectory(venvDir)
+          await rmPathWithRetry(venvDir)
         }
-      }
+        if (!existsSync(venvPython)) {
+          sendProgress({ step: 'venv', percent: 35, message: '正在创建 Python 虚拟环境…' })
+          mkdirSync(venvDir, { recursive: true })
+          const venvResult = await runCommand(pythonCmd, ['-m', 'venv', venvDir])
+          if (venvResult.exitCode !== 0) {
+            sendProgress({
+              step: 'error',
+              percent: 0,
+              message: `创建 venv 失败: ${venvResult.stderr || venvResult.stdout || '未知错误'}`
+            })
+            return false
+          }
+        }
 
-      // 3. Install dependencies via pip with per-package progress.
-      //    Retry once on failure: PaddlePaddle/spacy are large and download
-      //    intermittently fails (esp. in regions with slow PyPI access). An
-      //    optional mirror index (LEGALWORK_PIP_INDEX_URL) sidesteps that.
-      if (existsSync(requirementsPath)) {
+        // 3. Install dependencies via pip with per-package progress.
+        //    Retry once on failure: PaddlePaddle/spacy are large and download
+        //    intermittently fails (esp. in regions with slow PyPI access). An
+        //    optional mirror index (LEGALWORK_PIP_INDEX_URL) sidesteps that.
+        if (!existsSync(requirementsPath)) break
         const reqText = readFileSync(requirementsPath, 'utf8')
         const reqLines = reqText.split('\n').filter((l: string) => l.trim() && !l.trim().startsWith('#')).length
         const pipIndexUrl = (process.env.LEGALWORK_PIP_INDEX_URL || '').trim()
@@ -662,34 +683,39 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         }
 
         sendProgress({ step: 'installing', percent: 92, message: '正在校验数据合规运行环境…' })
-        const requiredImports = [
-          'flask',
-          'docx',
-          'fitz',
-          'openpyxl',
-          'pptx',
-          'pypdf',
-          'pandas',
-          'PIL',
-          'paddle',
-          'paddleocr',
-          'pytesseract',
-          'presidio_analyzer',
-          'presidio_anonymizer'
-        ]
         const verifyResult = await runCommand(
           venvPython,
           ['-c', requiredImports.map((name) => `import ${name}`).join('\n')],
           { cwd: webRoot, timeout: 120_000 }
         )
         if (verifyResult.exitCode !== 0) {
+          const verifyText = verifyResult.stderr || verifyResult.stdout || '未知错误'
+          // Paddle 新旧版本文件残留混装（2.x 与 3.x 并存）会报
+          // "cannot import name 'capture_backward_subgraph_guard' from 'paddle.utils.bwd_graph_utils'"。
+          // pip 升级无法清理不属于新 wheel 清单的孤儿文件，必须重建 venv 才能修复。
+          const isPaddleMixedInstall =
+            /cannot import name [\s\S]{0,120}bwd_graph_utils|capture_backward_subgraph_guard/.test(verifyText)
+          if (isPaddleMixedInstall && rebuildCount === 0) {
+            rebuildCount += 1
+            sendProgress({
+              step: 'venv',
+              percent: 34,
+              message: '检测到 PaddleOCR 依赖损坏（paddle 新旧版本混装），正在自动重建 Python 环境并重新安装，请稍候…'
+            })
+            killProcessesUsingDirectory(venvDir)
+            await rmPathWithRetry(venvDir)
+            continue
+          }
           sendProgress({
             step: 'error',
             percent: 0,
-            message: `Python 依赖校验失败: ${verifyResult.stderr || verifyResult.stdout || '未知错误'}`
+            message: isPaddleMixedInstall
+              ? `PaddleOCR 依赖损坏，自动重建后仍无法恢复，请删除目录 ${venvDir} 后重试。`
+              : `Python 依赖校验失败: ${verifyText}`
           })
           return false
         }
+        break
       }
 
       // 4. Done
@@ -802,6 +828,14 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
           response.pipe(file)
           file.on('finish', () => {
             file.close()
+            // 完整性校验：声明了 content-length 但收到的字节不足 = 下载被截断。
+            // 损坏的 tar.gz 会导致解压报 "truncated gzip input"，且会被当作
+            // 有效缓存反复解压同一坏文件。这里宁可抛错重试，也不缓存坏文件。
+            if (total > 0 && downloaded < total) {
+              file.destroy()
+              reject(new Error(`下载不完整: 已接收 ${downloaded} / ${total} 字节，文件可能被截断`))
+              return
+            }
             resolve()
           })
           file.on('error', reject)
@@ -823,6 +857,40 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     if (result.exitCode !== 0) {
       throw new Error(`解压 Python 失败: ${result.stderr || result.stdout || '未知错误'}`)
     }
+  }
+
+  /**
+   * Verify a gzip file is intact by decompressing it in-memory.
+   *
+   * Used to detect truncated/corrupt tar.gz downloads (content-length can match
+   * even when bytes were damaged in transit, and a missing content-length skips
+   * the download byte-count check entirely). Must use Node's built-in zlib
+   * rather than an external `gzip -t`: Windows ships no gzip executable, so the
+   * command would fail with ENOENT and be misread as "archive corrupt", deleting
+   * and re-downloading a perfectly good cached tarball.
+   */
+  function verifyGzipIntegrity(filePath: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false
+      const settle = (ok: boolean): void => {
+        if (settled) return
+        settled = true
+        resolve(ok)
+      }
+      try {
+        const readStream = createReadStream(filePath)
+        const gunzip = createGunzip()
+        gunzip.on('error', () => settle(false))
+        readStream.on('error', () => settle(false))
+        gunzip.on('end', () => settle(true))
+        // Drain decompressed output; without a consumer the transform buffers,
+        // backpressure stalls the pipe and 'end' never fires on large archives.
+        gunzip.resume()
+        readStream.pipe(gunzip)
+      } catch {
+        settle(false)
+      }
+    })
   }
 
   /**
@@ -970,16 +1038,64 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     if (existsSync(installDir)) {
       await rmPathWithRetry(installDir)
     }
-    try {
-      await extractTarGz(tarPath, installDir)
-    } catch (error) {
-      // Clean up broken extraction so retry can start fresh.
-      try {
-        await rmPathWithRetry(installDir)
-      } catch {
-        // ignore
+    // 解压失败时删除损坏的 tar.gz 缓存并重新下载解压，避免卡在同一个坏文件上。
+    const MAX_EXTRACT_ATTEMPTS = 3
+    let lastExtractError: unknown = null
+    for (let attempt = 1; attempt <= MAX_EXTRACT_ATTEMPTS; attempt += 1) {
+      // 先做 gzip 完整性校验（content-length 匹配也可能在传输中损坏字节）。
+      // 用 Node 内置 zlib（跨平台），不能用外部 gzip 命令——Windows 无 gzip。
+      const gzipOk = await verifyGzipIntegrity(tarPath)
+      if (!gzipOk) {
+        try {
+          rmSync(tarPath, { force: true })
+        } catch {
+          // ignore
+        }
+        try {
+          sendProgress({
+            step: 'detecting',
+            percent: 32,
+            message: `Python 压缩包损坏，正在重新下载 (${attempt}/${MAX_EXTRACT_ATTEMPTS})…`
+          })
+          await downloadFileWithProgress(url, tarPath, () => {})
+          lastExtractError = null
+          continue
+        } catch (error) {
+          lastExtractError = error
+          if (attempt < MAX_EXTRACT_ATTEMPTS) continue
+          break
+        }
       }
-      throw error
+      try {
+        await extractTarGz(tarPath, installDir)
+        lastExtractError = null
+        break
+      } catch (error) {
+        lastExtractError = error
+        // Clean up broken extraction so retry can start fresh.
+        try {
+          await rmPathWithRetry(installDir)
+        } catch {
+          // ignore
+        }
+        // 坏 tar 缓存会导致每次都解压同一损坏文件——删掉它，下次走重新下载。
+        try {
+          rmSync(tarPath, { force: true })
+        } catch {
+          // ignore
+        }
+        if (attempt < MAX_EXTRACT_ATTEMPTS) {
+          sendProgress({
+            step: 'detecting',
+            percent: 32,
+            message: `解压失败，正在重新下载 Python (${attempt}/${MAX_EXTRACT_ATTEMPTS})…`
+          })
+          continue
+        }
+      }
+    }
+    if (lastExtractError) {
+      throw lastExtractError
     }
 
     // Verify.

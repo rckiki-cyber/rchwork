@@ -14,6 +14,7 @@ import {
   containsSecret,
   containsSensitiveIdentifier
 } from '../../legalwork/src/memory/memory-policy.js'
+import { atomicWriteFile } from '../../legalwork/src/adapters/file/atomic-write.js'
 import type { AppSettingsV1 } from '../shared/app-settings'
 import { getLegalworkRuntimeSettings } from '../shared/app-settings'
 import type {
@@ -1931,10 +1932,10 @@ async function hashDirectory(root: string): Promise<string> {
 }
 
 async function atomicJsonWrite(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true })
-  const temp = `${path}.${randomUUID()}.tmp`
-  await writeFile(temp, JSON.stringify(value, null, 2), 'utf8')
-  await rename(temp, path)
+  // 复用 runtime 的 atomicWriteFile：内置 EPERM/EACCES/EBUSY 重试 + 直写降级。
+  // 学习线程在 Windows 上并发写 state.json 时，裸 rename 会因文件被占用抛
+  // EPERM 导致整个学习迭代失败（已有线上上报：#545/#585 等）。
+  await atomicWriteFile(path, JSON.stringify(value, null, 2))
 }
 
 function formatDateTime(value: string): string {

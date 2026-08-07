@@ -24,7 +24,7 @@ import { DiffView } from '../DiffView'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { MessageBubble } from './message-timeline-bubbles'
 import { blockHasPendingRuntimeWork, splitThink } from './message-timeline-turns'
-import { formatDuration, formatToolTitle } from './message-timeline-tools'
+import { formatDuration, formatToolTitle, isSelfCorrectableToolError } from './message-timeline-tools'
 import { orbStateForBlock } from './orb-state'
 import { ThinkingOrbStatus } from './ThinkingOrbStatus'
 import { extractToolName } from './tool-summary'
@@ -134,7 +134,7 @@ export function ProcessSectionRow({
   const active = isProcessSectionActive(section, processing)
   const hasError = section.blocks.some(
     (block) =>
-      (block.kind === 'tool' && block.status === 'error') ||
+      (block.kind === 'tool' && block.status === 'error' && !isSelfCorrectableToolError(block)) ||
       (block.kind === 'approval' && block.status === 'error') ||
       (block.kind === 'user_input' && block.status === 'error') ||
       (block.kind === 'system' && block.severity === 'error')
@@ -270,7 +270,7 @@ function processBlockIsActive(block: ChatBlock, processing: boolean): boolean {
 
 function processBlockHasError(block: ChatBlock): boolean {
   return (
-    (block.kind === 'tool' && block.status === 'error') ||
+    (block.kind === 'tool' && block.status === 'error' && !isSelfCorrectableToolError(block)) ||
     (block.kind === 'compaction' && block.status === 'error') ||
     (block.kind === 'approval' && block.status === 'error') ||
     (block.kind === 'user_input' && block.status === 'error') ||
@@ -897,7 +897,9 @@ function getProcessDetail(block: ChatBlock, summaryText?: string): ProcessDetail
     if (summaryText && normalizeProcessText(detailText) === normalizeProcessText(summaryText)) {
       return { kind: 'none' }
     }
-    const isError = block.status === 'error'
+    // Tool execution errors don't break the software — they render as amber
+    // warnings (isError false) so the detail panel is not alarming red.
+    const isError = block.status === 'error' && !isSelfCorrectableToolError(block)
     const patchText =
       block.toolKind === 'file_change' && !isError
         ? extractUnifiedDiffText(detailText)

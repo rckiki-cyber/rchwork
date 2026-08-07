@@ -1,5 +1,18 @@
 import type { ToolBlock } from '../../agent/types'
 
+/**
+ * True when a tool block failed in a way that does not break the software.
+ *
+ * A failed tool call (web fetch 404, CLI misuse, a command that exited non-zero)
+ * only affects that one call — the agent reads the error and self-corrects on
+ * the next turn, and the app itself keeps working. Such tool errors therefore
+ * render as warnings (amber) rather than hard red errors. Red is reserved for
+ * software-level failures (system / approval / user_input / compaction errors).
+ */
+export function isSelfCorrectableToolError(block: ToolBlock): boolean {
+  return block.status === 'error'
+}
+
 export function readNumber(meta: Record<string, unknown> | undefined, key: string): number | undefined {
   if (!meta) return undefined
   const v = meta[key]

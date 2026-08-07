@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chatBlockFromItem, dispatchLegalworkRuntimeEvent, mergeChatBlocks } from './legalwork-mapper'
+import { chatBlockFromItem, dispatchLegalworkRuntimeEvent, errorSeverity, mergeChatBlocks } from './legalwork-mapper'
 import type { CoreRuntimeEventJson, CoreTurnItemJson } from './legalwork-contract'
 import type { ThreadEventSink } from './types'
 
@@ -980,6 +980,48 @@ describe('tool presentation inference', () => {
       kind: 'tool',
       toolKind: 'command_execution',
       meta: { command: 'npm test' }
+    })
+  })
+})
+
+describe('errorSeverity', () => {
+  it('classifies self-correctable tool errors as warnings', () => {
+    expect(errorSeverity(undefined, 'read_before_edit_required')).toBe('warning')
+    expect(errorSeverity(undefined, 'hook_denied')).toBe('warning')
+    expect(errorSeverity(undefined, 'approval_policy_blocked')).toBe('warning')
+  })
+
+  it('keeps hard errors as error', () => {
+    expect(errorSeverity(undefined, 'some_hard_failure')).toBe('error')
+    expect(errorSeverity(undefined, undefined)).toBe('error')
+  })
+
+  it('honors an explicit severity over the code', () => {
+    expect(errorSeverity('error', 'read_before_edit_required')).toBe('error')
+    expect(errorSeverity('info', 'some_hard_failure')).toBe('info')
+  })
+
+  it('classifies info codes as info', () => {
+    expect(errorSeverity(undefined, 'tool_catalog_changed')).toBe('info')
+  })
+
+  it('maps an isError tool_result to a block carrying the errorCode', () => {
+    const block = chatBlockFromItem({
+      id: 'item_1',
+      kind: 'tool_result',
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      callId: 'call_1',
+      toolName: 'edit',
+      toolKind: 'file_change',
+      status: 'completed',
+      isError: true,
+      output: { code: 'read_before_edit_required', error: 'read-before-edit guard blocked edit' }
+    } as CoreTurnItemJson)
+    expect(block).toMatchObject({
+      kind: 'tool',
+      status: 'error',
+      errorCode: 'read_before_edit_required'
     })
   })
 })

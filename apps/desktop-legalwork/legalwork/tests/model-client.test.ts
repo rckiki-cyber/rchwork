@@ -1048,7 +1048,10 @@ describe('DeepseekCompatModelClient', () => {
 
     const messages = sentBodies[0]?.messages ?? []
     expect(JSON.stringify(messages)).toContain('Keep original requirement beta')
-    expect(JSON.stringify(messages)).not.toContain('old detail two')
+    // 追加式历史：compaction 摘要及之后的内容全部保留，不滑动丢弃中间。
+    // 滑动裁剪会每步改变请求前缀、击穿 DeepSeek 自动缓存；保留全部则前缀
+    // 从摘要点开始稳定，跨请求可复用 prompt-cache。
+    expect(JSON.stringify(messages)).toContain('old detail two')
     expect(messages.at(-1)).toMatchObject({ role: 'user', content: 'latest question' })
   })
 

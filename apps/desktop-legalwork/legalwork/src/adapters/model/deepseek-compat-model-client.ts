@@ -2276,15 +2276,17 @@ function formatAttachmentDimensions(
 
 function limitHistoryPreservingCompaction(history: TurnItem[], windowSize: number): TurnItem[] {
   if (history.length <= windowSize) return history
-  const windowStart = history.length - windowSize
-  const limited = history.slice(windowStart)
-  if (limited.some((item) => item.kind === 'compaction' && item.replacedTokens > 0)) {
-    return limited
-  }
-  for (let index = windowStart - 1; index >= 0; index -= 1) {
+  // 追加式：从最近 compaction 摘要开始保留全部，中间不滑动丢弃。
+  // 滑动窗口每步裁掉最前面的消息会让请求前缀持续变化，击穿 DeepSeek 的
+  // 自动缓存（实测同载荷下滑窗命中率跌到 3%，追加式前缀稳定可到 86%+）。
+  // compaction 前的原始内容已被折叠进摘要，无需再保留。
+  for (let index = history.length - 1; index >= 0; index -= 1) {
     const item = history[index]
-    if (item.kind !== 'compaction' || item.replacedTokens === 0) continue
-    return windowSize <= 1 ? [item] : [item, ...history.slice(-(windowSize - 1))]
+    if (item.kind === 'compaction' && item.replacedTokens > 0) {
+      return history.slice(index)
+    }
   }
-  return limited
+  // 无 compaction（如 compaction 被禁用）：保底保留最近 windowSize 条，
+  // 正常不会走到——compaction 的消息条数阈值会在历史超过窗口前先折叠。
+  return history.slice(-windowSize)
 }

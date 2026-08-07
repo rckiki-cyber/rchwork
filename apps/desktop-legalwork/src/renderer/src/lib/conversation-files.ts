@@ -28,6 +28,26 @@ function fileNameFromPath(path: string): string {
   return path.replaceAll('\\', '/').split('/').filter(Boolean).pop() ?? path
 }
 
+/**
+ * Internal storage / intermediate artifacts the agent touches while working
+ * (its own thread store, trajectory exporters, scratch scripts). These are
+ * not meaningful "productions" and would clutter the conversation file list.
+ * Only exact well-known names are matched — user files that merely share a
+ * prefix (e.g. `traj_数字行政法综述_20260801.jsonl`) are kept.
+ */
+const INTERNAL_PROCESS_BASENAMES = new Set([
+  'events.jsonl',
+  'metadata.jsonl'
+])
+const INTERNAL_PROCESS_NAME_PATTERN =
+  /^(?:export_traj|import_traj|fix_font|fix_\w+_font|kg_page(?:-\d+)?|traj_export|extract_\w+|parse_\w+)\.\w+$/i
+
+function isInternalProcessFile(name: string): boolean {
+  const base = name.toLowerCase()
+  if (INTERNAL_PROCESS_BASENAMES.has(base)) return true
+  return INTERNAL_PROCESS_NAME_PATTERN.test(base)
+}
+
 // A bare host-like token (beian.cac.gov.cn) looks like a dotted filename
 // but is almost always a domain the model mentioned, not a local file.
 // Requiring at least one path separator or a leading ~/C:\/../ rejects it
@@ -105,16 +125,21 @@ export function deriveConversationFiles(blocks: ChatBlock[]): ConversationFile[]
     for (const rawPath of candidatePaths) {
       const path = normalizedWorkspacePath(rawPath)
       if (!path) continue
-      const base = fileNameFromPath(path).toLowerCase()
+      const fileName = fileNameFromPath(path)
+      const base = fileName.toLowerCase()
       // Referencing an already-uploaded file (open/read/quote) is not a
       // separate produced file — skip the duplicate entry.
       if (uploadedBasenames.has(base)) continue
+      // Skip internal storage / intermediate artifacts (events.jsonl,
+      // metadata.jsonl, exporter scripts, kg_page-*.png, …) — these clutter
+      // the conversation file list and are not meaningful productions.
+      if (isInternalProcessFile(fileName)) continue
       const key = `workspace:${path.replaceAll('\\', '/')}`
       files.set(key, {
         id: key,
         kind: 'workspace',
         path,
-        name: fileNameFromPath(path),
+        name: fileName,
         origin: 'agent'
       })
     }

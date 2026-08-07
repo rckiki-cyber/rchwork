@@ -57,4 +57,28 @@ describe('deriveConversationFiles', () => {
     expect(files).toHaveLength(1)
     expect(files[0]).toEqual(expect.objectContaining({ kind: 'attachment', name: 'traj_数字行政法综述_20260801.jsonl', attachmentId: 'att-1' }))
   })
+
+  it('filters internal process files (events.jsonl, metadata.jsonl, exporter scripts, kg_page pngs)', () => {
+    const blocks: ChatBlock[] = [
+      { kind: 'tool', id: 't1', summary: '生成报告', status: 'success', toolKind: 'file_change', filePath: '/case/报告.docx' },
+      { kind: 'tool', id: 't2', summary: '写事件', status: 'success', toolKind: 'file_change', filePath: '/.legalwork/threads/thr_1/events.jsonl' },
+      { kind: 'tool', id: 't3', summary: '写元数据', status: 'success', toolKind: 'file_change', filePath: '/.legalwork/threads/thr_1/metadata.jsonl' },
+      { kind: 'tool', id: 't4', summary: '导出', status: 'success', toolKind: 'file_change', filePath: '/workspace/export_traj.py' },
+      { kind: 'tool', id: 't5', summary: '截图', status: 'success', toolKind: 'file_change', filePath: '/workspace/kg_page-1.png' }
+    ]
+
+    const files = deriveConversationFiles(blocks)
+    expect(files).toHaveLength(1)
+    expect(files[0]).toEqual(expect.objectContaining({ kind: 'workspace', name: '报告.docx' }))
+  })
+
+  it('keeps user-like traj and knowledge files that only share a prefix', () => {
+    const blocks: ChatBlock[] = [
+      { kind: 'tool', id: 't1', summary: '生成', status: 'success', toolKind: 'file_change', filePath: '/case/traj_数字行政法综述_20260801.jsonl' },
+      { kind: 'tool', id: 't2', summary: '知识页', status: 'success', toolKind: 'file_change', filePath: '/case/kg_知识库页面_01.png' }
+    ]
+
+    const files = deriveConversationFiles(blocks)
+    expect(files).toHaveLength(2)
+  })
 })

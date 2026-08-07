@@ -26,6 +26,13 @@ export type CompactionPlan = {
 }
 
 /**
+ * 触发 compaction 的历史消息条数阈值。与 client 层历史窗口（默认 240 条）
+ * 对齐，保证 compaction 在窗口裁剪前先折叠早期内容，从而让折叠后的历史
+ * 前缀稳定（[compaction 摘要] + [最近若干条]），避免滑动窗口每步改变前缀。
+ */
+export const DEFAULT_COMPACTION_MSG_THRESHOLD = 240
+
+/**
  * ContextCompactor folds long histories into a single compaction item
  * while preserving pinned user, project, and skill constraints from
  * the immutable prefix. Compaction is triggered by either an explicit
@@ -75,7 +82,19 @@ export class ContextCompactor {
     const estimatedTokens = this.estimate(compactableItems)
     const promptTokens = typeof options?.promptTokens === 'number' ? options.promptTokens : undefined
     const tokens = Math.max(estimatedTokens, promptTokens ?? 0)
-    if (tokens < thresholds.softThreshold) return null
+    if (tokens < thresholds.softThreshold) {
+      // 消息条数维度：即便单次请求未触及 token 阈值，历史条数过多时也折叠早期
+      // 内容，避免 client 层的滑动窗口裁剪每步改变前缀、击穿 DeepSeek 自动缓存。
+      // 折叠后的历史 = [compaction 摘要] + [最近 keepRecent 条]，前缀从摘要点起稳定。
+      if (compactableItems.length > DEFAULT_COMPACTION_MSG_THRESHOLD) {
+        return {
+          mode: 'normal',
+          keepRecent: 4,
+          reason: `history message count ${compactableItems.length} exceeded ${DEFAULT_COMPACTION_MSG_THRESHOLD} items`
+        }
+      }
+      return null
+    }
     const aggressiveThreshold = aggressiveCompactionThreshold(thresholds)
     const mode: CompactionMode =
       tokens >= thresholds.hardThreshold

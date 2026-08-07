@@ -14,6 +14,7 @@ import {
   buildWriteTermPropagationChanges,
   type WriteTermReplacementSeed
 } from '../../write/term-propagation'
+import { monoFontStack, proseSerifStack } from '../../lib/platform-fonts'
 
 export type WriteSelectionAnchorRect = {
   left: number
@@ -203,8 +204,8 @@ function buildEditorTheme(appearance: 'source' | 'live'): Extension {
       color: 'var(--ds-text)',
       backgroundColor: 'transparent',
       fontFamily: sourceMode
-        ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace'
-        : 'Georgia, Charter, "Iowan Old Style", "Noto Serif SC", serif',
+        ? monoFontStack()
+        : proseSerifStack(),
       fontSize: sourceMode ? '14px' : '15px'
     },
     '.cm-scroller': {

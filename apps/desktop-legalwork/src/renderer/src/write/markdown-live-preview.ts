@@ -20,6 +20,7 @@ import {
   type CodeBlockRange,
   type ParsedTable
 } from './markdown-live-widgets'
+import { monoFontStack } from '../lib/platform-fonts'
 
 type DecorationRange = {
   from: number
@@ -72,7 +73,7 @@ const writeMarkdownHighlight = HighlightStyle.define([
   { tag: tags.strikethrough, textDecoration: 'line-through' },
   {
     tag: tags.monospace,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+    fontFamily: monoFontStack(),
     fontSize: '0.9em',
     backgroundColor: 'color-mix(in srgb, var(--ds-text) 6%, transparent)',
     borderRadius: '5px'

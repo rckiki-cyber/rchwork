@@ -19,6 +19,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { uiFontStack } from '../../lib/platform-fonts'
 
 const COPY_RESET_MS = 2000
 const MIN_ZOOM = 0.55
@@ -199,8 +200,7 @@ function mermaidConfig(
     securityLevel: 'strict',
     suppressErrorRendering: true,
     theme: 'base',
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei UI", sans-serif',
+    fontFamily: uiFontStack(),
     themeVariables: dark
       ? {
           background: '#17181c',

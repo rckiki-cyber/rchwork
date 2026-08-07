@@ -60,6 +60,52 @@ describe('tool call dispatch repair', () => {
     expect(String(repaired.arguments.command)).not.toContain('some-session')
   })
 
+  it('repairs a bash call whose command is an empty JSON object (observed "{}")', () => {
+    // 实测：模型在长上下文尾部发出过 {command:"{}"}，修复后必须给模型可执行的纠正指引，
+    // 而不是把 "{}" 当真实命令放行。
+    const repaired = repairDispatchToolArguments(
+      { command: '{}' },
+      { toolName: 'bash' }
+    )
+
+    expect(String(repaired.arguments.command)).toContain('Invalid bash call')
+    expect(String(repaired.arguments.command)).toContain('resend with the actual command text')
+    expect(repaired.notes[0]).toContain('empty command')
+  })
+
+  it('repairs a bash call with a blank command string', () => {
+    const repaired = repairDispatchToolArguments(
+      { command: '   ' },
+      { toolName: 'bash' }
+    )
+
+    expect(String(repaired.arguments.command)).toContain('Invalid bash call')
+    expect(repaired.notes[0]).toContain('empty command')
+  })
+
+  it('never scavenges JSON out of a real bash command text', () => {
+    // 命令正文里包含 JSON 片段（python 字典、jq 过滤器等）时，command 必须原样保留，
+    // 不能被 parseJsonishObject 抽取替换。
+    const command = `python3 -c 'print({"a": 1})'`
+    const repaired = repairDispatchToolArguments(
+      { command },
+      { toolName: 'bash' }
+    )
+
+    expect(repaired.arguments).toEqual({ command })
+    expect(repaired.notes).toEqual([])
+  })
+
+  it('extracts a nested command object wrapper', () => {
+    const repaired = repairDispatchToolArguments(
+      { command: { command: 'ls -la', cwd: '/tmp' } },
+      { toolName: 'bash' }
+    )
+
+    expect(repaired.arguments.command).toBe('ls -la')
+    expect(repaired.notes[0]).toContain('extracted command')
+  })
+
   it('leaves a valid bash call with command untouched', () => {
     const repaired = repairDispatchToolArguments(
       { command: 'ls -la' },

@@ -183,6 +183,31 @@ describe('AnthropicCompatModelClient', () => {
     expect(chunks.some((c) => c.kind === 'completed')).toBe(true)
   })
 
+  it('yields an error chunk instead of a bare completed when the relay reports stop_reason=error', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      sseResponse([
+        'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"kimi-for-coding","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}',
+        'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}',
+        'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}',
+        'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"error"},"usage":{"output_tokens":2}}',
+        'event: message_stop\ndata: {"type":"message_stop"}'
+      ])
+    )
+
+    const client = createClient({ fetchImpl })
+    const chunks: { kind: string; message?: string; code?: string }[] = []
+    for await (const chunk of client.stream(baseRequest())) {
+      chunks.push(chunk)
+    }
+
+    const errorChunk = chunks.find((c) => c.kind === 'error')
+    expect(errorChunk).toBeDefined()
+    expect(errorChunk?.message).toMatch(/stop_reason "error"/)
+    expect(errorChunk?.code).toBe('model_stop_reason_error')
+    expect(chunks.some((c) => c.kind === 'completed')).toBe(false)
+  })
+
   it('maps Anthropic cache usage without negative misses', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       sseResponse([

@@ -22,6 +22,10 @@
     'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
   --lg-font-text: -apple-system, BlinkMacSystemFont, 'SF Pro Text',
     'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+  --lg-font-display-win: 'Segoe UI Variable Display', 'Segoe UI',
+    'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  --lg-font-text-win: 'Segoe UI Variable Text', 'Segoe UI',
+    'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   --lg-canvas: #ffffff;
   --lg-canvas-raised: #ffffff;
   --lg-ink: #1d1d1f;
@@ -44,6 +48,11 @@
   --lg-shadow-color: rgba(0, 0, 0, 0.13);
   --lg-glass-fallback: rgba(247, 249, 252, 0.94);
   --lg-glass-tint: rgba(255, 255, 255, 0.36);
+}
+
+html[data-platform='win32'] {
+  --lg-font-display: var(--lg-font-display-win);
+  --lg-font-text: var(--lg-font-text-win);
 }
 
 [data-theme='dark'] {

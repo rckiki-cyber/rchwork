@@ -459,14 +459,20 @@ export class AnthropicCompatModelClient implements ModelClient {
       return
     }
     if (usage) yield { kind: 'usage', usage }
+    if (finishReason === 'error') {
+      yield {
+        kind: 'error',
+        message: 'model stream ended with stop_reason "error" (relay/upstream returned an error without details)',
+        code: 'model_stop_reason_error'
+      }
+      return
+    }
     const stopReason: ModelStopReason = ((): ModelStopReason => {
       switch (finishReason) {
         case 'tool_use':
           return 'tool_calls'
         case 'max_tokens':
           return 'length'
-        case 'error':
-          return 'error'
         default:
           return 'stop'
       }
@@ -577,6 +583,14 @@ export class AnthropicCompatModelClient implements ModelClient {
     }
     if (payload.usage) {
       yield { kind: 'usage', usage: this.mapUsage(payload.usage) }
+    }
+    if (payload.stop_reason === 'error') {
+      yield {
+        kind: 'error',
+        message: 'model response reported stop_reason "error" (relay/upstream returned an error without details)',
+        code: 'model_stop_reason_error'
+      }
+      return
     }
     let stopReason: ModelStopReason = 'stop'
     if (payload.stop_reason === 'tool_use') stopReason = 'tool_calls'

@@ -252,6 +252,7 @@ export function useLegalResearch() {
         }
 
         let terminalEventReceived = false
+        let surfacedError = ''
         const sink: ThreadEventSink = {
           onSeq: () => {},
           onDeltas: (deltas: ThreadDeltaEvent[]) => {
@@ -384,9 +385,16 @@ export function useLegalResearch() {
           onError: (err: Error) => {
             terminalEventReceived = true
             completeAssistantUpdates()
+            const rawMessage = err.message?.trim() || ''
+            // 保留首个具体错误，避免后续兜底/空消息覆盖真实失败原因
+            if (!surfacedError && rawMessage && !/legalwork turn failed/i.test(rawMessage)) {
+              surfacedError = rawMessage
+            }
             commitRecordUpdate({
               status: 'error',
-              error: `调研连接中断：${err.message}`,
+              error: surfacedError
+                ? `${t('legalResearchTurnFailed')}${surfacedError}`
+                : t('legalResearchTurnFailed'),
               updates: flushUpdates(),
               summary: latestAssistantText() || t('legalResearchNoSummary')
             })

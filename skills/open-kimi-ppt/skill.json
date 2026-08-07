@@ -1,0 +1,24 @@
+{
+  "id": "open-kimi-ppt",
+  "name": "AI 生成 PPT（open-kimi-ppt）",
+  "description": "AI 生成 PPT/演示文稿：以 YAML 中间格式（.pptd）创建、编辑、复刻、阅读和导出演示文稿，默认同时交付可编辑的 PPTD 项目目录和本地生成的 .pptx（内嵌字体 + 淡入淡出翻页）。支持从零创建、上传 PPTX 编辑、图片/PDF 复刻、套用设计系统/模板/风格迁移。触发场景：用户请求制作 PPT、演示文稿、幻灯片、汇报 PPT、课件、宣讲材料、信息图、海报等任务时使用。",
+  "version": "1.0.0",
+  "entry": "SKILL.md",
+  "triggers": {
+    "commands": [],
+    "promptPatterns": [
+      "(做|制作|生成|做份|做一|写).{0,12}?PPT",
+      "(做|制作|生成|做份|做一|写).{0,12}?(演示文稿|幻灯片|课件)",
+      "PPT.{0,6}(制作|模板|大纲|汇报|设计)|(演示文稿|幻灯片|课件|宣讲)",
+      "PPTX|pptd|slide deck|slides|presentation",
+      "(根据|把|将).{0,16}(文档|材料|论文|报告|大纲|内容).{0,10}(做|制作|生成).{0,6}(PPT|演示|课件)"
+    ],
+    "fileTypes": [
+      ".pptx",
+      ".ppt"
+    ]
+  },
+  "allowedTools": [],
+  "assets": [],
+  "priority": 0
+}

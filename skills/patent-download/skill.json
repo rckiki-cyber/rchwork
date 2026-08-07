@@ -1,0 +1,19 @@
+{
+  "id": "patent-download",
+  "name": "专利下载",
+  "description": "专利下载：专利 PDF 批量下载工具。当用户需要下载专利全文 PDF、查询专利信息、批量导出专利文件时使用。支持多平台（Google Patents 优先），自动处理申请号和公告号格式。",
+  "version": "2.7.1",
+  "entry": "SKILL.md",
+  "triggers": {
+    "commands": [],
+    "promptPatterns": [
+      "下载.{0,6}专利|专利.{0,6}(PDF|全文|下载)|批量.{0,4}专利.{0,4}(下载|导出)",
+      "(申请号|公告号).{0,6}(下载|查|专利)|专利.{0,8}查询",
+      "patent.{0,8}(download|pdf)"
+    ],
+    "fileTypes": []
+  },
+  "allowedTools": [],
+  "assets": [],
+  "priority": 0
+}

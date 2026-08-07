@@ -284,6 +284,24 @@
   line-height: 1.9;
 }
 
+/* Windows adaptation for legal document typography: use the local SimSun /
+   FangSong / SimHei / KaiTi families instead of the macOS Songti/Heiti stacks. */
+html[data-platform='win32'] .legal-document-preview {
+  font-family: "仿宋", "FangSong", "仿宋_GB2312", serif;
+}
+
+html[data-platform='win32'] .legal-document-preview h1 {
+  font-family: "宋体", "SimSun", "NSimSun", serif;
+}
+
+html[data-platform='win32'] .legal-document-preview h2 {
+  font-family: "黑体", "SimHei", sans-serif;
+}
+
+html[data-platform='win32'] .legal-document-preview h3 {
+  font-family: "楷体", "KaiTi", "楷体_GB2312", serif;
+}
+
 .legal-document-preview p {
   margin: 0;
   text-align: justify;

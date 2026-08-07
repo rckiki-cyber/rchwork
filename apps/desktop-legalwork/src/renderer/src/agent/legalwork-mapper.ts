@@ -117,6 +117,21 @@ function toolBlockId(item: CoreTurnItemJson): string {
   return item.callId?.trim() ? `tool_${item.callId}` : item.id
 }
 
+/**
+ * Tool error results carry the error code inside the structured output
+ * (`{ code, error }`), e.g. read_before_edit_required. Extract it so the UI
+ * can render self-correctable guard errors as warnings.
+ */
+function toolOutputErrorCode(item: CoreTurnItemJson): string | undefined {
+  if (item.kind !== 'tool_result' || item.isError !== true || item.output == null) return undefined
+  if (typeof item.output === 'object' && item.output !== null && !Array.isArray(item.output)) {
+    const code = (item.output as Record<string, unknown>).code
+    if (typeof code === 'string' && code.trim()) return code.trim()
+  }
+  if (typeof item.code === 'string' && item.code.trim()) return item.code.trim()
+  return undefined
+}
+
 function stringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined
   const strings = value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
@@ -358,6 +373,7 @@ function toolBlockFromItem(item: CoreTurnItemJson, child?: CoreChildRuntimeMetad
     const plan = extractPlanMetadata(item)
     if (plan) meta.plan = plan
   }
+  const toolErrorCode = toolOutputErrorCode(item)
   return {
     kind: 'tool',
     id: toolBlockId(item),
@@ -367,6 +383,7 @@ function toolBlockFromItem(item: CoreTurnItemJson, child?: CoreChildRuntimeMetad
     toolKind: presentation.toolKind,
     ...(presentation.filePath ? { filePath: presentation.filePath } : {}),
     ...(detail ? { detail } : {}),
+    ...(toolErrorCode ? { errorCode: toolErrorCode } : {}),
     meta
   }
 }
@@ -655,13 +672,28 @@ function reviewBlockFromItem(item: CoreTurnItemJson): ReviewBlock {
   }
 }
 
-function errorSeverity(
+/**
+ * Error codes that are workflow/validation guards rather than hard failures.
+ * The agent can read the message and self-correct on the next turn (e.g.
+ * read-before-edit tells it to read the file first). These render as warnings
+ * (amber) instead of errors (red) so the timeline does not alarm the user.
+ */
+const SELF_CORRECTABLE_TOOL_ERROR_CODES = new Set([
+  'read_before_edit_required',
+  'hook_denied',
+  'hook_failed',
+  'approval_policy_blocked',
+  'budget_warning',
+  'compaction_summary_fallback'
+])
+
+export function errorSeverity(
   explicit: CoreTurnItemJson['severity'] | CoreRuntimeEventJson['severity'],
   code?: string
 ): 'info' | 'warning' | 'error' {
   if (explicit === 'info' || explicit === 'warning' || explicit === 'error') return explicit
-  if (code === 'budget_warning' || code === 'compaction_summary_fallback') return 'warning'
   if (code === 'tool_catalog_changed' || code === 'tool_storm_suppressed') return 'info'
+  if (code !== undefined && SELF_CORRECTABLE_TOOL_ERROR_CODES.has(code)) return 'warning'
   return 'error'
 }
 
@@ -1046,7 +1078,8 @@ export async function dispatchLegalworkRuntimeEvent(
         if (status) sink.onRuntimeStatus?.(status)
         return
       }
-      sink.onError(new Error(event.message ?? 'Legalwork turn failed'))
+      // message 优先；委派/子 agent 事件把失败原因放在 text 字段，兜底读取
+      sink.onError(new Error(event.message ?? event.text ?? 'Legalwork turn failed'))
       return
     default:
       return

@@ -581,6 +581,8 @@ export class AgentLoop {
   private readonly turnInputTokenSpend = new Map<string, number>()
   /** 单 turn 是否已注入"强制收尾"指令，避免每步重复注入污染 history。 */
   private readonly turnBudgetInstructionInjected = new Set<string>()
+  /** 单 turn 内已 read 过的文件路径（按 turn 清理），用于同 turn 重复 read 去重。 */
+  private readonly turnReadKeys = new Map<string, Set<string>>()
 
   constructor(opts: AgentLoopOptions) {
     this.opts = opts
@@ -624,6 +626,7 @@ export class AgentLoop {
       this.toolStormBreakers.delete(turnId)
       this.turnInputTokenSpend.delete(turnId)
       this.turnBudgetInstructionInjected.delete(turnId)
+      this.turnReadKeys.delete(turnId)
     }
   }
 
@@ -740,7 +743,7 @@ export class AgentLoop {
         code: 'agent_loop_step_limit'
       })
     )
-    return 'failed'
+    throw new Error(message)
   }
 
   private async modelStep(
@@ -1125,8 +1128,10 @@ export class AgentLoop {
             message: chunk.message,
             code: chunk.code
           })
-          stopReason = 'error'
-          break
+          // 抛出真实错误信息而不是只置 stopReason，让 runTurn 的 catch
+          // 通过 failTurn(message) 把具体原因透传到 turn_failed 事件，
+          // 否则前端只能显示兜底的 "Legalwork turn failed"。
+          throw new Error(chunk.message)
       }
     }
     if (stepPromptTokens > 0) {
@@ -1162,7 +1167,9 @@ export class AgentLoop {
         })
       )
     }
-    if (stopReason === 'error') return 'failed'
+    if (stopReason === 'error') {
+      throw new Error('Model returned stop_reason "error".')
+    }
     if (completedToolCalls.length === 0) {
       if (request.requiredToolName) {
         if (
@@ -1309,7 +1316,7 @@ export class AgentLoop {
             code: 'required_tool_missing'
           })
         )
-        return 'failed'
+        throw new Error(message)
       }
       if (stopReason === 'stop' && activeGoalInstruction && stepIndex < MAX_GOAL_NO_TOOL_CONTINUATIONS) {
         return 'continue'
@@ -1529,6 +1536,26 @@ export class AgentLoop {
             })
             return { item: dedupItem, approved: true }
           }
+          // Same-turn repeated `read` of the same path: return a dedup pointer
+          // instead of re-embedding the full file. Image reads embed large base64
+          // (tens of KB) that is re-billed as cache-miss on every re-send; the file
+          // content can change between turns, so the dedup is scoped to one turn.
+          const readKey = this.turnReadDuplicateFor(input.turnId, input.call)
+          if (readKey) {
+            const dedupItem = makeToolResultItem({
+              id: `item_${input.call.callId}_dedup`,
+              turnId: input.turnId,
+              threadId: input.threadId,
+              callId: input.call.callId,
+              toolName: input.call.toolName,
+              toolKind: input.call.toolKind ?? 'tool_call',
+              output: {
+                _dedup: true,
+                note: `This file was already read earlier in this turn (path: ${readKey}). Use the already-returned content; do not re-read the same path again.`
+              }
+            })
+            return { item: dedupItem, approved: true }
+          }
           // Record into the ledger only AFTER the tool succeeds, so a failed
           // call (or an exception) does not block a retry of the same query.
           const result = await this.opts.toolHost.execute(input.call, input.context, async (item) => {
@@ -1542,6 +1569,15 @@ export class AgentLoop {
           })
           if (result.item.kind === 'tool_result' && !result.item.isError) {
             this.ledgerFor(input.threadId).record(input.call.toolName, input.call.arguments)
+            const doneReadKey = this.readKeyFor(input.call)
+            if (doneReadKey) {
+              let seen = this.turnReadKeys.get(input.turnId)
+              if (!seen) {
+                seen = new Set()
+                this.turnReadKeys.set(input.turnId, seen)
+              }
+              seen.add(doneReadKey)
+            }
           }
           return result
         } catch (error) {
@@ -1636,6 +1672,7 @@ export class AgentLoop {
     call: ToolCallLike
     reason?: string
   }): Promise<void> {
+    const message = this.suppressedToolCallMessage(input.call, input.reason)
     const item = makeToolResultItem({
       id: `item_${input.call.callId}_storm`,
       turnId: input.turnId,
@@ -1643,10 +1680,9 @@ export class AgentLoop {
       callId: input.call.callId,
       toolName: input.call.toolName,
       toolKind: input.call.toolKind ?? 'tool_call',
-      output: { error: input.reason ?? 'duplicate tool call suppressed by repeat-loop guard' },
+      output: { error: message },
       isError: true
     })
-    const message = input.reason ?? 'duplicate tool call suppressed by repeat-loop guard'
     await this.opts.turns.updateItem(input.threadId, `item_tool_${input.turnId}_${input.call.callId}`, {
       status: 'failed',
       finishedAt: this.opts.nowIso()
@@ -1661,6 +1697,28 @@ export class AgentLoop {
       callId: input.call.callId,
       message
     })
+  }
+
+  /**
+   * 被守卫抑制的调用如果携带的是 bash 无效调用占位命令（command 缺失/为空），
+   * 给模型的提示里要明确"不要原样重发"，否则模型会误以为只是重复被拦，
+   * 继续重发同一坏形状（本线程字体轮曾因此连续 8 次重发 command:"{}"）。
+   */
+  private suppressedToolCallMessage(call: ToolCallLike, reason?: string): string {
+    const base = reason ?? 'duplicate tool call suppressed by repeat-loop guard'
+    const argumentsValue = call.arguments as Record<string, unknown> | undefined
+    const command = argumentsValue?.command
+    if (
+      call.toolName === 'bash' &&
+      typeof command === 'string' &&
+      command.includes('Invalid bash call')
+    ) {
+      return (
+        `${base} Note: this bash call carries the runtime's invalid-call placeholder ` +
+        '(missing/empty command); do not resend the same arguments — provide the actual command text.'
+      )
+    }
+    return base
   }
 
   private async awaitUserInput(
@@ -2147,6 +2205,24 @@ export class AgentLoop {
     const ledger = this.retrievalLedgers.get(threadId)
     if (!ledger) return null
     return ledger.duplicateKey(toolName, call.arguments)
+  }
+
+  /** Canonical read path key ('' when the call is not a `read` of a file). */
+  private readKeyFor(call: ToolCallLike): string {
+    if (call.toolName !== 'read') return ''
+    const args = call.arguments && typeof call.arguments === 'object'
+      ? call.arguments as Record<string, unknown>
+      : {}
+    const path = typeof args.path === 'string' ? args.path.trim() : ''
+    return path.toLowerCase() || ''
+  }
+
+  /** Non-empty read key when this turn already read the same path successfully. */
+  private turnReadDuplicateFor(turnId: string, call: ToolCallLike): string {
+    const key = this.readKeyFor(call)
+    if (!key) return ''
+    const seen = this.turnReadKeys.get(turnId)
+    return seen?.has(key) ? key : ''
   }
 
   private consumePromptPressure(

@@ -237,6 +237,7 @@
   "legalResearchNoSummary": "调研已完成，但未返回总结文本。",
   "legalResearchStopped": "调研已手动停止。",
   "legalResearchStreamEnded": "调研连接已结束，但未收到完成事件。",
+  "legalResearchTurnFailed": "调研连接中断：",
   "legalResearchLiveStatus": "正在调研",
   "legalResearchLastUpdate": "距上次更新 {{time}}",
   "legalResearchWaitingForUpdate": "等待下一条调研结果返回",

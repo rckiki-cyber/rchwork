@@ -1,0 +1,19 @@
+{
+  "id": "yuandian-law-search",
+  "name": "元典法律检索",
+  "description": "元典法律检索：元典法条与案例检索。通过元典 API 或官方 MCP 获取法条、案例、法规与企业信息，并自动归档；支持将多次检索汇总为 7 节结论先行法律检索报告。当需要查询中国法律法规条文、检索相关案例、为法律分析提供数据支撑时使用。",
+  "version": "1.8.8",
+  "entry": "SKILL.md",
+  "triggers": {
+    "commands": [],
+    "promptPatterns": [
+      "元典|法条检索|法律检索|查.{0,4}(法条|法规|案例)",
+      "检索.{0,6}(法条|案例|法规|企业信息)|法律检索报告|法规检索",
+      "yuandian|law.?search"
+    ],
+    "fileTypes": []
+  },
+  "allowedTools": [],
+  "assets": [],
+  "priority": 0
+}

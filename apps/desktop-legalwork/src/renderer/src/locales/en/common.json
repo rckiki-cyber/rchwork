@@ -237,6 +237,7 @@
   "legalResearchNoSummary": "Research completed, but no summary text was returned.",
   "legalResearchStopped": "Research was manually stopped.",
   "legalResearchStreamEnded": "The research stream ended before a completion event was received.",
+  "legalResearchTurnFailed": "Research connection interrupted: ",
   "legalResearchLiveStatus": "Researching",
   "legalResearchLastUpdate": "Last update {{time}} ago",
   "legalResearchWaitingForUpdate": "Waiting for the next research result",

@@ -200,7 +200,7 @@
   border-radius: 4px;
   background: var(--ds-inline-code-bg);
   padding: 0.05em 0.28em;
-  font-family: 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-family: var(--font-apple-mono, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace);
   font-size: 0.82em;
   line-height: 1.22;
   vertical-align: baseline;
@@ -239,7 +239,7 @@
   border-radius: 4px;
   background: var(--ds-inline-code-bg);
   padding: 0.05em 0.28em;
-  font-family: 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-family: var(--font-apple-mono, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace);
   font-size: 0.82em;
   line-height: 1.22;
   vertical-align: baseline;
@@ -340,7 +340,7 @@
 
 .ds-markdown .ds-mermaid-format {
   color: var(--ds-text-faint);
-  font-family: 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-family: var(--font-apple-mono, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace);
   font-size: 9px;
   font-weight: 500;
 }
@@ -501,7 +501,7 @@
 .ds-mermaid-zoom-value {
   min-width: 2.8rem;
   color: var(--ds-text-faint);
-  font-family: 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-family: var(--font-apple-mono, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace);
   font-size: 9px;
   line-height: 1;
   text-align: center;
@@ -634,7 +634,7 @@
 
 .ds-markdown .ds-code-block-language {
   min-width: 0;
-  font-family: 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-family: var(--font-apple-mono, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace);
   font-size: 10px;
   text-transform: lowercase;
   letter-spacing: 0.02em;
@@ -787,7 +787,7 @@ html[data-theme='dark'] .ds-code-sidebar {
   background: #202020;
   padding: 0 0.3rem;
   color: #ffffff;
-  font-family: 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-family: var(--font-apple-mono, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0;

@@ -239,9 +239,9 @@
 
 ## ✨ 功能全景
 
-### 🧠 79 项核心法律 AI 技能 + 1182 项扩展技能
+### 🧠 90 项核心法律 AI 技能 + 1182 项扩展技能
 
-LegalWork 根目录内置 79 项覆盖法律工作全流程的核心技能，并通过 `skills/awesome-legal-aiagent-skills/` 扩展 26 个法律领域、1182 项可选技能包（覆盖并购、仲裁、破产、资本市场、劳动、知识产权、税务、数据合规等专业方向）；另通过 `skills/8203/` 内置「类案纠纷案例库加强版」，提供人民法院案例库提炼的 257 个案由纠纷普通人问答技能。技能采用 agent 按需发现机制：对话中模型可通过 `search_skills` 按任务描述检索技能、`load_skill` 加载选中技能全文（不受注入预算限制）。核心法律技能按领域分类：
+LegalWork 根目录内置 90 项覆盖法律工作全流程的核心技能，并通过 `skills/awesome-legal-aiagent-skills/` 扩展 26 个法律领域、1182 项可选技能包（覆盖并购、仲裁、破产、资本市场、劳动、知识产权、税务、数据合规等专业方向）；另通过 `skills/8203/` 内置「类案纠纷案例库加强版」，提供人民法院案例库提炼的 257 个案由纠纷普通人问答技能。技能采用 agent 按需发现机制：对话中模型可通过 `search_skills` 按任务描述检索技能、`load_skill` 加载选中技能全文（不受注入预算限制）。核心法律技能按领域分类：
 
 #### 📊 案件分析与推理
 | 技能 | 说明 |
@@ -282,6 +282,7 @@ LegalWork 根目录内置 79 项覆盖法律工作全流程的核心技能，并
 |------|------|
 | `document_drafting` | 法律文书起草 |
 | `legal_document_formatting` | 法律文书格式规范化 |
+| `chinese-legal-citation` | 法学引注格式核查与修订（《法学引注手册》2025版） |
 | `legal_document_summarization` | 法律文书摘要生成 |
 | `judgment_document_generation` | 判决文书生成 |
 | `legal-memo-generator` | 法律备忘录生成 |
@@ -291,6 +292,14 @@ LegalWork 根目录内置 79 项覆盖法律工作全流程的核心技能，并
 | `legal-thesis-ideation` | 法学论文选题构思 |
 | `meeting_minutes` | 会议纪要生成 |
 | `case_notebook` | 案件笔记整理 |
+
+#### 📜 知识产权
+| 技能 | 说明 |
+|------|------|
+| `trademark-assistant` | 商标申请类别规划、可注册性初筛与申请材料 |
+| `patent-analysis` | 中国发明/实用新型专利结构化分析（权利要求、侵权比对、FTO、无效风险） |
+| `code2patent` | 代码仓库转专利技术交底书与发明专利初稿 |
+| `patent-download` | 专利 PDF 批量下载（Google Patents 等多平台） |
 
 #### 🔍 法律检索与研究
 | 技能 | 说明 |
@@ -303,6 +312,7 @@ LegalWork 根目录内置 79 项覆盖法律工作全流程的核心技能，并
 | `chinese_law_verifier` | 中国法律条文核验 |
 | `legal_norm_validity_check` | 法律规范效力审查 |
 | `new_legislation_analysis` | 新法分析解读 |
+| `yuandian-law-search` | 元典法条/案例检索（API，7 节检索报告） |
 
 #### 🔒 合规与风控
 | 技能 | 说明 |
@@ -313,6 +323,7 @@ LegalWork 根目录内置 79 项覆盖法律工作全流程的核心技能，并
 | `data-compliance-ai-rd` | AI 研发数据合规 |
 | `presidio-data-compliance` | 数据合规（Presidio 集成） |
 | `creator-rights-assistant` | 创作者权益保护 |
+| `opc-legal-counsel` | 一人公司/小微企业经营风险分诊 |
 
 #### 📋 案件管理
 | 技能 | 说明 |
@@ -334,6 +345,8 @@ LegalWork 根目录内置 79 项覆盖法律工作全流程的核心技能，并
 | `structured_element_extraction` | 结构化要素提取 |
 | `multi_document_summarization` | 多文档摘要 |
 | `wps-case-file-organizer` | WPS 案件材料整理 |
+| `court-sms` | 法院短信解析与文书下载归档 |
+| `legal-qa-extractor` | 客户咨询记录提取法律问答对（脱敏） |
 | `zheng-ju-cai-liao-zheng-li` | 证据材料整理（证据清单 Word + 带页码证据材料 PDF 合集） |
 | `litigation-prep` | 诉讼准备（案由识别、请求权基础、证据清单） |
 
@@ -345,6 +358,8 @@ LegalWork 根目录内置 79 项覆盖法律工作全流程的核心技能，并
 | `watch` | 视频分析与内容提取 |
 | `web-access` | 网页访问与浏览器自动化 |
 | `deep-research` | 深度研究（GPT Researcher 方法论） |
+| `open-kimi-ppt` | AI 生成 PPT/演示文稿（open-kimi-ppt，PPTD + PPTX） |
+| `legal-visualization` | 法律图解/关系图/流程图/时间轴（VizSpec，.drawio） |
 
 ### 📄 OCR 智能文档识别
 
@@ -499,7 +514,7 @@ result = pipeline.process_text(
 - **模型集成**：支持 DeepSeek 等 API 兼容模型（模型列表自动拉取、多提供方切换）
 - **MCP 协议支持**：集成 MCP 工具服务器，含北大法宝 / 元典 / IMA / Studio 等
 - **缓存优化**：Cache-first 架构，LRU/TTL 缓存
-- **技能集成**：支持调用上述 79 项核心法律 AI 技能，并可接入 1182 项扩展技能包
+- **技能集成**：支持调用上述 90 项核心法律 AI 技能，并可接入 1182 项扩展技能包
 - **记忆系统**：长期记忆存储与检索
 - **知识检索**：RAG 知识库检索 + IMA 云知识库两级检索
 - **附件处理**：图片上传自动 OCR 提取
@@ -594,8 +609,14 @@ legalwork/
 │   ├── legal_research/       #   法律研究
 │   ├── compliance_review/    #   合规审查
 │   ├── legal_document_formatting/  # 文书格式规范化
+│   ├── chinese-legal-citation/  # 法学引注格式核查与修订
+│   ├── open-kimi-ppt/       #   AI 生成 PPT/演示文稿
+│   ├── trademark-assistant/ #   商标申请助手
+│   ├── patent-analysis/     #   专利结构化分析
+│   ├── legal-visualization/ #   法律图解/图表
+│   ├── yuandian-law-search/ #   元典法条案例检索
 │   ├── awesome-legal-aiagent-skills/  # 26 领域扩展
-│   ├── ...                   #   核心 79 项，扩展 1182 项
+│   ├── ...                   #   核心 90 项，扩展 1182 项
 │
 ├── case_system/              # 案件管理系统（检索 + 编排 + Flask API）
 │

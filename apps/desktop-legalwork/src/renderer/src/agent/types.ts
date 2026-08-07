@@ -155,6 +155,11 @@ export type ToolBlock = {
   filePath?: string
   /** Optional structured metadata, e.g. { exit_code, duration_ms, command } */
   meta?: Record<string, unknown>
+  /**
+   * For error tool results, the runtime error code (e.g. read_before_edit_required).
+   * Lets the UI render self-correctable guard errors as warnings instead of red.
+   */
+  errorCode?: string
 }
 
 export type CompactionBlock = {

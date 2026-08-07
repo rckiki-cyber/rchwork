@@ -25,6 +25,26 @@
   --weight-bold: 700;
 }
 
+/* Windows adaptation: Segoe UI + Microsoft YaHei for UI, Cascadia Mono for
+   code. Segoe UI is already optically tight, so drop the Apple negative
+   tracking and keep font smoothing on to avoid thin, aliased glyphs. */
+html[data-platform='win32'] {
+  --font-apple-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  --font-apple-display: 'Segoe UI Variable Display', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  --font-apple-mono: 'Cascadia Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+}
+
+html[data-platform='win32'] body,
+html[data-platform='win32'] .ds-chat-answer,
+html[data-platform='win32'] .ds-user-message-bubble,
+html[data-platform='win32'] .write-markdown-preview {
+  letter-spacing: 0;
+}
+
+html[data-platform='win32'] body {
+  -webkit-font-smoothing: auto;
+}
+
 html {
   font-family: var(--font-apple-ui);
   font-size: 16px;

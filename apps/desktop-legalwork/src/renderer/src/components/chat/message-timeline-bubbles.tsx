@@ -986,12 +986,13 @@ function ToolEntry({ block, nested = false }: { block: ToolBlock; nested?: boole
 
   const effectiveOpen = block.status === 'running' ? true : open
 
+  // Tool errors don't break the software — the agent reads the message and
+  // self-corrects, so they render neutral (not red/amber). Only a running tool
+  // stays amber so the user can see the agent is still working on it.
   const tone =
-    block.status === 'error'
-      ? 'border-red-300/80 bg-red-500/10 text-red-950 dark:border-red-800/60 dark:bg-red-950/35 dark:text-red-100'
-      : block.status === 'running'
-        ? 'border-amber-300/80 bg-amber-500/10 text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100'
-        : 'border-ds-border bg-ds-subtle text-ds-ink'
+    block.status === 'running'
+      ? 'border-amber-300/80 bg-amber-500/10 text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100'
+      : 'border-ds-border bg-ds-subtle text-ds-ink'
 
   const Icon = block.toolKind === 'file_change' ? FileEdit : block.toolKind === 'command_execution' ? Terminal : Wrench
   const kindLabel =

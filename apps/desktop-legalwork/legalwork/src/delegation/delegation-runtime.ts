@@ -196,6 +196,8 @@ export class DelegationRuntime {
       turnId: record.parentTurnId,
       status: record.status,
       text: record.summary ?? record.error,
+      // 失败时把真实原因放到 message，前端不再显示兜底的 "Legalwork turn failed"
+      message: record.error ?? record.summary ?? undefined,
       child: {
         parentThreadId: record.parentThreadId,
         parentTurnId: record.parentTurnId,
