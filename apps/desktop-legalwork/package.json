@@ -83,7 +83,7 @@
     "postinstall": "node ./scripts/postinstall.cjs",
     "verify:apple": "node ./scripts/verify-apple-signing.cjs",
     "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json || true",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "mac:unquarantine": "bash ./scripts/mac-unquarantine.sh"
   },
   "devDependencies": {
