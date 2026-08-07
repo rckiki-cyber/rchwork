@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
-import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -486,7 +486,50 @@ async function installSkillDirectory(source: string, targetRoot: string): Promis
     dereference: false,
     filter: shouldImportPath
   })
+  await ensureLegacySkillManifest(target, name)
   return { name, path: target, replaced }
+}
+
+/**
+ * 用户上传纯 Markdown skill（只有 SKILL.md、没有 skill.json）时，自动补一个
+ * 最小 skill.json。自动调用依赖 skill.json 的 `triggers`（commands / promptPatterns /
+ * fileTypes）；纯 md 只能靠关键词弱匹配，触发准确度差。这里用 frontmatter 的
+ * name/description/taskId 生成 keyword 类 triggers，让纯 md skill 也能被识别和自动触发。
+ */
+async function ensureLegacySkillManifest(root: string, fallbackName: string): Promise<void> {
+  const manifestPath = join(root, 'skill.json')
+  if (existsSync(manifestPath)) return
+  const entryPath = join(root, 'SKILL.md')
+  if (!existsSync(entryPath)) return
+
+  const content = await readFile(entryPath, 'utf8')
+  const frontmatter = readFrontmatter(content)
+  const name = frontmatter.name || fallbackName
+  const description = frontmatter.description
+  const taskId = frontmatter.taskId
+
+  const keywords = [name, description, taskId]
+    .filter((value): value is string => Boolean(value))
+    .flatMap((value) => value.split(/[\s,，、;；/]+/))
+    .map((token) => token.replace(/^[#*_`~]+|[#*_`~]+$/g, '').trim())
+    .filter((token) => token.length >= 2)
+  const uniqueKeywords = [...new Set(keywords)]
+
+  // 生成一个基于名称的斜杠命令（如 /商标 /证据整理），让用户能显式触发、
+  // agent 也能在 prompt 以该命令开头时强命中（900 分档），弥补纯 md 无
+  // triggers 导致只有关键词弱匹配（200 分档）的问题。
+  const command = `/ ${name}`.replace(/\s+/g, '').toLowerCase()
+  const manifest: Record<string, unknown> = {
+    name,
+    ...(description ? { description } : {}),
+    version: 'legacy',
+    triggers: {
+      commands: [command],
+      promptPatterns: [],
+      fileTypes: []
+    }
+  }
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8')
 }
 
 function validateSkillDirectoryName(name: string): string {

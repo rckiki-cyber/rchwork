@@ -167,6 +167,32 @@ describe('skill-service', () => {
       .resolves.toContain('Imported from disk.')
   })
 
+  it('auto-generates a minimal skill.json with triggers for legacy SKILL.md-only skills', async () => {
+    const sourceRoot = join(tempRoot, 'md-only-skill')
+    const targetRoot = join(tempRoot, 'user-skills')
+    await mkdir(sourceRoot, { recursive: true })
+    await writeFile(join(sourceRoot, 'SKILL.md'), [
+      '---',
+      'name: 证据整理',
+      'description: 整理证据材料，生成证据清单与时间线。',
+      'task_id: evidence-org',
+      '---',
+      '',
+      '整理案件证据，输出清单。'
+    ].join('\n'), 'utf8')
+
+    const result = await importGuiSkillFromPath(sourceRoot, targetRoot)
+    expect(result.ok).toBe(true)
+
+    const manifest = JSON.parse(
+      await readFile(join(targetRoot, 'md-only-skill', 'skill.json'), 'utf8')
+    ) as { name: string; triggers: { commands: string[]; promptPatterns: string[]; fileTypes: string[] } }
+
+    expect(manifest.name).toBe('证据整理')
+    expect(manifest.triggers.commands).toContain('/证据整理')
+    expect(manifest.triggers.promptPatterns).toEqual([])
+  })
+
   it('skips macOS TCC-protected media locations during skill scans', () => {
     const home = homedir()
     // 家目录下一级媒体文件夹（读取会触发相册 / 媒体库权限弹窗）

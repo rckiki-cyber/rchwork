@@ -723,6 +723,60 @@ async function ensureLegalworkRuntime(settings: AppSettingsV1): Promise<void> {
 
 function createWindow(options: { suppressInitialShow?: boolean } = {}): void {
   traceStartup('createWindow:start')
+  // macOS 上若不显式设置应用菜单，Electron 会使用默认英文菜单
+  // （File/Edit/View/Window/Help），导致用户看到满屏英文。这里为 macOS
+  // 提供中文应用菜单；Windows/Linux 用 setApplicationMenu(null) 彻底移除
+  // 顶部菜单栏（窗口内菜单 + Alt 唤出的系统菜单）。
+  if (process.platform === 'darwin') {
+    const appMenu = Menu.buildFromTemplate([
+      {
+        label: APP_PRODUCT_NAME,
+        submenu: [
+          { role: 'about', label: `关于 ${APP_PRODUCT_NAME}` },
+          { type: 'separator' },
+          { role: 'hide', label: `隐藏 ${APP_PRODUCT_NAME}` },
+          { role: 'hideOthers', label: '隐藏其他' },
+          { role: 'unhide', label: '全部显示' },
+          { type: 'separator' },
+          { role: 'quit', label: `退出 ${APP_PRODUCT_NAME}` }
+        ]
+      },
+      {
+        label: '文件',
+        submenu: [
+          { role: 'close', label: '关闭窗口' },
+          { type: 'separator' },
+          { role: 'quit', label: `退出 ${APP_PRODUCT_NAME}` }
+        ]
+      },
+      {
+        label: '编辑',
+        submenu: [
+          { role: 'undo', label: '撤销' },
+          { role: 'redo', label: '重做' },
+          { type: 'separator' },
+          { role: 'cut', label: '剪切' },
+          { role: 'copy', label: '复制' },
+          { role: 'paste', label: '粘贴' },
+          { role: 'selectAll', label: '全选' }
+        ]
+      },
+      {
+        label: '窗口',
+        role: 'windowMenu'
+      },
+      {
+        label: '帮助',
+        role: 'help',
+        submenu: [
+          { role: 'about', label: `关于 ${APP_PRODUCT_NAME}` }
+        ]
+      }
+    ])
+    Menu.setApplicationMenu(appMenu)
+  } else {
+    Menu.setApplicationMenu(null)
+  }
   const preloadPath = resolvePreloadPath()
   const usesDesktopTitleBar = process.platform === 'win32' || process.platform === 'linux'
   mainWindow = new BrowserWindow({
