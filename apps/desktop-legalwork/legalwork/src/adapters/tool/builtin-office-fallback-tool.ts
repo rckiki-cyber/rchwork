@@ -2,7 +2,7 @@ import { LocalToolHost, type LocalTool } from './local-tool-host.js'
 import {
   consumeOfficeFallbackEligibility,
   grantOfficeFallback,
-  isLegalDocumentFormattingActive
+  isOfficeFallbackEligible
 } from './office-fallback-policy.js'
 
 export const REQUEST_OFFICE_FALLBACK_TOOL_NAME = 'request_office_fallback'
@@ -21,7 +21,7 @@ export function createRequestOfficeFallbackTool(): LocalTool {
     },
     policy: 'auto',
     toolKind: 'tool_call',
-    shouldAdvertise: (context) => isLegalDocumentFormattingActive(context),
+    shouldAdvertise: (context) => isOfficeFallbackEligible(context),
     execute: async (_args, context) => {
       const evidence = consumeOfficeFallbackEligibility(context)
       if (!evidence) {
