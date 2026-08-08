@@ -2,7 +2,7 @@
   "id": "legal-document-formatting",
   "name": "legal-document-formatting",
   "description": "LegalWork 的 Office 文档格式执行技能。Word/DOCX 与常规 PPTX 任务默认使用本技能自带的本地 Python worker；Office MCP 仅在 worker 明确返回 unsupported 并取得一次性 fallback ticket 后作为最后兜底。Word 默认正文中文宋体、英文 Times New Roman、小四 12pt。",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "entry": "SKILL.md",
   "triggers": {
     "commands": [
@@ -29,8 +29,10 @@
   },
   "allowedTools": [],
   "assets": [
+    "scripts/skill_runner.py",
     "scripts/docx_worker.py",
-    "scripts/pptx_worker.py"
+    "scripts/pptx_worker.py",
+    "requirements.txt"
   ],
   "priority": 1000
 }
