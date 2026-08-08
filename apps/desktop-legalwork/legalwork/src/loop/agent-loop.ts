@@ -927,7 +927,66 @@ export class AgentLoop {
       turnId,
       enabled: !planTurnActive && !isKnowledgeQaThread
     })
-    const requiredToolName = planRequiredToolName ?? imaRouteAction?.requiredToolName
+
+    // IMA auto-routing is already a deterministic runtime decision. Do not pay
+    // for a full model round-trip merely to make the model emit the one tool
+    // call that the runtime has already selected. Prefetch the IMA route here,
+    // persist the normal tool-call/result history, then let the next loop step
+    // make the single model request that synthesizes the retrieved evidence.
+    // Progressive MCP routing naturally becomes: mcp_search -> mcp_call -> model.
+    if (imaRouteAction) {
+      const callId = this.opts.ids.next('call_ima_route')
+      const provider = toolProviderMetadata.get(imaRouteAction.requiredToolName)
+      const toolKind = toolKinds.get(imaRouteAction.requiredToolName)
+      const call: ToolCallLike = {
+        callId,
+        toolName: imaRouteAction.requiredToolName,
+        ...(provider?.providerId ? { providerId: provider.providerId } : {}),
+        toolKind,
+        arguments: imaRouteAction.requiredArguments
+      }
+      const itemId = `item_tool_${turnId}_${callId}`
+      await this.opts.turns.applyItem(
+        threadId,
+        makeToolCallItem({
+          id: itemId,
+          turnId,
+          threadId,
+          callId,
+          toolName: imaRouteAction.requiredToolName,
+          toolKind,
+          arguments: imaRouteAction.requiredArguments,
+          summary: 'Runtime-prefetched IMA knowledge-base routing without a model round-trip.'
+        })
+      )
+      await this.opts.events.record({
+        kind: 'tool_call_ready',
+        threadId,
+        turnId,
+        itemId,
+        callId,
+        toolName: imaRouteAction.requiredToolName,
+        readyCount: 1
+      })
+      const dispatched = await this.dispatchToolCalls({
+        calls: [call],
+        threadId,
+        turnId,
+        workspace: thread?.workspace ?? '',
+        threadMode: effectiveMode,
+        activePlanContext,
+        modelCapabilities,
+        activeSkillIds: skillResolution.activeSkillIds,
+        allowedToolNames,
+        toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
+        approvalPolicy,
+        signal
+      })
+      if (dispatched === 'aborted') return 'aborted'
+      return 'continue'
+    }
+
+    const requiredToolName = planRequiredToolName
     const requestToolSpecs = requiredToolName
       ? scopedToolSpecs.filter((tool) => tool.name === requiredToolName)
       : scopedToolSpecs
@@ -954,7 +1013,6 @@ export class AgentLoop {
       ...(activeTodoInstruction ? [activeTodoInstruction] : []),
       ...memoryInstructions(memories),
       ...skillResolution.instructions,
-      ...(imaRouteAction ? [imaRouteAction.instruction] : []),
       ...(officeWorkflowInstruction ? [officeWorkflowInstruction] : []),
       ...(requestToolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
       ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : []),
@@ -1231,60 +1289,6 @@ export class AgentLoop {
             itemId,
             callId,
             toolName: CREATE_PLAN_TOOL_NAME,
-            readyCount: 1
-          })
-          const dispatched = await this.dispatchToolCalls({
-            calls: [call],
-            threadId,
-            turnId,
-            workspace: thread?.workspace ?? '',
-            threadMode: effectiveMode,
-            activePlanContext,
-            modelCapabilities,
-            activeSkillIds: skillResolution.activeSkillIds,
-            allowedToolNames,
-            toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
-            approvalPolicy,
-            signal
-          })
-          if (dispatched === 'aborted') return 'aborted'
-          return 'continue'
-        }
-        if (
-          imaRouteAction &&
-          request.requiredToolName === imaRouteAction.requiredToolName
-        ) {
-          const callId = this.opts.ids.next('call_ima_route')
-          const provider = toolProviderMetadata.get(imaRouteAction.requiredToolName)
-          const toolKind = toolKinds.get(imaRouteAction.requiredToolName)
-          const call: ToolCallLike = {
-            callId,
-            toolName: imaRouteAction.requiredToolName,
-            ...(provider?.providerId ? { providerId: provider.providerId } : {}),
-            toolKind,
-            arguments: imaRouteAction.requiredArguments
-          }
-          const itemId = `item_tool_${turnId}_${callId}`
-          await this.opts.turns.applyItem(
-            threadId,
-            makeToolCallItem({
-              id: itemId,
-              turnId,
-              threadId,
-              callId,
-              toolName: imaRouteAction.requiredToolName,
-              toolKind,
-              arguments: imaRouteAction.requiredArguments,
-              summary: 'Runtime-enforced IMA knowledge-base routing.'
-            })
-          )
-          await this.opts.events.record({
-            kind: 'tool_call_ready',
-            threadId,
-            turnId,
-            itemId,
-            callId,
-            toolName: imaRouteAction.requiredToolName,
             readyCount: 1
           })
           const dispatched = await this.dispatchToolCalls({

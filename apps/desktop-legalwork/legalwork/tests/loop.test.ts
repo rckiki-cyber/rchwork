@@ -314,9 +314,7 @@ describe('AgentLoop', () => {
         model: 'ima-route',
         async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
           requests.push(request)
-          if (requests.length > 1) {
-            yield { kind: 'assistant_text_delta', text: '已结合 IMA 回答。' }
-          }
+          yield { kind: 'assistant_text_delta', text: '已结合 IMA 回答。' }
           yield { kind: 'completed', stopReason: 'stop' }
         }
       },
@@ -330,11 +328,12 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(executions).toBe(1)
-    expect(requests[0]?.requiredToolName).toBe('mcp_ima_knowledge_base_research_ima')
-    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual([
-      'mcp_ima_knowledge_base_research_ima'
-    ])
-    expect(requests[0]?.contextInstructions?.join('\n')).toContain('IMA 云知识库')
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.requiredToolName).toBeUndefined()
+    expect(requests[0]?.contextInstructions?.join('\n') ?? '').not.toContain('<ima_auto_route>')
+    expect(requests[0]?.history.some((item) =>
+      item.kind === 'tool_result' && item.toolName === 'mcp_ima_knowledge_base_research_ima'
+    )).toBe(true)
     expect(items.some((item) =>
       item.kind === 'tool_result' &&
       item.toolName === 'mcp_ima_knowledge_base_research_ima' &&
@@ -381,9 +380,7 @@ describe('AgentLoop', () => {
         model: 'ima-progressive-route',
         async *stream(): AsyncIterable<ModelStreamChunk> {
           requests += 1
-          if (requests > 2) {
-            yield { kind: 'assistant_text_delta', text: '已使用渐进发现的 IMA 工具。' }
-          }
+          yield { kind: 'assistant_text_delta', text: '已使用渐进发现的 IMA 工具。' }
           yield { kind: 'completed', stopReason: 'stop' }
         }
       },
@@ -395,6 +392,7 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
+    expect(requests).toBe(1)
     expect(executed.map((entry) => entry.name)).toEqual(['mcp_search', 'mcp_call'])
     expect(executed[0]?.args).toMatchObject({ serverId: 'ima-knowledge-base' })
     expect(executed[1]?.args).toEqual({
