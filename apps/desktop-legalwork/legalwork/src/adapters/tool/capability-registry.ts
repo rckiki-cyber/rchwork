@@ -114,10 +114,9 @@ export class CapabilityRegistry {
   }
 
   private canUseTool(toolName: string, context?: ToolHostContext): boolean {
-    // OfficeCLI is intentionally absent from the normal Agent tool catalog.
-    // It becomes visible/executable only after the document Skill produced a
-    // worker-issued unsupported ticket and request_office_fallback granted a
-    // turn-scoped exception.
+    // OfficeCLI is absent from the normal Agent tool catalog. The trusted
+    // document Skill executor must first record a genuine local capability
+    // boundary, then request_office_fallback grants a turn-scoped exception.
     if (toolName === OFFICECLI_TOOL_NAME && !isOfficeFallbackGranted(context)) {
       return false
     }
@@ -126,7 +125,7 @@ export class CapabilityRegistry {
   }
 }
 
-function providerPolicy(provider: CapabilityToolProvider): ToolProviderPolicy {
+function providerPolicy(provider: ToolProviderPolicy): ToolProviderPolicy {
   return {
     id: provider.id,
     kind: provider.kind,
