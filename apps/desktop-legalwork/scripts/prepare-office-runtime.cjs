@@ -2,13 +2,13 @@
 'use strict'
 
 /**
- * Prepare a relocatable Office Python runtime at RELEASE BUILD TIME.
+ * Prepare relocatable Office Python runtimes at RELEASE BUILD TIME.
  *
  * End-user machines must never create a venv or run pip for Word/Excel/PPT.
- * This script downloads a python-build-standalone CPython 3.11 distribution,
- * installs the pinned legal_document_formatting requirements into it, verifies
- * the core imports, and stages it under vendor/office-runtime/<platform>-<arch>.
- * electron-builder's afterPack hook copies only the target runtime into the app.
+ * This script downloads python-build-standalone CPython 3.11 distributions,
+ * installs the pinned legal_document_formatting requirements into them,
+ * verifies the core imports, and stages them under:
+ *   vendor/office-runtime/<platform>-<arch>
  */
 
 const { createHash } = require('node:crypto')
@@ -25,7 +25,7 @@ const {
   writeFileSync
 } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { basename, join, resolve } = require('node:path')
+const { basename, dirname, join, resolve } = require('node:path')
 
 const DESKTOP_ROOT = resolve(__dirname, '..')
 const REPO_ROOT = resolve(DESKTOP_ROOT, '..', '..')
@@ -35,6 +35,7 @@ const CACHE_ROOT = join(DESKTOP_ROOT, '.cache', 'office-runtime')
 const PYTHON_LINE = '3.11'
 const REQUIRED_IMPORTS = ['docx', 'openpyxl', 'pptx', 'lxml', 'PIL']
 const RELEASE_REPOS = ['astral-sh/python-build-standalone', 'indygreg/python-build-standalone']
+const SUPPORTED_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64', 'win-ia32', 'linux-x64'])
 
 function fail(message) {
   console.error(`[office-runtime] ${message}`)
@@ -45,27 +46,54 @@ function info(message) {
   console.log(`[office-runtime] ${message}`)
 }
 
+function currentPlatformName() {
+  if (process.platform === 'darwin') return 'mac'
+  if (process.platform === 'win32') return 'win'
+  if (process.platform === 'linux') return 'linux'
+  fail(`Unsupported build host platform: ${process.platform}`)
+}
+
+function configuredTargetsForPlatform(platform) {
+  if (platform === 'mac') return ['mac-x64', 'mac-arm64']
+  if (platform === 'win') return ['win-x64', 'win-ia32']
+  if (platform === 'linux') return ['linux-x64']
+  fail(`Unsupported Office runtime platform: ${platform}`)
+}
+
 function parseArgs(argv) {
-  const args = { platform: '', arch: '', force: false }
+  const args = { platform: '', arch: '', force: false, allCurrent: false }
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i]
     if (value === '--platform') args.platform = String(argv[++i] || '')
     else if (value === '--arch') args.arch = String(argv[++i] || '')
+    else if (value === '--all-current') args.allCurrent = true
     else if (value === '--force') args.force = true
     else if (value === '--help' || value === '-h') {
-      console.log('Usage: node prepare-office-runtime.cjs --platform mac|win|linux --arch arm64|x64|ia32 [--force]')
+      console.log([
+        'Usage:',
+        '  node prepare-office-runtime.cjs --platform mac|win|linux --arch arm64|x64|ia32 [--force]',
+        '  node prepare-office-runtime.cjs --all-current [--force]'
+      ].join('\n'))
       process.exit(0)
     } else fail(`Unknown argument: ${value}`)
   }
-  if (!args.platform || !args.arch) fail('--platform and --arch are required')
-  const supported = new Set(['mac-arm64', 'mac-x64', 'win-x64', 'win-ia32', 'linux-x64'])
+  if (args.allCurrent) {
+    if (args.platform || args.arch) fail('--all-current cannot be combined with --platform/--arch')
+    const platform = currentPlatformName()
+    return { ...args, targets: configuredTargetsForPlatform(platform) }
+  }
+  if (!args.platform || !args.arch) fail('--platform and --arch are required (or use --all-current)')
   const target = `${args.platform}-${args.arch}`
-  if (!supported.has(target)) fail(`Unsupported Office runtime target: ${target}`)
-  return { ...args, target }
+  if (!SUPPORTED_TARGETS.has(target)) fail(`Unsupported Office runtime target: ${target}`)
+  return { ...args, targets: [target] }
 }
 
 function sha256File(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
+}
+
+function platformFromTarget(target) {
+  return target.split('-')[0]
 }
 
 function pythonRelativePath(platform) {
@@ -97,14 +125,15 @@ function moduleFilesPresent(runtimeRoot, platform) {
 }
 
 function runtimeAlreadyValid(runtimeRoot, target, requirementsSha) {
+  const platform = platformFromTarget(target)
   if (!existsSync(join(runtimeRoot, 'runtime.json'))) return false
-  if (!existsSync(join(runtimeRoot, pythonRelativePath(target.split('-')[0])))) return false
+  if (!existsSync(join(runtimeRoot, pythonRelativePath(platform)))) return false
   try {
     const marker = JSON.parse(readFileSync(join(runtimeRoot, 'runtime.json'), 'utf8'))
     return marker.target === target &&
       marker.requirementsSha256 === requirementsSha &&
       marker.pythonLine === PYTHON_LINE &&
-      moduleFilesPresent(runtimeRoot, target.split('-')[0])
+      moduleFilesPresent(runtimeRoot, platform)
   } catch {
     return false
   }
@@ -127,7 +156,7 @@ function assetMatcher(target) {
 
 async function githubJson(url) {
   const headers = {
-    'accept': 'application/vnd.github+json',
+    accept: 'application/vnd.github+json',
     'user-agent': 'legalwork-office-runtime-builder'
   }
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
@@ -158,7 +187,6 @@ async function resolveStandaloneAsset(target) {
       if (candidates.length === 0) {
         throw new Error(`latest release ${release.tag_name || ''} has no matching CPython ${PYTHON_LINE} asset for ${target}`)
       }
-      // Prefer the shared Windows build when both shared/static variants exist.
       candidates.sort((a, b) => Number(b.name.includes('-shared-')) - Number(a.name.includes('-shared-')) || a.name.localeCompare(b.name))
       const asset = candidates[0]
       return {
@@ -179,7 +207,7 @@ async function download(url, destination) {
     info(`Using cached ${basename(destination)}`)
     return
   }
-  mkdirSync(resolve(destination, '..'), { recursive: true })
+  mkdirSync(dirname(destination), { recursive: true })
   const headers = { 'user-agent': 'legalwork-office-runtime-builder' }
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
   if (token) headers.authorization = `Bearer ${token}`
@@ -205,7 +233,12 @@ function canRun(executable, args = ['--version']) {
 }
 
 function builderPython() {
-  const candidates = [process.env.PYTHON, process.env.PYTHON3, process.platform === 'win32' ? 'python' : 'python3', 'python']
+  const candidates = [
+    process.env.PYTHON,
+    process.env.PYTHON3,
+    process.platform === 'win32' ? 'python' : 'python3',
+    'python'
+  ]
   for (const candidate of candidates) {
     if (candidate && canRun(candidate)) return candidate
   }
@@ -265,22 +298,20 @@ function verifyRuntime(runtimeRoot, platform, target) {
   }
 }
 
-async function main() {
-  if (!existsSync(REQUIREMENTS)) fail(`Missing Office requirements: ${REQUIREMENTS}`)
-  const args = parseArgs(process.argv.slice(2))
-  const requirementsSha = sha256File(REQUIREMENTS)
-  const runtimeRoot = join(VENDOR_ROOT, args.target)
-  if (!args.force && runtimeAlreadyValid(runtimeRoot, args.target, requirementsSha)) {
-    info(`${args.target} Office runtime is already prepared.`)
+async function prepareTarget(target, force, requirementsSha) {
+  const platform = platformFromTarget(target)
+  const runtimeRoot = join(VENDOR_ROOT, target)
+  if (!force && runtimeAlreadyValid(runtimeRoot, target, requirementsSha)) {
+    info(`${target} Office runtime is already prepared.`)
     return
   }
 
-  const asset = await resolveStandaloneAsset(args.target)
+  const asset = await resolveStandaloneAsset(target)
   mkdirSync(CACHE_ROOT, { recursive: true })
   const archive = join(CACHE_ROOT, asset.name)
   await download(asset.url, archive)
 
-  const temp = mkdtempSync(join(tmpdir(), `legalwork-office-runtime-${args.target}-`))
+  const temp = mkdtempSync(join(tmpdir(), `legalwork-office-runtime-${target}-`))
   try {
     extractArchive(archive, temp)
     const extractedPython = join(temp, 'python')
@@ -288,10 +319,10 @@ async function main() {
     rmSync(runtimeRoot, { recursive: true, force: true })
     mkdirSync(runtimeRoot, { recursive: true })
     cpSync(extractedPython, join(runtimeRoot, 'python'), { recursive: true, force: true })
-    installRequirements(runtimeRoot, args.platform, args.target)
-    verifyRuntime(runtimeRoot, args.platform, args.target)
+    installRequirements(runtimeRoot, platform, target)
+    verifyRuntime(runtimeRoot, platform, target)
     writeFileSync(join(runtimeRoot, 'runtime.json'), `${JSON.stringify({
-      target: args.target,
+      target,
       pythonLine: PYTHON_LINE,
       requirementsSha256: requirementsSha,
       sourceRepository: asset.repository,
@@ -300,9 +331,18 @@ async function main() {
       preparedAt: new Date().toISOString(),
       imports: REQUIRED_IMPORTS
     }, null, 2)}\n`, 'utf8')
-    info(`Prepared ${args.target} Office runtime at ${runtimeRoot}`)
+    info(`Prepared ${target} Office runtime at ${runtimeRoot}`)
   } finally {
     rmSync(temp, { recursive: true, force: true })
+  }
+}
+
+async function main() {
+  if (!existsSync(REQUIREMENTS)) fail(`Missing Office requirements: ${REQUIREMENTS}`)
+  const args = parseArgs(process.argv.slice(2))
+  const requirementsSha = sha256File(REQUIREMENTS)
+  for (const target of args.targets) {
+    await prepareTarget(target, args.force, requirementsSha)
   }
 }
 
