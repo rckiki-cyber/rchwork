@@ -20,7 +20,6 @@ function pruneExpired(now = Date.now()): void {
   }
 }
 
-/** Record that the trusted document Skill executor hit a structural limitation. */
 export function markOfficeFallbackEligible(
   context: Pick<ToolHostContext, 'threadId' | 'turnId'>,
   evidence: { reason: string; operation: string },
@@ -30,7 +29,6 @@ export function markOfficeFallbackEligible(
   eligibility.set(key(context), { ...evidence, createdAt: now })
 }
 
-/** Consume eligibility once; model-created files/tickets cannot create this state. */
 export function consumeOfficeFallbackEligibility(
   context: Pick<ToolHostContext, 'threadId' | 'turnId'>,
   now = Date.now()
@@ -43,7 +41,6 @@ export function consumeOfficeFallbackEligibility(
   return { reason: evidence.reason, operation: evidence.operation }
 }
 
-/** OfficeCLI is visible only after the runtime explicitly grants this turn. */
 export function grantOfficeFallback(
   context: Pick<ToolHostContext, 'threadId' | 'turnId'>,
   now = Date.now()
@@ -74,12 +71,17 @@ export function isLegalDocumentFormattingActive(context: ToolHostContext | undef
   return Boolean(context?.activeSkillIds?.some((skillId) => skillId === LEGAL_DOCUMENT_FORMATTING_SKILL_ID))
 }
 
-/** Only genuine document-structure limitations may unlock last-resort Office MCP. */
+/** Only genuine structure/preservation limits after local attempts may unlock Office MCP. */
 export function hasStructuralOfficeFallbackEvidence(detail: unknown): boolean {
   if (!detail || typeof detail !== 'object' || Array.isArray(detail)) return false
   const record = detail as Record<string, unknown>
   if (record.tracked_changes === true || record.macros === true) return true
   if (typeof record.spanning_paragraphs === 'number' && record.spanning_paragraphs > 0) return true
   if (Array.isArray(record.keys) && record.keys.length > 0) return true
+  if (
+    typeof record.legacy_format === 'string' &&
+    (record.legacy_format === '.doc' || record.legacy_format === '.ppt') &&
+    record.local_conversion_attempted === true
+  ) return true
   return false
 }
