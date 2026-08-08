@@ -1,8 +1,8 @@
 {
   "id": "legal-document-formatting",
   "name": "legal-document-formatting",
-  "description": "LegalWork 的 Office 文档确定性执行技能。Word/DOCX 与常规 PPTX 默认通过 document_skill_execute 运行本地 worker；支持参考 DOCX 与法律文档语义 profile；Office MCP 仅在受信任执行器确认结构性能力边界后作为最后兜底。Word 中文正文默认宋体、小四 12pt。",
-  "version": "2.4.0",
+  "description": "LegalWork 的 Office 文档确定性执行技能。Word/DOCX 与常规 PPTX 默认通过 document_skill_execute 运行本地 worker；支持参考 DOCX、法律文档语义 profile 与旧 DOC/PPT 本地转换；Office MCP 仅在受信任执行器确认所有安全本地路径已遇到真实能力边界后作为最后兜底。Word 中文正文默认宋体、小四 12pt。",
+  "version": "2.5.0",
   "entry": "SKILL.md",
   "triggers": {
     "commands": ["/word-format", "/format-word", "/format", "/ppt-format"],
