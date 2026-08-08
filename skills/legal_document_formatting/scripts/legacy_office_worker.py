@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Convert legacy .doc/.ppt files locally before considering Office MCP.
 
-Uses LibreOffice/soffice headless when available. A failed local conversion is
-reported as a structural legacy-format limitation so the trusted native
-executor may expose last-resort Office fallback for the same turn.
+Uses LibreOffice/soffice headless when available. Conversion happens in a
+private temporary directory so a stale output file can never be mistaken for a
+successful conversion. Only exhausted local conversion may enable fallback.
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -72,30 +73,33 @@ def cmd_convert(args: argparse.Namespace) -> None:
     last_error = ""
     for executable in office:
         try:
-            completed = subprocess.run(
-                [executable, "--headless", "--convert-to", target_ext.lstrip("."), "--outdir", str(output.parent), str(src)],
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=False,
-            )
+            with tempfile.TemporaryDirectory(prefix="legalwork-office-convert-") as temp_dir:
+                temp = Path(temp_dir)
+                completed = subprocess.run(
+                    [executable, "--headless", "--convert-to", target_ext.lstrip("."), "--outdir", str(temp), str(src)],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                )
+                generated = temp / f"{src.stem}{target_ext}"
+                if completed.returncode == 0 and generated.is_file() and generated.stat().st_size > 0:
+                    staged = output.with_name(f".{output.name}.legalwork-converting")
+                    if staged.exists():
+                        staged.unlink()
+                    shutil.copy2(generated, staged)
+                    staged.replace(output)
+                    emit({
+                        "status": "ok",
+                        "operation": "legacy-convert",
+                        "input": str(src),
+                        "output": str(output),
+                        "converter": Path(executable).name,
+                    })
+                last_error = (completed.stderr or completed.stdout or f"exit code {completed.returncode}")[-1600:]
         except Exception as exc:
             last_error = str(exc)
             continue
-        generated = output.parent / f"{src.stem}{target_ext}"
-        if completed.returncode == 0 and generated.is_file():
-            if generated != output:
-                if output.exists():
-                    output.unlink()
-                generated.replace(output)
-            emit({
-                "status": "ok",
-                "operation": "legacy-convert",
-                "input": str(src),
-                "output": str(output),
-                "converter": Path(executable).name,
-            })
-        last_error = (completed.stderr or completed.stdout or f"exit code {completed.returncode}")[-1600:]
 
     emit({
         "status": "unsupported",
