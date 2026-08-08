@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert legacy .doc/.ppt files locally before considering Office MCP.
+"""Convert legacy .doc/.xls/.ppt files locally before considering Office MCP.
 
 Uses LibreOffice/soffice headless when available. Conversion happens in a
 private temporary directory so a stale output file can never be mistaken for a
@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 MARKER = "LEGALWORK_DOCUMENT_UNSUPPORTED"
+TARGET_EXTENSIONS = {".doc": ".docx", ".xls": ".xlsx", ".ppt": ".pptx"}
 
 
 def emit(payload: dict[str, Any], code: int = 0) -> None:
@@ -52,9 +53,9 @@ def cmd_convert(args: argparse.Namespace) -> None:
     if not src.is_file():
         emit({"status": "error", "operation": "legacy-convert", "error": f"file not found: {src}"}, 1)
     ext = src.suffix.lower()
-    if ext not in {".doc", ".ppt"}:
-        emit({"status": "error", "operation": "legacy-convert", "error": f"expected .doc or .ppt input, got {ext or 'no extension'}"}, 1)
-    target_ext = ".docx" if ext == ".doc" else ".pptx"
+    target_ext = TARGET_EXTENSIONS.get(ext)
+    if not target_ext:
+        emit({"status": "error", "operation": "legacy-convert", "error": f"expected .doc, .xls, or .ppt input, got {ext or 'no extension'}"}, 1)
     output = Path(args.output).expanduser().resolve() if args.output else src.with_suffix(target_ext)
     if output.suffix.lower() != target_ext:
         emit({"status": "error", "operation": "legacy-convert", "error": f"output must end with {target_ext}"}, 1)
