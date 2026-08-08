@@ -15,6 +15,7 @@ import {
   UsageSnapshotSchema,
   AttachmentUploadRequest,
   MemoryRecord,
+  KnowledgeSyncRequest,
   LegalworkErrorBody,
   LegalworkCapabilitiesConfig,
   RuntimeCapabilityManifest,
@@ -35,6 +36,11 @@ import {
 } from '../src/cli/serve.js'
 
 describe('contracts', () => {
+  it('accepts a 10k-file local knowledge sync request without changing model output budgets', () => {
+    expect(KnowledgeSyncRequest.parse({ maxFiles: 10_000 }).maxFiles).toBe(10_000)
+    expect(() => KnowledgeSyncRequest.parse({ maxFiles: 50_001 })).toThrow()
+  })
+
   it('round-trips a thread creation payload through zod', () => {
     const parsed = CreateThreadRequest.parse({
       title: 'demo',
@@ -477,7 +483,7 @@ describe('cli', () => {
   it('normalizes capability config to disabled defaults', () => {
     const config = LegalworkCapabilitiesConfig.parse({})
     expect(config.mcp.enabled).toBe(false)
-    expect(config.mcp.search.enabled).toBe(false)
+    expect(config.mcp.search.enabled).toBe(true)
     expect(config.mcp.search.mode).toBe('auto')
     expect(config.web.enabled).toBe(false)
     expect(config.skills.enabled).toBe(false)
@@ -580,7 +586,7 @@ describe('cli', () => {
     expect(manifest.model.inputModalities).toContain('text')
     expect(manifest.mcp.available).toBe(false)
     expect(manifest.mcp.reason).toMatch(/disabled/)
-    expect(manifest.mcp.search.enabled).toBe(false)
+    expect(manifest.mcp.search.enabled).toBe(true)
     expect(manifest.mcp.search.active).toBe(false)
     expect(manifest.attachments.textFallbackMaxBase64Bytes).toBe(512 * 1024)
     expect(manifest.attachments.textFallbackMaxImageDimension).toBe(1280)

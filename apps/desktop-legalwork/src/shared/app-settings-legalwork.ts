@@ -120,7 +120,7 @@ function effectiveSandboxModeForFileAccess(restrictFileAccessToWorkspace: boolea
 
 export function defaultLegalworkMcpSearchSettings(): LegalworkMcpSearchSettingsV1 {
   return {
-    enabled: false,
+    enabled: true,
     mode: 'auto',
     autoThresholdToolCount: 24,
     topKDefault: 5,

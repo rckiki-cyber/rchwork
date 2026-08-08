@@ -937,20 +937,20 @@ export const sseStartPayloadSchema = z
 export const documentGenerationPayloadSchema = z
   .object({
     templateName: z.string().min(1).max(200),
-    templateDescription: z.string().max(2000),
-    templateContent: z.string().max(50_000),
+    templateDescription: z.string().max(20_000),
+    templateContent: z.string().max(500_000),
     fields: z
       .array(
         z.object({
           id: z.string().max(200),
           label: z.string().max(200),
           type: z.string().max(50),
-          value: z.string().max(10_000),
+          value: z.string().max(100_000),
           required: z.boolean().optional()
         })
       )
       .max(200),
-    legalBasis: z.array(z.string().max(1000)).max(50).optional()
+    legalBasis: z.array(z.string().max(20_000)).max(100).optional()
   })
   .strict()
 

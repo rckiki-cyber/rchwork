@@ -16,7 +16,7 @@ type SseControllerState = {
    * pushed to the renderer in chunks instead of one giant IPC burst that
    * saturates the renderer and drops the tail events. */
   eventBatch: unknown[]
-  batchTimer: ReturnType<typeof setInterval> | null
+  batchTimer: ReturnType<typeof setTimeout> | null
 }
 
 const SSE_RECONNECT_BASE_MS = 750
@@ -25,35 +25,90 @@ const SSE_START_TIMEOUT_MS = 15_000
 // 重连次数上限：防止 runtime 反复崩溃时无限重连空转。60 次 × ≤5s 退避 ≈ 数分钟。
 const SSE_MAX_RECONNECTS = 60
 const SSE_BATCH_FLUSH_MS = 40
-const SSE_BATCH_MAX_EVENTS = 120
+const SSE_BATCH_MAX_EVENTS = 60
 
 
 const sseControllers = new Map<string, SseControllerState>()
 
 function flushSseEventBatch(state: SseControllerState, wc: WebContents, streamId: string): void {
   if (state.batchTimer) {
-    clearInterval(state.batchTimer)
+    clearTimeout(state.batchTimer)
     state.batchTimer = null
   }
   if (state.eventBatch.length === 0) return
-  const batch = state.eventBatch
-  state.eventBatch = []
+  // Drain at most one bounded slice per timer tick.  The fetch reader can
+  // consume a persisted backlog much faster than Electron can render it; an
+  // immediate flush every N events merely turns that backlog into a burst of
+  // IPC messages.  Keeping the remainder queued gives the renderer a paint
+  // opportunity between slices.
+  const batch = state.eventBatch.splice(0, SSE_BATCH_MAX_EVENTS)
   if (wc.isDestroyed()) return
   wc.send('runtime:sse-event', { streamId, data: batch.length === 1 ? batch[0] : batch })
+  if (state.eventBatch.length > 0) {
+    scheduleSseEventBatchFlush(state, wc, streamId)
+  }
 }
 
 function scheduleSseEventBatchFlush(state: SseControllerState, wc: WebContents, streamId: string): void {
   if (state.batchTimer) return
-  state.batchTimer = setInterval(() => flushSseEventBatch(state, wc, streamId), SSE_BATCH_FLUSH_MS)
+  state.batchTimer = setTimeout(() => flushSseEventBatch(state, wc, streamId), SSE_BATCH_FLUSH_MS)
+}
+
+function mergeAdjacentDelta(previous: unknown, current: unknown): unknown | null {
+  if (!previous || typeof previous !== 'object' || !current || typeof current !== 'object') return null
+  const previousEvent = previous as Record<string, unknown>
+  const currentEvent = current as Record<string, unknown>
+  const kind = currentEvent.kind
+  if (
+    kind !== previousEvent.kind ||
+    (kind !== 'assistant_text_delta' && kind !== 'assistant_reasoning_delta')
+  ) return null
+  const previousItem = previousEvent.item
+  const currentItem = currentEvent.item
+  if (!previousItem || typeof previousItem !== 'object' || !currentItem || typeof currentItem !== 'object') {
+    return null
+  }
+  const previousItemRecord = previousItem as Record<string, unknown>
+  const currentItemRecord = currentItem as Record<string, unknown>
+  if (
+    previousItemRecord.id !== currentItemRecord.id ||
+    typeof previousItemRecord.text !== 'string' ||
+    typeof currentItemRecord.text !== 'string'
+  ) return null
+  return {
+    ...previousEvent,
+    ...currentEvent,
+    item: {
+      ...previousItemRecord,
+      ...currentItemRecord,
+      text: previousItemRecord.text + currentItemRecord.text
+    }
+  }
 }
 
 function queueSseEvent(state: SseControllerState, wc: WebContents, streamId: string, payload: unknown): void {
-  state.eventBatch.push(payload)
-  if (state.eventBatch.length >= SSE_BATCH_MAX_EVENTS) {
-    flushSseEventBatch(state, wc, streamId)
-    return
+  const lastIndex = state.eventBatch.length - 1
+  if (lastIndex >= 0) {
+    const merged = mergeAdjacentDelta(state.eventBatch[lastIndex], payload)
+    if (merged) {
+      state.eventBatch[lastIndex] = merged
+      scheduleSseEventBatchFlush(state, wc, streamId)
+      return
+    }
   }
+  state.eventBatch.push(payload)
   scheduleSseEventBatchFlush(state, wc, streamId)
+}
+
+function flushAllSseEventBatches(state: SseControllerState, wc: WebContents, streamId: string): void {
+  if (state.batchTimer) {
+    clearTimeout(state.batchTimer)
+    state.batchTimer = null
+  }
+  while (state.eventBatch.length > 0 && !wc.isDestroyed()) {
+    const batch = state.eventBatch.splice(0, SSE_BATCH_MAX_EVENTS)
+    wc.send('runtime:sse-event', { streamId, data: batch.length === 1 ? batch[0] : batch })
+  }
 }
 
 function safeSend(
@@ -68,7 +123,7 @@ function safeSend(
 function abortSseState(state: SseControllerState, options?: { stoppedByClient?: boolean }): void {
   state.stoppedByClient = options?.stoppedByClient === true
   if (state.batchTimer) {
-    clearInterval(state.batchTimer)
+    clearTimeout(state.batchTimer)
     state.batchTimer = null
   }
   state.controller.abort()
@@ -255,7 +310,7 @@ export function registerRuntimeSseIpc(options: {
             const res = await fetchSseWithStartTimeout(url, requestHeaders, ac.signal, SSE_START_TIMEOUT_MS)
             if (!res.ok || !res.body) {
               if (isFatalSseStatus(res.status)) {
-                flushSseEventBatch(state, wc, id)
+                flushAllSseEventBatches(state, wc, id)
                 safeSend(wc, 'runtime:sse-error', { streamId: id, status: res.status })
                 logError('sse', `SSE connection failed for thread ${request.threadId}`, {
                   status: res.status,
@@ -263,15 +318,30 @@ export function registerRuntimeSseIpc(options: {
                 })
                 return
               }
+              reconnectAttempts += 1
+              if (reconnectAttempts > SSE_MAX_RECONNECTS) {
+                flushAllSseEventBatches(state, wc, id)
+                safeSend(wc, 'runtime:sse-error', {
+                  streamId: id,
+                  status: res.status,
+                  message: `sse unavailable after ${SSE_MAX_RECONNECTS} reconnects`
+                })
+                return
+              }
               await sleepWithAbort(reconnectDelayMs, ac.signal)
               reconnectDelayMs = Math.min(reconnectDelayMs * 2, SSE_RECONNECT_MAX_MS)
               continue
             }
-            reconnectDelayMs = SSE_RECONNECT_BASE_MS
-            reconnectAttempts = 0
             const reader = res.body.getReader()
             const dec = new TextDecoder()
             let buffer = ''
+            let receivedEventOnConnection = false
+            const markConnectionHealthy = (): void => {
+              if (receivedEventOnConnection) return
+              receivedEventOnConnection = true
+              reconnectDelayMs = SSE_RECONNECT_BASE_MS
+              reconnectAttempts = 0
+            }
             while (true) {
               const { done, value } = await reader.read()
               if (done) break
@@ -282,6 +352,7 @@ export function registerRuntimeSseIpc(options: {
                 buffer = next.rest
                 const parsed = parseSseData(block)
                 if (parsed !== null) {
+                  markConnectionHealthy()
                   const payload = coerceSsePayload(parsed)
                   if (typeof payload.seq === 'number') {
                     nextSinceSeq = Math.max(nextSinceSeq, payload.seq)
@@ -295,6 +366,7 @@ export function registerRuntimeSseIpc(options: {
             if (trailing) {
               const parsed = parseSseData(trailing)
               if (parsed !== null) {
+                markConnectionHealthy()
                 const payload = coerceSsePayload(parsed)
                 if (typeof payload.seq === 'number') {
                   nextSinceSeq = Math.max(nextSinceSeq, payload.seq)
@@ -302,8 +374,22 @@ export function registerRuntimeSseIpc(options: {
                 queueSseEvent(state, wc, id, payload)
               }
             }
-            // Stream read to completion: flush anything still batched.
-            flushSseEventBatch(state, wc, id)
+            // The connection may be restarted immediately. Keep backlog
+            // delivery paced instead of synchronously flooding the renderer.
+            scheduleSseEventBatchFlush(state, wc, id)
+            if (!receivedEventOnConnection) {
+              reconnectAttempts += 1
+              if (reconnectAttempts > SSE_MAX_RECONNECTS) {
+                flushAllSseEventBatches(state, wc, id)
+                safeSend(wc, 'runtime:sse-error', {
+                  streamId: id,
+                  message: `sse closed before delivering events ${SSE_MAX_RECONNECTS} times`
+                })
+                return
+              }
+              await sleepWithAbort(reconnectDelayMs, ac.signal)
+              reconnectDelayMs = Math.min(reconnectDelayMs * 2, SSE_RECONNECT_MAX_MS)
+            }
           } catch (e) {
             if (state.stoppedByClient || ac.signal.aborted) return
             const msg = e instanceof Error ? e.message : String(e)
@@ -321,7 +407,7 @@ export function registerRuntimeSseIpc(options: {
             if (isInterruption) {
               reconnectAttempts += 1
               if (reconnectAttempts > SSE_MAX_RECONNECTS) {
-                flushSseEventBatch(state, wc, id)
+                flushAllSseEventBatches(state, wc, id)
                 safeSend(wc, 'runtime:sse-error', { streamId: id, message: msg })
                 logError('sse', `SSE stream error for thread ${request.threadId} (reconnect exhausted): ${msg}`, {
                   streamId: id
@@ -332,7 +418,7 @@ export function registerRuntimeSseIpc(options: {
               reconnectDelayMs = Math.min(reconnectDelayMs * 2, SSE_RECONNECT_MAX_MS)
               continue
             }
-            flushSseEventBatch(state, wc, id)
+            flushAllSseEventBatches(state, wc, id)
             safeSend(wc, 'runtime:sse-error', { streamId: id, message: msg })
             logError('sse', `SSE stream error for thread ${request.threadId}: ${msg}`, { streamId: id })
             return
@@ -340,12 +426,16 @@ export function registerRuntimeSseIpc(options: {
         }
       } finally {
         event.sender.removeListener('destroyed', onSenderDestroyed)
-        flushSseEventBatch(state, wc, id)
+        if (state.stoppedByClient) {
+          state.eventBatch = []
+        } else {
+          flushAllSseEventBatches(state, wc, id)
+        }
         if (!state.stoppedByClient) {
           safeSend(wc, 'runtime:sse-end', { streamId: id })
         }
         if (state.batchTimer) {
-          clearInterval(state.batchTimer)
+          clearTimeout(state.batchTimer)
           state.batchTimer = null
         }
         // Only remove this connection's own state. On a same-id restart the

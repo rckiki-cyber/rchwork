@@ -1,6 +1,7 @@
 import type { ToolHostContext } from '../../ports/tool-host.js'
 
 export const OFFICECLI_TOOL_NAME = 'mcp_officecli_officecli'
+export const DOCUMENT_SKILL_EXECUTE_TOOL_NAME = 'document_skill_execute'
 export const LEGAL_DOCUMENT_FORMATTING_SKILL_ID = 'legal-document-formatting'
 export const OFFICE_FALLBACK_TTL_MS = 60 * 60 * 1000
 

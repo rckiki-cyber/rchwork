@@ -943,10 +943,17 @@ def handle_research_ima(args: dict) -> dict:
             {"id": explicit_id, "name": "指定知识库", "routing_score": 1.0},
         )
     else:
+        # Catalog routing should stay fast. Preserve most of the caller's
+        # timeout budget for the streaming full-text answer instead of letting
+        # two sequential catalog/auth requests consume the MCP deadline.
+        try:
+            catalog_timeout = max(10, min(int(args.get("timeout", 20)), 20))
+        except (TypeError, ValueError):
+            catalog_timeout = 20
         catalog_result = handle_search_ima_catalog({
             "query": question,
             "top_k": 1,
-            "timeout": args.get("timeout", 30),
+            "timeout": catalog_timeout,
         })
         if "error" in catalog_result:
             return catalog_result
@@ -1014,9 +1021,9 @@ _has_openapi = bool(_cid and _key)
 
 _COOKIE_ONLY_TOOLS = {
     "research_ima": {
-        "description": "IMA 自动研究入口。对法律、合规、案例、法学论文、行业实践、合同或监管问题，应主动调用，无需等待用户强调“查 IMA”。工具先对知识库名称、简介、推荐问题和文档结构做目录级 RAG，自动选择最相关知识库，再调用 IMA 全文问答。论文/文献类问题会自动要求 IMA 在回答末尾列出实际参考文献的完整名称及作者。只需传入用户的完整问题",
+        "description": "IMA 自动研究入口。先按知识库目录选库，再进行全文问答。每次只传一个范围明确的检索问题；不要把 Word/PDF/PPT 生成、长文撰写或其他交付步骤放进 question。论文/文献类问题会要求 IMA 列出本次实际使用的完整文献名称及作者。",
         "input_schema": {"type": "object", "properties": {
-            "question": {"type": "string", "description": "用户的完整研究问题，保留法律领域、主体和时间范围等限定"},
+            "question": {"type": "string", "description": "单个、范围明确的知识库检索问题；保留主题限定，但排除写作、文件生成和交付指令"},
             "knowledge_base_id": {"type": "string", "description": "可选；用户明确指定知识库时传入，否则自动选库"},
             "timeout": {"type": "number", "description": "超时秒数"},
         }, "required": ["question"]},
@@ -1103,6 +1110,8 @@ _TOOL_ERROR_PREFIXES = (
     "IMA_AUTH_EXPIRED:",
     "IMA_SESSION_ERROR:",
     "IMA_LIST_ERROR:",
+    "IMA_NO_MATCH:",
+    "IMA_NO_ANSWER:",
     "Q&A 接口返回",
     "Q&A 请求失败:",
     "需要 IMA 登录凭证",

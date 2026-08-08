@@ -536,6 +536,7 @@ export function buildThreadEventSink(
         let nextReasoningFirstAtByUserId = s.turnReasoningFirstAtByUserId
         let nextReasoningLastAtByUserId = s.turnReasoningLastAtByUserId
         const userId = s.currentTurnUserId
+        const consumedSeqs = new Set<number>()
         for (const delta of deltas) {
           // 与上方 seq 过滤一致：跳过已处理过的重复投递 delta，避免重复拼接。
           // 同一批次内重复的 seq 也只保留首次出现，其余跳过。阈值用 appliedSeq
@@ -543,6 +544,8 @@ export function buildThreadEventSink(
           if (typeof delta.seq === 'number') {
             if (delta.seq <= s.appliedSeq) continue
             if (!seenSeqs.has(delta.seq)) continue
+            if (consumedSeqs.has(delta.seq)) continue
+            consumedSeqs.add(delta.seq)
           }
           if (delta.kind === 'agent_reasoning') {
             liveReasoning += delta.text

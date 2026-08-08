@@ -17,7 +17,6 @@ const DEFAULT_MAX_TOOL_ARGUMENT_STRING_TOKENS = 2_000
 const DEFAULT_MAX_ARRAY_ITEMS = 80
 const MAX_SIGNAL_LINES = 48
 const MAX_LINE_CHARS = 280
-const LONG_ARGUMENT_PREVIEW_CHARS = 160
 const ESC = String.fromCharCode(27)
 
 const ANSI_RE = new RegExp(`${ESC}\\[[0-9;?]*[ -/]*[@-~]`, 'g')
@@ -89,7 +88,26 @@ function compactToolResultOutput(
   output: unknown,
   limits: Required<RequestHistoryHygieneOptions>
 ): CompactResult<unknown> {
-  return compactToolResultValue(output, '', limits)
+  const compacted = compactToolResultValue(output, '', limits)
+  if (typeof compacted.value === 'string') return compacted
+
+  // Tool adapters commonly return deeply nested JSON where every individual
+  // string is below the per-value limit but the aggregate payload is huge.
+  // Bound the serialized result as a whole so one broad MCP search cannot be
+  // replayed in full on every subsequent model request.
+  const serialized = serializeToolResult(compacted.value)
+  if (!serialized) return compacted
+  const aggregate = compactToolResultText(serialized, limits)
+  if (!aggregate.changed) return compacted
+  return { value: aggregate.value, changed: true }
+}
+
+function serializeToolResult(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return undefined
+  }
 }
 
 function compactToolResultValue(
@@ -228,12 +246,16 @@ function compactArgumentValue(
     const bytes = Buffer.byteLength(value, 'utf8')
     const tokens = estimateTokens(value)
     if (bytes <= options.maxStringBytes && tokens <= options.maxStringTokens) return { value, changed: false }
-    const preview = value.slice(0, LONG_ARGUMENT_PREVIEW_CHARS).replace(/\s+/g, ' ').trim()
-    const suffix = preview ? ` preview=${JSON.stringify(preview)}` : ''
+    const documentContent = options.toolName === 'document_skill_execute' && key === 'content'
+    const subject = documentContent
+      ? 'the original COMPLETE document content'
+      : `the original ${options.toolName}.${key} argument`
     return {
       value:
-        `[cache hygiene: omitted completed ${options.toolName}.${key} argument, ` +
-        `${formatBytes(bytes)}, approx ${tokens} token(s), ${countLines(value)} line(s); see following tool result]${suffix}`,
+        `[cache hygiene — HISTORY VIEW ONLY: ${subject} was sent to the tool and is omitted only from this later model request ` +
+        `(${formatBytes(bytes)}, approx ${tokens} token(s), ${countLines(value)} line(s)). ` +
+        `This marker was NOT the executed argument. Treat the following tool result as authoritative; ` +
+        `${documentContent ? 'do NOT regenerate the document solely because this historical field is abbreviated.' : 'do not repeat the tool solely because this historical field is abbreviated.'}]`,
       changed: true
     }
   }

@@ -195,16 +195,23 @@ export function fieldsFromKnowledgeMeta(
 ): CitationFields {
   const sourceType = detectSourceType(meta, relativePath, category)
   const fields: CitationFields = { title, sourceType }
+  const extracted = extractMetadataFromContent(contentPreview ?? '', relativePath)
 
   // Extract author from meta
   if (meta.author) {
     fields.authors = [meta.author]
+  } else if (extracted.authors.length > 0) {
+    fields.authors = extracted.authors
   }
 
   // Extract year from path or content
   const yearFromContent = extractYear(contentPreview)
   const yearFromPath = extractYear(relativePath)
-  fields.year = yearFromContent ?? yearFromPath ?? undefined
+  fields.year = yearFromContent ?? yearFromPath ?? extracted.publicationYear ?? undefined
+  fields.doi = extracted.doi
+  if (sourceType === 'journal_article') {
+    fields.journalName = extracted.journal
+  }
 
   // Set source-type-specific fields
   if (sourceType === 'legal_statute') {
@@ -248,7 +255,7 @@ export function extractDoi(text: string): string | undefined {
   const match = text.match(
     /\b(?:doi|DOI)\s*[:：]\s*(10\.\d{4,}\/[^\s,;]{3,})|https:\/\/doi\.org\/(10\.\d{4,}\/[^\s,;]{3,})/
   )
-  return match?.[1] ?? match?.[2] ?? undefined
+  return (match?.[1] ?? match?.[2])?.replace(/[.。，、;；:：)）\]}]+$/, '') || undefined
 }
 
 /**
@@ -257,12 +264,8 @@ export function extractDoi(text: string): string | undefined {
  */
 export function extractYear(text?: string): number | undefined {
   if (!text) return undefined
-  const match = text.match(/(?:20[0-9]{2})\s*年|\(20[0-9]{2}\)/)
-  if (match) {
-    const digits = match[0].match(/20[0-9]{2}/)
-    if (digits) return Number.parseInt(digits[0], 10)
-  }
-  return undefined
+  const match = text.match(/(?<!\d)(?:19|20)\d{2}(?!\d)/)
+  return match ? Number.parseInt(match[0], 10) : undefined
 }
 
 /**

@@ -13,7 +13,12 @@ import {
   DEFAULT_MAX_AGENT_LOOP_STEPS,
   MAX_AGENT_LOOP_STEPS_ENV,
   MAX_AGENT_LOOP_STEPS_ENV_CAP,
-  resolveMaxAgentLoopSteps
+  isBareResearchTopicPrompt,
+  requestedDocumentArtifacts,
+  requestsLocalKnowledgeRetrieval,
+  requestsDocumentMutation,
+  resolveMaxAgentLoopSteps,
+  skillRoutingPrompt
 } from '../src/loop/agent-loop.js'
 import { resolveModelContextProfile } from '../src/loop/model-context-profile.js'
 import { makeAssistantTextItem, makeToolCallItem, makeUserItem } from '../src/domain/item.js'
@@ -30,6 +35,49 @@ import {
 } from './loop-test-harness.js'
 
 describe('AgentLoop', () => {
+  it('distinguishes document creation requests from formatting questions', () => {
+    expect(requestsDocumentMutation('写一篇文献综述 Word 给我')).toBe(true)
+    expect(requestsDocumentMutation('把这份 .docx 按论文格式排版')).toBe(true)
+    expect(requestsDocumentMutation('请问可以帮我生成一份 Word 吗？')).toBe(true)
+    expect(requestsDocumentMutation('如何设置 Word 的页边距？')).toBe(false)
+    expect(requestsDocumentMutation('为什么 Word 正文通常使用宋体？')).toBe(false)
+    expect(requestsDocumentMutation('Word 文档有哪些常用格式？')).toBe(false)
+  })
+
+  it('tracks every explicitly requested deliverable format', () => {
+    const request = '请完成研究并交付 Word、PDF、PPT 三份完整文件'
+    expect(requestedDocumentArtifacts(request)).toEqual(['docx', 'pdf', 'pptx'])
+    expect(requestedDocumentArtifacts('请生成一份研究报告')).toEqual(['docx'])
+    expect(requestsLocalKnowledgeRetrieval('先检索本地知识库，再生成报告')).toBe(true)
+  })
+
+  it('does not treat a bare academic title as authorization for paid research', () => {
+    expect(isBareResearchTopicPrompt('行政程序与人工智能的媾和')).toBe(true)
+    expect(isBareResearchTopicPrompt('自动化/半自动化行政行为的程序要件如何重构')).toBe(false)
+    expect(isBareResearchTopicPrompt('检索知识库')).toBe(false)
+    expect(isBareResearchTopicPrompt('写一篇文献综述word')).toBe(false)
+  })
+
+  it('inherits the previous substantive Skill context for terse follow-ups', () => {
+    const items: TurnItem[] = [
+      makeUserItem({
+        id: 'u_word',
+        turnId: 'turn_word',
+        threadId: 'thr_1',
+        text: '写一篇文献综述word'
+      }),
+      makeUserItem({
+        id: 'u_question',
+        turnId: 'turn_question',
+        threadId: 'thr_1',
+        text: '？'
+      })
+    ]
+
+    expect(skillRoutingPrompt('？', items, 'turn_question')).toContain('写一篇文献综述word')
+    expect(skillRoutingPrompt('重新分析合同', items, 'turn_new')).toBe('重新分析合同')
+  })
+
   it('resolves a configurable agent loop step limit', () => {
     expect(resolveMaxAgentLoopSteps({} as NodeJS.ProcessEnv)).toBe(DEFAULT_MAX_AGENT_LOOP_STEPS)
     expect(resolveMaxAgentLoopSteps({ [MAX_AGENT_LOOP_STEPS_ENV]: '1024' } as NodeJS.ProcessEnv)).toBe(1024)
@@ -291,6 +339,50 @@ describe('AgentLoop', () => {
     expect(toolCall).toMatchObject({ kind: 'tool_call', status: 'completed' })
   })
 
+  it('removes research tools after the cumulative turn input budget is exhausted', async () => {
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'budget-guard',
+      model: 'budget-guard',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        if (requests.length === 1) {
+          yield {
+            kind: 'usage',
+            usage: {
+              promptTokens: 100,
+              completionTokens: 1,
+              totalTokens: 101,
+              cachedTokens: 0,
+              cacheHitTokens: 0,
+              cacheMissTokens: 100,
+              cacheHitRate: 0,
+              turns: 1
+            }
+          }
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_echo',
+            toolName: 'echo',
+            arguments: { text: 'one last search' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { turnTokenBudget: 50 })
+    await bootstrapThread(h)
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(requests).toHaveLength(2)
+    expect(requests[0]?.tools.map((tool) => tool.name)).toContain('echo')
+    expect(requests[1]?.tools).toEqual([])
+    expect(requests[1]?.contextInstructions?.join('\n')).toContain('成本预算提醒')
+  })
+
   it('enforces IMA research for knowledge-heavy legal work when the model skips the tool', async () => {
     const requests: ModelRequest[] = []
     let executions = 0
@@ -305,7 +397,7 @@ describe('AgentLoop', () => {
       policy: 'auto',
       execute: async (args) => {
         executions += 1
-        return { output: { answer: 'IMA answer', question: args.question } }
+        return { output: { answer: 'IMA 返回了可用于分析劳动合同解除风险的知识库证据。', question: args.question } }
       }
     })
     const h = makeHarness(
@@ -368,7 +460,7 @@ describe('AgentLoop', () => {
           output: {
             serverId: 'ima-knowledge-base',
             toolName: 'research_ima',
-            result: 'IMA answer'
+            result: 'IMA 返回了可用于研究人工智能生成内容监管的知识库证据。'
           }
         }
       }
@@ -397,8 +489,967 @@ describe('AgentLoop', () => {
     expect(executed[0]?.args).toMatchObject({ serverId: 'ima-knowledge-base' })
     expect(executed[1]?.args).toEqual({
       toolId: 'ima-knowledge-base/research_ima',
-      arguments: { question }
+      arguments: { question, timeout: 210 }
     })
+  })
+
+  it('returns control to the model after a progressive IMA call fails', async () => {
+    const executed: string[] = []
+    const mcpSearch = LocalToolHost.defineTool({
+      name: 'mcp_search',
+      description: 'Search MCP catalog.',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => {
+        executed.push('mcp_search')
+        return {
+          output: {
+            results: [{ toolId: 'ima-knowledge-base/research_ima' }]
+          }
+        }
+      }
+    })
+    const mcpCall = LocalToolHost.defineTool({
+      name: 'mcp_call',
+      description: 'Call MCP tool.',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => {
+        executed.push('mcp_call')
+        return {
+          output: { error: 'MCP error -32001: Request timed out' },
+          isError: true
+        }
+      }
+    })
+    const requests: ModelRequest[] = []
+    const h = makeHarness(
+      {
+        provider: 'ima-progressive-failure',
+        model: 'ima-progressive-failure',
+        async *stream(request): AsyncIterable<ModelStreamChunk> {
+          requests.push(request)
+          yield { kind: 'assistant_text_delta', text: 'IMA 超时，已基于现有材料继续。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      },
+      { tools: [mcpSearch, mcpCall] }
+    )
+    await bootstrapThread(h, {
+      request: { prompt: '请研究人工智能生成内容的法律监管问题' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed).toEqual(['mcp_search', 'mcp_call'])
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.history.some((item) =>
+      item.kind === 'tool_result' &&
+      item.toolName === 'mcp_call' &&
+      item.isError === true
+    )).toBe(true)
+  })
+
+  it('retrieves local knowledge before IMA and completes every requested file format', async () => {
+    const executed: Array<{ name: string; args: Record<string, unknown> }> = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('knowledge_auto_retrieve', async (args) => {
+        executed.push({ name: 'knowledge_auto_retrieve', args })
+        return {
+          output: {
+            sources: [{ path: '行政处罚法研究.pdf' }],
+            contextText: '本地知识库文献指出，自动化行政处罚仍需满足法定程序、说明理由与责任可追溯要求。'
+          }
+        }
+      }),
+      define('mcp_search', async (args) => {
+        executed.push({ name: 'mcp_search', args })
+        return { output: { results: [{ toolId: 'ima-knowledge-base/research_ima' }] } }
+      }),
+      define('mcp_call', async (args) => {
+        executed.push({ name: 'mcp_call', args })
+        return {
+          output: {
+            serverId: 'ima-knowledge-base',
+            toolName: 'research_ima',
+            result: 'IMA 返回了自动化行政处罚责任界定的相关论文观点与来源证据。'
+          }
+        }
+      }),
+      define('document_skill_execute', async (args) => {
+        executed.push({ name: 'document_skill_execute', args })
+        const kind = String(args.kind ?? '')
+        const operation = String(args.operation ?? '')
+        return {
+          output: {
+            status: 'ok',
+            kind,
+            operation,
+            output: `/tmp/report.${kind}`
+          }
+        }
+      })
+    ]
+    let callIndex = 0
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'compound-delivery',
+      model: 'compound-delivery',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        if (request.requiredToolName === 'knowledge_auto_retrieve') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_compound_${++callIndex}`,
+            toolName: 'knowledge_auto_retrieve',
+            arguments: { question: '自动化行政处罚责任界定' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (request.requiredToolName === 'document_skill_execute') {
+          const progress = request.contextInstructions?.join('\n') ?? ''
+          const kind = progress.includes('本步仍需生成：DOCX')
+            ? 'docx'
+            : progress.includes('本步仍需生成：PDF')
+              ? 'pdf'
+              : 'pptx'
+          const operation = kind === 'docx'
+            ? 'from-markdown'
+            : kind === 'pdf'
+              ? 'from-docx'
+              : 'from-json'
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_compound_${++callIndex}`,
+            toolName: 'document_skill_execute',
+            arguments: { kind, operation }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '三份文件均已生成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools })
+    await bootstrapThread(h, {
+      request: {
+        prompt: '请先检索本地知识库，再检索 IMA，研究自动化行政处罚责任界定，并交付 Word、PDF、PPT 三份完整文件。'
+      }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const documentKinds = executed
+      .filter((entry) => entry.name === 'document_skill_execute')
+      .map((entry) => entry.args.kind)
+
+    expect(status).toBe('completed')
+    expect(executed.map((entry) => entry.name)).toEqual([
+      'knowledge_auto_retrieve',
+      'mcp_search',
+      'mcp_call',
+      'document_skill_execute',
+      'document_skill_execute',
+      'document_skill_execute'
+    ])
+    expect(documentKinds).toEqual(['docx', 'pdf', 'pptx'])
+    expect(requests.at(-1)?.requiredToolName).toBeUndefined()
+  })
+
+  it('falls back to local search and blocks generation when local KB has no evidence', async () => {
+    const executed: string[] = []
+    const define = (
+      name: string,
+      output: unknown
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => {
+        executed.push(name)
+        return { output }
+      }
+    })
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'local-evidence-barrier',
+      model: 'local-evidence-barrier',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        if (request.requiredToolName === 'knowledge_auto_retrieve') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_local_auto_empty',
+            toolName: 'knowledge_auto_retrieve',
+            arguments: { query: '行政法研究' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (request.requiredToolName === 'knowledge_search') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_local_search_empty',
+            toolName: 'knowledge_search',
+            arguments: { query: '行政法研究' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '本地知识库没有返回可用证据，未生成文件。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, {
+      tools: [
+        define('knowledge_auto_retrieve', { sources: [], contextText: '' }),
+        define('knowledge_search', { sources: [] }),
+        define('document_skill_execute', { status: 'ok', output: '/tmp/should-not-exist.docx' })
+      ]
+    })
+    await bootstrapThread(h, {
+      request: { prompt: '请先检索本地知识库，再生成 Word 报告。' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed).toEqual(['knowledge_auto_retrieve', 'knowledge_search'])
+    expect(requests.at(-1)?.tools).toEqual([])
+    expect(requests.at(-1)?.contextInstructions?.join('\n')).toContain('本地知识库未返回')
+  })
+
+  it('requires successful citation verification before generating a KB-grounded literature review', async () => {
+    const executed: string[] = []
+    const define = (
+      name: string,
+      output: unknown
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => {
+        executed.push(name)
+        return { output }
+      }
+    })
+    let callIndex = 0
+    const h = makeHarness({
+      provider: 'citation-evidence-barrier',
+      model: 'citation-evidence-barrier',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        const required = request.requiredToolName
+        if (required) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_citation_gate_${++callIndex}`,
+            toolName: required,
+            arguments: required === 'knowledge_citation_verify'
+              ? { draft: '正文引用[1]\n参考文献\n[1] 张三. 算法行政研究[J]. 法学研究, 2025.' }
+              : required === 'document_skill_execute'
+                ? {
+                    kind: 'docx',
+                    operation: 'from-markdown',
+                    content: '正文引用[1]\n参考文献\n[1] 张三. 算法行政研究[J]. 法学研究, 2025.'
+                  }
+                : { query: '算法行政 文献综述' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '已基于核验来源生成综述。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, {
+      tools: [
+        define('knowledge_auto_retrieve', {
+          sources: [{ path: '算法行政研究.pdf' }],
+          contextText: '本地论文系统讨论了算法行政的权力属性、正当程序、透明度与司法审查问题。'
+        }),
+        define('mcp_ima_knowledge_base_research_ima', {
+          answer: 'IMA 返回了算法行政、自动化行政行为和算法正当程序方面的论文与来源证据。'
+        }),
+        define('knowledge_citation_verify', { verificationPassed: true }),
+        define('document_skill_execute', {
+          status: 'ok',
+          kind: 'docx',
+          operation: 'from-markdown',
+          output: '/tmp/verified-review.docx'
+        })
+      ]
+    })
+    await bootstrapThread(h, {
+      request: {
+        prompt: '请先检索本地知识库和 IMA，撰写算法行政文献综述并生成 Word，引用需标注出处。'
+      }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed).toEqual([
+      'knowledge_auto_retrieve',
+      'mcp_ima_knowledge_base_research_ima',
+      'knowledge_citation_verify',
+      'document_skill_execute'
+    ])
+  })
+
+  it('enforces a complex report contract before citation verification and Word/PDF delivery', async () => {
+    const executed: string[] = []
+    const fullDraft = [
+      '# 一、问题的提出',
+      '# 二、规范体系',
+      '脱敏处理采用去标识化、替换直接标识符并保留受控主体映射。',
+      '典型案例包括（2019）鲁13行终415号与（2021）京01行终88号。',
+      '完整论证内容。'.repeat(140),
+      '# 参考文献',
+      '[1] 本地知识库论文一。'
+    ].join('\n')
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('knowledge_auto_retrieve', async () => {
+        executed.push('knowledge_auto_retrieve')
+        return {
+          output: {
+            sources: [
+              { path: '论文一.pdf' },
+              { path: '论文二.pdf' },
+              { path: '论文三.pdf' }
+            ],
+            contextText: '本地知识库返回了数字行政、自动化决策、算法治理与非现场监管论文的正文证据。'
+          }
+        }
+      }),
+      define('knowledge_read_file', async (args) => {
+        executed.push(`knowledge_read_file:${String(args.path)}`)
+        return {
+          output: {
+            path: args.path,
+            content: `这是 ${String(args.path)} 经提取/OCR 后的完整论证摘要，包含规范基础、程序控制与责任分配。`
+          }
+        }
+      }),
+      define('data_compliance', async () => {
+        executed.push('data_compliance')
+        return {
+          output: {
+            status: 'completed',
+            product_type: 'desensitize',
+            message: '脱敏完成'
+          }
+        }
+      }),
+      define('knowledge_citation_verify', async () => {
+        executed.push('knowledge_citation_verify')
+        return { output: { verificationPassed: true } }
+      }),
+      define('document_skill_execute', async (args) => {
+        const kind = String(args.kind)
+        executed.push(`document_skill_execute:${kind}`)
+        return {
+          output: {
+            status: 'ok',
+            kind,
+            operation: args.operation,
+            output: kind === 'docx'
+              ? '/tmp/数字行政法体系建构研究报告.docx'
+              : '/tmp/数字行政法体系建构研究报告.pdf'
+          }
+        }
+      })
+    ]
+    let callIndex = 0
+    let citationAttempts = 0
+    let readAttempts = 0
+    const h = makeHarness({
+      provider: 'complex-contract-regression',
+      model: 'complex-contract-regression',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        const required = request.requiredToolName
+        if (required === 'knowledge_auto_retrieve') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_complex_${++callIndex}`,
+            toolName: required,
+            arguments: { query: '数字行政 算法治理 非现场监管' }
+          }
+        } else if (required === 'knowledge_read_file') {
+          const nextPath = ['论文一.pdf', '论文二.pdf', '论文三.pdf'][readAttempts] ?? '论文三.pdf'
+          readAttempts += 1
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_complex_${++callIndex}`,
+            toolName: required,
+            arguments: { path: nextPath }
+          }
+        } else if (required === 'data_compliance') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_complex_${++callIndex}`,
+            toolName: required,
+            arguments: {
+              action: 'desensitize',
+              mode: 'text',
+              text: '张某，身份证号 110101199001011234，手机号 13800138000。'
+            }
+          }
+        } else if (required === 'knowledge_citation_verify') {
+          citationAttempts += 1
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_complex_${++callIndex}`,
+            toolName: required,
+            arguments: { draft: citationAttempts === 1 ? '# 一、问题的提出\n内容待补充……' : fullDraft }
+          }
+        } else if (required === 'document_skill_execute') {
+          const progress = request.contextInstructions?.join('\n') ?? ''
+          const kind = progress.includes('本步仍需生成：DOCX') ? 'docx' : 'pdf'
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_complex_${++callIndex}`,
+            toolName: required,
+            arguments: kind === 'docx'
+              ? {
+                  kind,
+                  operation: 'from-markdown',
+                  content: fullDraft,
+                  outputPath: '数字行政法体系建构研究报告.docx'
+                }
+              : {
+                  kind,
+                  operation: 'from-docx',
+                  args: [
+                    '--input',
+                    '数字行政法体系建构研究报告.docx',
+                    '--output',
+                    '数字行政法体系建构研究报告.pdf'
+                  ]
+                }
+          }
+        } else {
+          yield { kind: 'assistant_text_delta', text: '全部强制阶段与 Word、PDF 交付均已完成。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        yield { kind: 'completed', stopReason: 'tool_calls' }
+      }
+    }, { tools })
+    await bootstrapThread(h, {
+      request: {
+        prompt: [
+          '请先检索本地知识库并对至少 3 篇 PDF 执行 OCR/逐篇研读。',
+          '执行脱敏处理演示，分析 2-3 个典型案例。',
+          '撰写不少于 600 字的文献综述并交付 Word 与 PDF：',
+          '- 一、问题的提出',
+          '- 二、规范体系',
+          '- 参考文献（标注真实来源）',
+          '文件名含「数字行政法体系建构研究报告」，禁止省略号和占位符。'
+        ].join('\n')
+      }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const items = await h.sessionStore.loadItems(h.threadId)
+
+    expect(status).toBe('completed')
+    expect(executed).toEqual([
+      'knowledge_auto_retrieve',
+      'knowledge_read_file:论文一.pdf',
+      'knowledge_read_file:论文二.pdf',
+      'knowledge_read_file:论文三.pdf',
+      'data_compliance',
+      'knowledge_citation_verify',
+      'document_skill_execute:docx',
+      'document_skill_execute:pdf'
+    ])
+    expect(citationAttempts).toBe(2)
+    expect(items.some((item) =>
+      item.kind === 'tool_result' &&
+      item.toolName === 'knowledge_citation_verify' &&
+      item.isError === true &&
+      JSON.stringify(item.output).includes('explicit_task_contract_failed')
+    )).toBe(true)
+  })
+
+  it('unlocks the full contract-review pipeline when the active Skill has a legacy restrictive allowlist', async () => {
+    const executed: string[] = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('bash', async () => {
+        executed.push('bash')
+        return { output: { ok: true } }
+      }),
+      define('read', async () => ({ output: { ok: true } })),
+      define('write', async () => ({ output: { ok: true } })),
+      define('edit', async () => ({ output: { ok: true } })),
+      define('knowledge_auto_retrieve', async () => {
+        executed.push('knowledge_auto_retrieve')
+        return {
+          output: {
+            sources: [{ path: '合同审查思维体系.md' }],
+            contextText: '本地合同审查材料涵盖违约责任、知识产权归属、验收标准与争议解决条款的审查方法。'
+          }
+        }
+      }),
+      define('knowledge_search', async () => ({ output: { results: [] } })),
+      define('knowledge_read_file', async () => ({ output: { content: '本地材料' } })),
+      define('mcp_search', async () => {
+        executed.push('mcp_search')
+        return { output: { results: [{ toolId: 'ima-knowledge-base/research_ima' }] } }
+      }),
+      define('mcp_call', async () => {
+        executed.push('mcp_call')
+        return {
+          output: {
+            serverId: 'ima-knowledge-base',
+            toolName: 'research_ima',
+            result: 'IMA 返回了软件开发合同审查、违约责任和知识产权归属的知识库证据。'
+          }
+        }
+      }),
+      define('document_skill_execute', async (args) => {
+        executed.push('document_skill_execute')
+        return {
+          output: {
+            status: 'ok',
+            kind: 'docx',
+            operation: 'from-markdown',
+            output: '/tmp/软件开发合同审查意见书.docx',
+            contentBytes: String(args.content ?? '').length
+          }
+        }
+      })
+    ]
+    const requests: ModelRequest[] = []
+    let callIndex = 0
+    const h = makeHarness({
+      provider: 'contract-review-regression',
+      model: 'contract-review-regression',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        if (request.requiredToolName === 'knowledge_auto_retrieve') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_contract_${++callIndex}`,
+            toolName: 'knowledge_auto_retrieve',
+            arguments: { question: '软件开发合同审查、违约责任、知识产权归属' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (request.requiredToolName === 'document_skill_execute') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_contract_${++callIndex}`,
+            toolName: 'document_skill_execute',
+            arguments: {
+              kind: 'docx',
+              operation: 'from-markdown',
+              content: '# 软件开发合同审查意见书\n\n'.concat('完整审查意见。'.repeat(1_000)),
+              outputPath: '软件开发合同审查意见书.docx'
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '合同审查意见书 Word 已交付。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, {
+      tools,
+      skillRuntime: {
+        resolveTurn: () => ({
+          activeSkillIds: ['contract-risk-review'],
+          activations: [],
+          instructions: ['执行合同风险审查。'],
+          // This reproduces the allowlist shipped in the failed trajectories.
+          allowedToolNames: ['read', 'write', 'edit', 'bash'],
+          injectedBytes: 100
+        })
+      } as never
+    })
+    await bootstrapThread(h, {
+      request: {
+        prompt: [
+          '【合同审查任务】请完成一份「软件开发委托合同」的审查意见书，并交付为 Word 文档。',
+          '请先检索知识库（本地知识库/IMA）中关于合同审查、软件开发合同、违约责任、知识产权归属的相关材料和法条。',
+          '生成 Word 文档（.docx），文件名含「软件开发合同审查意见书」。'
+        ].join('\n')
+      }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed).toEqual([
+      'knowledge_auto_retrieve',
+      'mcp_search',
+      'mcp_call',
+      'document_skill_execute'
+    ])
+    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(['knowledge_auto_retrieve'])
+    expect(requests.some((request) => request.requiredToolName === 'document_skill_execute')).toBe(true)
+    expect(executed).not.toContain('bash')
+  })
+
+  it('retrieves local and IMA evidence before handing an exact PPT task to the specialist workflow', async () => {
+    const executed: string[] = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('read', async () => ({ output: { ok: true } })),
+      define('write', async () => ({ output: { ok: true } })),
+      define('edit', async () => ({ output: { ok: true } })),
+      define('bash', async () => {
+        executed.push('bash')
+        return { output: { status: 'ok', project: '民法典解读.pptd', output: '民法典解读.pptx' } }
+      }),
+      define('knowledge_auto_retrieve', async () => {
+        executed.push('knowledge_auto_retrieve')
+        return {
+          output: {
+            sources: [{ path: '民法典合同编通则司法解释材料.md' }],
+            contextText: '本地材料梳理了合同成立、合同效力、履行、解除及违约责任的司法解释要点。'
+          }
+        }
+      }),
+      define('mcp_search', async () => {
+        executed.push('mcp_search')
+        return { output: { results: [{ toolId: 'ima-knowledge-base/research_ima' }] } }
+      }),
+      define('mcp_call', async () => {
+        executed.push('mcp_call')
+        return {
+          output: {
+            serverId: 'ima-knowledge-base',
+            toolName: 'research_ima',
+            result: 'IMA 返回了民法典合同编通则司法解释的知识库资料与可引用来源。'
+          }
+        }
+      }),
+      define('document_skill_execute', async () => {
+        executed.push('document_skill_execute')
+        return { output: { status: 'ok', kind: 'pptx', operation: 'from-json' } }
+      })
+    ]
+    const requests: ModelRequest[] = []
+    let bashCalled = false
+    const h = makeHarness({
+      provider: 'specialist-ppt-regression',
+      model: 'specialist-ppt-regression',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        if (request.requiredToolName === 'knowledge_auto_retrieve') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_ppt_local',
+            toolName: 'knowledge_auto_retrieve',
+            arguments: { question: '民法典合同编通则司法解释要点' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (!bashCalled) {
+          bashCalled = true
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_pptd_export',
+            toolName: 'bash',
+            arguments: { command: 'build and export the PPTD project' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: 'PPTD 项目和 PPTX 已交付。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, {
+      tools,
+      skillRuntime: {
+        resolveTurn: () => ({
+          activeSkillIds: ['open-kimi-ppt'],
+          activations: [],
+          instructions: ['执行 open-kimi-ppt 的 PPTD 设计、导出和视觉检查流程。'],
+          // Simulate another active Skill contributing an overly narrow list.
+          allowedToolNames: ['document_skill_execute'],
+          injectedBytes: 100
+        })
+      } as never
+    })
+    await bootstrapThread(h, {
+      request: {
+        prompt: [
+          '【演示文稿任务】请制作一份 PPT 演示文稿，主题：「民法典合同编通则司法解释要点解读」。',
+          '请先检索知识库（本地知识库/IMA）中的相关材料，再基于检索结果制作 PPT。',
+          '生成 PPT 演示文稿（.pptx），内容必须完整真实。'
+        ].join('\n')
+      }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed).toEqual(['knowledge_auto_retrieve', 'mcp_search', 'mcp_call', 'bash'])
+    const specialistRequests = requests.filter((request) => request.requiredToolName === undefined)
+    expect(specialistRequests.length).toBeGreaterThan(0)
+    expect(specialistRequests.every((request) =>
+      !request.tools.some((tool) => tool.name === 'document_skill_execute')
+    )).toBe(true)
+    expect(specialistRequests[0]?.tools.map((tool) => tool.name)).toContain('bash')
+    expect(specialistRequests[0]?.contextInstructions?.join('\n')).toContain('open-kimi-ppt / PPTD')
+    expect(requests.at(-1)?.tools).toEqual([])
+  })
+
+  it('recovers an advertised tool call emitted as DeepSeek DSML text', async () => {
+    let executions = 0
+    const documentTool = LocalToolHost.defineTool({
+      name: 'document_skill_execute',
+      description: 'create document',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async (args) => {
+        executions += 1
+        return {
+          output: {
+            status: 'ok',
+            kind: args.kind,
+            operation: args.operation,
+            output: '/tmp/report.docx'
+          }
+        }
+      }
+    })
+    let requests = 0
+    const h = makeHarness({
+      provider: 'dsml-recovery',
+      model: 'dsml-recovery',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests += 1
+        if (request.requiredToolName) {
+          yield {
+            kind: 'assistant_text_delta',
+            text: [
+              '正在生成 Word。',
+              '<｜｜DSML｜｜tool_calls>',
+              '<｜｜DSML｜｜invoke name="document_skill_execute">',
+              '<｜｜DSML｜｜parameter name="kind" string="true">docx</｜｜DSML｜｜parameter>',
+              '<｜｜DSML｜｜parameter name="operation" string="true">from-markdown</｜｜DSML｜｜parameter>',
+              '</｜｜DSML｜｜invoke>',
+              '</｜｜DSML｜｜tool_calls>'
+            ].join('\n')
+          }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: 'Word 已生成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [documentTool] })
+    await bootstrapThread(h, { request: { prompt: '请生成一份 Word 报告给我' } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const items = await h.sessionStore.loadItems(h.threadId)
+
+    expect(status).toBe('completed')
+    expect(executions).toBe(1)
+    expect(requests).toBe(2)
+    expect(items.filter((item) => item.kind === 'assistant_text').map((item) => item.text).join('\n'))
+      .not.toContain('DSML')
+  })
+
+  it('does not render a false success message before a required tool gate passes', async () => {
+    let requests = 0
+    const documentTool = LocalToolHost.defineTool({
+      name: 'document_skill_execute',
+      description: 'create document',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => ({ output: { status: 'ok' } })
+    })
+    const h = makeHarness({
+      provider: 'required-tool-prose',
+      model: 'required-tool-prose',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        requests += 1
+        yield { kind: 'assistant_reasoning_delta', text: '准备完成任务。' }
+        yield { kind: 'assistant_text_delta', text: 'Word 已经生成并交付成功。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [documentTool] })
+    await bootstrapThread(h, { request: { prompt: '请生成一份 Word 报告给我' } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
+
+    expect(status).toBe('failed')
+    expect(requests).toBe(3)
+    expect(items.some((item) =>
+      item.kind === 'assistant_text' && item.text.includes('交付成功')
+    )).toBe(false)
+    expect(events.some((event) =>
+      event.kind === 'assistant_text_delta' || event.kind === 'assistant_reasoning_delta'
+    )).toBe(false)
+    expect(items.some((item) =>
+      item.kind === 'error' && item.code === 'required_tool_missing'
+    )).toBe(true)
+  })
+
+  it('fails a document turn after three consecutive worker errors instead of looping', async () => {
+    let executions = 0
+    const documentTool = LocalToolHost.defineTool({
+      name: 'document_skill_execute',
+      description: 'create document',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => {
+        executions += 1
+        return { output: { status: 'error', error: 'converter unavailable' }, isError: true }
+      }
+    })
+    let calls = 0
+    const h = makeHarness({
+      provider: 'document-failure-cap',
+      model: 'document-failure-cap',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        calls += 1
+        yield {
+          kind: 'tool_call_complete',
+          callId: `call_document_failure_${calls}`,
+          toolName: 'document_skill_execute',
+          arguments: {
+            kind: 'docx',
+            operation: 'from-markdown',
+            content: '# 报告',
+            outputPath: '报告.docx'
+          }
+        }
+        yield { kind: 'completed', stopReason: 'tool_calls' }
+      }
+    }, { tools: [documentTool] })
+    await bootstrapThread(h, { request: { prompt: '请生成一份 Word 报告给我' } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('failed')
+    // The repeat-loop guard suppresses the third identical dispatch; the
+    // document state machine then treats that suppression as the third failure.
+    expect(executions).toBe(2)
+    expect(calls).toBe(3)
+  })
+
+  it('blocks document delivery when explicit IMA retrieval exhausts timeout recovery', async () => {
+    const executed: string[] = []
+    const define = (
+      name: string,
+      execute: () => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('mcp_search', async () => {
+        executed.push('mcp_search')
+        return { output: { results: [{ toolId: 'ima-knowledge-base/research_ima' }] } }
+      }),
+      define('mcp_call', async () => {
+        executed.push('mcp_call')
+        return { output: { error: 'MCP error -32001: Request timed out' }, isError: true }
+      }),
+      define('document_skill_execute', async () => {
+        executed.push('document_skill_execute')
+        return {
+          output: {
+            status: 'ok',
+            kind: 'docx',
+            operation: 'from-markdown',
+            output: '/tmp/ima-timeout-report.docx'
+          }
+        }
+      })
+    ]
+    let recoveryRequests = 0
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'ima-bounded-recovery',
+      model: 'ima-bounded-recovery',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        if (request.requiredToolName === 'document_skill_execute') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_after_ima_timeout',
+            toolName: 'document_skill_execute',
+            arguments: { kind: 'docx', operation: 'from-markdown' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        const alreadyDelivered = request.history.some((item) =>
+          item.kind === 'tool_result' && item.toolName === 'document_skill_execute' && !item.isError
+        )
+        if (alreadyDelivered) {
+          yield { kind: 'assistant_text_delta', text: 'Word 已交付。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        recoveryRequests += 1
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools })
+    await bootstrapThread(h, {
+      request: { prompt: '请检索 IMA 研究行政处罚并生成 Word 报告' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(recoveryRequests).toBe(4)
+    expect(executed).toEqual(['mcp_search', 'mcp_call'])
+    expect(requests.at(-1)?.tools).toEqual([])
+    expect(requests.at(-1)?.contextInstructions?.join('\n')).toContain('知识库证据门禁未通过')
   })
 
   it('keeps running past the legacy eight-step ceiling until the model stops', async () => {
@@ -2602,4 +3653,3 @@ describe('FileSessionStore', () => {
     expect(await sessionStore.highestSeq('thr_usage_compact')).toBe(7)
   })
 })
-

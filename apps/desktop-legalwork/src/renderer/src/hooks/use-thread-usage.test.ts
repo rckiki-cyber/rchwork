@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { formatCost, loadThreadUsage } from './use-thread-usage'
+import { formatCost, loadThreadUsage, threadUsageRefreshKey } from './use-thread-usage'
 
 type RuntimeRequest = (path: string, method?: string) => Promise<{ ok: boolean; status: number; body: string }>
 
@@ -20,6 +20,11 @@ afterEach(() => {
 })
 
 describe('thread usage formatting', () => {
+  it('keeps refresh keys independent from per-token thread metadata updates', () => {
+    expect(threadUsageRefreshKey(true, 7)).toBe('busy:7')
+    expect(threadUsageRefreshKey(false, 7)).toBe('idle:7')
+  })
+
   it('uses RMB for Chinese locales and USD for English locales', () => {
     expect(formatCost(0.125, 'zh', 0.88)).toBe('￥0.8800')
     expect(formatCost(0.125, 'zh-CN', 0.88)).toBe('￥0.8800')

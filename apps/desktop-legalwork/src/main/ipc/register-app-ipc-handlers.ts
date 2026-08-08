@@ -2164,7 +2164,10 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
             IMA_X_IMA_BKN: auth.bkn,
           },
           trustScope: 'user',
-          timeoutMs: 120000
+          // research_ima performs catalog routing and then streams a full KB
+          // answer. Keep the outer MCP deadline above its bounded internal
+          // stages so LegalWork does not terminate a healthy long answer.
+          timeoutMs: 360000
         }
       }
     }

@@ -17,11 +17,15 @@ const {
   cpSync,
   existsSync,
   mkdirSync,
+  lstatSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
+  readlinkSync,
   rmSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync
 } = require('node:fs')
 const { tmpdir } = require('node:os')
@@ -33,7 +37,7 @@ const REQUIREMENTS = join(REPO_ROOT, 'skills', 'legal_document_formatting', 'req
 const VENDOR_ROOT = join(DESKTOP_ROOT, 'vendor', 'office-runtime')
 const CACHE_ROOT = join(DESKTOP_ROOT, '.cache', 'office-runtime')
 const PYTHON_LINE = '3.11'
-const REQUIRED_IMPORTS = ['docx', 'openpyxl', 'pptx', 'lxml', 'PIL']
+const REQUIRED_IMPORTS = ['docx', 'openpyxl', 'pptx', 'lxml', 'PIL', 'reportlab']
 const RELEASE_REPOS = ['astral-sh/python-build-standalone', 'indygreg/python-build-standalone']
 const SUPPORTED_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64', 'win-ia32', 'linux-x64'])
 
@@ -255,13 +259,68 @@ function pipPlatform(target) {
   }[target]
 }
 
+/**
+ * python-build-standalone ships bin/{python3,python,idle3,2to3,...} as absolute
+ * symlinks pointing at the build-time path. cpSync(dereference) does not resolve
+ * them here, so after the temp dir is removed the vendored python is unusable.
+ * Rebuild those links as relative links to the real `*-3.11` binaries in the
+ * same bin dir.
+ */
+function repairBundledSymlinks(runtimeRoot) {
+  const binDir = join(runtimeRoot, 'python', 'bin')
+  if (!existsSync(binDir)) return
+  let repaired = 0
+  for (const name of readdirSync(binDir)) {
+    const linkPath = join(binDir, name)
+    let stat
+    try {
+      stat = lstatSync(linkPath)
+    } catch {
+      continue
+    }
+    if (!stat.isSymbolicLink()) continue
+    // Derive the versioned target (python3 -> python3.11, 2to3 -> 2to3-3.11,
+    // idle3 -> idle3.11, python3-config -> python3.11-config). Derive from
+    // PYTHON_LINE so a future Python bump cannot silently break these links.
+    let target = null
+    if (name === '2to3' || name === 'idle3' || name === 'pydoc3') {
+      target = `${name}-${PYTHON_LINE}`
+    } else if (name === 'python3-config') {
+      target = `python${PYTHON_LINE}-config`
+    } else if (name === 'python3' || name === 'python') {
+      target = `python${PYTHON_LINE}`
+    }
+    if (!target || !existsSync(join(binDir, target))) continue
+    try {
+      const current = readlinkSync(linkPath)
+      if (current === target) continue
+      unlinkSync(linkPath)
+      symlinkSync(target, linkPath)
+      repaired += 1
+    } catch {
+      // Leave the link as-is if rebuilding fails.
+    }
+  }
+  if (repaired > 0) info(`Repaired ${repaired} office-runtime python symlinks in ${binDir}`)
+}
+
+function targetPythonEnv(runtimeRoot) {
+  // python-build-standalone macOS builds hard-code sys.prefix at build time and
+  // are NOT relocatable by default: when the tree is moved from the extract temp
+  // dir to vendor/office-runtime/<target>, the python still looks for its
+  // stdlib/site-packages under the old temp path. Pointing PYTHONHOME at the
+  // vendored python dir re-anchors sys.prefix so pip installs into the right
+  // site-packages and `import docx` resolves from the packaged location.
+  return { ...process.env, PYTHONHOME: join(runtimeRoot, 'python') }
+}
+
 function installRequirements(runtimeRoot, platform, target) {
   const targetPython = join(runtimeRoot, pythonRelativePath(platform))
   const commonArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', REQUIREMENTS]
   if (canRun(targetPython)) {
     try {
       info(`Installing Office packages with target Python (${target})`)
-      execFileSync(targetPython, commonArgs, { stdio: 'inherit', windowsHide: true })
+      execFileSync(targetPython, commonArgs, { stdio: 'inherit', windowsHide: true, env: targetPythonEnv(runtimeRoot) })
       return
     } catch (error) {
       info(`Target Python pip failed (${error.message}); trying cross-platform wheel installation.`)
@@ -292,7 +351,7 @@ function verifyRuntime(runtimeRoot, platform, target) {
   if (!moduleFilesPresent(runtimeRoot, platform)) fail(`One or more Office Python packages are missing from ${target}`)
   if (canRun(python)) {
     const script = REQUIRED_IMPORTS.map((name) => `import ${name}`).join(';')
-    execFileSync(python, ['-c', script], { stdio: 'inherit', windowsHide: true })
+    execFileSync(python, ['-c', script], { stdio: 'inherit', windowsHide: true, env: targetPythonEnv(runtimeRoot) })
   } else {
     info(`Target Python cannot execute on this builder; validated packaged module files for ${target}.`)
   }
@@ -319,6 +378,8 @@ async function prepareTarget(target, force, requirementsSha) {
     rmSync(runtimeRoot, { recursive: true, force: true })
     mkdirSync(runtimeRoot, { recursive: true })
     cpSync(extractedPython, join(runtimeRoot, 'python'), { recursive: true, force: true })
+    // bin/python3 等是指向临时目录的绝对符号链接，cpSync 不解引用，需手动重建为相对链接。
+    repairBundledSymlinks(runtimeRoot)
     installRequirements(runtimeRoot, platform, target)
     verifyRuntime(runtimeRoot, platform, target)
     writeFileSync(join(runtimeRoot, 'runtime.json'), `${JSON.stringify({

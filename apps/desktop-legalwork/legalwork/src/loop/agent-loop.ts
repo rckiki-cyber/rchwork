@@ -76,17 +76,31 @@ import { CREATE_PLAN_TOOL_NAME } from '../adapters/tool/create-plan-tool.js'
 import { GET_GOAL_TOOL_NAME, UPDATE_GOAL_TOOL_NAME } from '../adapters/tool/goal-tools.js'
 import { TODO_LIST_TOOL_NAME, TODO_WRITE_TOOL_NAME } from '../adapters/tool/todo-tools.js'
 import { shellRuntimeInstruction } from '../adapters/tool/builtin-tool-utils.js'
+import {
+  DOCUMENT_SKILL_EXECUTE_TOOL_NAME
+} from '../adapters/tool/office-fallback-policy.js'
 import { LEGALWORK_SYSTEM_PROMPT } from '../prompt/legalwork-system-prompt.js'
-import { resolveImaRouteAction } from './ima-knowledge-router.js'
+import { resolveImaRouteAction, shouldAutoRouteToIma } from './ima-knowledge-router.js'
+import { recoverDsmlToolCall } from './dsml-tool-call-recovery.js'
 import { isKnowledgeQaThreadTitle, knowledgeQaToolSpecs } from './knowledge-qa-mode.js'
 import {
   OFFICECLI_TOOL_NAME,
   officeDocumentWorkflowInstruction
 } from './office-document-workflow.js'
+import {
+  documentTaskContract,
+  hasSuccessfulDesensitization,
+  normalizedFinalDraft,
+  successfulKnowledgePdfReadPaths,
+  successfullyVerifiedDraft,
+  taskContractInstruction,
+  validateDocumentContent,
+  type DocumentTaskContract
+} from './document-task-contract.js'
 
 const PARALLEL_READ_ONLY_TOOL_NAMES = new Set(['read', 'grep', 'find', 'ls'])
 const MAX_PARALLEL_TOOL_CALLS = 3
-export const DEFAULT_MAX_AGENT_LOOP_STEPS = 1024
+export const DEFAULT_MAX_AGENT_LOOP_STEPS = 128
 export const MAX_AGENT_LOOP_STEPS_ENV = 'LEGALWORK_MAX_AGENT_LOOP_STEPS'
 export const MAX_AGENT_LOOP_STEPS_ENV_CAP = 4_096
 /**
@@ -95,10 +109,9 @@ export const MAX_AGENT_LOOP_STEPS_ENV_CAP = 4_096
  * tokens (cache-hit price or not). Once a turn's cumulative input tokens
  * exceed this budget, the loop injects a "stop researching, synthesize what
  * you have" instruction instead of letting the model keep searching. This is a
- * cost guardrail, NOT a step-count cap — the 1024-step loop ceiling is
- * untouched.
+ * cost guardrail, NOT a substitute for the independent 128-step loop ceiling.
  */
-export const DEFAULT_TURN_TOKEN_BUDGET = 500_000
+export const DEFAULT_TURN_TOKEN_BUDGET = 80_000
 export const TURN_TOKEN_BUDGET_ENV = 'LEGALWORK_TURN_TOKEN_BUDGET'
 export const TURN_TOKEN_BUDGET_ENV_CAP = 10_000_000
 
@@ -116,8 +129,8 @@ export function resolveTurnTokenBudget(env: NodeJS.ProcessEnv = process.env): nu
  */
 const TURN_BUDGET_WRAPUP_INSTRUCTION =
   '【成本预算提醒】本轮已累计消耗大量输入 token，请立即停止继续检索、搜索、抓取或读取新资料。' +
-  '基于当前已经获取的全部材料，直接综合、组织并给出完整、最终的回答。' +
-  '如信息确有不足，请明确列出已获得的信息与仍缺失的部分，但不要为补足信息而继续调用工具。'
+  '基于当前已经获取的全部材料完成撰写，但不得跳过用户明确要求的 OCR/逐篇阅读、脱敏、引用核验和文件交付门禁。' +
+  '如强制门禁确实无法完成，只能明确报告未完成项，不得声称任务或文件已经完成。'
 const MAX_GOAL_NO_TOOL_CONTINUATIONS = 2
 const DEFAULT_COMPACTION_SUMMARY_TIMEOUT_MS = 15_000
 const DEFAULT_COMPACTION_SUMMARY_MAX_TOKENS = 1_200
@@ -475,9 +488,474 @@ function latestUserMessageText(items: readonly TurnItem[], turnId: string): stri
   return ''
 }
 
+/**
+ * A terse follow-up such as "？", "继续", or "怎么还没给我" should keep the
+ * previous substantive request's Skill routing context. Without this, sending
+ * a follow-up while a Word turn is stalled starts a fresh turn whose prompt no
+ * longer mentions Word, so the document Skill silently disappears.
+ */
+export function skillRoutingPrompt(
+  prompt: string,
+  items: readonly TurnItem[],
+  turnId: string
+): string {
+  const current = prompt.trim()
+  if (!isContinuationOnlyPrompt(current)) return current
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (
+      !item ||
+      item.turnId === turnId ||
+      item.kind !== 'user_message' ||
+      !item.text.trim() ||
+      isContinuationOnlyPrompt(item.text.trim())
+    ) {
+      continue
+    }
+    return `${item.text.trim()}\n\n当前追问：${current}`
+  }
+  return current
+}
+
+function isContinuationOnlyPrompt(prompt: string): boolean {
+  const compact = prompt.replace(/\s+/g, '')
+  if (!compact) return false
+  if (/^[?？!！。.，,…]+$/.test(compact)) return true
+  if (compact.length > 80) return false
+  return /^(?:请)?(?:继续|接着|往下|快点|然后呢|做完了吗|弄好了吗)/.test(compact) ||
+    /(?:怎么还|怎么又|在干嘛|为什么还|还没|没给我|不给我|卡住|卡顿)/.test(compact)
+}
+
+export function requestsDocumentMutation(prompt: string): boolean {
+  const compact = prompt.replace(/\s+/g, '')
+  if (!compact) return false
+  const explicitRequest = /(?:请你|帮我|替我|给我|直接|现在就|立即)/.test(compact)
+  if (
+    !explicitRequest &&
+    /^(?:请问)?(?:如何|怎样|为什么|怎么(?:设置|使用|操作|实现)|.+(?:是什么|有哪些|有何|区别))/.test(compact)
+  ) {
+    return false
+  }
+  const documentTarget = /(?:Word|DOCX|\.docx|\.doc\b|Excel|XLSX|\.xlsx|PPTX?|\.pptx|文档|文件|表格|工作簿|演示文稿|文献综述|报告|起诉状|答辩状|意见书)/i
+  const mutationIntent = /(?:写|撰写|编写|生成|创建|新建|起草|制作|编辑|修改|排版|格式化|套用|导出|转换|合并|修复|保存|交付|给我|发我|提供)/
+  return documentTarget.test(compact) && mutationIntent.test(compact)
+}
+
+type DocumentArtifactKind = 'docx' | 'pdf' | 'pptx' | 'xlsx'
+
+function taskContractToolCallError(input: {
+  call: ToolCallLike
+  contract: DocumentTaskContract
+  verifiedDraft?: string
+  completedArtifacts: ReadonlySet<DocumentArtifactKind>
+}): string | undefined {
+  const { call, contract } = input
+  const hasContentRequirements = Boolean(
+    contract.minimumContentCharacters ||
+    contract.requiredHeadings.length ||
+    contract.minimumCaseCount ||
+    contract.forbidPlaceholders ||
+    contract.requiresDesensitization
+  )
+  if (call.toolName === 'knowledge_citation_verify') {
+    if (!hasContentRequirements) return undefined
+    const draft = typeof call.arguments.draft === 'string' ? call.arguments.draft : ''
+    const issues = draft ? validateDocumentContent(draft, contract) : ['引用核验缺少完整 draft']
+    return issues.length
+      ? `引用核验前的终稿验收未通过：${issues.join('；')}。请先补全终稿，再重新核验。`
+      : undefined
+  }
+  if (call.toolName !== DOCUMENT_SKILL_EXECUTE_TOOL_NAME) return undefined
+  const kind = typeof call.arguments.kind === 'string' ? call.arguments.kind.toLowerCase() : ''
+  const operation = typeof call.arguments.operation === 'string'
+    ? call.arguments.operation.toLowerCase()
+    : ''
+  if (kind === 'pdf' && operation === 'from-docx' && !input.completedArtifacts.has('docx')) {
+    return 'PDF 生成被拒绝：必须先成功生成并验收完整 DOCX，再从该 DOCX 转换 PDF。'
+  }
+  if (kind !== 'docx' || operation !== 'from-markdown') return undefined
+  const content = typeof call.arguments.content === 'string' ? call.arguments.content : ''
+  const issues = hasContentRequirements
+    ? content
+      ? validateDocumentContent(content, contract)
+      : ['Word 生成缺少完整 content']
+    : []
+  const outputPath = typeof call.arguments.outputPath === 'string' ? call.arguments.outputPath : ''
+  if (
+    contract.requiredFilenameFragment &&
+    !outputPath.includes(contract.requiredFilenameFragment)
+  ) {
+    issues.push(`文件名必须包含“${contract.requiredFilenameFragment}”`)
+  }
+  if (
+    input.verifiedDraft !== undefined &&
+    normalizedFinalDraft(content) !== normalizedFinalDraft(input.verifiedDraft)
+  ) {
+    issues.push('Word content 与已经通过知识库引用核验的终稿不一致')
+  }
+  return issues.length
+    ? `Word 生成前的终稿验收未通过：${issues.join('；')}。不得用脚本或其他工具绕过。`
+    : undefined
+}
+
+export function requestedDocumentArtifacts(prompt: string): DocumentArtifactKind[] {
+  if (!requestsDocumentMutation(prompt)) return []
+  const compact = prompt.replace(/\s+/g, '')
+  const requested = new Set<DocumentArtifactKind>()
+  const outputIntent = '(?:生成|创建|新建|制作|导出|转换(?:为|成)?|交付|提供|给我|发我)'
+  const addWhenRequested = (kind: DocumentArtifactKind, target: string) => {
+    const before = new RegExp(`${outputIntent}.{0,24}${target}`, 'i')
+    const after = new RegExp(`${target}.{0,24}(?:文件|文档|版本|格式)?.{0,12}${outputIntent}`, 'i')
+    if (before.test(compact) || after.test(compact)) requested.add(kind)
+  }
+  addWhenRequested('docx', '(?:Word|DOCX|\\.docx|\\.doc\\b)')
+  addWhenRequested('pdf', '(?:PDF|\\.pdf)')
+  addWhenRequested('pptx', '(?:PPTX?|\\.pptx|演示文稿|幻灯片)')
+  addWhenRequested('xlsx', '(?:Excel|XLSX|\\.xlsx|工作簿|表格文件)')
+
+  // A request to create a report/document without an explicit extension has
+  // historically meant a Word deliverable in LegalWork.
+  if (requested.size === 0) requested.add('docx')
+  return [...requested]
+}
+
+export function requestsLocalKnowledgeRetrieval(prompt: string): boolean {
+  const compact = prompt.replace(/\s+/g, '')
+  return /本地知识库/.test(compact) && /(?:查询|查找|检索|搜索|研究|依据|引用|来源|材料)/.test(compact)
+}
+
+export function requestsImaKnowledgeRetrieval(prompt: string): boolean {
+  const compact = prompt.replace(/\s+/g, '')
+  return /IMA/i.test(compact) && /(?:查询|查找|检索|搜索|研究|依据|引用|来源|材料)/.test(compact)
+}
+
+export function requestsAcademicCitationVerification(prompt: string): boolean {
+  return requestsDocumentMutation(prompt) &&
+    /(?:文献综述|学术论文|研究论文|论文写作|参考文献|引文|引用)/.test(prompt)
+}
+
+/**
+ * A short title or topic is not an instruction to launch a paid research
+ * workflow. Keep tools out of that first request so the model can ask what
+ * artifact or depth the user wants instead of autonomously spending several
+ * tool/model rounds on an assumption.
+ */
+export function isBareResearchTopicPrompt(prompt: string): boolean {
+  const value = prompt.trim()
+  if (value.length < 4 || value.length > 48) return false
+  if (!/\p{Script=Han}/u.test(value)) return false
+  if (/[?？!！。；;：:]|\n/.test(value)) return false
+  return !/(请|帮我|如何|为什么|为何|是否|是什么|检索|搜索|查询|查找|调研|研究一下|分析|解释|回答|撰写|写一|写份|生成|制作|起草|总结|综述|列出|对比|修改|审查|翻译|打开|读取)/i.test(value)
+}
+
+function successfulDocumentArtifacts(
+  items: readonly TurnItem[],
+  turnId: string,
+  includePreviousRequest: boolean
+): Set<DocumentArtifactKind> {
+  let startIndex = 0
+  if (includePreviousRequest) {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index]
+      if (
+        item?.turnId !== turnId &&
+        item?.kind === 'user_message' &&
+        item.text.trim() &&
+        !isContinuationOnlyPrompt(item.text.trim())
+      ) {
+        startIndex = index + 1
+        break
+      }
+    }
+  }
+  const completed = new Set<DocumentArtifactKind>()
+  for (const item of items.slice(startIndex)) {
+    if (
+      (!includePreviousRequest && item.turnId !== turnId) ||
+      item.kind !== 'tool_result' ||
+      item.toolName !== DOCUMENT_SKILL_EXECUTE_TOOL_NAME ||
+      item.status !== 'completed' ||
+      item.isError === true ||
+      !item.output ||
+      typeof item.output !== 'object'
+    ) {
+      continue
+    }
+    const output = item.output as Record<string, unknown>
+    const operation = typeof output.operation === 'string' ? output.operation : ''
+    if (output.status !== 'ok' || operation === 'inspect' || operation === 'profiles') continue
+    const explicitKind = typeof output.kind === 'string' ? output.kind.toLowerCase() : ''
+    if (explicitKind === 'docx' || explicitKind === 'pdf' || explicitKind === 'pptx' || explicitKind === 'xlsx') {
+      completed.add(explicitKind)
+      continue
+    }
+    const outputPath = typeof output.output === 'string' ? output.output.toLowerCase() : ''
+    if (outputPath.endsWith('.docx')) completed.add('docx')
+    else if (outputPath.endsWith('.pdf')) completed.add('pdf')
+    else if (outputPath.endsWith('.pptx')) completed.add('pptx')
+    else if (outputPath.endsWith('.xlsx')) completed.add('xlsx')
+  }
+  return completed
+}
+
+function hasSuccessfulSpecializedPresentationExport(
+  items: readonly TurnItem[],
+  turnId: string,
+  includePreviousRequest: boolean
+): boolean {
+  let startIndex = 0
+  if (includePreviousRequest) {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index]
+      if (
+        item?.turnId !== turnId &&
+        item?.kind === 'user_message' &&
+        item.text.trim() &&
+        !isContinuationOnlyPrompt(item.text.trim())
+      ) {
+        startIndex = index + 1
+        break
+      }
+    }
+  }
+  const scopedItems = items.slice(startIndex)
+  const successfulBashResults = new Map<string, Record<string, unknown>>()
+  for (const item of scopedItems) {
+    if (
+      (!includePreviousRequest && item.turnId !== turnId) ||
+      item.kind !== 'tool_result' ||
+      item.toolName !== 'bash' ||
+      item.status !== 'completed' ||
+      item.isError === true ||
+      !item.output ||
+      typeof item.output !== 'object'
+    ) {
+      continue
+    }
+    const output = item.output as Record<string, unknown>
+    const exitCode = output.exit_code
+    const outputStatus = typeof output.status === 'string' ? output.status.toLowerCase() : ''
+    if (exitCode === 0 || outputStatus === 'ok' || outputStatus === 'completed') {
+      successfulBashResults.set(item.callId, output)
+    }
+  }
+  for (const item of scopedItems) {
+    if (item.kind !== 'tool_call' || item.toolName !== 'bash') continue
+    const result = successfulBashResults.get(item.callId)
+    if (!result) continue
+    const callText = JSON.stringify(item.arguments)
+    const resultText = JSON.stringify(result)
+    const structuredPptdDelivery =
+      typeof result.project === 'string' && result.project.toLowerCase().endsWith('.pptd') &&
+      typeof result.output === 'string' && result.output.toLowerCase().endsWith('.pptx')
+    const recognizableExportCommand =
+      /(?:export_pptx|open-kimi-ppt|pptd)/i.test(callText) && /\.pptx/i.test(`${callText}\n${resultText}`)
+    if (structuredPptdDelivery || recognizableExportCommand) return true
+  }
+  return false
+}
+
+function consecutiveDocumentFailures(items: readonly TurnItem[], turnId: string): number {
+  let failures = 0
+  for (const item of items) {
+    if (item.turnId !== turnId || item.kind !== 'tool_result' || item.toolName !== DOCUMENT_SKILL_EXECUTE_TOOL_NAME) {
+      continue
+    }
+    if (item.isError === true || item.status === 'failed') failures += 1
+    else failures = 0
+  }
+  return failures
+}
+
+function hasCompletedToolAttempt(
+  items: readonly TurnItem[],
+  turnId: string,
+  toolName: string
+): boolean {
+  return items.some((item) =>
+    item.turnId === turnId &&
+    item.kind === 'tool_result' &&
+    item.toolName === toolName
+  )
+}
+
+function hasUsableLocalKnowledgeEvidence(items: readonly TurnItem[], turnId: string): boolean {
+  return items.some((item) => {
+    if (
+      item.turnId !== turnId ||
+      item.kind !== 'tool_result' ||
+      item.isError === true ||
+      (item.toolName !== 'knowledge_auto_retrieve' && item.toolName !== 'knowledge_search')
+    ) {
+      return false
+    }
+    const output = objectRecord(item.output)
+    const sources = Array.isArray(output.sources) ? output.sources : []
+    if (sources.length === 0) return false
+    if (item.toolName === 'knowledge_auto_retrieve') {
+      return meaningfulEvidenceText(output.contextText)
+    }
+    return sources.some((source) => meaningfulEvidenceText(objectRecord(source).snippet))
+  })
+}
+
+function hasSuccessfulAcademicCitationVerification(
+  items: readonly TurnItem[],
+  turnId: string
+): boolean {
+  return items.some((item) => {
+    if (
+      item.turnId !== turnId ||
+      item.kind !== 'tool_result' ||
+      item.toolName !== 'knowledge_citation_verify' ||
+      item.isError === true
+    ) {
+      return false
+    }
+    return objectRecord(item.output).verificationPassed === true
+  })
+}
+
+function failedAcademicCitationVerificationCount(
+  items: readonly TurnItem[],
+  turnId: string
+): number {
+  return items.filter((item) =>
+    item.turnId === turnId &&
+    item.kind === 'tool_result' &&
+    item.toolName === 'knowledge_citation_verify' &&
+    (item.isError === true || objectRecord(item.output).verificationPassed !== true)
+  ).length
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function meaningfulEvidenceText(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  const compact = value.replace(/\s+/g, '')
+  return compact.length >= 20 &&
+    !/^(?:IMA_)?(?:NO_MATCH|NO_ANSWER|PROTOCOL_ERROR|AUTH_EXPIRED)/i.test(compact)
+}
+
+function hasFailedImaResearchAttempt(items: readonly TurnItem[], turnId: string): boolean {
+  const failedCallIds = new Set<string>()
+  for (const item of items) {
+    if (
+      item.turnId === turnId &&
+      item.kind === 'tool_result' &&
+      item.toolName === 'mcp_call' &&
+      item.isError === true
+    ) {
+      failedCallIds.add(item.callId)
+    }
+    if (
+      item.turnId === turnId &&
+      item.kind === 'tool_result' &&
+      item.toolName === 'mcp_ima_knowledge_base_research_ima' &&
+      item.isError === true
+    ) {
+      return true
+    }
+  }
+  return items.some((item) =>
+    item.turnId === turnId &&
+    item.kind === 'tool_call' &&
+    item.toolName === 'mcp_call' &&
+    failedCallIds.has(item.callId) &&
+    item.arguments.toolId === 'ima-knowledge-base/research_ima'
+  )
+}
+
+function hasSuccessfulImaEvidence(items: readonly TurnItem[], turnId: string): boolean {
+  return items.some((item) => {
+    if (item.turnId !== turnId || item.kind !== 'tool_result' || item.isError) return false
+    if (item.toolName === 'mcp_ima_knowledge_base_research_ima') {
+      return containsUsableImaAnswer(item.output)
+    }
+    if (item.toolName !== 'mcp_call') return false
+    const output = objectRecord(item.output)
+    return output.serverId === 'ima-knowledge-base' &&
+      (output.toolName === 'research_ima' || output.toolName === 'ask') &&
+      containsUsableImaAnswer(output.result ?? output)
+  })
+}
+
+function containsUsableImaAnswer(value: unknown, depth = 0): boolean {
+  if (depth > 8 || value === null || value === undefined) return false
+  if (typeof value === 'string') {
+    const compact = value.replace(/【IMA自动选库：[^】]+】/g, '').trim()
+    if (compact.length < 20) return false
+    return !/(?:IMA_(?:NO_MATCH|NO_ANSWER|PROTOCOL_ERROR|AUTH_EXPIRED|SESSION_ERROR|LIST_ERROR)|MCP error -32001|Request timed out|Q&A 请求失败)/i.test(compact)
+  }
+  if (Array.isArray(value)) return value.some((entry) => containsUsableImaAnswer(entry, depth + 1))
+  if (typeof value !== 'object') return false
+  return Object.entries(value as Record<string, unknown>).some(([key, entry]) =>
+    !/^(?:id|serverId|toolName|toolId|status|code)$/i.test(key) &&
+    containsUsableImaAnswer(entry, depth + 1)
+  )
+}
+
+function imaRecoveryInstruction(): string {
+  return [
+    '<ima_recovery>',
+    'IMA 的聚合 research_ima 调用已超时。现在进入至多三步的有界降级恢复：优先调用 IMA 的 search_ima_catalog / list_available_knowledge_bases / ask 获取实际资料。',
+    '不要重复 research_ima，不要用 mcp_search 查找 LegalWork 内置的 knowledge_search，也不要搜索 PDF/PPT 生成工具。完成一次有效 IMA 降级检索后立即继续撰写和文件交付。',
+    '</ima_recovery>'
+  ].join('\n')
+}
+
+function evidenceBarrierInstruction(reasons: readonly string[]): string {
+  return [
+    '<knowledge_evidence_barrier>',
+    '知识库证据门禁未通过，因此禁止撰写或生成 Word、PDF、PPT 等交付物，也禁止用模型记忆、公开常识或未经检索核验的文献补写。',
+    ...reasons.map((reason) => `- ${reason}`),
+    '请简洁、明确地向用户报告当前失败来源及缺失证据；不得声称任务或文件已经完成。',
+    '</knowledge_evidence_barrier>'
+  ].join('\n')
+}
+
+function documentArtifactProgressInstruction(input: {
+  requested: readonly DocumentArtifactKind[]
+  completed: ReadonlySet<DocumentArtifactKind>
+  specializedPresentationPending?: boolean
+}): string | undefined {
+  if (input.requested.length === 0) return undefined
+  const missing = input.requested.filter((kind) => !input.completed.has(kind))
+  if (missing.length === 0) return undefined
+  const display = (kind: DocumentArtifactKind) => kind.toUpperCase()
+  const completed = input.requested.filter((kind) => input.completed.has(kind))
+  const pdfSourceInstruction = missing.includes('pdf')
+    ? input.completed.has('docx')
+      ? 'PDF 所需的 DOCX 源文件已经生成，直接执行 pdf/from-docx。'
+      : '生成 PDF 前必须先用 docx/from-markdown 创建完整 DOCX 源文件；DOCX 可作为中间文件，即使用户只要求 PDF。下一步再执行 pdf/from-docx。'
+    : ''
+  const pptSourceInstruction = missing.includes('pptx')
+    ? input.specializedPresentationPending
+      ? 'PPTX 必须遵循已激活的 open-kimi-ppt / PPTD 专用工作流，交付可编辑 PPTD 项目目录和导出的 PPTX；不要调用通用 document_skill_execute，也不要退化成仅含标题和项目符号的模板。'
+      : 'PPTX 应使用 document_skill_execute 的 pptx/from-json。'
+    : ''
+  return [
+    '<document_artifact_progress>',
+    `用户明确要求的文件格式：${input.requested.map(display).join('、')}。`,
+    `已经成功生成：${completed.length ? completed.map(display).join('、') : '无'}。`,
+    `本步仍需生成：${missing.map(display).join('、')}。`,
+    '每一种格式都必须有对应的成功工具结果；不得把一个 Word 文件视为全部格式均已完成，也不得在缺少成功结果时声称已经交付。',
+    'PDF 应优先用 document_skill_execute 的 pdf/from-docx 从已生成 DOCX 转换。',
+    pptSourceInstruction,
+    pdfSourceInstruction,
+    '</document_artifact_progress>'
+  ].join('\n')
+}
+
 function allowedToolNamesWithGuiStateTools(
   allowedToolNames: readonly string[] | undefined,
-  activeGoal: boolean
+  activeGoal: boolean,
+  prompt = '',
+  activeSkillIds: readonly string[] = []
 ): readonly string[] | undefined {
   if (!allowedToolNames) return allowedToolNames
   const next = new Set(allowedToolNames)
@@ -487,6 +965,34 @@ function allowedToolNamesWithGuiStateTools(
   }
   next.add(TODO_LIST_TOOL_NAME)
   next.add(TODO_WRITE_TOOL_NAME)
+  if (requestsLocalKnowledgeRetrieval(prompt)) {
+    next.add('knowledge_auto_retrieve')
+    next.add('knowledge_search')
+    next.add('knowledge_read_file')
+  }
+  if (requestsAcademicCitationVerification(prompt)) {
+    next.add('knowledge_citation_verify')
+  }
+  if (requestsDocumentMutation(prompt)) {
+    next.add(DOCUMENT_SKILL_EXECUTE_TOOL_NAME)
+  }
+  if (documentTaskContract(prompt).requiresDesensitization) {
+    next.add('data_compliance')
+  }
+  if (shouldAutoRouteToIma(prompt)) {
+    next.add('mcp_search')
+    next.add('mcp_call')
+    next.add('mcp_ima_knowledge_base_research_ima')
+  }
+  if (activeSkillIds.includes('open-kimi-ppt') && requestedDocumentArtifacts(prompt).includes('pptx')) {
+    // PPTD is a local project workflow driven by the specialist Skill. A
+    // second, restrictive Skill must not accidentally hide its basic file and
+    // shell tools just because it contributed an allowedTools list.
+    next.add('read')
+    next.add('write')
+    next.add('edit')
+    next.add('bash')
+  }
   return [...next]
 }
 
@@ -586,6 +1092,10 @@ export class AgentLoop {
   private readonly turnBudgetInstructionInjected = new Set<string>()
   /** 单 turn 内已 read 过的文件路径（按 turn 清理），用于同 turn 重复 read 去重。 */
   private readonly turnReadKeys = new Map<string, Set<string>>()
+  /** Bounded model recovery passes after IMA's aggregate research call times out. */
+  private readonly imaRecoveryPasses = new Map<string, number>()
+  /** Bounded retries when a provider ignores a forced tool choice. */
+  private readonly requiredToolMisses = new Map<string, number>()
 
   constructor(opts: AgentLoopOptions) {
     this.opts = opts
@@ -631,6 +1141,10 @@ export class AgentLoop {
       this.turnInputTokenSpend.delete(turnId)
       this.turnBudgetInstructionInjected.delete(turnId)
       this.turnReadKeys.delete(turnId)
+      this.imaRecoveryPasses.delete(turnId)
+      for (const key of this.requiredToolMisses.keys()) {
+        if (key.startsWith(`${turnId}:`)) this.requiredToolMisses.delete(key)
+      }
     }
   }
 
@@ -823,8 +1337,10 @@ export class AgentLoop {
       workspace: thread?.workspace ?? '',
       modelCapabilities
     })
+    const routedSkillPrompt = skillRoutingPrompt(turn?.prompt ?? '', healed.items, turnId)
+    const continuationPrompt = isContinuationOnlyPrompt(turn?.prompt?.trim() ?? '')
     const skillResolution = this.opts.skillRuntime?.resolveTurn({
-      prompt: turn?.prompt ?? '',
+      prompt: routedSkillPrompt,
       workspace: thread?.workspace ?? ''
     }) ?? {
       activeSkillIds: [],
@@ -843,7 +1359,9 @@ export class AgentLoop {
     const activeTodoInstruction = todoContinuationInstruction(thread?.todos)
     const allowedToolNames = allowedToolNamesWithGuiStateTools(
       skillResolution.allowedToolNames,
-      activeGoalInstruction !== null
+      activeGoalInstruction !== null,
+      routedSkillPrompt,
+      skillResolution.activeSkillIds
     )
     const toolContext: ToolHostContext = {
       threadId,
@@ -913,6 +1431,103 @@ export class AgentLoop {
       toolSpecs.some((tool) => tool.name === CREATE_PLAN_TOOL_NAME)
         ? CREATE_PLAN_TOOL_NAME
         : undefined
+    const requestedArtifacts = requestedDocumentArtifacts(routedSkillPrompt)
+    const completedArtifacts = successfulDocumentArtifacts(
+      healed.items,
+      turnId,
+      continuationPrompt
+    )
+    if (
+      skillResolution.activeSkillIds.includes('open-kimi-ppt') &&
+      hasSuccessfulSpecializedPresentationExport(healed.items, turnId, continuationPrompt)
+    ) {
+      completedArtifacts.add('pptx')
+    }
+    const documentMutationRequested = requestedArtifacts.length > 0
+    const documentMutationSatisfied = documentMutationRequested &&
+      requestedArtifacts.every((kind) => completedArtifacts.has(kind))
+    const missingArtifacts = requestedArtifacts.filter((kind) => !completedArtifacts.has(kind))
+    const specializedPresentationPending =
+      skillResolution.activeSkillIds.includes('open-kimi-ppt') &&
+      missingArtifacts.length === 1 &&
+      missingArtifacts[0] === 'pptx'
+    const documentFailureCount = consecutiveDocumentFailures(healed.items, turnId)
+    if (documentMutationRequested && !documentMutationSatisfied && documentFailureCount >= 3) {
+      throw new Error(
+        `Document generation stopped after ${documentFailureCount} consecutive failures; ` +
+        `missing required artifacts: ${missingArtifacts.join(', ')}.`
+      )
+    }
+    const explicitTaskContract = documentTaskContract(routedSkillPrompt)
+    const readKnowledgePdfPaths = successfulKnowledgePdfReadPaths(healed.items, turnId)
+    const knowledgePdfReadAttemptCount = healed.items.filter((item) =>
+      item.turnId === turnId && item.kind === 'tool_result' && item.toolName === 'knowledge_read_file'
+    ).length
+    const knowledgePdfReadsSatisfied =
+      readKnowledgePdfPaths.size >= explicitTaskContract.requiredKnowledgePdfReads
+    const desensitizationSatisfied =
+      !explicitTaskContract.requiresDesensitization || hasSuccessfulDesensitization(healed.items, turnId)
+    const desensitizationAttemptCount = healed.items.filter((item) =>
+      item.turnId === turnId && item.kind === 'tool_result' && item.toolName === 'data_compliance'
+    ).length
+    const localKnowledgeRequested = requestsLocalKnowledgeRetrieval(routedSkillPrompt)
+    const localKnowledgeSatisfied = localKnowledgeRequested &&
+      hasUsableLocalKnowledgeEvidence(healed.items, turnId)
+    const localAutoRetrieveAttempted = hasCompletedToolAttempt(
+      healed.items,
+      turnId,
+      'knowledge_auto_retrieve'
+    )
+    const localSearchAttempted = hasCompletedToolAttempt(
+      healed.items,
+      turnId,
+      'knowledge_search'
+    )
+    const localKnowledgeRequiredToolName =
+      !planTurnActive &&
+      localKnowledgeRequested &&
+      !localKnowledgeSatisfied
+        ? toolSpecs.some((tool) => tool.name === 'knowledge_auto_retrieve') && !localAutoRetrieveAttempted
+          ? 'knowledge_auto_retrieve'
+          : toolSpecs.some((tool) => tool.name === 'knowledge_search') && !localSearchAttempted
+            ? 'knowledge_search'
+            : undefined
+        : undefined
+    const localKnowledgeBlocked =
+      !planTurnActive &&
+      localKnowledgeRequested &&
+      !localKnowledgeSatisfied &&
+      !localKnowledgeRequiredToolName
+    const knowledgePdfReadRequiredToolName =
+      !planTurnActive &&
+      localKnowledgeSatisfied &&
+      !knowledgePdfReadsSatisfied &&
+      knowledgePdfReadAttemptCount < explicitTaskContract.requiredKnowledgePdfReads + 3 &&
+      toolSpecs.some((tool) => tool.name === 'knowledge_read_file')
+        ? 'knowledge_read_file'
+        : undefined
+    const knowledgePdfReadBlocked =
+      !planTurnActive &&
+      localKnowledgeSatisfied &&
+      !knowledgePdfReadsSatisfied &&
+      !knowledgePdfReadRequiredToolName
+    const imaKnowledgeRequested = requestsImaKnowledgeRetrieval(routedSkillPrompt)
+    const imaKnowledgeSatisfied = imaKnowledgeRequested &&
+      hasSuccessfulImaEvidence(healed.items, turnId)
+    const imaRecoveryPassCount = this.imaRecoveryPasses.get(turnId) ?? 0
+    const deferDocumentForImaRecovery =
+      !planTurnActive &&
+      !localKnowledgeRequiredToolName &&
+      hasFailedImaResearchAttempt(healed.items, turnId) &&
+      !hasSuccessfulImaEvidence(healed.items, turnId) &&
+      imaRecoveryPassCount < 3
+    if (deferDocumentForImaRecovery) {
+      this.imaRecoveryPasses.set(turnId, imaRecoveryPassCount + 1)
+    }
+    const bareResearchTopic = isBareResearchTopicPrompt(
+      latestUserMessageText(healed.items, turnId) || turn?.prompt || ''
+    )
+    const turnBudgetWrapUp = this.armTurnBudgetWrapUp(turnId)
     // Knowledge-base UI threads already contain renderer-produced RAG
     // evidence. Treat them as direct QA: no second knowledge/IMA/tool pass.
     const isKnowledgeQaThread = isKnowledgeQaThreadTitle(thread?.title) && !planTurnActive
@@ -925,8 +1540,95 @@ export class AgentLoop {
       tools: scopedToolSpecs,
       items: healed.items,
       turnId,
-      enabled: !planTurnActive && !isKnowledgeQaThread
+      enabled:
+        !planTurnActive &&
+        !isKnowledgeQaThread &&
+        !turnBudgetWrapUp &&
+        !bareResearchTopic &&
+        !localKnowledgeRequiredToolName &&
+        !knowledgePdfReadRequiredToolName
     })
+
+    const imaKnowledgeBlocked =
+      !planTurnActive &&
+      imaKnowledgeRequested &&
+      !imaKnowledgeSatisfied &&
+      !imaRouteAction &&
+      !deferDocumentForImaRecovery
+    const academicCitationVerificationRequested =
+      requestsAcademicCitationVerification(routedSkillPrompt) &&
+      (localKnowledgeRequested || imaKnowledgeRequested)
+    const academicCitationVerified = academicCitationVerificationRequested &&
+      hasSuccessfulAcademicCitationVerification(healed.items, turnId)
+    const citationFailureCount = failedAcademicCitationVerificationCount(healed.items, turnId)
+    const evidenceSourcesReady =
+      (!localKnowledgeRequested || localKnowledgeSatisfied) &&
+      (!imaKnowledgeRequested || imaKnowledgeSatisfied)
+    const desensitizationRequiredToolName =
+      !planTurnActive &&
+      evidenceSourcesReady &&
+      knowledgePdfReadsSatisfied &&
+      !desensitizationSatisfied &&
+      desensitizationAttemptCount < 3 &&
+      toolSpecs.some((tool) => tool.name === 'data_compliance')
+        ? 'data_compliance'
+        : undefined
+    const desensitizationBlocked =
+      !planTurnActive &&
+      evidenceSourcesReady &&
+      knowledgePdfReadsSatisfied &&
+      !desensitizationSatisfied &&
+      !desensitizationRequiredToolName
+    const workflowPrerequisitesReady =
+      evidenceSourcesReady && knowledgePdfReadsSatisfied && desensitizationSatisfied
+    const citationVerificationRequiredToolName =
+      !planTurnActive &&
+      academicCitationVerificationRequested &&
+      workflowPrerequisitesReady &&
+      !academicCitationVerified &&
+      citationFailureCount < 3 &&
+      toolSpecs.some((tool) => tool.name === 'knowledge_citation_verify')
+        ? 'knowledge_citation_verify'
+        : undefined
+    const academicCitationBlocked =
+      !planTurnActive &&
+      academicCitationVerificationRequested &&
+      workflowPrerequisitesReady &&
+      !academicCitationVerified &&
+      !citationVerificationRequiredToolName
+    const evidenceBarrierReasons = [
+      ...(localKnowledgeBlocked
+        ? ['本地知识库未返回带有来源与正文片段的可用检索结果。']
+        : []),
+      ...(knowledgePdfReadBlocked
+        ? [`未完成用户要求的逐篇 PDF/OCR 阅读：要求 ${explicitTaskContract.requiredKnowledgePdfReads} 篇，实际 ${readKnowledgePdfPaths.size} 篇。`]
+        : []),
+      ...(imaKnowledgeBlocked
+        ? ['IMA 未返回可用回答或来源证据，自动研究及有界降级均未成功。']
+        : []),
+      ...(desensitizationBlocked
+        ? ['用户要求实际执行脱敏，但 data_compliance 不可用或连续执行失败。']
+        : []),
+      ...(academicCitationBlocked
+        ? [citationFailureCount >= 3
+          ? '知识库引用核验连续失败，未引用或无法匹配的文献仍然存在。'
+          : '当前运行时没有可用的知识库引用核验工具。']
+        : [])
+    ]
+    const evidenceBarrierActive = evidenceBarrierReasons.length > 0
+    const documentRequiredToolName =
+      !planTurnActive &&
+      documentMutationRequested &&
+      !documentMutationSatisfied &&
+      !specializedPresentationPending &&
+      !deferDocumentForImaRecovery &&
+      !evidenceBarrierActive &&
+      !knowledgePdfReadRequiredToolName &&
+      !desensitizationRequiredToolName &&
+      !citationVerificationRequiredToolName &&
+      toolSpecs.some((tool) => tool.name === DOCUMENT_SKILL_EXECUTE_TOOL_NAME)
+        ? DOCUMENT_SKILL_EXECUTE_TOOL_NAME
+        : undefined
 
     // IMA auto-routing is already a deterministic runtime decision. Do not pay
     // for a full model round-trip merely to make the model emit the one tool
@@ -986,16 +1688,52 @@ export class AgentLoop {
       return 'continue'
     }
 
-    const requiredToolName = planRequiredToolName
-    const requestToolSpecs = requiredToolName
-      ? scopedToolSpecs.filter((tool) => tool.name === requiredToolName)
+    const requiredToolName =
+      planRequiredToolName ??
+      localKnowledgeRequiredToolName ??
+      knowledgePdfReadRequiredToolName ??
+      desensitizationRequiredToolName ??
+      citationVerificationRequiredToolName ??
+      documentRequiredToolName
+    const visibleScopedToolSpecs = specializedPresentationPending
+      ? scopedToolSpecs.filter((tool) => tool.name !== DOCUMENT_SKILL_EXECUTE_TOOL_NAME)
       : scopedToolSpecs
-    const officeWorkflowInstruction = officeDocumentWorkflowInstruction({
-      prompt: latestUserMessageText(healed.items, turnId) || turn?.prompt || '',
-      items: healed.items,
-      turnId,
-      officeCliAvailable: requestToolSpecs.some((tool) => tool.name === OFFICECLI_TOOL_NAME)
+    const requestToolSpecs = requiredToolName
+      ? visibleScopedToolSpecs.filter((tool) => tool.name === requiredToolName)
+      : turnBudgetWrapUp || bareResearchTopic || documentMutationSatisfied || evidenceBarrierActive
+        ? []
+        : visibleScopedToolSpecs
+    const officeWorkflowInstruction = specializedPresentationPending
+      ? undefined
+      : officeDocumentWorkflowInstruction({
+          prompt: latestUserMessageText(healed.items, turnId) || turn?.prompt || '',
+          items: healed.items,
+          turnId,
+          officeCliAvailable: requestToolSpecs.some((tool) => tool.name === OFFICECLI_TOOL_NAME)
+        })
+    const artifactProgressInstruction = documentArtifactProgressInstruction({
+      requested: requestedArtifacts,
+      completed: completedArtifacts,
+      specializedPresentationPending
     })
+    const explicitContractInstruction = taskContractInstruction({
+      contract: explicitTaskContract,
+      readPdfCount: readKnowledgePdfPaths.size,
+      desensitizationCompleted: desensitizationSatisfied
+    })
+    const requiredToolMissKey = requiredToolName ? `${turnId}:${requiredToolName}` : ''
+    const requiredToolMissCount = requiredToolMissKey
+      ? this.requiredToolMisses.get(requiredToolMissKey) ?? 0
+      : 0
+    const requiredToolRecoveryInstruction = requiredToolName && requiredToolMissCount > 0
+      ? `上一请求未按要求调用 ${requiredToolName}。本次只调用该工具，不要输出完成说明或改用其他工具。`
+      : undefined
+    const recoveryInstruction = deferDocumentForImaRecovery
+      ? imaRecoveryInstruction()
+      : undefined
+    const knowledgeEvidenceBarrierInstruction = evidenceBarrierActive
+      ? evidenceBarrierInstruction(evidenceBarrierReasons)
+      : undefined
     // Final step of a plan turn that still owes a plan. Offer ONLY create_plan
     // (this DeepSeek-compatible provider ignores a forced tool_choice, so we
     // remove the investigation tools instead) so the model can only save the
@@ -1011,13 +1749,22 @@ export class AgentLoop {
       ...(attachments.ocrResults.length ? [attachmentOcrInstruction(attachments.ocrResults)] : []),
       ...(activeGoalInstruction ? [activeGoalInstruction] : []),
       ...(activeTodoInstruction ? [activeTodoInstruction] : []),
+      // Primary legal-source configuration must outrank long-term memory.
+      // Memories may carry stale source preferences (e.g. recorded before the
+      // user switched the preferred source in the plugin); the configured
+      // primaryLegalSource is the authoritative runtime decision.
+      ...(!isKnowledgeQaThread && this.opts.primaryLegalSource ? [primaryLegalSourceInstruction(this.opts.primaryLegalSource)] : []),
       ...memoryInstructions(memories),
       ...skillResolution.instructions,
       ...(officeWorkflowInstruction ? [officeWorkflowInstruction] : []),
+      ...(artifactProgressInstruction ? [artifactProgressInstruction] : []),
+      ...(explicitContractInstruction ? [explicitContractInstruction] : []),
+      ...(requiredToolRecoveryInstruction ? [requiredToolRecoveryInstruction] : []),
+      ...(recoveryInstruction ? [recoveryInstruction] : []),
+      ...(knowledgeEvidenceBarrierInstruction ? [knowledgeEvidenceBarrierInstruction] : []),
       ...(requestToolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
       ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : []),
-      ...(!isKnowledgeQaThread && this.opts.primaryLegalSource ? [primaryLegalSourceInstruction(this.opts.primaryLegalSource)] : []),
-      ...(this.armTurnBudgetWrapUp(turnId) ? [TURN_BUDGET_WRAPUP_INSTRUCTION] : [])
+      ...(turnBudgetWrapUp ? [TURN_BUDGET_WRAPUP_INSTRUCTION] : [])
     ]
     await this.recordPipelineStage(threadId, turnId, 'input_remembered', {
       memoryCount: memories.length,
@@ -1087,38 +1834,48 @@ export class AgentLoop {
       if (signal.aborted) return 'aborted'
       switch (chunk.kind) {
         case 'assistant_text_delta':
-          textItemId ||= this.opts.ids.next('item_text')
           textAccumulator.value += chunk.text
-          await this.opts.events.record({
-            kind: 'assistant_text_delta',
-            threadId,
-            turnId,
-            itemId: textItemId,
-            item: makeAssistantTextItem({
-              id: textItemId,
-              turnId,
+          // Forced-tool steps are internal workflow transitions. Buffer any
+          // provider chatter instead of rendering it as a user-visible answer;
+          // otherwise a false “completed” message can appear before the
+          // required tool gate rejects the step.
+          if (!request.requiredToolName) {
+            textItemId ||= this.opts.ids.next('item_text')
+            await this.opts.events.record({
+              kind: 'assistant_text_delta',
               threadId,
-              text: chunk.text,
-              status: 'running'
+              turnId,
+              itemId: textItemId,
+              item: makeAssistantTextItem({
+                id: textItemId,
+                turnId,
+                threadId,
+                text: chunk.text,
+                status: 'running'
+              })
             })
-          })
+          }
           break
         case 'assistant_reasoning_delta':
-          reasoningItemId ||= this.opts.ids.next('item_reasoning')
           reasoningAccumulator.value += chunk.text
-          await this.opts.events.record({
-            kind: 'assistant_reasoning_delta',
-            threadId,
-            turnId,
-            itemId: reasoningItemId,
-            item: makeAssistantReasoningItem({
-              id: reasoningItemId,
-              turnId,
+          // Per-token reasoning from every forced workflow step was the main
+          // source of multi-thousand-event UI backlogs on complex tasks.
+          if (!request.requiredToolName) {
+            reasoningItemId ||= this.opts.ids.next('item_reasoning')
+            await this.opts.events.record({
+              kind: 'assistant_reasoning_delta',
               threadId,
-              text: chunk.text,
-              status: 'running'
+              turnId,
+              itemId: reasoningItemId,
+              item: makeAssistantReasoningItem({
+                id: reasoningItemId,
+                turnId,
+                threadId,
+                text: chunk.text,
+                status: 'running'
+              })
             })
-          })
+          }
           break
         case 'tool_call_delta':
           break
@@ -1205,7 +1962,57 @@ export class AgentLoop {
       stopReason,
       toolCallCount: completedToolCalls.length
     })
-    if (reasoningAccumulator.value) {
+    if (completedToolCalls.length === 0 && textAccumulator.value) {
+      const recovered = recoverDsmlToolCall(
+        textAccumulator.value,
+        new Set(request.tools.map((tool) => tool.name))
+      )
+      if (recovered) {
+        const callId = this.opts.ids.next('call_dsml_recovered')
+        const provider = toolProviderMetadata.get(recovered.toolName)
+        const toolKind = toolKinds.get(recovered.toolName)
+        const repaired = repairDispatchToolArguments(recovered.arguments, {
+          toolName: recovered.toolName,
+          ...(toolKind ? { toolKind } : {}),
+          ...(this.opts.toolArgumentRepair?.maxStringBytes !== undefined
+            ? { maxStringBytes: this.opts.toolArgumentRepair.maxStringBytes }
+            : {})
+        })
+        const call: ToolCallLike = {
+          callId,
+          toolName: recovered.toolName,
+          ...(provider?.providerId ? { providerId: provider.providerId } : {}),
+          toolKind,
+          arguments: repaired.arguments
+        }
+        completedToolCalls.push(call)
+        textAccumulator.value = recovered.visibleText
+        const itemId = `item_tool_${turnId}_${callId}`
+        await this.opts.turns.applyItem(
+          threadId,
+          makeToolCallItem({
+            id: itemId,
+            turnId,
+            threadId,
+            callId,
+            toolName: recovered.toolName,
+            toolKind,
+            arguments: repaired.arguments,
+            summary: 'Recovered a structured tool call that the model emitted as DSML text.'
+          })
+        )
+        await this.opts.events.record({
+          kind: 'tool_call_ready',
+          threadId,
+          turnId,
+          itemId,
+          callId,
+          toolName: recovered.toolName,
+          readyCount: 1
+        })
+      }
+    }
+    if (reasoningAccumulator.value && !request.requiredToolName) {
       const itemId = reasoningItemId || this.opts.ids.next('item_reasoning')
       await this.opts.turns.applyItem(
         threadId,
@@ -1218,7 +2025,7 @@ export class AgentLoop {
         })
       )
     }
-    if (textAccumulator.value) {
+    if (textAccumulator.value && !request.requiredToolName) {
       const itemId = textItemId || this.opts.ids.next('item_text')
       await this.opts.turns.applyItem(
         threadId,
@@ -1308,6 +2115,15 @@ export class AgentLoop {
           if (dispatched === 'aborted') return 'aborted'
           return 'continue'
         }
+        const missKey = `${turnId}:${request.requiredToolName}`
+        const missCount = (this.requiredToolMisses.get(missKey) ?? 0) + 1
+        this.requiredToolMisses.set(missKey, missCount)
+        if (missCount < 3) {
+          // Some compatible providers occasionally ignore forced tool_choice
+          // and emit prose. Retry twice with a stronger instruction while the
+          // prose remains buffered and invisible to the user.
+          return 'continue'
+        }
         const message = `Model did not call the required \`${request.requiredToolName}\` tool for this turn.`
         await this.opts.events.record({
           kind: 'error',
@@ -1328,11 +2144,18 @@ export class AgentLoop {
         )
         throw new Error(message)
       }
+      if (deferDocumentForImaRecovery && documentMutationRequested && !documentMutationSatisfied) {
+        return 'continue'
+      }
       if (stopReason === 'stop' && activeGoalInstruction && stepIndex < MAX_GOAL_NO_TOOL_CONTINUATIONS) {
         return 'continue'
       }
       return 'stop'
     }
+    if (request.requiredToolName) {
+      this.requiredToolMisses.delete(`${turnId}:${request.requiredToolName}`)
+    }
+    const verifiedDraft = successfullyVerifiedDraft(healed.items, turnId)
     const dispatched = await this.dispatchToolCalls({
       calls: completedToolCalls,
       threadId,
@@ -1345,7 +2168,10 @@ export class AgentLoop {
       allowedToolNames,
       toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
       approvalPolicy,
-      signal
+      signal,
+      taskContract: explicitTaskContract,
+      ...(verifiedDraft !== undefined ? { verifiedDraft } : {}),
+      completedArtifacts
     })
     if (dispatched === 'aborted') return 'aborted'
     return 'continue'
@@ -1364,6 +2190,9 @@ export class AgentLoop {
     toolProviderKinds: ReadonlyMap<string, ToolProviderKind | undefined>
     approvalPolicy: ToolHostContext['approvalPolicy']
     signal: AbortSignal
+    taskContract?: DocumentTaskContract
+    verifiedDraft?: string
+    completedArtifacts?: ReadonlySet<DocumentArtifactKind>
   }): Promise<'continue' | 'aborted'> {
     const context = this.createToolContext(input)
     let index = 0
@@ -1373,6 +2202,37 @@ export class AgentLoop {
 
       const call = input.calls[index]
       if (!call) break
+
+      const contractError = input.taskContract
+        ? taskContractToolCallError({
+            call,
+            contract: input.taskContract,
+            ...(input.verifiedDraft !== undefined ? { verifiedDraft: input.verifiedDraft } : {}),
+            completedArtifacts: input.completedArtifacts ?? new Set<DocumentArtifactKind>()
+          })
+        : undefined
+      if (contractError) {
+        const result: ToolHostResult = {
+          item: makeToolResultItem({
+            id: `item_${call.callId}_contract`,
+            turnId: input.turnId,
+            threadId: input.threadId,
+            callId: call.callId,
+            toolName: call.toolName,
+            toolKind: call.toolKind ?? 'tool_call',
+            output: {
+              error: contractError,
+              code: 'explicit_task_contract_failed'
+            },
+            isError: true
+          }),
+          approved: false
+        }
+        this.toolStormBreakers.get(input.turnId)?.observeResult(call, true)
+        await this.persistToolCallResult(input.threadId, input.turnId, call, result)
+        index += 1
+        continue
+      }
 
       const storm = this.toolStormBreakers.get(input.turnId)?.inspect(call)
       if (storm?.suppress) {
@@ -1530,7 +2390,10 @@ export class AgentLoop {
           // model asks for the same search query / file again, return a cached
           // pointer instead of re-running the tool (re-running re-bills the full
           // result as cache-miss and adds nothing new).
-          const duplicate = this.retrievalDuplicateFor(input.turnId, input.call)
+          const retrievalTracked = DEDUP_TOOL_NAMES.has(input.call.toolName)
+          const duplicate = retrievalTracked
+            ? this.ledgerFor(input.turnId).reserve(input.call.toolName, input.call.arguments)
+            : null
           if (duplicate) {
             const dedupItem = makeToolResultItem({
               id: `item_${input.call.callId}_dedup`,
@@ -1541,7 +2404,7 @@ export class AgentLoop {
               toolKind: input.call.toolKind ?? 'tool_call',
               output: {
                 _dedup: true,
-                note: `This knowledge retrieval was already performed earlier in this thread (key: ${duplicate}). Use the already-returned content; do not search the same query again.`
+                note: `This knowledge retrieval is already running or completed in this turn (key: ${duplicate}). Use the companion result; do not repeat the same call.`
               }
             })
             return { item: dedupItem, approved: true }
@@ -1577,10 +2440,20 @@ export class AgentLoop {
             if (existing) return
             await this.opts.turns.applyItem(input.threadId, item)
           })
-          if (result.item.kind === 'tool_result' && !result.item.isError) {
-            // retrievalLedgers 以 turnId 为 key（retrievalDuplicateFor/清理都按 turnId 查），
-            // 必须用 input.turnId 写入，否则写读不一致，跨 turn 去重失效。
-            this.ledgerFor(input.turnId).record(input.call.toolName, input.call.arguments)
+          const succeeded = result.item.kind === 'tool_result' && !result.item.isError
+          if (retrievalTracked) {
+            this.ledgerFor(input.turnId).finish(
+              input.call.toolName,
+              input.call.arguments,
+              succeeded
+            )
+          }
+          if (succeeded) {
+            if (KNOWLEDGE_MUTATION_TOOL_NAMES.has(input.call.toolName)) {
+              // Live file/tree state changed, so reads and listings made before
+              // the mutation must be eligible again inside the same turn.
+              this.ledgerFor(input.turnId).clear()
+            }
             const doneReadKey = this.readKeyFor(input.call)
             if (doneReadKey) {
               let seen = this.turnReadKeys.get(input.turnId)
@@ -1593,6 +2466,9 @@ export class AgentLoop {
           }
           return result
         } catch (error) {
+          if (DEDUP_TOOL_NAMES.has(input.call.toolName)) {
+            this.ledgerFor(input.turnId).finish(input.call.toolName, input.call.arguments, false)
+          }
           const message = error instanceof Error ? error.message : String(error)
           return {
             item: makeToolResultItem({
@@ -2086,11 +2962,12 @@ export class AgentLoop {
   }
 
   /**
-   * 预算闸门触发检查：本 turn 累计 input token 是否已超预算。首次触发返回 true
-   * （并向模型注入收尾指令），之后保持 false 避免每步重复注入污染 history。
+   * 预算闸门触发检查：本 turn 累计 input token 是否已超预算。触发后
+   * 每个后续请求都保持收尾指令，并移除非必需工具，避免模型忽略一次性
+   * 提醒后继续产生付费检索循环。
    */
   private armTurnBudgetWrapUp(turnId: string): boolean {
-    if (this.turnBudgetInstructionInjected.has(turnId)) return false
+    if (this.turnBudgetInstructionInjected.has(turnId)) return true
     const budget = this.turnTokenBudget()
     if (budget <= 0) return false
     const spent = this.turnInputTokenSpend.get(turnId) ?? 0
@@ -2218,16 +3095,6 @@ export class AgentLoop {
       this.retrievalLedgers.set(turnId, ledger)
     }
     return ledger
-  }
-
-  private retrievalDuplicateFor(turnId: string, call: ToolCallLike): string | null {
-    const toolName = call.toolName
-    // Only dedupe repeated bulk retrievals inside the current turn. A later
-    // turn may legitimately repeat the same query after KB edits/compaction.
-    if (!DEDUP_TOOL_NAMES.has(toolName)) return null
-    const ledger = this.retrievalLedgers.get(turnId)
-    if (!ledger) return null
-    return ledger.duplicateKey(toolName, call.arguments)
   }
 
   /** Canonical read path key ('' when the call is not a `read` of a file). */
@@ -2674,6 +3541,8 @@ function primaryLegalSourceInstruction(source: 'pkulaw' | 'yuandian'): string {
   const fallback = source === 'pkulaw' ? '元典(Yuandian)' : '北大法宝(PKULaw)'
   return (
     `法律调研时默认优先使用 ${primary} 作为首要来源。` +
+    `本配置由运行时的 primaryLegalSource 决定，优先于任何长期记忆中的来源偏好；` +
+    `若记忆与记忆中出现其他"用户偏好某来源"的描述，以本配置为准，不要因记忆而改用 ${fallback} 去核实或重复检索。` +
     `若 ${primary} 返回鉴权失败(401/403)、配额不足、积分不足("remaining points")等确定性错误，` +
     `立即换用已配置的 ${fallback} 或本地知识库/IMA 继续检索，并在回答中如实标注未能核实的来源；不要反复重试同一来源或触发浏览器自动化。`
   )
@@ -2698,14 +3567,24 @@ function prefixVolatilityStageDetails(
  * Re-running the same query / reading the same file twice in one turn adds
  * nothing but token cost, so duplicate calls are short-circuited.
  */
-// Only dedupe tools whose result is deterministic for a given input (same
-// query → same content). knowledge_list_tree / knowledge_diagnostics reflect
-// live filesystem/runtime state and legitimately change between calls, so
-// they must NOT be short-circuited.
+// These calls are deterministic until a knowledge mutation succeeds. The
+// ledger is cleared after write/move/delete/classify/sync, so live listings can
+// also be deduplicated safely between mutations.
 const DEDUP_TOOL_NAMES = new Set([
   'knowledge_search',
   'knowledge_auto_retrieve',
-  'knowledge_read_file'
+  'knowledge_read_file',
+  'knowledge_list_tree',
+  'knowledge_diagnostics'
+])
+
+const KNOWLEDGE_MUTATION_TOOL_NAMES = new Set([
+  'knowledge_write_file',
+  'knowledge_create_folder',
+  'knowledge_move',
+  'knowledge_classify',
+  'knowledge_delete',
+  'knowledge_sync'
 ])
 
 /** Which argument key is the "subject" used to detect a repeated retrieval. */
@@ -2719,6 +3598,10 @@ function retrievalKeyFor(toolName: string, args: Record<string, unknown>): strin
       // file (offset=1, offset=201, …) are NOT treated as duplicates — that
       // would break the paged-reading cost control.
       return `${String(args?.path ?? '')}@${Math.max(1, Math.floor(Number(args?.offset) || 1))}`
+    case 'knowledge_list_tree':
+      return `${String(args?.prefix ?? '') || '*'}@${Math.max(0, Math.floor(Number(args?.offset) || 0))}`
+    case 'knowledge_diagnostics':
+      return '*'
     default:
       return ''
   }
@@ -2727,33 +3610,38 @@ function retrievalKeyFor(toolName: string, args: Record<string, unknown>): strin
 /**
  * Per-thread record of knowledge retrieval calls already made, so a repeated
  * query/file read can be short-circuited instead of re-run (re-running re-bills
- * the whole result as cache-miss). Only tools with deterministic results
- * (knowledge_search / knowledge_auto_retrieve / knowledge_read_file per page)
- * are tracked, so live-state tools (list_tree / diagnostics) are never blocked.
- * Keys are normalized (lowercased, whitespace-collapsed) to catch
- * near-identical rephrasings.
+ * the whole result as cache-miss). Live-state reads are also tracked until a
+ * knowledge mutation succeeds, at which point the ledger is cleared. Keys are
+ * normalized (lowercased, whitespace-collapsed) to catch near-identical calls.
  */
-class RetrievalLedger {
+export class RetrievalLedger {
   private readonly seen = new Set<string>()
+  private readonly inFlight = new Set<string>()
 
-  record(toolName: string, args: Record<string, unknown>): void {
-    const key = retrievalKeyFor(toolName, args ?? {})
-    if (key) this.seen.add(this.normalize(toolName, key))
-  }
-
-  duplicateKey(toolName: string, args: Record<string, unknown>): string | null {
+  reserve(toolName: string, args: Record<string, unknown>): string | null {
     const raw = retrievalKeyFor(toolName, args ?? {})
     if (!raw) return null
     const normalized = this.normalize(toolName, raw)
-    if (this.seen.has(normalized)) return normalized
+    if (this.seen.has(normalized) || this.inFlight.has(normalized)) return normalized
+    this.inFlight.add(normalized)
     return null
+  }
+
+  finish(toolName: string, args: Record<string, unknown>, succeeded: boolean): void {
+    const raw = retrievalKeyFor(toolName, args ?? {})
+    if (!raw) return
+    const normalized = this.normalize(toolName, raw)
+    this.inFlight.delete(normalized)
+    if (succeeded) this.seen.add(normalized)
+  }
+
+  clear(): void {
+    this.seen.clear()
+    this.inFlight.clear()
   }
 
   private normalize(toolName: string, key: string): string {
     const collapsed = key.trim().toLowerCase().replace(/\s+/g, ' ')
-    if (toolName === 'knowledge_list_tree' || toolName === 'knowledge_diagnostics') {
-      return `${toolName}:*`
-    }
     return `${toolName}:${collapsed}`
   }
 }

@@ -2,7 +2,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
-import { EXTRACTABLE_EXTENSIONS, extractDocumentText } from './text-extractor.js'
+import {
+  EXTRACTABLE_EXTENSIONS,
+  extractDocumentText,
+  isUsableExtractedText
+} from './text-extractor.js'
 
 describe('text extractor', () => {
   it('extracts text from pptx slide XML', async () => {
@@ -24,10 +28,10 @@ describe('text extractor', () => {
         ].join('')
       }))
 
-      const text = await extractDocumentText(pptxPath)
-      expect(text).toContain('第一页标题')
-      expect(text).toContain('合同解除条件')
-      expect(text).toContain('违约责任 & 赔偿')
+      const result = await extractDocumentText(pptxPath)
+      expect(result.text).toContain('第一页标题')
+      expect(result.text).toContain('合同解除条件')
+      expect(result.text).toContain('违约责任 & 赔偿')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -36,6 +40,14 @@ describe('text extractor', () => {
   it('marks PowerPoint formats as extractable', () => {
     expect(EXTRACTABLE_EXTENSIONS.has('.pptx')).toBe(true)
     expect(EXTRACTABLE_EXTENSIONS.has('.ppt')).toBe(true)
+  })
+
+  it('rejects long but garbled PDF text so OCR can take over', () => {
+    expect(isUsableExtractedText('。 \t、 \t。\n“ \t” 22BFX167\n。\n*\n。\n。 \t。\n'.repeat(8))).toBe(false)
+    expect(isUsableExtractedText(
+      '数字政府时代，自动化行政决定应当遵守正当程序，并保障当事人的知情权、陈述申辩权和人工复核权。'.repeat(3)
+    )).toBe(true)
+    expect(isUsableExtractedText(`有效正文${''.repeat(20)}有效正文`.repeat(10))).toBe(false)
   })
 })
 

@@ -78,4 +78,18 @@ describe('format-preserving template DOCX export', () => {
 
     expect(outputDocument).toBe(sourceDocument)
   })
+
+  it('preserves appended text when the replacement extends the original paragraph', async () => {
+    const source = await legalDocumentMarkdownToDocx({
+      templateName: '客户模板',
+      markdown: '# 原\n\n正文'
+    })
+
+    const result = await fillDocxTemplateWithMarkdown(source, '# 原标题\n\n正文扩展')
+    const outputZip = await JSZip.loadAsync(result.buffer)
+    const outputDocument = await outputZip.file('word/document.xml')!.async('string')
+
+    expect(outputDocument).toContain('原标题')
+    expect(outputDocument).toContain('正文扩展')
+  })
 })

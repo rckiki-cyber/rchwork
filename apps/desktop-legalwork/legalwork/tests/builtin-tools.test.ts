@@ -577,7 +577,7 @@ describe('Legalwork built-in tools', () => {
     await writeFile(join(workspace, 'sample.pdf'), Buffer.from('%PDF-1.7\0binary'))
     const customRead = createReadLocalTool({
       operations: {
-        extractDocumentText: async () => 'first page\nsecond page\nthird page'
+        extractDocumentText: async () => ({ text: 'first page\nsecond page\nthird page' })
       }
     })
     const customHost = new LocalToolHost({ tools: [customRead] })

@@ -45,7 +45,8 @@ import { isLegalworkHealthResponseBody } from './legalwork-health'
 import { appendManagedLogLine } from './logger'
 import { guiSkillRootsForRuntime, normalizeSkillRootPath } from './services/skill-service'
 import { buildOcrRuntimeEnvironment } from './data-compliance-runtime'
-import { resolveCodexBinaryPath } from './codex-auth-manager'
+import { mergeProxyEnv, resolveCodexBinaryPath } from './codex-auth-manager'
+import { detectSystemProxy, type SystemProxy } from './system-proxy'
 import { reportError } from './error-report'
 
 let child: ChildProcess | null = null
@@ -267,6 +268,14 @@ function expandHomePath(path: string): string {
   return path
 }
 
+export function resolveCodexRuntimeProxyEnv(
+  authMode: 'api_key' | 'chatgpt',
+  current: NodeJS.ProcessEnv,
+  systemProxy: SystemProxy | null | undefined
+): NodeJS.ProcessEnv | undefined {
+  return authMode === 'chatgpt' ? mergeProxyEnv(current, systemProxy) : undefined
+}
+
 export function isLegalworkChildRunning(): boolean {
   return child !== null && child.exitCode === null && child.signalCode === null
 }
@@ -366,10 +375,20 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
     app.getAppPath(),
     app.isPackaged
   )
+  // Chromium uses the OS proxy during ChatGPT login, while the Codex binary
+  // only reads proxy environment variables. Mirror the same proxy into the
+  // ChatGPT-authenticated runtime so login and subsequent model turns use the
+  // same network path. API-key/DeepSeek mode remains untouched.
+  const codexProxyEnv = resolveCodexRuntimeProxyEnv(
+    runtime.authMode,
+    process.env,
+    runtime.authMode === 'chatgpt' ? detectSystemProxy() : null
+  )
   const childEnvironment = buildOcrRuntimeEnvironment(
     [root, app.getAppPath()],
     {
       ...process.env,
+      ...(codexProxyEnv ?? {}),
       PATH: runtimePath,
       ELECTRON_RUN_AS_NODE: '1',
       LEGALWORK_RUNTIME_TOKEN: runtime.runtimeToken,
@@ -824,9 +843,22 @@ function modelConfigForRuntime(existing: Record<string, unknown>): Record<string
   for (const [modelId, profile] of Object.entries(existingProfiles)) {
     const defaultProfile = objectValue(DEFAULT_LEGALWORK_MODEL_PROFILES[modelId])
     const existingProfile = objectValue(profile)
+    const existingCompaction = objectValue(existingProfile.contextCompaction)
     const mergedCompaction = {
       ...objectValue(defaultProfile.contextCompaction),
-      ...objectValue(existingProfile.contextCompaction)
+      ...existingCompaction
+    }
+    // Early million-token DeepSeek profiles shipped with 980K/990K
+    // thresholds. Keeping those persisted values disables practical
+    // compaction and makes every tool step replay an enormous transcript.
+    // Migrate only that exact legacy pair; deliberate custom thresholds stay
+    // untouched.
+    if (
+      (modelId === 'deepseek-v4-pro' || modelId === 'deepseek-v4-flash') &&
+      positiveIntegerValue(existingCompaction.softThreshold) === 980_000 &&
+      positiveIntegerValue(existingCompaction.hardThreshold) === 990_000
+    ) {
+      Object.assign(mergedCompaction, objectValue(defaultProfile.contextCompaction))
     }
     // hardThreshold must stay >= softThreshold. When only soft is configured
     // (hard falls back to the aggressive default, which may be smaller than a

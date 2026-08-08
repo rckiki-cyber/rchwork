@@ -224,3 +224,13 @@ export function useThreadUsage(
 ): ThreadUsageSummary | null {
   return useThreadUsageState(threadId, enabled, refreshKey).usage
 }
+
+/**
+ * Usage aggregation is refreshed only when a turn changes busy state or the
+ * runtime reports new usage. Thread.updatedAt changes for every streamed token
+ * and must never participate in this key, otherwise one response can create
+ * hundreds of overlapping /v1/usage requests.
+ */
+export function threadUsageRefreshKey(busy: boolean, usageRefreshKey: number): string {
+  return `${busy ? 'busy' : 'idle'}:${usageRefreshKey}`
+}

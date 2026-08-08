@@ -1,6 +1,7 @@
 import type { KnowledgeStore } from './knowledge-store.js'
 
 const EXTRACTED_DOCUMENT_RE = /\.(?:pdf|docx?|pptx?|xlsx?|png|jpe?g|webp|bmp|tiff?)$/i
+const MODEL_LINE_MAX_CHARS = 240
 
 export type KnowledgeFileText = {
   path: string
@@ -45,4 +46,16 @@ export async function readKnowledgeFileText(
     encoding: 'utf8',
     extractionMethod: 'utf8-read'
   }
+}
+
+/** Split pathological minified/OCR lines so line-based paging also bounds bytes. */
+export function modelKnowledgeTextLines(content: string): string[] {
+  return content.split('\n').flatMap((line) => {
+    if (line.length <= MODEL_LINE_MAX_CHARS) return [line]
+    const chunks: string[] = []
+    for (let offset = 0; offset < line.length; offset += MODEL_LINE_MAX_CHARS) {
+      chunks.push(line.slice(offset, offset + MODEL_LINE_MAX_CHARS))
+    }
+    return chunks
+  })
 }

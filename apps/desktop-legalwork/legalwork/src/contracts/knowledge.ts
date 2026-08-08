@@ -87,9 +87,13 @@ export const KnowledgeSearchHit = z.object({
 }).strict()
 export type KnowledgeSearchHit = z.infer<typeof KnowledgeSearchHit>
 
+/** Large local libraries are common; this is a local indexing limit and does
+ * not affect the bounded amount of evidence sent to the model. */
+export const KNOWLEDGE_SYNC_MAX_FILES = 50_000
+
 export const KnowledgeSyncRequest = z.object({
   roots: z.array(z.string().min(1)).max(20).optional(),
-  maxFiles: z.number().int().positive().max(5000).optional()
+  maxFiles: z.number().int().positive().max(KNOWLEDGE_SYNC_MAX_FILES).optional()
 }).strict()
 export type KnowledgeSyncRequest = z.infer<typeof KnowledgeSyncRequest>
 

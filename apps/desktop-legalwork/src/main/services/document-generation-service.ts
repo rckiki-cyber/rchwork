@@ -18,7 +18,10 @@ import type {
   DocumentGenerationResult
 } from '../../shared/document-generation'
 
-const DOCUMENT_GENERATION_TIMEOUT_MS = 60_000
+// Full legal documents can legitimately take longer than one minute on
+// reasoning models. Keep a bounded timeout, but do not abort normal 8k-token
+// generations at the old 60-second mark.
+const DOCUMENT_GENERATION_TIMEOUT_MS = 180_000
 const DOCUMENT_GENERATION_MAX_TOKENS = 8_192
 
 type ChatCompletionMessage = {
@@ -76,7 +79,6 @@ export async function generateDocument(
   settings: AppSettingsV1,
   request: DocumentGenerationRequest
 ): Promise<DocumentGenerationResult> {
-  const startedAt = Date.now()
   const apiKey = resolveWriteInlineCompletionApiKey(settings)
   const baseUrl = resolveWriteInlineCompletionBaseUrl(settings)
   const model = resolveWriteInlineCompletionModel(settings)
@@ -120,21 +122,43 @@ export async function generateDocument(
       }
     }
 
-    let parsed: { choices?: Array<{ message?: { content?: string } }> }
+    let parsed: unknown
     try {
-      parsed = JSON.parse(text) as { choices?: Array<{ message?: { content?: string } }> }
+      parsed = JSON.parse(text)
     } catch {
       return { ok: false, message: 'AI 返回了非 JSON 数据，请重试。' }
     }
 
-    const content = parsed?.choices?.[0]?.message?.content
+    const content = completionContent(parsed)
     if (!content) {
       return { ok: false, message: 'AI 返回内容为空，请重试。' }
     }
 
     return { ok: true, content, model }
   } catch (error) {
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      return { ok: false, message: 'AI 生成超时（180 秒），请重试或缩短生成内容。' }
+    }
     const message = error instanceof Error ? error.message : String(error)
     return { ok: false, message: `AI 生成失败: ${message}` }
   }
+}
+
+export function completionContent(value: unknown): string {
+  if (!value || typeof value !== 'object') return ''
+  const choices = (value as { choices?: unknown }).choices
+  if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== 'object') return ''
+  const message = (choices[0] as { message?: unknown }).message
+  if (!message || typeof message !== 'object') return ''
+  const content = (message as { content?: unknown }).content
+  if (typeof content === 'string') return content.trim()
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((part) => {
+      if (!part || typeof part !== 'object') return ''
+      const text = (part as { text?: unknown }).text
+      return typeof text === 'string' ? text : ''
+    })
+    .join('')
+    .trim()
 }

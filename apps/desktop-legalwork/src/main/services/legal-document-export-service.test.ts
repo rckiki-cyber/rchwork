@@ -46,6 +46,21 @@ describe('legal document Word export', () => {
     expect(html).not.toContain('| --- |')
   })
 
+  it('keeps substantive two-column research tables as real tables', () => {
+    const html = buildLegalDocumentHtml({
+      templateName: '法律调研报告',
+      markdown: [
+        '| 法规名称 | 核心内容 |',
+        '| --- | --- |',
+        '| 行政处罚法 | 规范行政处罚程序 |'
+      ].join('\n')
+    })
+
+    expect(html).toContain('<table>')
+    expect(html).toContain('<th>法规名称</th>')
+    expect(html).toContain('<td>规范行政处罚程序</td>')
+  })
+
   it('converts a generated research answer into report-only prose', () => {
     const markdown = prepareLegalDocumentMarkdown({
       templateName: '法律调研报告',
@@ -225,5 +240,18 @@ describe('legal document Word export', () => {
     expect(normalized).toContain('<w:ind w:left="480" w:hanging="360"/>')
     expect(normalized).not.toContain('w:left="1440"')
     expect(normalized).not.toContain('w:firstLine="480"')
+  })
+
+  it('preserves attributed paragraphs and structural page-break paragraphs', () => {
+    const normalized = normalizeLegalParagraphs([
+      '<w:document><w:body>',
+      '<w:p w14:paraId="ABC"><w:r><w:t>正文</w:t></w:r></w:p>',
+      '<w:p w14:paraId="BREAK"><w:r><w:br w:type="page"/></w:r></w:p>',
+      '</w:body></w:document>'
+    ].join(''))
+
+    expect(normalized).toContain('<w:p w14:paraId="ABC">')
+    expect(normalized).toContain('w:firstLine="480"')
+    expect(normalized).toContain('<w:p w14:paraId="BREAK"><w:r><w:br w:type="page"/></w:r></w:p>')
   })
 })

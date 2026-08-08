@@ -26,9 +26,10 @@ try:
     from docx.enum.section import WD_ORIENT
     from docx.enum.style import WD_STYLE_TYPE
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
-    from docx.shared import Cm, Pt
+    from docx.shared import Cm, Pt, RGBColor
 except Exception as exc:  # pragma: no cover - environment-dependent
     Document = None  # type: ignore[assignment]
     IMPORT_ERROR = str(exc)
@@ -208,9 +209,19 @@ def east_asia_font(run_or_style: Any) -> str | None:
         return None
 
 
-def set_font(target: Any, east_asia: str, latin: str, size_pt: float, bold: bool | None = None) -> None:
+def set_font(
+    target: Any,
+    east_asia: str,
+    latin: str,
+    size_pt: float,
+    bold: bool | None = None,
+    *,
+    force_black: bool = False,
+) -> None:
     target.font.name = latin
     target.font.size = Pt(size_pt)
+    if force_black:
+        target.font.color.rgb = RGBColor(0, 0, 0)
     if bold is not None:
         target.font.bold = bold
     rfonts = target._element.get_or_add_rPr().get_or_add_rFonts()
@@ -218,11 +229,13 @@ def set_font(target: Any, east_asia: str, latin: str, size_pt: float, bold: bool
     rfonts.set(qn("w:hAnsi"), latin)
     rfonts.set(qn("w:eastAsia"), east_asia)
     rfonts.set(qn("w:cs"), latin)
+    rfonts.set(qn("w:hint"), "eastAsia")
 
 
 def set_style_font(style: Any, east_asia: str, latin: str, size_pt: float, bold: bool | None = None) -> None:
     style.font.name = latin
     style.font.size = Pt(size_pt)
+    style.font.color.rgb = RGBColor(0, 0, 0)
     if bold is not None:
         style.font.bold = bold
     rfonts = style._element.get_or_add_rPr().get_or_add_rFonts()
@@ -230,11 +243,89 @@ def set_style_font(style: Any, east_asia: str, latin: str, size_pt: float, bold:
     rfonts.set(qn("w:hAnsi"), latin)
     rfonts.set(qn("w:eastAsia"), east_asia)
     rfonts.set(qn("w:cs"), latin)
+    rfonts.set(qn("w:hint"), "eastAsia")
+
+
+def remove_xml_children(parent: Any, *qualified_names: str) -> None:
+    if parent is None:
+        return
+    wanted = {qn(name) for name in qualified_names}
+    for child in list(parent):
+        if child.tag in wanted:
+            parent.remove(child)
+
+
+def normalize_legal_style_geometry(style: Any, name: str) -> None:
+    """Remove visual residue from Word's built-in theme styles.
+
+    python-docx starts from the stock Word template. Merely changing the font
+    leaves Title/Heading theme colors, title borders and character spacing in
+    place, which is inappropriate for monochrome Chinese legal documents.
+    """
+    ppr = style._element.get_or_add_pPr()
+    rpr = style._element.get_or_add_rPr()
+    remove_xml_children(ppr, "w:pBdr", "w:shd", "w:tabs")
+    remove_xml_children(rpr, "w:spacing", "w:shd", "w:effect", "w:outline", "w:shadow")
+
+    fmt = style.paragraph_format
+    fmt.first_line_indent = Pt(0)
+    fmt.keep_with_next = True
+    fmt.keep_together = True
+    if name == "Title":
+        fmt.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        fmt.space_before = Pt(0)
+        fmt.space_after = Pt(18)
+        fmt.line_spacing = 1.0
+    elif name == "Heading 1":
+        fmt.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        fmt.space_before = Pt(12)
+        fmt.space_after = Pt(6)
+        fmt.line_spacing = 1.25
+    elif name == "Heading 2":
+        fmt.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        fmt.space_before = Pt(9)
+        fmt.space_after = Pt(3)
+        fmt.line_spacing = 1.25
+    elif name == "Heading 3":
+        fmt.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        fmt.space_before = Pt(6)
+        fmt.space_after = Pt(0)
+        fmt.line_spacing = 1.25
 
 
 def is_body_paragraph(paragraph: Any) -> bool:
     name = (paragraph.style.name if paragraph.style is not None else "").strip().lower()
     return not any(name.startswith(prefix) for prefix in SPECIAL_STYLE_PREFIXES)
+
+
+def is_list_paragraph(paragraph: Any) -> bool:
+    name = (paragraph.style.name if paragraph.style is not None else "").strip().lower()
+    ppr = paragraph._p.pPr
+    return name.startswith("list") or (ppr is not None and ppr.numPr is not None)
+
+
+def apply_academic_reference_layout(doc: Any, body_size_pt: float) -> int:
+    """Give numbered bibliography entries a real hanging indent.
+
+    Treating references as ordinary body paragraphs produces the inverse
+    layout: the marker is indented while wrapped lines return to the margin.
+    """
+    in_references = False
+    changed = 0
+    for paragraph in doc.paragraphs:
+        text = paragraph.text.strip()
+        style_name = paragraph.style.name if paragraph.style is not None else ""
+        if style_name.startswith("Heading") or style_name == "Title":
+            in_references = bool(re.fullmatch(r"(?:[一二三四五六七八九十]+、\s*)?参考文献", text))
+            continue
+        if not in_references or not re.match(r"^\[\d+\]", text):
+            continue
+        fmt = paragraph.paragraph_format
+        fmt.left_indent = Pt(body_size_pt * 2)
+        fmt.right_indent = Pt(0)
+        fmt.first_line_indent = Pt(-body_size_pt * 2)
+        changed += 1
+    return changed
 
 
 def apply_page(section: Any, page: dict[str, float]) -> None:
@@ -287,6 +378,7 @@ def apply_profile(doc: Any, profile_name: str, scopes: set[str]) -> dict[str, in
         for name, cfg in style_map.items():
             style = ensure_style(doc, name)
             set_style_font(style, cfg["east_asia"], cfg["latin"], cfg["size"], cfg["bold"])
+            normalize_legal_style_geometry(style, name)
             changed["styles"] += 1
 
     if "body" in scopes:
@@ -298,7 +390,11 @@ def apply_profile(doc: Any, profile_name: str, scopes: set[str]) -> dict[str, in
             fmt.line_spacing = profile["line_spacing"]
             fmt.space_before = Pt(0)
             fmt.space_after = Pt(0)
-            fmt.first_line_indent = Pt(profile["body_size"] * profile["first_line_chars"])
+            fmt.left_indent = Pt(0)
+            fmt.right_indent = Pt(0)
+            fmt.first_line_indent = Pt(0) if is_list_paragraph(paragraph) else Pt(
+                profile["body_size"] * profile["first_line_chars"]
+            )
             for run in paragraph.runs:
                 set_font(run, profile["body_east_asia"], profile["body_latin"], profile["body_size"])
                 changed["runs"] += 1
@@ -319,11 +415,23 @@ def apply_profile(doc: Any, profile_name: str, scopes: set[str]) -> dict[str, in
             if not cfg:
                 continue
             paragraph.paragraph_format.keep_with_next = True
+            paragraph.paragraph_format.keep_together = True
             paragraph.paragraph_format.first_line_indent = Pt(0)
+            if style_name == "Title":
+                paragraph.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
             for run in paragraph.runs:
-                set_font(run, cfg["east_asia"], cfg["latin"], cfg["size"], cfg["bold"])
+                set_font(
+                    run,
+                    cfg["east_asia"],
+                    cfg["latin"],
+                    cfg["size"],
+                    cfg["bold"],
+                    force_black=True,
+                )
                 changed["heading_runs"] += 1
             changed["headings"] += 1
+    if profile_name == "academic" and "body" in scopes:
+        changed["reference_paragraphs"] += apply_academic_reference_layout(doc, profile["body_size"])
     return dict(changed)
 
 
@@ -513,6 +621,103 @@ def cmd_replace(args: argparse.Namespace) -> None:
         fail(str(exc), operation=operation)
 
 
+INLINE_MARKDOWN_RE = re.compile(
+    r"\[([^\]]+)\]\((https?://[^)\s]+)\)"
+    r"|\*\*([^*\n]+)\*\*"
+    r"|__([^_\n]+)__"
+    r"|`([^`\n]+)`"
+    r"|(?<!\*)\*([^*\n]+)\*(?!\*)"
+    r"|(?<!_)_([^_\n]+)_(?!_)"
+)
+
+
+def split_markdown_table_row(line: str) -> list[str]:
+    source = line.strip().strip("|")
+    cells: list[str] = []
+    current: list[str] = []
+    escaped = False
+    for character in source:
+        if escaped:
+            current.append(character)
+            escaped = False
+        elif character == "\\":
+            escaped = True
+        elif character == "|":
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+    if escaped:
+        current.append("\\")
+    cells.append("".join(current).strip())
+    return cells
+
+
+def is_markdown_table_separator(line: str) -> bool:
+    cells = split_markdown_table_row(line)
+    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells)
+
+
+def plain_inline_markdown(text: str) -> str:
+    def replacement(match: re.Match[str]) -> str:
+        if match.group(1) is not None:
+            return match.group(1)
+        return next((group for group in match.groups()[2:] if group is not None), "")
+    return INLINE_MARKDOWN_RE.sub(replacement, text)
+
+
+def add_hyperlink(paragraph: Any, text: str, url: str) -> None:
+    relationship_id = paragraph.part.relate_to(url, RT.HYPERLINK, is_external=True)
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), relationship_id)
+    run = OxmlElement("w:r")
+    run_properties = OxmlElement("w:rPr")
+    color = OxmlElement("w:color")
+    color.set(qn("w:val"), "0563C1")
+    underline = OxmlElement("w:u")
+    underline.set(qn("w:val"), "single")
+    fonts = OxmlElement("w:rFonts")
+    fonts.set(qn("w:ascii"), "Times New Roman")
+    fonts.set(qn("w:hAnsi"), "Times New Roman")
+    fonts.set(qn("w:eastAsia"), "宋体")
+    fonts.set(qn("w:cs"), "Times New Roman")
+    size = OxmlElement("w:sz")
+    size.set(qn("w:val"), "24")
+    size_cs = OxmlElement("w:szCs")
+    size_cs.set(qn("w:val"), "24")
+    run_properties.append(fonts)
+    run_properties.append(size)
+    run_properties.append(size_cs)
+    run_properties.append(color)
+    run_properties.append(underline)
+    run.append(run_properties)
+    node = OxmlElement("w:t")
+    node.text = text
+    run.append(node)
+    hyperlink.append(run)
+    paragraph._p.append(hyperlink)
+
+
+def add_markdown_runs(paragraph: Any, text: str) -> None:
+    cursor = 0
+    for match in INLINE_MARKDOWN_RE.finditer(text):
+        if match.start() > cursor:
+            paragraph.add_run(text[cursor:match.start()])
+        if match.group(1) is not None and match.group(2) is not None:
+            add_hyperlink(paragraph, match.group(1), match.group(2))
+        elif match.group(3) is not None or match.group(4) is not None:
+            run = paragraph.add_run(match.group(3) or match.group(4) or "")
+            run.bold = True
+        elif match.group(5) is not None:
+            paragraph.add_run(match.group(5))
+        else:
+            run = paragraph.add_run(match.group(6) or match.group(7) or "")
+            run.italic = True
+        cursor = match.end()
+    if cursor < len(text):
+        paragraph.add_run(text[cursor:])
+
+
 def parse_markdown_blocks(text: str) -> list[dict[str, Any]]:
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     blocks: list[dict[str, Any]] = []
@@ -528,19 +733,23 @@ def parse_markdown_blocks(text: str) -> list[dict[str, Any]]:
         stripped = lines[i].strip()
         if not stripped:
             flush(); i += 1; continue
-        heading = re.match(r"^(#{1,3})\s+(.+)$", stripped)
+        heading = re.match(r"^(#{1,6})\s+(.+)$", stripped)
         if heading:
             flush(); blocks.append({"type": "heading", "level": len(heading.group(1)), "text": heading.group(2).strip()}); i += 1; continue
         if re.match(r"^[-*+]\s+", stripped):
             flush(); blocks.append({"type": "bullet", "text": re.sub(r"^[-*+]\s+", "", stripped)}); i += 1; continue
-        if re.match(r"^\d+[.)]\s+", stripped):
-            flush(); blocks.append({"type": "number", "text": re.sub(r"^\d+[.)]\s+", "", stripped)}); i += 1; continue
-        if "|" in stripped and i + 1 < len(lines) and re.match(r"^\s*\|?\s*:?-{3,}", lines[i + 1]):
+        if re.match(r"^\d+[.)、]\s*", stripped):
+            flush(); blocks.append({"type": "number", "text": re.sub(r"^\d+[.)、]\s*", "", stripped)}); i += 1; continue
+        if stripped.startswith(">"):
+            flush(); blocks.append({"type": "quote", "text": re.sub(r"^>\s?", "", stripped)}); i += 1; continue
+        if re.fullmatch(r"[-*_]{3,}", stripped):
+            flush(); i += 1; continue
+        if "|" in stripped and i + 1 < len(lines) and is_markdown_table_separator(lines[i + 1]):
             flush()
-            rows = [[cell.strip() for cell in stripped.strip("|").split("|")]]
+            rows = [split_markdown_table_row(stripped)]
             i += 2
             while i < len(lines) and "|" in lines[i] and lines[i].strip():
-                rows.append([cell.strip() for cell in lines[i].strip().strip("|").split("|")])
+                rows.append(split_markdown_table_row(lines[i]))
                 i += 1
             blocks.append({"type": "table", "rows": rows})
             continue
@@ -567,12 +776,15 @@ def cmd_from_markdown(args: argparse.Namespace) -> None:
         for block in blocks:
             kind = block["type"]
             if kind == "heading":
-                p = doc.add_paragraph(style=f"Heading {int(block['level'])}")
-                p.add_run(block["text"])
+                level = int(block["level"])
+                p = doc.add_paragraph(style="Title" if level == 1 else f"Heading {min(3, level - 1)}")
+                add_markdown_runs(p, block["text"])
             elif kind == "bullet":
-                doc.add_paragraph(block["text"], style="List Bullet")
+                add_markdown_runs(doc.add_paragraph(style="List Bullet"), block["text"])
             elif kind == "number":
-                doc.add_paragraph(block["text"], style="List Number")
+                add_markdown_runs(doc.add_paragraph(style="List Number"), block["text"])
+            elif kind == "quote":
+                add_markdown_runs(doc.add_paragraph(style="Quote"), block["text"])
             elif kind == "table":
                 rows = block["rows"]
                 width = max((len(row) for row in rows), default=1)
@@ -580,9 +792,17 @@ def cmd_from_markdown(args: argparse.Namespace) -> None:
                 table.style = "Table Grid"
                 for r_idx, row in enumerate(rows):
                     for c_idx, value in enumerate(row):
-                        table.cell(r_idx, c_idx).text = value
+                        cell = table.cell(r_idx, c_idx)
+                        cell.text = plain_inline_markdown(value)
+                        if r_idx == 0:
+                            for run in cell.paragraphs[0].runs:
+                                run.bold = True
+                if rows:
+                    header = OxmlElement("w:tblHeader")
+                    header.set(qn("w:val"), "true")
+                    table.rows[0]._tr.get_or_add_trPr().append(header)
             else:
-                doc.add_paragraph(block["text"], style="Normal")
+                add_markdown_runs(doc.add_paragraph(style="Normal"), block["text"])
         apply_profile(doc, args.profile, {"body", "headings"})
         doc.save(str(out))
         reloaded = Document(str(out))

@@ -1,11 +1,24 @@
 import type { CapabilityToolProvider } from './capability-registry.js'
 import { LocalToolHost } from './local-tool-host.js'
-import type { KnowledgeStore } from '../../knowledge/knowledge-store.js'
-import type { KnowledgeLayer } from '../../contracts/knowledge.js'
-import { readKnowledgeFileText } from '../../knowledge/knowledge-file-reader.js'
+import {
+  DEFAULT_KNOWLEDGE_SYNC_MAX_FILES,
+  type KnowledgeStore
+} from '../../knowledge/knowledge-store.js'
+import {
+  KNOWLEDGE_SYNC_MAX_FILES,
+  type KnowledgeLayer,
+  type KnowledgeTreeNode
+} from '../../contracts/knowledge.js'
+import {
+  modelKnowledgeTextLines,
+  readKnowledgeFileText
+} from '../../knowledge/knowledge-file-reader.js'
 import {
   compactKnowledgeAutoRetrieveToolOutput,
-  compactKnowledgeSearchToolOutput
+  compactKnowledgeSearchToolOutput,
+  compactKnowledgeTreeToolOutput,
+  KNOWLEDGE_TREE_DEFAULT_LIMIT,
+  KNOWLEDGE_TREE_MAX_LIMIT
 } from './knowledge-tool-output.js'
 
 export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): CapabilityToolProvider[] {
@@ -52,22 +65,25 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
       }),
       LocalToolHost.defineTool({
         name: 'knowledge_list_tree',
-        description: 'List the managed knowledge base file/folder tree structure. Use this to discover what documents are available in the knowledge base before searching or reading. Returns folders first, then files, alphabetically sorted.',
+        description: 'List one bounded page of the managed knowledge-base folder. Folder entries include childCount but do not recursively embed every descendant; pass prefix to open a folder and offset to continue. Prefer knowledge_search when looking for content.',
         inputSchema: {
           type: 'object',
           properties: {
-            prefix: { type: 'string', description: 'Optional subfolder path to list contents of a specific directory. Omit to list from root.' }
+            prefix: { type: 'string', description: 'Optional subfolder path to list. Omit to list the root.' },
+            offset: { type: 'number', minimum: 0, description: 'Zero-based page offset. Default 0.' },
+            limit: { type: 'number', minimum: 1, maximum: KNOWLEDGE_TREE_MAX_LIMIT, description: `Page size. Default ${KNOWLEDGE_TREE_DEFAULT_LIMIT}, max ${KNOWLEDGE_TREE_MAX_LIMIT}.` }
           },
           additionalProperties: false
         },
         policy: 'auto',
         execute: async (args) => {
           const prefix = typeof args.prefix === 'string' && args.prefix.trim() ? args.prefix.trim() : undefined
-          return {
-            output: {
-              nodes: await store.tree(prefix)
-            }
-          }
+          const offset = Math.max(0, Math.floor(Number(args.offset) || 0))
+          const limit = Math.max(1, Math.min(
+            KNOWLEDGE_TREE_MAX_LIMIT,
+            Math.floor(Number(args.limit) || KNOWLEDGE_TREE_DEFAULT_LIMIT)
+          ))
+          return { output: compactKnowledgeTreeToolOutput(await store.tree(prefix), offset, limit) }
         }
       }),
       LocalToolHost.defineTool({
@@ -89,7 +105,7 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
           if (!filePath) return { output: { error: 'path is required' }, isError: true }
           try {
             const result = await readKnowledgeFileText(store, filePath)
-            const allLines = result.content.split('\n')
+            const allLines = modelKnowledgeTextLines(result.content)
             const offset = Math.max(1, Math.floor(Number(args.offset) || 1))
             const limit = Math.max(1, Math.min(500, Math.floor(Number(args.limit) || 200)))
             if (offset > allLines.length) {
@@ -264,15 +280,20 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
         inputSchema: {
           type: 'object',
           properties: {
-            maxFiles: { type: 'number', minimum: 1, maximum: 5000, description: 'Max files to process (default 1500)' }
+            maxFiles: {
+              type: 'number',
+              minimum: 1,
+              maximum: KNOWLEDGE_SYNC_MAX_FILES,
+              description: `Max files to process (default ${DEFAULT_KNOWLEDGE_SYNC_MAX_FILES}, max ${KNOWLEDGE_SYNC_MAX_FILES}). This changes local indexing coverage, not model-visible result size.`
+            }
           },
           additionalProperties: false
         },
         policy: 'auto',
         execute: async (args) => {
           const maxFiles = typeof args.maxFiles === 'number' && Number.isFinite(args.maxFiles)
-            ? Math.max(1, Math.min(5000, Math.floor(args.maxFiles)))
-            : 1500
+            ? Math.max(1, Math.min(KNOWLEDGE_SYNC_MAX_FILES, Math.floor(args.maxFiles)))
+            : DEFAULT_KNOWLEDGE_SYNC_MAX_FILES
           return {
             output: await store.sync({ maxFiles })
           }
@@ -376,32 +397,54 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
           }
 
           // Extract citations, then search KB for each one
-          const { extractCitations, verifyPaperCitations } = await import('../../knowledge/citation-verifier.js')
-          const citations = extractCitations(draft)
-          const uniqueCitations = [...new Set(citations.map((c) => c.rawText))]
+          const {
+            citationReferenceSearchQueries,
+            extractReferenceEntries,
+            verifyPaperCitations
+          } = await import('../../knowledge/citation-verifier.js')
+          const references = extractReferenceEntries(draft)
 
-          // Build a lightweight index from search results
-          const allDocs: Array<{ title: string; relativePath: string; keywords?: string[] }> = []
-          for (const rawText of uniqueCitations.slice(0, 20)) {
-            const cleanText = rawText.replace(/[[\]\d]/g, '').trim()
-            if (cleanText.length < 2) continue
-            const hits = await store.search({ query: cleanText, limit: 5 })
-            for (const hit of hits) {
-              if (!allDocs.some((d) => d.relativePath === hit.relativePath)) {
-                allDocs.push({
-                  title: hit.title,
-                  relativePath: hit.relativePath,
-                  keywords: hit.keywords
-                })
-              }
-            }
-          }
-
-          const result = verifyPaperCitations(draft, {
+          // Build the first-pass index from filenames in one local tree scan.
+          // This is both more reliable for PDFs whose extracted text is weak
+          // and much cheaper than running one full-text search per citation.
+          const allDocs: Array<{ title: string; relativePath: string; keywords?: string[] }> = (
+            flattenKnowledgeFiles(await store.tree()).map((node) => ({
+              title: node.name,
+              relativePath: node.path
+            }))
+          )
+          let result = verifyPaperCitations(draft, {
             documents: allDocs as any,
             chunks: []
           })
-          return { output: result }
+          // Indexed source roots may live outside the managed tree. Search only
+          // if the filename pass leaves unresolved references.
+          if (result.documentStats.notFound > 0 || result.documentStats.contentMismatch > 0) {
+            for (const reference of references.slice(0, 50)) {
+              for (const query of citationReferenceSearchQueries(reference.text)) {
+                const hits = await store.search({ query: query.slice(0, 500), limit: 5 })
+                for (const hit of hits) {
+                  if (!allDocs.some((d) => d.relativePath === hit.relativePath)) {
+                    allDocs.push({
+                      title: hit.title,
+                      relativePath: hit.relativePath,
+                      keywords: hit.keywords
+                    })
+                  }
+                }
+                if (hits.length > 0) break
+              }
+            }
+            result = verifyPaperCitations(draft, { documents: allDocs as any, chunks: [] })
+          }
+          return {
+            output: {
+              verificationPassed:
+                result.documentStats.notFound === 0 && result.documentStats.contentMismatch === 0,
+              ...result
+            },
+            isError: result.documentStats.notFound > 0 || result.documentStats.contentMismatch > 0
+          }
         }
       }),
       LocalToolHost.defineTool({
@@ -434,4 +477,13 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
       })
     ]
   }]
+}
+
+function flattenKnowledgeFiles(nodes: KnowledgeTreeNode[]): KnowledgeTreeNode[] {
+  const files: KnowledgeTreeNode[] = []
+  for (const node of nodes) {
+    if (node.kind === 'file') files.push(node)
+    if (node.children?.length) files.push(...flattenKnowledgeFiles(node.children))
+  }
+  return files
 }

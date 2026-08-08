@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, lstatSync } from 'node:fs'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, extname, join, normalize, relative, resolve, sep } from 'node:path'
+import { basename, delimiter, dirname, extname, join, normalize, relative, resolve, sep } from 'node:path'
 import { extractDocumentText, EXTRACTABLE_EXTENSIONS } from './text-extractor.js'
 import { makeUserItem } from '../domain/item.js'
 import type { ModelClient, ModelRequest, ModelStreamChunk } from '../ports/model-client.js'
@@ -21,6 +21,7 @@ import type {
   KnowledgeSyncResult,
   KnowledgeTreeNode
 } from '../contracts/knowledge.js'
+import { KNOWLEDGE_SYNC_MAX_FILES } from '../contracts/knowledge.js'
 import { inferLayerFromMeta } from './knowledge-pyramid-router.js'
 import { KnowledgeSqliteIndex } from './knowledge-sqlite-index.js'
 
@@ -100,7 +101,8 @@ const MANAGED_FILE_EXTENSIONS = new Set([
   '.7z'
 ])
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', 'out', '.next', '.vite'])
-const DEFAULT_MAX_FILES = 1500
+export const DEFAULT_KNOWLEDGE_SYNC_MAX_FILES = 20_000
+export const AUTO_SQLITE_FILE_THRESHOLD = 2_000
 const CHUNK_SIZE = 2400
 const CHUNK_OVERLAP = 240
 const RERANK_POOL_SIZE = 80
@@ -108,6 +110,29 @@ const MAX_PER_DOCUMENT = 2
 const CLASSIFY_TEXT_LIMIT = 6000
 const CLASSIFY_MODEL_TIMEOUT_MS = 18_000
 const MAX_CLASSIFICATION_CACHE_SIZE = 500
+const MAX_QUERY_TERMS = 64
+const MAX_DOCUMENT_TERMS = 512
+const MAX_TERM_OCCURRENCES_FOR_SCORE = 4
+const LEGACY_TRUNCATED_SYNC_LIMITS = new Set([1_500, 5_000])
+
+export function shouldAutoEnableKnowledgeSqlite(
+  attemptedFileCount: number,
+  configured: boolean | undefined
+): boolean {
+  return configured === true || (
+    configured === undefined && attemptedFileCount >= AUTO_SQLITE_FILE_THRESHOLD
+  )
+}
+
+export function shouldUpgradeLegacyTruncatedKnowledgeIndex(input: {
+  candidateFileCount: number
+  attemptedFileCount: number
+  truncatedFileCount: number
+}): boolean {
+  return input.truncatedFileCount > 0 &&
+    input.candidateFileCount > input.attemptedFileCount &&
+    LEGACY_TRUNCATED_SYNC_LIMITS.has(input.attemptedFileCount)
+}
 
 const DEFAULT_CLASSIFICATION_CATEGORIES = [
   '论文',
@@ -143,6 +168,8 @@ export class FileKnowledgeStore implements KnowledgeStore {
 
   private sqliteIndex: KnowledgeSqliteIndex | null = null
   private sqliteEnabled: boolean
+  private readonly sqliteAutoEligible: boolean
+  private syncTail: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly options: {
@@ -152,7 +179,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
       managedRoot?: string
       model?: ModelClient
       classifyModel?: string
-      /** Opt-in SQLite FTS retrieval index (LEGALWORK_KNOWLEDGE_SQLITE or explicit). */
+      /** SQLite FTS override. Undefined enables it adaptively for large libraries. */
       sqliteIndex?: { enabled?: boolean }
     }
   ) {
@@ -160,13 +187,14 @@ export class FileKnowledgeStore implements KnowledgeStore {
     if (!this.options.managedRoot) {
       this.options.managedRoot = join(this.options.rootDir, 'files')
     }
-    this.sqliteEnabled = this.options.sqliteIndex?.enabled === true
+    this.sqliteEnabled = shouldAutoEnableKnowledgeSqlite(0, this.options.sqliteIndex?.enabled)
+    this.sqliteAutoEligible = this.options.sqliteIndex?.enabled === undefined
   }
 
   /**
-   * Lazily create the SQLite FTS index (disabled by default). Returns null when
-   * SQLite retrieval is opted out or fails to initialize — callers fall back to
-   * the in-memory index.json path.
+   * Lazily create the SQLite FTS index. It is enabled explicitly or
+   * automatically for large libraries; explicit false and initialization
+   * failures fall back to the in-memory index.json path.
    */
   private async ensureSqliteIndex(): Promise<KnowledgeSqliteIndex | null> {
     if (!this.sqliteEnabled) return null
@@ -214,7 +242,22 @@ export class FileKnowledgeStore implements KnowledgeStore {
     if (absolute !== managedRoot && !absolute.startsWith(`${managedRoot}${sep}`)) {
       throw new Error(`Path "${relativePath}" escapes managed root`)
     }
+    this.assertNoManagedSymlink(absolute, relativePath)
     return absolute
+  }
+
+  /** Reject symlink traversal so a managed path cannot redirect reads/writes outside the KB root. */
+  private assertNoManagedSymlink(absolute: string, relativePath: string): void {
+    const managedRoot = resolve(this.managedRoot)
+    const rel = relative(managedRoot, absolute)
+    let current = managedRoot
+    for (const component of rel.split(sep).filter(Boolean)) {
+      current = join(current, component)
+      if (!existsSync(current)) break
+      if (lstatSync(current).isSymbolicLink()) {
+        throw new Error(`Path "${relativePath}" traverses a symbolic link`)
+      }
+    }
   }
 
   async tree(prefix?: string): Promise<KnowledgeTreeNode[]> {
@@ -389,11 +432,20 @@ export class FileKnowledgeStore implements KnowledgeStore {
   }
 
   async sync(input: KnowledgeSyncRequest = {}): Promise<KnowledgeSyncResult> {
+    const run = this.syncTail.then(() => this.syncOnce(input))
+    this.syncTail = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  private async syncOnce(input: KnowledgeSyncRequest): Promise<KnowledgeSyncResult> {
     await mkdir(this.options.rootDir, { recursive: true })
     await this.ensureManagedRoot()
     const defaultRoots = [...(this.options.sourceRoots ?? []), this.managedRoot]
     const roots = normalizeRoots(input.roots?.length ? input.roots : defaultRoots)
-    const maxFiles = input.maxFiles ?? DEFAULT_MAX_FILES
+    const maxFiles = Math.min(
+      input.maxFiles ?? DEFAULT_KNOWLEDGE_SYNC_MAX_FILES,
+      KNOWLEDGE_SYNC_MAX_FILES
+    )
     const candidateFiles: string[] = []
     let skippedCount = 0
 
@@ -405,9 +457,16 @@ export class FileKnowledgeStore implements KnowledgeStore {
 
     const uniqueCandidates = [...new Set(candidateFiles.map((filePath) => resolve(filePath)))]
     const uniqueFiles = uniqueCandidates.slice(0, maxFiles)
+    // Large libraries need bounded FTS candidate recall. This is entirely
+    // local work and does not change the number or size of results sent to the
+    // model. Explicit sqliteIndex.enabled=false remains an escape hatch.
+    if (this.sqliteAutoEligible && uniqueFiles.length >= AUTO_SQLITE_FILE_THRESHOLD) {
+      this.sqliteEnabled = true
+    }
     const truncatedFileCount = Math.max(0, uniqueCandidates.length - uniqueFiles.length)
     const documents: KnowledgeDocument[] = []
     const chunks: KnowledgeChunk[] = []
+    const documentContents = new Map<string, string>()
     for (const filePath of uniqueFiles) {
       const root = roots
         .filter((candidate) => isInside(filePath, candidate))
@@ -443,6 +502,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
           layer
         }
         documents.push(document)
+        documentContents.set(documentId, content)
         chunks.push(...chunkDocument(document, content))
       } catch {
         skippedCount += 1
@@ -461,7 +521,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
       failedFileCount,
       truncatedFileCount
     }
-    // Mirror the index into the SQLite FTS store (opt-in). SQLite only performs
+    // Mirror the index into the SQLite FTS store when enabled. SQLite only performs
     // candidate recall; final ranking still uses the in-memory scorer, so a
     // failure here must never abort the sync. Uses the structured chunker.
     const sqlite = await this.ensureSqliteIndex()
@@ -469,17 +529,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
       try {
         const { chunkKnowledgeDocument } = await import('./knowledge-structured-chunker.js')
         for (const document of documents) {
-          const sourcePath = document.path
-          let content = ''
-          try {
-            content = existsSync(sourcePath)
-              ? TEXT_EXTENSIONS.has(document.extension)
-                ? await readFile(sourcePath, 'utf8')
-                : (await extractDocumentText(sourcePath)).text
-              : ''
-          } catch {
-            content = ''
-          }
+          const content = documentContents.get(document.id) ?? ''
           if (!content.trim()) {
             await sqlite.upsertDocument(document, [])
             continue
@@ -563,13 +613,14 @@ export class FileKnowledgeStore implements KnowledgeStore {
       const targetLayers = new Set<KnowledgeLayer>()
       if (input.layer) targetLayers.add(input.layer)
       if (input.layers) input.layers.forEach((l) => targetLayers.add(l))
-      const terms = queryTerms(query)
+      const terms = queryTerms(query, MAX_QUERY_TERMS)
       const lowerQuery = query.toLowerCase()
       const queryTermSet = new Set(terms)
       const primaryLayer = input.layer ?? (targetLayers.size === 1 ? [...targetLayers][0] : undefined)
       const deduped = [...new Map(candidates.map((chunk) => [chunk.id, chunk])).values()]
+      const termWeights = buildQueryTermWeights(deduped, terms)
       const hits = rerankChunks(deduped
-        .map((chunk) => scoreChunk(chunk, lowerQuery, terms, queryTermSet, primaryLayer))
+        .map((chunk) => scoreChunk(chunk, lowerQuery, terms, queryTermSet, termWeights, primaryLayer))
         .filter((entry) => entry.score > 0)
         .sort((a, b) => b.score - a.score || a.chunk.relativePath.localeCompare(b.chunk.relativePath))
         .slice(0, RERANK_POOL_SIZE), Math.max(1, input.limit))
@@ -588,6 +639,15 @@ export class FileKnowledgeStore implements KnowledgeStore {
     let index = await this.readIndex()
     if (index.chunks.length === 0 && (this.options.sourceRoots?.length ?? 0) > 0) {
       await this.sync()
+      index = await this.readIndex()
+    } else if (
+      (this.options.sourceRoots?.length ?? 0) > 0 &&
+      shouldUpgradeLegacyTruncatedKnowledgeIndex(index)
+    ) {
+      // Migrate indexes produced by the old 1,500/5,000-file ceilings on the
+      // first subsequent search. The rebuild is local and keeps exactly the
+      // same bounded model-facing result payload.
+      await this.sync({ maxFiles: DEFAULT_KNOWLEDGE_SYNC_MAX_FILES })
       index = await this.readIndex()
     }
 
@@ -618,13 +678,14 @@ export class FileKnowledgeStore implements KnowledgeStore {
     }
     candidates = [...new Map(candidates.map((chunk) => [chunk.id, chunk])).values()]
 
-    const terms = queryTerms(query)
+    const terms = queryTerms(query, MAX_QUERY_TERMS)
     const lowerQuery = query.toLowerCase()
     const queryTermSet = new Set(terms)
+    const termWeights = buildQueryTermWeights(candidates, terms)
     // Primary layer for layer-aware scoring boost
     const primaryLayer = input.layer ?? (targetLayers.size === 1 ? [...targetLayers][0] : undefined)
     const hits = rerankChunks(candidates
-      .map((chunk) => scoreChunk(chunk, lowerQuery, terms, queryTermSet, primaryLayer))
+      .map((chunk) => scoreChunk(chunk, lowerQuery, terms, queryTermSet, termWeights, primaryLayer))
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score || a.chunk.relativePath.localeCompare(b.chunk.relativePath))
       .slice(0, RERANK_POOL_SIZE), Math.max(1, input.limit))
@@ -726,7 +787,14 @@ export class FileKnowledgeStore implements KnowledgeStore {
   }
 
   private async writeIndex(index: KnowledgeIndex): Promise<void> {
-    await writeFile(this.indexPath(), JSON.stringify(index, null, 2), 'utf8')
+    const target = this.indexPath()
+    const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`
+    try {
+      await writeFile(temporary, JSON.stringify(index, null, 2), 'utf8')
+      await rename(temporary, target)
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined)
+    }
   }
 
   private async uniqueManagedPath(relativePath: string): Promise<string> {
@@ -909,7 +977,7 @@ function extractFirstJsonObject(raw: string): string | null {
 
 export function defaultKnowledgeSourceRoots(dataDir?: string): string[] {
   const fromEnv = (process.env.LEGALWORK_KNOWLEDGE_ROOTS ?? '')
-    .split(':')
+    .split(delimiter)
     .map((entry) => entry.trim())
     .filter(Boolean)
   const anchors = [process.cwd(), dataDir].filter((value): value is string => Boolean(value))
@@ -1028,8 +1096,44 @@ function chunkDocument(document: KnowledgeDocument, content: string): KnowledgeC
   return chunks
 }
 
-function scoreChunk(chunk: KnowledgeChunk, lowerQuery: string, terms: string[], queryTermSet: Set<string>, primaryLayer?: KnowledgeLayer): ScoredChunk {
-  const haystack = `${chunk.title}\n${chunk.relativePath}\n${chunk.category ?? ''}\n${chunk.keywords?.join(' ') ?? ''}\n${chunk.content}`.toLowerCase()
+function chunkSearchText(chunk: KnowledgeChunk): string {
+  return `${chunk.title}\n${chunk.relativePath}\n${chunk.category ?? ''}\n${chunk.keywords?.join(' ') ?? ''}\n${chunk.content}`.toLowerCase()
+}
+
+/**
+ * Compute inverse-frequency weights inside the local candidate pool. Generic
+ * legal fragments such as “行政” occur in many files and should contribute
+ * less than a rare phrase such as “算法裁量责任”. This is local reranking only:
+ * it adds no model call and does not enlarge model-visible evidence.
+ */
+function buildQueryTermWeights(
+  chunks: readonly KnowledgeChunk[],
+  terms: readonly string[]
+): Map<string, number> {
+  const frequencies = new Map(terms.map((term) => [term, 0]))
+  for (const chunk of chunks) {
+    const haystack = chunkSearchText(chunk)
+    for (const term of terms) {
+      if (haystack.includes(term)) frequencies.set(term, (frequencies.get(term) ?? 0) + 1)
+    }
+  }
+  const population = Math.max(1, chunks.length)
+  return new Map(terms.map((term) => {
+    const frequency = frequencies.get(term) ?? 0
+    const inverseFrequency = 1 + Math.log((population + 1) / (frequency + 1))
+    return [term, Math.max(1, Math.min(4, inverseFrequency))]
+  }))
+}
+
+function scoreChunk(
+  chunk: KnowledgeChunk,
+  lowerQuery: string,
+  terms: string[],
+  queryTermSet: Set<string>,
+  termWeights: ReadonlyMap<string, number>,
+  primaryLayer?: KnowledgeLayer
+): ScoredChunk {
+  const haystack = chunkSearchText(chunk)
   let score = haystack.includes(lowerQuery) ? 12 : 0
   const reasons: string[] = []
   if (score > 0) reasons.push('短语匹配')
@@ -1041,10 +1145,14 @@ function scoreChunk(chunk: KnowledgeChunk, lowerQuery: string, terms: string[], 
   }
   const matchedTerms = new Set<string>()
   for (const term of terms) {
+    const weight = termWeights.get(term) ?? 1
     let position = haystack.indexOf(term)
-    while (position >= 0) {
+    let occurrences = 0
+    while (position >= 0 && occurrences < MAX_TERM_OCCURRENCES_FOR_SCORE) {
       matchedTerms.add(term)
-      score += term.length >= 4 ? 2.4 : 1.2
+      const repetitionDiscount = occurrences === 0 ? 1 : 0.3
+      score += (term.length >= 4 ? 2.4 : 1.2) * weight * repetitionDiscount
+      occurrences += 1
       position = haystack.indexOf(term, position + term.length)
     }
   }
@@ -1052,16 +1160,20 @@ function scoreChunk(chunk: KnowledgeChunk, lowerQuery: string, terms: string[], 
   const relativePath = chunk.relativePath.toLowerCase()
   const category = (chunk.category ?? '').toLowerCase()
   const keywords = new Set((chunk.keywords ?? []).map((keyword) => keyword.toLowerCase()))
-  const coverage = terms.length ? matchedTerms.size / terms.length : 0
+  const totalTermWeight = terms.reduce((total, term) => total + (termWeights.get(term) ?? 1), 0)
+  const matchedTermWeight = [...matchedTerms]
+    .reduce((total, term) => total + (termWeights.get(term) ?? 1), 0)
+  const coverage = totalTermWeight > 0 ? matchedTermWeight / totalTermWeight : 0
   if (coverage > 0) {
     score += coverage * 12
     reasons.push(`覆盖${Math.round(coverage * 100)}%`)
   }
   for (const term of queryTermSet) {
-    if (title.includes(term)) score += 5
-    if (relativePath.includes(term)) score += 3
-    if (category.includes(term)) score += 4
-    if (keywords.has(term)) score += 4
+    const fieldWeight = Math.min(2.5, termWeights.get(term) ?? 1)
+    if (title.includes(term)) score += 5 * fieldWeight
+    if (relativePath.includes(term)) score += 3 * fieldWeight
+    if (category.includes(term)) score += 4 * fieldWeight
+    if (keywords.has(term)) score += 4 * fieldWeight
   }
   const vectorScore = cosineScore(queryTermSet, termFrequency(haystack))
   if (vectorScore > 0) {
@@ -1139,7 +1251,7 @@ function jaccard(left: Set<string>, right: Set<string>): number {
 
 function termFrequency(text: string): Map<string, number> {
   const result = new Map<string, number>()
-  for (const term of queryTerms(text)) {
+  for (const term of queryTerms(text, MAX_DOCUMENT_TERMS)) {
     result.set(term, (result.get(term) ?? 0) + 1)
   }
   return result
@@ -1158,7 +1270,7 @@ function makeSnippet(content: string, lowerQuery: string, terms: string[]): stri
   return `${prefix}${content.slice(start, end).replace(/\s+/g, ' ').trim()}${suffix}`
 }
 
-function queryTerms(query: string): string[] {
+function queryTerms(query: string, maxTerms = MAX_QUERY_TERMS): string[] {
   const lower = query.toLowerCase()
   const terms = new Set<string>()
   for (const term of lower.split(/[^a-z0-9_]+/).filter((part) => part.length > 1)) {
@@ -1167,13 +1279,18 @@ function queryTerms(query: string): string[] {
   const cjk = lower.match(/[\u3400-\u9fff]{2,}/g) ?? []
   for (const text of cjk) {
     if (text.length <= 12) terms.add(text)
-    for (let size = 2; size <= Math.min(4, text.length); size += 1) {
+    // Longer Chinese n-grams carry more legal meaning and are substantially
+    // less noisy in a 10k-file corpus. Add them before bigrams so the bounded
+    // query-term budget cannot be consumed by generic fragments.
+    for (let size = Math.min(4, text.length); size >= 2; size -= 1) {
       for (let i = 0; i <= text.length - size; i += 1) {
         terms.add(text.slice(i, i + size))
       }
     }
   }
   return [...terms]
+    .filter((term) => !STOP_WORDS.has(term))
+    .slice(0, Math.max(1, maxTerms))
 }
 
 function extractKeywords(text: string, limit: number): string[] {

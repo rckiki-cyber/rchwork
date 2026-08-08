@@ -110,9 +110,9 @@ describe('legalwork defaults', () => {
     })
   })
 
-  it('defaults MCP search discovery to off', () => {
+  it('defaults MCP search discovery to on', () => {
     expect(defaultLegalworkRuntimeSettings().mcpSearch).toMatchObject({
-      enabled: false,
+      enabled: true,
       mode: 'auto',
       autoThresholdToolCount: 24,
       topKDefault: 5,

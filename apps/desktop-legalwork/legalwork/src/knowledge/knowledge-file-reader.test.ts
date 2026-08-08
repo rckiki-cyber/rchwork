@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { KnowledgeStore } from './knowledge-store.js'
-import { readKnowledgeFileText } from './knowledge-file-reader.js'
+import { modelKnowledgeTextLines, readKnowledgeFileText } from './knowledge-file-reader.js'
 
 function fakeStore(): KnowledgeStore {
   return {
@@ -59,5 +59,13 @@ describe('readKnowledgeFileText', () => {
       'no extractable text found in 扫描件.pdf'
     )
     expect(store.readFile).not.toHaveBeenCalled()
+  })
+
+  it('wraps pathological long lines so tool line paging also bounds characters', () => {
+    const lines = modelKnowledgeTextLines(`短行\n${'长'.repeat(600)}`)
+
+    expect(lines).toHaveLength(4)
+    expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(240)
+    expect(lines.join('')).toBe(`短行${'长'.repeat(600)}`)
   })
 })

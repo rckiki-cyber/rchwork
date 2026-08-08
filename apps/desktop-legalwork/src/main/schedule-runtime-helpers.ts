@@ -46,6 +46,9 @@ export type TurnItemJson = {
   text?: string | null
   summary?: string
   detail?: string | null
+  message?: string
+  code?: string
+  isError?: boolean
 }
 
 export type ThreadDetailJson = {

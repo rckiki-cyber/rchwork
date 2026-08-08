@@ -65,6 +65,7 @@ import {
   formatCompactNumber,
   formatCost,
   formatPercent,
+  threadUsageRefreshKey,
   useThreadUsageState
 } from '../../hooks/use-thread-usage'
 import { NewConversationProjectPicker } from './NewConversationProjectPicker'
@@ -640,7 +641,7 @@ export function FloatingComposer({
   const threadUsageState = useThreadUsageState(
     activeThreadId,
     showThreadUsageFooter,
-    `${activeThread?.updatedAt ?? ''}:${busy ? 'busy' : 'idle'}:${usageRefreshKey}`
+    threadUsageRefreshKey(busy, usageRefreshKey)
   )
   const threadUsage = threadUsageState.usage
   const effectiveWorkspaceRoot = normalizeWorkspaceRoot(activeThreadWorkspace || workspaceRootOverride || workspaceRoot)

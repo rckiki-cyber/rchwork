@@ -53,6 +53,12 @@ export interface CitationVerificationResult {
   recommendations: string[]
 }
 
+export interface CitationReferenceEntry {
+  index: number
+  text: string
+  line: number
+}
+
 const CITATION_RE = /\[(\d+(?:\s*[-,]\s*\d+)*)\]/g
 
 /**
@@ -117,6 +123,47 @@ export function parseCitationIndices(rawText: string): number[] {
 }
 
 /**
+ * Extract numbered bibliography entries from the reference section. Numeric
+ * markers such as [1] have no meaning without this mapping, so verification
+ * must resolve them before searching the knowledge base.
+ */
+export function extractReferenceEntries(draft: string): CitationReferenceEntry[] {
+  const lines = draft.split('\n')
+  const headingIndex = bibliographyHeadingIndex(lines)
+  const start = headingIndex >= 0 ? headingIndex + 1 : 0
+  const entries: CitationReferenceEntry[] = []
+  for (let lineIndex = start; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex] ?? ''
+    const match = /^\s*(?:\[(\d+)\]|(\d+)[.、])\s+(.{2,})\s*$/.exec(line)
+    if (!match) continue
+    const index = Number.parseInt(match[1] ?? match[2] ?? '', 10)
+    const text = (match[3] ?? '').trim()
+    if (Number.isFinite(index) && index > 0 && text) {
+      entries.push({ index, text, line: lineIndex + 1 })
+    }
+  }
+  return entries
+}
+
+/**
+ * Build a focused KB query from a bibliography entry. Searching the complete
+ * GB/T 7714 line (authors, journal marker, volume, pages, and "待核" notes)
+ * often dilutes the actual title and returns no document even when the PDF is
+ * present. Prefer the title, then retain the full entry as a fallback.
+ */
+export function citationReferenceSearchQueries(referenceText: string): string[] {
+  const cleaned = referenceText.trim()
+  if (!cleaned) return []
+  const withoutAuthors = cleaned.replace(/^.{1,120}?[.．]\s*/, '')
+  const title = withoutAuthors
+    .split(/\[[A-Z][^\]]*\]/i, 1)[0]
+    ?.replace(/[（(](?:期刊|出版|卷期|页码)[^）)]*(?:待核|待查)[^）)]*[）)]/g, '')
+    .replace(/[.。]\s*$/, '')
+    .trim()
+  return [...new Set([title, cleaned].filter((value): value is string => Boolean(value)))]
+}
+
+/**
  * Normalize a title for fuzzy matching: lowercase, remove punctuation, collapse whitespace.
  */
 function normalizeTitle(title: string): string {
@@ -160,9 +207,22 @@ function matchCitationToDocument(
   chunks: KnowledgeChunk[],
 ): { title: string; relativePath: string; score: number } | undefined {
   // Strategy 1: Direct title match
-  const cleanRef = citationText.replace(/[[\]\d]/g, '').trim()
+  const cleanRef = citationText
+    .replace(/^\s*(?:\[\d+(?:\s*[-,]\s*\d+)*\]|\d+[.、])\s*/, '')
+    .trim()
+  if (!cleanRef) return undefined
+  const focusedReference = citationReferenceSearchQueries(cleanRef)[0] ?? cleanRef
+  const normalizedReference = normalizeTitle(focusedReference)
   for (const doc of documents) {
-    const sim = bigramSimilarity(cleanRef, doc.title)
+    const normalizedDocumentTitle = normalizeTitle(doc.title)
+    if (
+      normalizedDocumentTitle.length >= 2 &&
+      (normalizedReference.includes(normalizedDocumentTitle) ||
+        (normalizedReference.length >= 4 && normalizedDocumentTitle.includes(normalizedReference)))
+    ) {
+      return { title: doc.title, relativePath: doc.relativePath, score: 0.95 }
+    }
+    const sim = bigramSimilarity(focusedReference, doc.title)
     if (sim >= 0.85) {
       return { title: doc.title, relativePath: doc.relativePath, score: sim }
     }
@@ -177,7 +237,7 @@ function matchCitationToDocument(
   }
 
   // Strategy 3: Keywords from citation match document keywords
-  const keywords = cleanRef.split(/\s+/).filter((k) => k.length >= 2)
+  const keywords = focusedReference.split(/\s+/).filter((k) => k.length >= 2)
   if (keywords.length > 0) {
     for (const doc of documents) {
       const docKeywords = (doc.keywords ?? []).join(' ')
@@ -198,9 +258,11 @@ export function verifyCitation(
   citationText: string,
   documents: KnowledgeDocument[],
   chunks: KnowledgeChunk[],
+  referenceText?: string,
 ): CitationCheck {
   const indices = parseCitationIndices(citationText)
-  const matched = matchCitationToDocument(citationText, documents, chunks)
+  const candidateText = referenceText?.trim() || citationText
+  const matched = matchCitationToDocument(candidateText, documents, chunks)
 
   if (!matched) {
     return {
@@ -244,7 +306,12 @@ export function verifyPaperCitations(
   draft: string,
   kbIndex: { documents: KnowledgeDocument[]; chunks: KnowledgeChunk[] },
 ): CitationVerificationResult {
-  const locations = extractCitations(draft)
+  const referenceEntries = extractReferenceEntries(draft)
+  const references = new Map(referenceEntries.map((entry) => [entry.index, entry.text]))
+  const bibliographyLine = bibliographyStartLine(draft)
+  const locations = extractCitations(draft).filter((location) => (
+    bibliographyLine === 0 || location.line < bibliographyLine
+  ))
   const seen = new Set<string>()
   const checks: CitationCheck[] = []
 
@@ -253,8 +320,38 @@ export function verifyPaperCitations(
     if (seen.has(loc.rawText)) continue
     seen.add(loc.rawText)
 
-    const check = verifyCitation(loc.rawText, kbIndex.documents, kbIndex.chunks)
-    check.location = loc
+    const indices = parseCitationIndices(loc.rawText)
+    const perReference = indices.map((index) => {
+      const referenceText = references.get(index)
+      if (!referenceText) {
+        return {
+          index,
+          status: 'not_found_in_kb' as const,
+          details: `参考文献列表中缺少 [${index}] 对应条目。`
+        }
+      }
+      const verified = verifyCitation(loc.rawText, kbIndex.documents, kbIndex.chunks, referenceText)
+      return {
+        index,
+        status: verified.status,
+        details: verified.details,
+        matchedDocument: verified.matchedDocument
+      }
+    })
+    const failed = perReference.find((entry) => entry.status === 'not_found_in_kb')
+      ?? perReference.find((entry) => entry.status === 'content_mismatch')
+    const check: CitationCheck = {
+      rawText: loc.rawText,
+      indices,
+      location: loc,
+      status: failed?.status ?? 'verified',
+      ...(perReference.find((entry) => entry.matchedDocument)?.matchedDocument
+        ? { matchedDocument: perReference.find((entry) => entry.matchedDocument)?.matchedDocument }
+        : {}),
+      details: perReference.length > 0
+        ? perReference.map((entry) => `[${entry.index}] ${entry.details}`).join(' ')
+        : `引用 "${loc.rawText}" 不包含可识别的序号。`
+    }
     checks.push(check)
   }
 
@@ -295,4 +392,15 @@ export function verifyPaperCitations(
     checks,
     recommendations
   }
+}
+
+function bibliographyHeadingIndex(lines: string[]): number {
+  return lines.findIndex((line) => (
+    /^\s*(?:#{1,6}\s*)?(?:参考文献|引用文献|主要参考资料)\s*[：:]?\s*$/.test(line)
+  ))
+}
+
+function bibliographyStartLine(draft: string): number {
+  const index = bibliographyHeadingIndex(draft.split('\n'))
+  return index >= 0 ? index + 1 : 0
 }

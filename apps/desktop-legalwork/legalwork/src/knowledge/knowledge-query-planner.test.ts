@@ -7,6 +7,15 @@ describe('buildKnowledgeRetrievalQueries', () => {
       .toEqual(['劳动合同法第47条如何计算经济补偿?'])
   })
 
+  it('adds one local-only legal alias query without changing model-visible budgets', () => {
+    const planned = buildKnowledgeRetrievalQueries('电子技术监控设备的程序规制')
+
+    expect(planned).toHaveLength(2)
+    expect(planned[0]).toBe('电子技术监控设备的程序规制')
+    expect(planned[1]).toContain('非现场监管')
+    expect(planned[1]).toContain('电子监控执法')
+  })
+
   it('adds a focused retrieval query for long task prompts', () => {
     const query = [
       '请认真分析企业违法解除劳动合同的法律责任，重点考虑《劳动合同法》第47条和第87条。',

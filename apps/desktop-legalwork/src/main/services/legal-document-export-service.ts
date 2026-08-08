@@ -210,6 +210,14 @@ function proseFromTwoColumnTable(rows: string[][]): string[] {
   })
 }
 
+function isResearchMetadataTable(header: string[]): boolean {
+  if (header.length !== 2) return false
+  const left = header[0]?.replace(/\*\*/g, '').trim() ?? ''
+  const right = header[1]?.replace(/\*\*/g, '').trim() ?? ''
+  return /^(?:项目|字段|属性|要素|信息|元数据)$/.test(left) &&
+    /^(?:内容|值|说明|详情|结果)$/.test(right)
+}
+
 function normalizeResearchTables(lines: string[]): string[] {
   const output: string[] = []
   let index = 0
@@ -238,7 +246,7 @@ function normalizeResearchTables(lines: string[]): string[] {
 
     if (rows.length === 0) continue
 
-    if (header.length <= 2) {
+    if (isResearchMetadataTable(header)) {
       output.push(...proseFromTwoColumnTable(rows).flatMap((paragraph) => [paragraph, '']))
       continue
     }
@@ -469,12 +477,22 @@ export function normalizeLegalParagraphs(xml: string): string {
     return `__LEGALWORK_TABLE_${index}__`
   })
 
-  const normalized = withoutTables.replace(/<w:p>([\s\S]*?)<\/w:p>/g, (paragraph, content: string) => {
+  const normalized = withoutTables.replace(/<w:p\b([^>]*)>([\s\S]*?)<\/w:p>/g, (
+    paragraph,
+    attributes: string,
+    content: string
+  ) => {
     const text = [...content.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)]
       .map((match) => match[1])
       .join('')
       .trim()
-    if (!text) return ''
+    if (!text) {
+      // Empty-looking paragraphs may carry page breaks, drawings, fields,
+      // bookmarks or section properties. Removing them corrupts layout.
+      return /<w:(?:br|drawing|pict|object|fldChar|instrText|bookmarkStart|sectPr)\b/.test(content)
+        ? paragraph
+        : ''
+    }
 
     const style = content.match(/<w:pStyle w:val="([^"]+)"\/>/)?.[1]
     const isNumbered = /<w:numPr>[\s\S]*?<\/w:numPr>/.test(content)
@@ -516,7 +534,7 @@ export function normalizeLegalParagraphs(xml: string): string {
     const normalizedContent = /<w:pPr>[\s\S]*?<\/w:pPr>/.test(content)
       ? content.replace(/<w:pPr>[\s\S]*?<\/w:pPr>/, pPr)
       : `${pPr}${content}`
-    return `<w:p>${normalizedContent}</w:p>`
+    return `<w:p${attributes}>${normalizedContent}</w:p>`
   })
 
   return normalized.replace(/__LEGALWORK_TABLE_(\d+)__/g, (_marker, index: string) => (

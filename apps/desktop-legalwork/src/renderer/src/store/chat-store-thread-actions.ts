@@ -225,7 +225,16 @@ export function createThreadActions(
       sseAbortRef.current?.abort()
       sseAbortRef.current = null
       clearBusyWatchdog()
-      set({ error: runtimeStreamRecoveringMessage() })
+      // Fast snapshot re-syncs are normal after a transient disconnect. Do not
+      // flash an alarming recovery banner for work that completes within one
+      // paint cycle; only surface it when recovery is genuinely taking time.
+      const recoveryStatusTimer = setTimeout(() => {
+        set((current) => (
+          current.activeThreadId === activeThreadId && !current.error
+            ? { error: runtimeStreamRecoveringMessage() }
+            : {}
+        ))
+      }, 750)
       try {
         const {
           blocks: rawBlocks,
@@ -262,7 +271,10 @@ export function createThreadActions(
           appliedSeq: 0,
           liveReasoning: '',
           liveAssistant: '',
-          error: busy ? runtimeStreamRecoveringMessage() : null,
+          error:
+            busy && s.error === runtimeStreamRecoveringMessage()
+              ? s.error
+              : null,
           busy,
           currentTurnId,
           currentTurnUserId,
@@ -293,6 +305,8 @@ export function createThreadActions(
         })
         if (state.busy) armBusyWatchdog(set, get)
         return state.busy
+      } finally {
+        clearTimeout(recoveryStatusTimer)
       }
     })()
     const entry = { threadId: activeThreadId, promise: task }

@@ -52,21 +52,30 @@ export function buildWebToolProviders(
     }
   }
 
-  // Search provider: AnySearch (anonymous or API key mode)
+  // Search provider: an explicitly injected provider wins (tests, private
+  // deployments and future adapters). Otherwise AnySearch is the default when
+  // no provider is named, or when the configured provider is "anysearch".
   const anysearchKey = options.anysearchApiKey?.trim()
   const anysearchProvider = new AnysearchWebProvider({ apiKey: anysearchKey || undefined, nowIso: options.nowIso })
   const searchEnabled = web.searchEnabled
-  const provider: WebProvider = options.provider ?? (web.fetchEnabled ? new FetchWebProvider(options.nowIso) : new UnavailableWebProvider(web.provider))
+  const fetchProvider: WebProvider = options.provider ?? (web.fetchEnabled
+    ? new FetchWebProvider(options.nowIso)
+    : new UnavailableWebProvider(web.provider))
+  const searchProvider: WebProvider = options.provider ?? (
+    !web.provider || web.provider === 'anysearch'
+      ? anysearchProvider
+      : new UnavailableWebProvider(web.provider)
+  )
 
   const tools = []
   if (web.fetchEnabled) {
-    tools.push(createFetchTool(web, provider))
+    tools.push(createFetchTool(web, fetchProvider))
   }
   if (searchEnabled) {
-    tools.push(createSearchTool(web, anysearchProvider))
+    tools.push(createSearchTool(web, searchProvider))
   }
-  const fetchAvailable = Boolean(web.fetchEnabled && provider.fetch)
-  const searchAvailable = Boolean(searchEnabled && anysearchProvider.search)
+  const fetchAvailable = Boolean(web.fetchEnabled && fetchProvider.fetch)
+  const searchAvailable = Boolean(searchEnabled && searchProvider.search)
   const reason = !tools.length
     ? 'web tools are disabled by config'
     : !fetchAvailable && !searchAvailable
@@ -90,12 +99,12 @@ export function buildWebToolProviders(
       available: fetchAvailable || searchAvailable,
       fetchAvailable,
       searchAvailable,
-      provider: provider.id,
+      provider: searchEnabled ? searchProvider.id : fetchProvider.id,
       ...(reason ? { reason } : {})
     }],
     fetchAvailable,
     searchAvailable,
-    provider: provider.id
+    provider: searchEnabled ? searchProvider.id : fetchProvider.id
   }
 }
 

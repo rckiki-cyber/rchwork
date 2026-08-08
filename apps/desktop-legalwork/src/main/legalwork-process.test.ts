@@ -165,6 +165,30 @@ describe('startLegalworkChild', () => {
   })
 })
 
+describe('resolveCodexRuntimeProxyEnv', () => {
+  it('mirrors the system proxy only for ChatGPT account turns', async () => {
+    const { resolveCodexRuntimeProxyEnv } = await import('./legalwork-process')
+    const systemProxy = {
+      HTTP_PROXY: 'http://127.0.0.1:7890',
+      HTTPS_PROXY: 'http://127.0.0.1:7890',
+      NO_PROXY: 'localhost'
+    }
+
+    expect(resolveCodexRuntimeProxyEnv('chatgpt', {}, systemProxy)).toEqual(systemProxy)
+    expect(resolveCodexRuntimeProxyEnv('api_key', {}, systemProxy)).toBeUndefined()
+  })
+
+  it('preserves an explicitly configured proxy', async () => {
+    const { resolveCodexRuntimeProxyEnv } = await import('./legalwork-process')
+
+    expect(resolveCodexRuntimeProxyEnv(
+      'chatgpt',
+      { HTTPS_PROXY: 'http://explicit:8080' },
+      { HTTPS_PROXY: 'http://system:7890' }
+    )).toBeUndefined()
+  })
+})
+
 describe('reclaimLegalworkPort', () => {
   it('reports a port as unavailable when another listener owns it', async () => {
     const server = createServer()
@@ -288,7 +312,7 @@ describe('syncGuiManagedLegalworkConfig', () => {
     ]))
     expect(parsed.capabilities.web).toMatchObject({ enabled: true, fetchEnabled: true })
     expect(parsed.capabilities.memory).toMatchObject({ enabled: true })
-    expect(parsed.capabilities.mcp.search).toMatchObject({ enabled: false, mode: 'auto' })
+    expect(parsed.capabilities.mcp.search).toMatchObject({ enabled: true, mode: 'auto' })
   })
 
   it('migrates image-only attachment MIME types to include document uploads', async () => {
@@ -506,6 +530,12 @@ describe('syncGuiManagedLegalworkConfig', () => {
             contextCompaction: {
               softThreshold: 970000
             }
+          },
+          'deepseek-v4-flash': {
+            contextCompaction: {
+              softThreshold: 980000,
+              hardThreshold: 990000
+            }
           }
         }
       },
@@ -642,6 +672,13 @@ describe('syncGuiManagedLegalworkConfig', () => {
         // hard (60K) is below the user's soft value.
         softThreshold: 970_000,
         hardThreshold: 970_001
+      }
+    })
+    expect(parsed.models.profiles['deepseek-v4-flash']).toMatchObject({
+      contextWindowTokens: 1_000_000,
+      contextCompaction: {
+        softThreshold: 40_000,
+        hardThreshold: 60_000
       }
     })
     expect(parsed.runtime.toolStorm).toMatchObject({

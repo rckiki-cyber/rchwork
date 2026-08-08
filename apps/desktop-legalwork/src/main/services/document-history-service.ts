@@ -4,8 +4,10 @@
  * Persists document generation history records to disk.
  */
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { readFile, writeFile, mkdir, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { documentHistoryRecordSchema } from '../../shared/document-history'
 import type {
   DocumentHistoryRecord,
   DocumentHistorySummary,
@@ -17,6 +19,7 @@ const HISTORY_FILE = 'history.json'
 
 let baseDir = ''
 let cache: DocumentHistoryRecord[] | null = null
+let mutationTail: Promise<void> = Promise.resolve()
 
 export function setHistoryBaseDir(dir: string): void {
   baseDir = join(dir, HISTORY_DIR_NAME)
@@ -35,10 +38,16 @@ function filePath(): string {
 
 async function loadAll(): Promise<DocumentHistoryRecord[]> {
   if (cache) return cache
+  await ensureDir()
   try {
     const data = await readFile(filePath(), 'utf-8')
-    const parsed = JSON.parse(data)
-    cache = Array.isArray(parsed) ? parsed : []
+    const parsed = JSON.parse(data) as unknown
+    cache = Array.isArray(parsed)
+      ? parsed.flatMap((value) => {
+          const result = documentHistoryRecordSchema.safeParse(value)
+          return result.success ? [result.data] : []
+        })
+      : []
   } catch {
     cache = []
   }
@@ -47,8 +56,22 @@ async function loadAll(): Promise<DocumentHistoryRecord[]> {
 
 async function persist(records: DocumentHistoryRecord[]): Promise<void> {
   const dir = await ensureDir()
-  await writeFile(join(dir, HISTORY_FILE), JSON.stringify(records, null, 2), 'utf-8')
-  cache = records
+  const target = join(dir, HISTORY_FILE)
+  const temporary = join(dir, `${HISTORY_FILE}.${process.pid}.${randomUUID()}.tmp`)
+  const snapshot = structuredClone(records)
+  try {
+    await writeFile(temporary, JSON.stringify(snapshot, null, 2), 'utf-8')
+    await rename(temporary, target)
+  } finally {
+    await rm(temporary, { force: true }).catch(() => undefined)
+  }
+  cache = snapshot
+}
+
+function mutateHistory<T>(action: () => Promise<T>): Promise<T> {
+  const run = mutationTail.then(action)
+  mutationTail = run.then(() => undefined, () => undefined)
+  return run
 }
 
 /** List all history records (summary only, no content) */
@@ -70,45 +93,52 @@ export async function getHistoryRecord(
   id: string
 ): Promise<DocumentHistoryRecord | null> {
   const records = await loadAll()
-  return records.find((r) => r.id === id) ?? null
+  const record = records.find((r) => r.id === id)
+  return record ? structuredClone(record) : null
 }
 
 /** Save a new history record */
 export async function saveHistoryRecord(
   record: DocumentHistoryRecord
 ): Promise<HistoryActionResult> {
-  try {
-    const records = await loadAll()
-    // Keep max 500 records, remove oldest
-    const updated = [record, ...records].slice(0, 500)
-    await persist(updated)
-    return { ok: true }
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : String(error) }
-  }
+  return mutateHistory(async () => {
+    try {
+      const records = await loadAll()
+      // Keep max 500 records, remove oldest
+      const updated = [structuredClone(record), ...records].slice(0, 500)
+      await persist(updated)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) }
+    }
+  })
 }
 
 /** Delete a history record by id */
 export async function deleteHistoryRecord(id: string): Promise<HistoryActionResult> {
-  try {
-    const records = await loadAll()
-    const filtered = records.filter((r) => r.id !== id)
-    if (filtered.length === records.length) {
-      return { ok: false, message: '记录未找到。' }
+  return mutateHistory(async () => {
+    try {
+      const records = await loadAll()
+      const filtered = records.filter((r) => r.id !== id)
+      if (filtered.length === records.length) {
+        return { ok: false, message: '记录未找到。' }
+      }
+      await persist(filtered)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) }
     }
-    await persist(filtered)
-    return { ok: true }
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : String(error) }
-  }
+  })
 }
 
 /** Clear all history */
 export async function clearHistory(): Promise<HistoryActionResult> {
-  try {
-    await persist([])
-    return { ok: true }
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : String(error) }
-  }
+  return mutateHistory(async () => {
+    try {
+      await persist([])
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) }
+    }
+  })
 }

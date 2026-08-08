@@ -20,7 +20,14 @@
     "read",
     "write",
     "edit",
-    "bash"
+    "bash",
+    "knowledge_auto_retrieve",
+    "knowledge_search",
+    "knowledge_read_file",
+    "mcp_search",
+    "mcp_call",
+    "mcp_ima_knowledge_base_research_ima",
+    "document_skill_execute"
   ],
   "assets": [],
   "priority": 0

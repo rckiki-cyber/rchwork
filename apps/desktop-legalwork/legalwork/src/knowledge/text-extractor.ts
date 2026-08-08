@@ -5,7 +5,7 @@ import { inflateRawSync } from 'node:zlib'
 
 const execFileAsync = promisify(execFile)
 const MIN_TEXT_BEFORE_OCR = 40
-const OCR_OUTPUT_BUFFER_BYTES = 1024 * 1024 * 1024
+const OCR_OUTPUT_BUFFER_BYTES = 64 * 1024 * 1024
 const OCR_TIMEOUT_MS = 120_000
 
 export const EXTRACTABLE_EXTENSIONS = new Set([
@@ -79,11 +79,34 @@ async function extractPdfText(filePath: string): Promise<string> {
   try {
     const result = await parser.getText()
     const text = normalizeExtractedText(result.text)
-    if (text.length >= MIN_TEXT_BEFORE_OCR) return text
-    return await extractOcrText(filePath)
+    if (isUsableExtractedText(text)) return text
+    const ocrText = await extractOcrText(filePath)
+    return isUsableExtractedText(ocrText) ? ocrText : text
   } finally {
     await parser.destroy()
   }
+}
+
+/**
+ * Length alone is not enough for PDF extraction: broken font maps often yield
+ * hundreds of punctuation marks, page numbers and private-use glyphs. Such
+ * output must fall through to OCR instead of polluting the index.
+ */
+export function isUsableExtractedText(text: string): boolean {
+  const compact = text.replace(/\s+/g, '')
+  if (compact.length < MIN_TEXT_BEFORE_OCR) return false
+  const privateOrReplacement = compact.match(/[\uE000-\uF8FF\uFFFD]/g)?.length ?? 0
+  if (privateOrReplacement > Math.max(2, compact.length * 0.02)) return false
+  const semantic = compact.match(/[\p{L}\p{N}]/gu)?.length ?? 0
+  if (semantic < 20 || semantic / compact.length < 0.35) return false
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean)
+  if (lines.length >= 4) {
+    const informativeLines = lines.filter((line) => (
+      (line.match(/[\p{L}\p{N}]/gu)?.length ?? 0) >= 2
+    )).length
+    if (informativeLines / lines.length < 0.5) return false
+  }
+  return true
 }
 
 async function extractDocxText(filePath: string): Promise<string> {

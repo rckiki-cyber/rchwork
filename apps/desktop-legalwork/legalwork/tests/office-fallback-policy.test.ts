@@ -50,13 +50,13 @@ describe('Office fallback policy', () => {
       toolName: REQUEST_OFFICE_FALLBACK_TOOL_NAME,
       providerId: 'builtin',
       arguments: {}
-    }, context)).rejects.toThrow(/active tool policy/)
+    }, context)).rejects.toThrow(/not advertised/)
     await expect(host.execute({
       callId: 'office-before-grant',
       toolName: OFFICECLI_TOOL_NAME,
       providerId: 'mcp:officecli',
       arguments: {}
-    }, context)).rejects.toThrow(/active tool policy/)
+    }, context)).rejects.toThrow(/not advertised/)
   })
 
   it('shows the fallback request only after runtime-recorded structural exhaustion', async () => {

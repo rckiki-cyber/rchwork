@@ -69,7 +69,7 @@ export function createBuiltinLocalTool(
     case 'request_office_fallback':
       return createRequestOfficeFallbackTool()
     case 'compress_context':
-      return createCompressContextLocalTool(options.compressContext!)
+      return createCompressContextLocalTool(options.compressContext)
   }
 }
 
@@ -160,7 +160,7 @@ export function buildBuiltinLocalToolRecord(
     request_document_preferences: createRequestDocumentPreferencesTool(),
     resolve_legal_document_template: createResolveLegalDocumentTemplateTool(),
     request_office_fallback: createRequestOfficeFallbackTool(),
-    compress_context: createCompressContextLocalTool(options.compressContext!)
+    compress_context: createCompressContextLocalTool(options.compressContext)
   }
 }
 

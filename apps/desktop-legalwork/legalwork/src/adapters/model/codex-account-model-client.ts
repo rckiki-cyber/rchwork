@@ -13,6 +13,24 @@ import {
 
 type JsonObject = Record<string, unknown>
 
+type CodexModelMetadata = {
+  id: string
+  model: string
+  isDefault: boolean
+  supportedReasoningEfforts: string[]
+  defaultReasoningEffort: string
+}
+
+type CodexModelSelection = {
+  model: string
+  reasoningEffort?: string
+}
+
+type CodexTurnFailure = {
+  message: string
+  code: string
+}
+
 type QueueWaiter<T> = {
   resolve: (value: IteratorResult<T>) => void
   reject: (error: Error) => void
@@ -64,6 +82,7 @@ type ActiveCodexTurn = {
   turnId: string
   delegatedToolCalls: number
   interruptRequested: boolean
+  lastFailure: CodexTurnFailure | null
 }
 
 export type CodexAccountModelClientOptions = {
@@ -101,10 +120,118 @@ function outputText(value: unknown): string {
   }
 }
 
-function codexTurnErrorCode(message: string): string {
-  return /usage limit|rate[ -]?limit|quota|credits? (?:are )?(?:depleted|exhausted)|hit your .*limit/i.test(message)
-    ? 'rate_limited'
-    : 'codex_turn_failed'
+function codexErrorInfoName(value: unknown): string {
+  if (typeof value === 'string') return value
+  const info = asObject(value)
+  return Object.keys(info)[0] ?? ''
+}
+
+function codexTurnFailure(value: unknown, fallback?: CodexTurnFailure | null): CodexTurnFailure {
+  const error = asObject(value)
+  const info = codexErrorInfoName(error.codexErrorInfo)
+  const rawMessage = stringValue(error.message).trim()
+  const message = rawMessage && !/^codex turn failed$/i.test(rawMessage)
+    ? rawMessage
+    : fallback?.message || (() => {
+        switch (info) {
+          case 'usageLimitExceeded':
+          case 'sessionBudgetExceeded':
+            return 'ChatGPT/Codex usage limit reached. Wait for the quota window to reset or select another available model.'
+          case 'unauthorized':
+            return 'ChatGPT authentication expired. Reconnect the account in Settings > Agents and retry.'
+          case 'serverOverloaded':
+          case 'internalServerError':
+            return 'OpenAI is temporarily overloaded. Please retry this turn.'
+          case 'httpConnectionFailed':
+          case 'responseStreamConnectionFailed':
+          case 'responseStreamDisconnected':
+          case 'responseTooManyFailedAttempts':
+            return 'The connection to OpenAI failed. Check the network or proxy and retry.'
+          case 'contextWindowExceeded':
+            return 'The GPT context window was exceeded. Start a shorter turn or compact the conversation.'
+          default:
+            return rawMessage || 'Codex turn failed'
+        }
+      })()
+  const lower = message.toLowerCase()
+  let code = 'codex_turn_failed'
+  if (
+    info === 'usageLimitExceeded' ||
+    info === 'sessionBudgetExceeded' ||
+    /usage limit|rate[ -]?limit|quota|credits? (?:are )?(?:depleted|exhausted)|hit your .*limit/i.test(message)
+  ) {
+    code = 'rate_limited'
+  } else if (info === 'unauthorized' || /unauthori[sz]ed|authentication expired|sign in/i.test(lower)) {
+    code = 'codex_auth_required'
+  } else if (info === 'contextWindowExceeded') {
+    code = 'context_window_exceeded'
+  } else if (
+    ['serverOverloaded', 'internalServerError', 'httpConnectionFailed',
+      'responseStreamConnectionFailed', 'responseStreamDisconnected',
+      'responseTooManyFailedAttempts'].includes(info)
+  ) {
+    code = 'codex_transient_error'
+  }
+  return { message, code }
+}
+
+function codexModels(value: unknown): CodexModelMetadata[] {
+  const data = asObject(value).data
+  if (!Array.isArray(data)) return []
+  return data.flatMap((entry) => {
+    const model = asObject(entry)
+    const id = stringValue(model.id).trim()
+    const slug = stringValue(model.model).trim() || id
+    if (!slug || model.hidden === true) return []
+    const supportedReasoningEfforts = Array.isArray(model.supportedReasoningEfforts)
+      ? model.supportedReasoningEfforts.flatMap((effort) => {
+          if (typeof effort === 'string') return effort ? [effort] : []
+          const name = stringValue(asObject(effort).reasoningEffort).trim()
+          return name ? [name] : []
+        })
+      : []
+    return [{
+      id,
+      model: slug,
+      isDefault: model.isDefault === true,
+      supportedReasoningEfforts,
+      defaultReasoningEffort: stringValue(model.defaultReasoningEffort).trim()
+    }]
+  })
+}
+
+function looksLikeCodexModel(model: string): boolean {
+  return /^(?:gpt-|codex-|o\d(?:-|$))/i.test(model)
+}
+
+function selectCodexModel(
+  models: readonly CodexModelMetadata[],
+  requestedModel: string,
+  requestedReasoningEffort?: string
+): CodexModelSelection {
+  const requested = requestedModel.trim()
+  const selected = models.find((entry) => entry.model === requested || entry.id === requested)
+    ?? models.find((entry) => entry.isDefault)
+    ?? models[0]
+  if (!selected) {
+    return {
+      // Never forward a stale DeepSeek/provider slug into Codex. Omitting the
+      // model lets the authenticated account choose its own plan default.
+      model: looksLikeCodexModel(requested) ? requested : ''
+    }
+  }
+  const requestedEffort = requestedReasoningEffort?.trim() ?? ''
+  const reasoningEffort = requestedEffort && requestedEffort !== 'off'
+    && selected.supportedReasoningEfforts.includes(requestedEffort)
+    ? requestedEffort
+    : selected.defaultReasoningEffort
+      && selected.supportedReasoningEfforts.includes(selected.defaultReasoningEffort)
+      ? selected.defaultReasoningEffort
+      : undefined
+  return {
+    model: selected.model,
+    ...(reasoningEffort ? { reasoningEffort } : {})
+  }
 }
 
 function turnItemToResponseItem(item: TurnItem): JsonObject | null {
@@ -233,6 +360,7 @@ export class CodexAccountModelClient implements ModelClient {
   private rpc: CodexRpcLike
   private usingLegalworkAuth = false
   private readonly activeTurns = new Map<string, ActiveCodexTurn>()
+  private modelCatalog: CodexModelMetadata[] | null = null
 
   constructor(options: CodexAccountModelClientOptions) {
     this.options = options
@@ -273,8 +401,13 @@ export class CodexAccountModelClient implements ModelClient {
         return
       }
       const requestedModel = request.model?.trim() || this.options.model
+      const modelSelection = selectCodexModel(
+        await this.loadModelCatalog(),
+        requestedModel,
+        request.reasoningEffort
+      )
       const started = await this.rpc.request<JsonObject>('thread/start', {
-        model: requestedModel,
+        ...(modelSelection.model ? { model: modelSelection.model } : {}),
         cwd: this.options.cwd ?? process.cwd(),
         approvalPolicy: 'never',
         sandbox: 'read-only',
@@ -282,6 +415,19 @@ export class CodexAccountModelClient implements ModelClient {
         serviceName: 'legalwork',
         baseInstructions: request.systemPrompt ?? '',
         developerInstructions: developerInstructions(request),
+        config: {
+          agents: { enabled: false },
+          features: {
+            apps: false,
+            goals: false,
+            hooks: false,
+            memories: false,
+            shell_tool: false,
+            unified_exec: false
+          },
+          tools: { view_image: false, web_search: false },
+          web_search: 'disabled'
+        },
         dynamicTools: request.tools.map((tool) => ({
           type: 'function',
           name: tool.name,
@@ -310,15 +456,16 @@ export class CodexAccountModelClient implements ModelClient {
         queue,
         turnId: '',
         delegatedToolCalls: 0,
-        interruptRequested: false
+        interruptRequested: false,
+        lastFailure: null
       }
       this.activeTurns.set(codexThreadId, active)
       const turn = await this.rpc.request<JsonObject>('turn/start', {
         threadId: codexThreadId,
         input: latestTurnInputs(request, latestUser),
-        model: requestedModel,
-        ...(request.reasoningEffort && request.reasoningEffort !== 'off'
-          ? { effort: request.reasoningEffort }
+        ...(modelSelection.model ? { model: modelSelection.model } : {}),
+        ...(modelSelection.reasoningEffort
+          ? { effort: modelSelection.reasoningEffort }
           : {}),
         ...(request.responseFormat === 'json_object'
           ? { outputSchema: { type: 'object' } }
@@ -359,18 +506,41 @@ export class CodexAccountModelClient implements ModelClient {
   }
 
   private async ensureChatGptAccount(): Promise<JsonObject> {
-    const local = await this.rpc.request<JsonObject>('account/read', { refreshToken: true })
-    const localAccount = asObject(local.account)
     const fallbackHome = this.options.legalworkCodexHome?.trim()
+    let localAccount: JsonObject = {}
+    try {
+      const local = await this.rpc.request<JsonObject>('account/read', { refreshToken: true })
+      localAccount = asObject(local.account)
+    } catch (error) {
+      // A stale/broken shared Codex login must not mask a valid account that
+      // the user authenticated inside Legalwork.
+      if (!fallbackHome || this.options.rpc || this.usingLegalworkAuth) throw error
+    }
     if (localAccount.type === 'chatgpt' || !fallbackHome || this.options.rpc || this.usingLegalworkAuth) {
       return localAccount
     }
     await this.rpc.stop()
     this.rpc = this.createRpc(true)
     this.usingLegalworkAuth = true
+    this.modelCatalog = null
     this.bindRpc(this.rpc)
     const fallback = await this.rpc.request<JsonObject>('account/read', { refreshToken: true })
     return asObject(fallback.account)
+  }
+
+  private async loadModelCatalog(): Promise<CodexModelMetadata[]> {
+    if (this.modelCatalog) return this.modelCatalog
+    try {
+      const result = await this.rpc.request('model/list', { includeHidden: false, limit: 100 })
+      const models = codexModels(result)
+      if (models.length > 0) this.modelCatalog = models
+      return models
+    } catch {
+      // A catalog lookup should never make an otherwise valid ChatGPT turn
+      // fail. With no catalog, selectCodexModel falls back to the account's
+      // default instead of forwarding a provider-specific stale model slug.
+      return []
+    }
   }
 
   private handleNotification(method: string, params: JsonObject): void {
@@ -409,16 +579,28 @@ export class CodexAccountModelClient implements ModelClient {
       })
       return
     }
+    if (method === 'error') {
+      const failure = codexTurnFailure(params.error, active.lastFailure)
+      active.lastFailure = failure
+      return
+    }
     if (method === 'turn/completed') {
       const turn = asObject(params.turn)
       const status = stringValue(turn.status)
-      if (status === 'failed') {
-        const error = asObject(turn.error)
-        const message = stringValue(error.message) || 'Codex turn failed'
+      if (active.delegatedToolCalls > 0 && active.interruptRequested && !active.lastFailure) {
+        // Legalwork intentionally interrupts Codex after receiving a dynamic
+        // tool call so the outer agent loop can execute it. Some Codex builds
+        // report the resulting race as failed instead of interrupted; the
+        // accepted tool call is still valid and must drive the next step.
+        // Guard on lastFailure so a genuine error reported for the same turn
+        // (network loss, model error, etc.) is not masked as a success.
+        active.queue.push({ kind: 'completed', stopReason: 'tool_calls' })
+      } else if (status === 'failed') {
+        const failure = codexTurnFailure(turn.error, active.lastFailure)
         active.queue.push({
           kind: 'error',
-          message,
-          code: codexTurnErrorCode(message)
+          message: failure.message,
+          code: failure.code
         })
         active.queue.push({ kind: 'completed', stopReason: 'error' })
       } else {
@@ -448,12 +630,16 @@ export class CodexAccountModelClient implements ModelClient {
     })
     if (!active.interruptRequested) {
       active.interruptRequested = true
-      queueMicrotask(() => {
-        void this.rpc.request('turn/interrupt', {
+      const rpc = this.rpc
+      // Let Codex receive the dynamic-tool response before interrupting the
+      // turn. queueMicrotask raced the response write in the JSON-RPC layer
+      // and intermittently converted successful tool delegation into failure.
+      setTimeout(() => {
+        void rpc.request('turn/interrupt', {
           threadId,
-          turnId: stringValue(request.params.turnId)
+          turnId: stringValue(request.params.turnId) || active.turnId
         }).catch(() => undefined)
-      })
+      }, 0)
     }
     return {
       contentItems: [{

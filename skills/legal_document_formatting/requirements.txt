@@ -3,3 +3,4 @@ python-pptx>=0.6.23,<2
 openpyxl>=3.1,<4
 lxml>=5,<7
 Pillow>=10,<13
+reportlab>=4.2,<5

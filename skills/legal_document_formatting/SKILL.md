@@ -1,13 +1,13 @@
 ---
 name: legal-document-formatting
-description: LegalWork 的 Office 文档确定性执行技能。Word/DOCX、Excel/XLSX 与常规 PPTX 默认通过 document_skill_execute 批量执行；Office MCP 仅在受信任执行器确认本地方法遇到结构性能力边界后最后兜底。Word 中文正文默认宋体、小四 12pt。
+description: LegalWork 的 Office/PDF 文档确定性执行技能。Word/DOCX、PDF、Excel/XLSX 与常规 PPTX 默认通过 document_skill_execute 批量执行；Office MCP 仅在受信任执行器确认本地方法遇到结构性能力边界后最后兜底。Word 中文正文默认宋体、小四 12pt。
 ---
 
 # LegalWork 文档格式 Skill
 
 ## 核心规则
 
-- Word、Excel、PPT 默认使用 `document_skill_execute`，不要用 bash 手工调用 Python，更不要直接使用 OfficeMCP。
+- Word、PDF、Excel、PPT 默认使用 `document_skill_execute`，不要用 bash 手工调用 Python，更不要直接使用 OfficeMCP。
 - 一个确定性任务尽量一次 worker 完成；worker 只返回紧凑 JSON，不渲染整篇 HTML/XML。
 - OfficeMCP 默认不可见。只有 `document_skill_execute` 返回 `fallback_available:true` 后，`request_office_fallback` 才会临时出现；模型自己创建文件不能解锁。
 - 环境、依赖、参数和普通脚本错误均不得触发 OfficeMCP。
@@ -27,11 +27,27 @@ description: LegalWork 的 Office 文档确定性执行技能。Word/DOCX、Exce
 
 ## `document_skill_execute`
 
-- `kind`: `docx` / `xlsx` / `pptx` / `reference` / `profile` / `legacy`
+- `kind`: `docx` / `pdf` / `xlsx` / `pptx` / `reference` / `profile` / `legacy`
 - `operation`: 对应 worker 操作
 - `args`: 传给该操作的字符串参数数组
 
 普通任务成功后立即交付，不追加“再看一下”的 view/HTML 循环。
+
+### 新建 Word：正文直接随工具调用传入
+
+新建普通 Word 时不要探测 `help/list`，也不要用 bash 或 Python 先写中间文件。一次调用传入完整 Markdown：
+
+```json
+{
+  "kind": "docx",
+  "operation": "from-markdown",
+  "content": "# 文献综述\n\n正文……",
+  "outputPath": "文献综述.docx",
+  "profile": "academic"
+}
+```
+
+`outputPath` 的相对路径以当前线程工作区为基准。可选 profile 为 `legal-default`、`academic`、`litigation`。只有修改既有文件或高级操作才使用 `args`。
 
 ## 法律文档语义 profile
 
@@ -79,6 +95,20 @@ reference worker 会解析 Word 样式继承；不复制样板正文、案名、
 
 案件基本信息表、联系人表、案件进展表、证据目录等优先直接产出 XLSX，而不是让模型逐单元格操作 Office 工具。
 
+## PDF
+
+同一报告已生成 DOCX 后，直接从 Word 转换，禁止再搜索 PDF 工具或重新生成一遍正文：
+
+```json
+{
+  "kind": "pdf",
+  "operation": "from-docx",
+  "args": ["--input", "研究报告.docx", "--output", "研究报告.pdf"]
+}
+```
+
+worker 优先使用本机 LibreOffice 保持 Word 版式；没有 LibreOffice 时使用随应用打包的 ReportLab 读取 DOCX，保留完整正文、标题层级与表格，生成可阅读 PDF。
+
 ## 旧 `.doc` / `.xls` / `.ppt`
 
 先走本地转换，不能因为扩展名旧就直接启用 MCP：
@@ -93,7 +123,7 @@ worker 会优先使用可用的 LibreOffice/soffice headless 转为 `.docx/.xlsx
 
 `kind:"docx"` 支持 `inspect`、`normalize`、`page`、`from-markdown`、`replace`、`template-fill`。
 
-`kind:"pptx"` 支持 `inspect`、`from-json`、`replace`。先确定内容结构/模板，再一次性生成或修改，不逐页 Office 工具循环。
+`kind:"pptx"` 支持 `inspect`、`from-json`、`replace`。新建 PPT 时把完整 JSON 直接放入 `content` 并设置 `.pptx` 的 `outputPath`，JSON 顶层必须包含非空 `slides` 数组；不要用 bash 创建中间 JSON。先确定内容结构/模板，再一次性生成或修改，不逐页 Office 工具循环。
 
 普通格式修改目标 1-3 次工具调用；新建普通 Word/Excel/PPT 目标 2-4 次。文件越大，主要增加本地 Python CPU 时间，不应线性增加模型轮数。
 

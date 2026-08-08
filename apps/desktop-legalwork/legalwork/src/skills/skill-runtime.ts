@@ -403,8 +403,24 @@ async function discoverSkills(config: SkillsCapabilityConfig): Promise<{
   }
   const unique = new Map<string, LoadedSkill>()
   for (const skill of skills) {
-    if (!unique.has(skill.id)) unique.set(skill.id, skill)
-    else validationErrors.push({ root: skill.root, message: `duplicate Skill id: ${skill.id}` })
+    const current = unique.get(skill.id)
+    if (!current) {
+      unique.set(skill.id, skill)
+      continue
+    }
+    if (
+      skill.id === 'legal-document-formatting' &&
+      !(await exists(join(current.root, 'scripts', 'skill_runner.py'))) &&
+      await exists(join(skill.root, 'scripts', 'skill_runner.py'))
+    ) {
+      unique.set(skill.id, skill)
+      validationErrors.push({
+        root: current.root,
+        message: `ignored incomplete duplicate Skill id: ${skill.id} (scripts/skill_runner.py is missing)`
+      })
+      continue
+    }
+    validationErrors.push({ root: skill.root, message: `duplicate Skill id: ${skill.id}` })
   }
   return { skills: [...unique.values()].sort((a, b) => a.id.localeCompare(b.id)), validationErrors }
 }

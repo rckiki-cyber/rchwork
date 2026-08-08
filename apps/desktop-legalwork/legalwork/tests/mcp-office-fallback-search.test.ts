@@ -4,6 +4,10 @@ import {
   McpServerConfig
 } from '../src/contracts/capabilities.js'
 import { createMcpSearchProvider } from '../src/adapters/tool/mcp-tool-search.js'
+import type {
+  McpSearchCatalogRecord,
+  McpSearchClientLike
+} from '../src/adapters/tool/mcp-tool-search.js'
 import {
   clearOfficeFallbackGrant,
   grantOfficeFallback,
@@ -35,8 +39,8 @@ function record(input: {
   serverId: string
   toolName: string
   normalizedName: string
-  callTool: ReturnType<typeof vi.fn>
-}) {
+  callTool: McpSearchClientLike['callTool']
+}): McpSearchCatalogRecord {
   return {
     toolId: `${input.serverId}/${input.toolName}`,
     serverId: input.serverId,

@@ -1,4 +1,4 @@
-import type { KnowledgeSearchHit } from '../../contracts/knowledge.js'
+import type { KnowledgeSearchHit, KnowledgeTreeNode } from '../../contracts/knowledge.js'
 import type { KnowledgeContextRecord, KnowledgeRetrievalResult } from '../../contracts/knowledge-retrieval.js'
 
 /**
@@ -12,6 +12,8 @@ export const KNOWLEDGE_SEARCH_MAX_SOURCES = 5
 export const KNOWLEDGE_SEARCH_SNIPPET_CHARS = 500
 export const KNOWLEDGE_AUTO_MAX_SOURCES = 6
 export const KNOWLEDGE_AUTO_CONTEXT_CHARS = 5_000
+export const KNOWLEDGE_TREE_DEFAULT_LIMIT = 80
+export const KNOWLEDGE_TREE_MAX_LIMIT = 200
 
 const TITLE_CHARS = 180
 const PATH_CHARS = 260
@@ -28,6 +30,41 @@ export type KnowledgeToolPayloadMeta = {
   truncated: boolean
 }
 
+export function compactKnowledgeTreeToolOutput(
+  nodes: KnowledgeTreeNode[],
+  offset = 0,
+  limit = KNOWLEDGE_TREE_DEFAULT_LIMIT
+): {
+  nodes: Array<Record<string, unknown>>
+  total: number
+  offset: number
+  returned: number
+  truncated: boolean
+  nextOffset?: number
+} {
+  const safeOffset = Math.max(0, Math.floor(offset))
+  const safeLimit = Math.max(1, Math.min(KNOWLEDGE_TREE_MAX_LIMIT, Math.floor(limit)))
+  const selected = nodes.slice(safeOffset, safeOffset + safeLimit).map((node) => ({
+    name: clip(node.name, TITLE_CHARS),
+    path: clip(node.path, PATH_CHARS),
+    kind: node.kind,
+    ...(node.extension ? { extension: node.extension } : {}),
+    ...(node.sizeBytes !== undefined ? { sizeBytes: node.sizeBytes } : {}),
+    ...(node.updatedAt ? { updatedAt: node.updatedAt } : {}),
+    ...(node.kind === 'folder' ? { childCount: node.children?.length ?? 0 } : {})
+  }))
+  const nextOffset = safeOffset + selected.length
+  const truncated = nextOffset < nodes.length
+  return {
+    nodes: selected,
+    total: nodes.length,
+    offset: safeOffset,
+    returned: selected.length,
+    truncated,
+    ...(truncated ? { nextOffset } : {})
+  }
+}
+
 export function compactKnowledgeSearchToolOutput(input: {
   query: string
   layer: string
@@ -38,7 +75,14 @@ export function compactKnowledgeSearchToolOutput(input: {
   sources: Array<Record<string, unknown>>
   _meta: KnowledgeToolPayloadMeta
 } {
-  const sources = input.sources.slice(0, KNOWLEDGE_SEARCH_MAX_SOURCES).map((source) => ({
+  const seenSourceKeys = new Set<string>()
+  const distinctSources = input.sources.filter((source) => {
+    const key = source.relativePath || source.documentId
+    if (seenSourceKeys.has(key)) return false
+    seenSourceKeys.add(key)
+    return true
+  })
+  const sources = distinctSources.slice(0, KNOWLEDGE_SEARCH_MAX_SOURCES).map((source) => ({
     title: clip(source.title, TITLE_CHARS),
     relativePath: clip(source.relativePath, PATH_CHARS),
     ...(source.category ? { category: clip(source.category, TITLE_CHARS) } : {}),

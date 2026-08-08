@@ -39,7 +39,7 @@ describe('ls error tolerance', () => {
         toolContext(root)
       )
       expect(result.isError).toBe(true)
-      expect(String(result.output.error)).toContain('does not exist')
+      expect(String((result.output as Record<string, unknown>).error)).toContain('does not exist')
     } finally {
       await cleanup()
     }
@@ -50,7 +50,7 @@ describe('ls error tolerance', () => {
     try {
       const result = await toolByName('ls').execute({ path: join(root, 'a.txt') }, toolContext(root))
       expect(result.isError).toBe(true)
-      expect(String(result.output.error)).toContain('not a directory')
+      expect(String((result.output as Record<string, unknown>).error)).toContain('not a directory')
     } finally {
       await cleanup()
     }
@@ -79,7 +79,7 @@ describe('grep error tolerance', () => {
         toolContext(root)
       )
       expect(result.isError).toBe(true)
-      expect(String(result.output.error)).toContain('does not exist')
+      expect(String((result.output as Record<string, unknown>).error)).toContain('does not exist')
     } finally {
       await cleanup()
     }

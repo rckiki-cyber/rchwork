@@ -101,6 +101,84 @@ describe('runtime SSE IPC lifecycle', () => {
     vi.unstubAllGlobals()
   })
 
+  it('coalesces adjacent text deltas before crossing the IPC boundary', async () => {
+    let closeStream: (() => void) | null = null
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          closeStream = () => controller.close()
+          const encoder = new TextEncoder()
+          for (let seq = 1; seq <= 200; seq += 1) {
+            controller.enqueue(encoder.encode(
+              `id: ${seq}\nevent: assistant_text_delta\ndata: ${JSON.stringify({
+                kind: 'assistant_text_delta',
+                seq,
+                item: { id: 'assistant-1', text: '字' }
+              })}\n\n`
+            ))
+          }
+          init?.signal?.addEventListener('abort', () => controller.close(), { once: true })
+        }
+      })
+      return Promise.resolve(new Response(body, { status: 200 }))
+    }))
+    register()
+    const sender = new WebContentsMock(3)
+    await handlers.get('runtime:sse:start')?.({ sender }, {
+      threadId: 'thr_delta',
+      sinceSeq: 0,
+      streamId: 'stream_delta'
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    const eventCalls = sender.send.mock.calls.filter(([channel]) => channel === 'runtime:sse-event')
+    expect(eventCalls).toHaveLength(1)
+    const payload = eventCalls[0]?.[1] as { data: { seq: number; item: { text: string } } }
+    expect(payload.data.seq).toBe(200)
+    expect(payload.data.item.text).toBe('字'.repeat(200))
+    closeStream?.()
+    stopAllRuntimeSse()
+  })
+
+  it('paces a large non-delta backlog across multiple renderer turns', async () => {
+    let closeStream: (() => void) | null = null
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          closeStream = () => controller.close()
+          const encoder = new TextEncoder()
+          for (let seq = 1; seq <= 130; seq += 1) {
+            controller.enqueue(encoder.encode(
+              `id: ${seq}\nevent: heartbeat\ndata: ${JSON.stringify({ kind: 'heartbeat', seq })}\n\n`
+            ))
+          }
+          init?.signal?.addEventListener('abort', () => controller.close(), { once: true })
+        }
+      })
+      return Promise.resolve(new Response(body, { status: 200 }))
+    }))
+    register()
+    const sender = new WebContentsMock(4)
+    await handlers.get('runtime:sse:start')?.({ sender }, {
+      threadId: 'thr_backlog',
+      sinceSeq: 0,
+      streamId: 'stream_backlog'
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 55))
+    let eventCalls = sender.send.mock.calls.filter(([channel]) => channel === 'runtime:sse-event')
+    expect(eventCalls).toHaveLength(1)
+    expect((eventCalls[0]?.[1] as { data: unknown[] }).data).toHaveLength(60)
+
+    await new Promise((resolve) => setTimeout(resolve, 90))
+    eventCalls = sender.send.mock.calls.filter(([channel]) => channel === 'runtime:sse-event')
+    expect(eventCalls).toHaveLength(3)
+    expect((eventCalls[2]?.[1] as { data: unknown[] }).data).toHaveLength(10)
+    closeStream?.()
+    stopAllRuntimeSse()
+  })
+
   it('notifies the renderer when the host stops all SSE streams', async () => {
     register()
     const sender = new WebContentsMock(1)

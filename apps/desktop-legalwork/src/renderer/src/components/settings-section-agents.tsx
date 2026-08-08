@@ -391,7 +391,7 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
     listSettingsText
   } = ctx
   const mcpSearch = legalwork.mcpSearch ?? {
-    enabled: false,
+    enabled: true,
     mode: 'auto',
     autoThresholdToolCount: 24,
     topKDefault: 5,

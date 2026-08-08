@@ -30,6 +30,7 @@ vi.mock('./services/skill-service', () => ({
 import {
   createLearningIterationRuntime,
   extractLearningThreadText,
+  learningTurnFailureDetail,
   parseLearningModelResult,
   repairLearningModelJson
 } from './learning-iteration-runtime'
@@ -241,6 +242,74 @@ describe('learning model result parsing', () => {
 
     expect(repairLearningModelJson(valid)).toBe(valid)
     expect(parseLearningModelResult(valid).summary).toBe('用户要求"多源调研"')
+  })
+})
+
+describe('learningTurnFailureDetail', () => {
+  const turnId = 'turn_1'
+
+  it('falls back to the bare status when the turn carries no diagnostic item', () => {
+    const detail = {
+      id: 'thread_1',
+      turns: [{ id: turnId, status: 'failed', items: [{ kind: 'assistant_text', turnId, text: '继续' }] }]
+    }
+    expect(learningTurnFailureDetail(detail, turnId, 'failed', '')).toBe('学习线程状态异常：failed')
+  })
+
+  it('prefers the last error item over other items', () => {
+    const detail = {
+      id: 'thread_1',
+      turns: [{
+        id: turnId,
+        status: 'failed',
+        items: [
+          { kind: 'tool_call', turnId, toolName: 'ls', callId: 'c1', toolKind: 'tool_call' },
+          { kind: 'tool_result', turnId, toolName: 'ls', callId: 'c1', toolKind: 'tool_call', output: {}, isError: true },
+          { kind: 'error', turnId, message: 'query failed: ECONNRESET' }
+        ]
+      }]
+    }
+    expect(learningTurnFailureDetail(detail, turnId, 'failed', '')).toBe(
+      '学习线程状态异常：failed（query failed: ECONNRESET）'
+    )
+  })
+
+  it('uses a failed tool result when no error item exists', () => {
+    const detail = {
+      id: 'thread_1',
+      turns: [{
+        id: turnId,
+        status: 'failed',
+        items: [
+          { kind: 'tool_result', turnId, toolName: 'ls', callId: 'c1', toolKind: 'tool_call', output: {}, isError: true, detail: 'ENOENT' }
+        ]
+      }]
+    }
+    expect(learningTurnFailureDetail(detail, turnId, 'failed', '')).toBe(
+      '学习线程状态异常：failed（工具执行失败：ENOENT）'
+    )
+  })
+
+  it('falls back to the final assistant text when available', () => {
+    const detail = {
+      id: 'thread_1',
+      turns: [{ id: turnId, status: 'failed', items: [{ kind: 'assistant_text', turnId, text: '我准备调用工具' }] }]
+    }
+    expect(learningTurnFailureDetail(detail, turnId, 'failed', '我准备调用工具')).toBe(
+      '学习线程状态异常：failed（最后输出：我准备调用工具）'
+    )
+  })
+
+  it('truncates overly long diagnostic text', () => {
+    const longText = 'x'.repeat(500)
+    const result = learningTurnFailureDetail(
+      { id: 'thread_1', turns: [{ id: turnId, status: 'failed', items: [{ kind: 'error', turnId, message: longText }] }] },
+      turnId,
+      'failed',
+      ''
+    )
+    expect(result.length).toBeLessThan('学习线程状态异常：failed（'.length + 200 + 3)
+    expect(result).toContain('…')
   })
 })
 

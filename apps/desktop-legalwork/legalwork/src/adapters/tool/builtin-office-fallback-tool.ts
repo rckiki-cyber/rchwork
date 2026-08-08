@@ -1,4 +1,4 @@
-import { LocalToolHost, type LocalTool } from './local-tool-host.js'
+import type { LocalTool } from './local-tool-host.js'
 import {
   consumeOfficeFallbackEligibility,
   grantOfficeFallback,
@@ -9,7 +9,7 @@ export const REQUEST_OFFICE_FALLBACK_TOOL_NAME = 'request_office_fallback'
 export const DOCUMENT_UNSUPPORTED_MARKER = 'LEGALWORK_DOCUMENT_UNSUPPORTED'
 
 export function createRequestOfficeFallbackTool(): LocalTool {
-  return LocalToolHost.defineTool({
+  return {
     name: REQUEST_OFFICE_FALLBACK_TOOL_NAME,
     description:
       'Unlock Office MCP for the current turn only after LegalWork\'s trusted document_skill_execute tool recorded a genuine structural limitation. Model-created tickets/files cannot unlock it.',
@@ -44,5 +44,5 @@ export function createRequestOfficeFallbackTool(): LocalTool {
         }
       }
     }
-  })
+  }
 }

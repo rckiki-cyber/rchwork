@@ -46,6 +46,26 @@ function fakeStore(searchImpl: KnowledgeStore['search']): KnowledgeStore {
 }
 
 describe('KnowledgeRetrievalPipeline', () => {
+  it('recalls a source filed under a controlled legal synonym without another model call', async () => {
+    const calls: string[] = []
+    const store = fakeStore(async (input) => {
+      calls.push(input.query)
+      return input.query.includes('非现场监管')
+        ? [hit({
+            index: 1,
+            title: '非现场监管的行政法建构',
+            relativePath: '论文/非现场监管的行政法建构.pdf'
+          })]
+        : []
+    })
+
+    const result = await new KnowledgeRetrievalPipeline(store)
+      .retrieve('电子技术监控设备的程序规制')
+
+    expect(calls).toHaveLength(2)
+    expect(result.sources[0]?.title).toBe('非现场监管的行政法建构')
+  })
+
   it('does not apply engineering pyramid layers to ordinary legal queries', async () => {
     const calls: Array<Record<string, unknown>> = []
     const store = fakeStore(async (input) => {
@@ -108,5 +128,43 @@ describe('KnowledgeRetrievalPipeline', () => {
     expect(result.contextText).toContain('匹配 1 个来源')
     expect(result.contextText).toContain('来源一')
     expect(result.contextText).not.toContain('来源二')
+    expect(result.contextText.length).toBeLessThanOrEqual(700)
+    expect(result.sources[0]).not.toHaveProperty('content')
+  })
+
+  it('deduplicates multiple chunks from one file even for a single retrieval query', async () => {
+    const first = hit({ index: 1, title: '长篇论文', relativePath: '论文/长篇论文.md', score: 25 })
+    const second = { ...first, chunkId: 'chunk-1-second', score: 20, snippet: '同一文件的第二个块' }
+    const store = fakeStore(async () => [first, second])
+
+    const result = await new KnowledgeRetrievalPipeline(store).retrieve('劳动合同责任')
+
+    expect(result.sources).toHaveLength(1)
+    expect(result.sources[0]?.path).toBe('论文/长篇论文.md')
+  })
+
+  it('preserves extracted publication metadata in sources and bibliography', async () => {
+    const source = hit({
+      index: 1,
+      title: '算法行政研究',
+      relativePath: '论文/算法行政研究_2024.pdf'
+    })
+    source.content = [
+      '作者：张三、李四',
+      '载《行政法学研究》2024年第2期。',
+      'DOI: 10.1234/example.2024.'
+    ].join('\n')
+    const store = fakeStore(async () => [source])
+
+    const result = await new KnowledgeRetrievalPipeline(store).retrieve('算法行政责任')
+
+    expect(result.sources[0]).toMatchObject({
+      authors: ['张三', '李四'],
+      publicationYear: 2024,
+      publicationName: '行政法学研究',
+      doi: '10.1234/example.2024'
+    })
+    expect(result.bibliography).toContain('张三, 李四. 算法行政研究[J]. 行政法学研究, 2024')
+    expect(result.citations[0]).toContain('张三, 李四. 算法行政研究[J]')
   })
 })

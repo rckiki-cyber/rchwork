@@ -24,8 +24,26 @@ export type CompressContextLocalToolOptions = {
  * reports token/cost savings back to the agent.
  */
 export function createCompressContextLocalTool(
-  options: CompressContextLocalToolOptions
+  options?: CompressContextLocalToolOptions
 ): LocalTool {
+  if (!options) {
+    return LocalToolHost.defineTool({
+      name: 'compress_context',
+      description: '压缩当前对话上下文（当前运行环境未配置此能力）。',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false
+      },
+      policy: 'auto',
+      toolKind: 'tool_call',
+      execute: async () => ({
+        output: { error: 'compress_context tool is not configured' },
+        isError: true
+      })
+    })
+  }
+
   const { compactor, prefix, sessionStore, events, usage } = options
 
   return LocalToolHost.defineTool({

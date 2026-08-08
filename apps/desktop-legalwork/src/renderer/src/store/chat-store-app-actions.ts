@@ -112,7 +112,7 @@ export function createAppActions(options: CreateAppActionsOptions): Pick<
         // ChatGPT-account auth mode: the composer should offer the models the
         // Codex/ChatGPT login actually provides, not the API-provider list.
         if (legalworkRuntime.authMode === 'chatgpt') {
-          let model = readStoredComposerModel([])
+          let model = ''
           let pick: string[] = []
           let groups: ModelProviderModelGroup[] = []
           try {
@@ -122,14 +122,18 @@ export function createAppActions(options: CreateAppActionsOptions): Pick<
                 pick = status.models.map((m) => m.id)
                 groups = [{ providerId: 'codex', label: 'ChatGPT', modelIds: pick }]
                 const defaultModel = status.models.find((m) => m.isDefault)?.id
-                if (defaultModel) model = defaultModel
+                const allowed = new Set(pick)
+                model = [
+                  legalworkRuntime.model,
+                  readStoredComposerModel(pick),
+                  defaultModel,
+                  pick[0]
+                ].find((candidate): candidate is string => Boolean(candidate && allowed.has(candidate))) ?? ''
               }
             }
           } catch {
             pick = []
           }
-          const allowed = new Set(pick)
-          if (model && !allowed.has(model)) model = pick[0] ?? ''
           if (model !== get().composerModel) persistComposerModel(model)
           set({
             composerPickList: pick,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TurnItem } from '../contracts/items.js'
 import {
+  IMA_RESEARCH_TIMEOUT_SECONDS,
   resolveImaRouteAction,
   shouldAutoRouteToIma
 } from './ima-knowledge-router.js'
@@ -33,7 +34,10 @@ describe('IMA knowledge router', () => {
     expect(action).toMatchObject({
       kind: 'direct',
       requiredToolName: 'mcp_ima_knowledge_base_research_ima',
-      requiredArguments: { question: prompt }
+      requiredArguments: {
+        question: prompt,
+        timeout: IMA_RESEARCH_TIMEOUT_SECONDS
+      }
     })
   })
 
@@ -134,8 +138,164 @@ describe('IMA knowledge router', () => {
       requiredToolName: 'mcp_call',
       requiredArguments: {
         toolId: 'ima-knowledge-base/research_ima',
-        arguments: { question: prompt }
+        arguments: {
+          question: prompt,
+          timeout: IMA_RESEARCH_TIMEOUT_SECONDS
+        }
       }
     })
+  })
+
+  it('does not automatically retry a failed direct IMA research attempt', () => {
+    const action = resolveImaRouteAction({
+      prompt,
+      tools: [{
+        name: 'mcp_ima_knowledge_base_research_ima',
+        description: 'research',
+        inputSchema: {}
+      }],
+      items: [{
+        id: 'result-direct-failed',
+        threadId: 'thread',
+        turnId,
+        kind: 'tool_result',
+        callId: 'call-direct-failed',
+        toolName: 'mcp_ima_knowledge_base_research_ima',
+        toolKind: 'tool_call',
+        output: { error: 'MCP error -32001: Request timed out' },
+        isError: true,
+        status: 'failed',
+        role: 'tool',
+        createdAt: new Date().toISOString()
+      }] as TurnItem[],
+      turnId
+    })
+
+    expect(action).toBeNull()
+  })
+
+  it('does not automatically retry a failed progressive IMA research call', () => {
+    const items = [
+      {
+        id: 'call-progressive-failed',
+        threadId: 'thread',
+        turnId,
+        kind: 'tool_call',
+        callId: 'call-progressive-failed',
+        toolName: 'mcp_call',
+        toolKind: 'tool_call',
+        arguments: {
+          toolId: 'ima-knowledge-base/research_ima',
+          arguments: { question: prompt }
+        },
+        status: 'failed',
+        role: 'assistant',
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 'result-progressive-failed',
+        threadId: 'thread',
+        turnId,
+        kind: 'tool_result',
+        callId: 'call-progressive-failed',
+        toolName: 'mcp_call',
+        toolKind: 'tool_call',
+        output: { error: 'MCP error -32001: Request timed out' },
+        isError: true,
+        status: 'failed',
+        role: 'tool',
+        createdAt: new Date().toISOString()
+      }
+    ] as TurnItem[]
+
+    expect(resolveImaRouteAction({
+      prompt,
+      tools: [
+        { name: 'mcp_search', description: 'search', inputSchema: {} },
+        { name: 'mcp_call', description: 'call', inputSchema: {} }
+      ],
+      items,
+      turnId
+    })).toBeNull()
+  })
+
+  it('does not mistake a failed call to another MCP tool for an IMA attempt', () => {
+    const items = [
+      {
+        id: 'call-other',
+        threadId: 'thread',
+        turnId,
+        kind: 'tool_call',
+        callId: 'call-other',
+        toolName: 'mcp_call',
+        toolKind: 'tool_call',
+        arguments: { toolId: 'another-server/another-tool', arguments: {} },
+        status: 'failed',
+        role: 'assistant',
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 'result-other',
+        threadId: 'thread',
+        turnId,
+        kind: 'tool_result',
+        callId: 'call-other',
+        toolName: 'mcp_call',
+        toolKind: 'tool_call',
+        output: { error: 'failed' },
+        isError: true,
+        status: 'failed',
+        role: 'tool',
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 'result-search',
+        threadId: 'thread',
+        turnId,
+        kind: 'tool_result',
+        callId: 'call-search',
+        toolName: 'mcp_search',
+        toolKind: 'tool_call',
+        output: { results: [{ toolId: 'ima-knowledge-base/research_ima' }] },
+        isError: false,
+        status: 'completed',
+        role: 'tool',
+        createdAt: new Date().toISOString()
+      }
+    ] as TurnItem[]
+
+    expect(resolveImaRouteAction({
+      prompt,
+      tools: [
+        { name: 'mcp_search', description: 'search', inputSchema: {} },
+        { name: 'mcp_call', description: 'call', inputSchema: {} }
+      ],
+      items,
+      turnId
+    })).toMatchObject({ kind: 'call', requiredToolName: 'mcp_call' })
+  })
+
+  it('sends only the IMA research scope for a compound file-delivery task', () => {
+    const compoundPrompt = [
+      '请就「自动化行政处罚的责任界定」完成综合研究并交付 Word、PDF、PPT。',
+      '1. 检索本地知识库：查找行政处罚法第41条。',
+      '2. 检索 IMA 知识库：查找数字行政、自动化决策与人工智能治理资料。',
+      '3. 生成一万字报告及三份文件。'
+    ].join('\n')
+    const action = resolveImaRouteAction({
+      prompt: compoundPrompt,
+      tools: [{
+        name: 'mcp_ima_knowledge_base_research_ima',
+        description: 'research',
+        inputSchema: {}
+      }],
+      items: [],
+      turnId
+    })
+    const question = String(action?.requiredArguments.question ?? '')
+
+    expect(question).toContain('数字行政、自动化决策与人工智能治理资料')
+    expect(question).toContain('不要生成 Word、PDF、PPT')
+    expect(question).not.toContain('一万字报告')
   })
 })

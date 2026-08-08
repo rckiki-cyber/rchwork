@@ -1,6 +1,7 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CapabilityRegistry } from '../src/adapters/tool/capability-registry.js'
 import { LocalToolHost } from '../src/adapters/tool/local-tool-host.js'
@@ -43,6 +44,37 @@ describe('SkillRuntime', () => {
     })
     expect(diagnostics.skills.find((skill) => skill.id === 'legacy')?.legacy).toBe(true)
     expect(diagnostics.validationErrors[0]?.message).toMatch(/expected string/i)
+  })
+
+  it('prefers an operational document Skill over an earlier incomplete duplicate', async () => {
+    const brokenRoot = join(root, 'broken-root')
+    const healthyRoot = join(root, 'healthy-root')
+    for (const skillRoot of [brokenRoot, healthyRoot]) {
+      await mkdir(skillRoot, { recursive: true })
+      await writeFile(join(skillRoot, 'skill.json'), JSON.stringify({
+        id: 'legal-document-formatting',
+        name: 'Document',
+        entry: 'SKILL.md',
+        triggers: { promptPatterns: ['Word'] }
+      }), 'utf8')
+      await writeFile(join(skillRoot, 'SKILL.md'), 'Create Word documents.', 'utf8')
+    }
+    await mkdir(join(healthyRoot, 'scripts'), { recursive: true })
+    await writeFile(join(healthyRoot, 'scripts', 'skill_runner.py'), 'print("ok")\n', 'utf8')
+
+    const runtime = await SkillRuntime.create(LegalworkCapabilitiesConfig.parse({
+      skills: {
+        enabled: true,
+        roots: [brokenRoot, healthyRoot],
+        legacySkillMd: true
+      }
+    }).skills)
+
+    expect(runtime.load('legal-document-formatting')?.root).toBe(healthyRoot)
+    expect(runtime.diagnostics().validationErrors).toContainEqual(expect.objectContaining({
+      root: brokenRoot,
+      message: expect.stringContaining('incomplete duplicate')
+    }))
   })
 
   it('uses Chinese legacy frontmatter names for diagnostics without changing folder ids', async () => {
@@ -109,6 +141,61 @@ describe('SkillRuntime', () => {
     expect(resolution.activations.map((activation) => activation.skillId)).toEqual(['big', 'small'])
     expect(resolution.activeSkillIds).toEqual(['small'])
     expect(resolution.instructions[0]).toContain('small instructions')
+  })
+
+  it('matches the real document Skill for natural Chinese Word drafting requests', async () => {
+    const manifestPath = fileURLToPath(new URL('../../../../skills/legal_document_formatting/skill.json', import.meta.url))
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+      triggers: { promptPatterns: string[] }
+    }
+    const matches = (prompt: string) => manifest.triggers.promptPatterns.some(
+      (pattern) => new RegExp(pattern, 'i').test(prompt)
+    )
+
+    expect(matches('写一篇文献综述word')).toBe(true)
+    expect(matches('请撰写法律调研报告并给我Word文档')).toBe(true)
+    expect(matches('你怎么还不给我word？')).toBe(true)
+  })
+
+  it('keeps the specialist PPT Skill ahead of generic document formatting within the real injection budget', async () => {
+    const openKimiRoot = fileURLToPath(new URL('../../../../skills/open-kimi-ppt', import.meta.url))
+    const genericDocumentRoot = fileURLToPath(new URL('../../../../skills/legal_document_formatting', import.meta.url))
+    const config = LegalworkCapabilitiesConfig.parse({
+      skills: {
+        enabled: true,
+        roots: [openKimiRoot, genericDocumentRoot],
+        legacySkillMd: true,
+        autoActivateUserSkills: true
+      }
+    })
+    const runtime = await SkillRuntime.create(config.skills, { instructionBudgetBytes: 24_000 })
+
+    const resolution = runtime.resolveTurn({
+      prompt: '请制作民法典解读 PPT 演示文稿',
+      workspace: root
+    })
+
+    expect(resolution.activations.map((activation) => activation.skillId)).toEqual([
+      'open-kimi-ppt',
+      'legal-document-formatting'
+    ])
+    expect(resolution.activeSkillIds).toEqual(['open-kimi-ppt'])
+    expect(resolution.instructions.join('\n')).toContain('PPTD')
+  })
+
+  it('declares retrieval, IMA, and Word delivery tools in the real contract review Skill', async () => {
+    const manifestPath = fileURLToPath(new URL('../../../../skills/contract_risk_review/skill.json', import.meta.url))
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { allowedTools: string[] }
+
+    expect(manifest.allowedTools).toEqual(expect.arrayContaining([
+      'knowledge_auto_retrieve',
+      'knowledge_search',
+      'knowledge_read_file',
+      'mcp_search',
+      'mcp_call',
+      'mcp_ima_knowledge_base_research_ima',
+      'document_skill_execute'
+    ]))
   })
 
   it('injects allowed tool constraints and blocks omitted tools', async () => {
@@ -256,6 +343,209 @@ describe('SkillRuntime', () => {
     const turn = await h.turns.getTurn(h.threadId, h.turnId)
     expect(turn?.activeSkillIds).toEqual(['review'])
     expect(turn?.skillInjectionBytes).toBeGreaterThan(0)
+  })
+
+  it('requires the document executor before completing an activated document turn', async () => {
+    await writeSkill('document', {
+      id: 'legal-document-formatting',
+      name: 'Document',
+      triggers: { promptPatterns: ['写.*word'] }
+    }, 'Create the file with document_skill_execute.')
+    const skillRuntime = await createRuntime()
+    let seenRequest: ModelRequest | undefined
+    const model: ModelClient = {
+      provider: 'fake',
+      model: 'fake',
+      async *stream(request) {
+        seenRequest = request
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }
+    const h = makeHarness(model, {
+      skillRuntime,
+      tools: [
+        LocalToolHost.defineTool({
+          name: 'document_skill_execute',
+          description: 'create a document',
+          inputSchema: { type: 'object' },
+          policy: 'auto',
+          execute: async () => ({ output: { status: 'ok', operation: 'from-markdown' } })
+        })
+      ]
+    })
+    await bootstrapThread(h, { workspace: root, request: { prompt: '写一篇文献综述word' } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('failed')
+    expect(seenRequest?.requiredToolName).toBe('document_skill_execute')
+    expect(seenRequest?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
+  })
+
+  it('hands PPT-only creation to open-kimi-ppt instead of forcing the generic document executor', async () => {
+    const requests: ModelRequest[] = []
+    const model: ModelClient = {
+      provider: 'fake',
+      model: 'fake',
+      async *stream(request) {
+        requests.push(request)
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }
+    const define = (name: string) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object' },
+      policy: 'auto',
+      execute: async () => ({ output: { ok: true } })
+    })
+    const h = makeHarness(model, {
+      skillRuntime: {
+        resolveTurn: () => ({
+          activeSkillIds: ['open-kimi-ppt'],
+          activations: [],
+          instructions: ['Use the PPTD specialist workflow.'],
+          allowedToolNames: ['document_skill_execute'],
+          injectedBytes: 100
+        })
+      } as never,
+      tools: ['read', 'write', 'edit', 'bash', 'document_skill_execute'].map(define)
+    })
+    await bootstrapThread(h, {
+      workspace: root,
+      request: { prompt: '请制作一份民法典解读 PPT 演示文稿并交付 .pptx' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.requiredToolName).toBeUndefined()
+    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
+      'read', 'write', 'edit', 'bash'
+    ]))
+    expect(requests[0]?.tools.map((tool) => tool.name)).not.toContain('document_skill_execute')
+    expect(requests[0]?.contextInstructions?.join('\n')).toContain('open-kimi-ppt / PPTD')
+  })
+
+  it('removes document tools after one successful artifact generation', async () => {
+    await writeSkill('document', {
+      id: 'legal-document-formatting',
+      name: 'Document',
+      triggers: { promptPatterns: ['写.*word'] }
+    }, 'Create the file with document_skill_execute.')
+    const skillRuntime = await createRuntime()
+    const requests: ModelRequest[] = []
+    let executions = 0
+    const model: ModelClient = {
+      provider: 'fake',
+      model: 'fake',
+      async *stream(request) {
+        requests.push(request)
+        if (requests.length === 1) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_document',
+            toolName: 'document_skill_execute',
+            arguments: {
+              kind: 'docx',
+              operation: 'from-markdown',
+              content: '# 完整文献综述\n\n'.concat('正文。'.repeat(5_000)),
+              outputPath: '综述.docx'
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '文档已生成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }
+    const h = makeHarness(model, {
+      skillRuntime,
+      tools: [LocalToolHost.defineTool({
+        name: 'document_skill_execute',
+        description: 'create a document',
+        inputSchema: { type: 'object' },
+        policy: 'auto',
+        execute: async () => {
+          executions += 1
+          return { output: { status: 'ok', operation: 'from-markdown', output: '综述.docx' } }
+        }
+      })]
+    })
+    await bootstrapThread(h, { workspace: root, request: { prompt: '写一篇文献综述word' } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executions).toBe(1)
+    expect(requests).toHaveLength(2)
+    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
+    expect(requests[1]?.tools).toEqual([])
+  })
+
+  it('requires the document executor even when Skill activation is unavailable', async () => {
+    let seenRequest: ModelRequest | undefined
+    const model: ModelClient = {
+      provider: 'fake',
+      model: 'fake',
+      async *stream(request) {
+        seenRequest = request
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }
+    const h = makeHarness(model, {
+      tools: [LocalToolHost.defineTool({
+        name: 'document_skill_execute',
+        description: 'create a document',
+        inputSchema: { type: 'object' },
+        policy: 'auto',
+        execute: async () => ({ output: { status: 'ok', operation: 'from-markdown' } })
+      })]
+    })
+    await bootstrapThread(h, { workspace: root, request: { prompt: '写一篇文献综述word' } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('failed')
+    expect(seenRequest?.requiredToolName).toBe('document_skill_execute')
+    expect(seenRequest?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
+  })
+
+  it('does not force document creation for an informational Word-format question', async () => {
+    await writeSkill('document', {
+      id: 'legal-document-formatting',
+      name: 'Document',
+      triggers: { promptPatterns: ['Word'] }
+    }, 'Use document_skill_execute only when an artifact is requested.')
+    const skillRuntime = await createRuntime()
+    let seenRequest: ModelRequest | undefined
+    const model: ModelClient = {
+      provider: 'fake',
+      model: 'fake',
+      async *stream(request) {
+        seenRequest = request
+        yield { kind: 'assistant_text_delta', text: '一般使用标准页边距。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }
+    const h = makeHarness(model, {
+      skillRuntime,
+      tools: [LocalToolHost.defineTool({
+        name: 'document_skill_execute',
+        description: 'create a document',
+        inputSchema: { type: 'object' },
+        policy: 'auto',
+        execute: async () => ({ output: { status: 'ok', operation: 'from-markdown' } })
+      })]
+    })
+    await bootstrapThread(h, { workspace: root, request: { prompt: '如何设置 Word 的页边距？' } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(seenRequest?.requiredToolName).toBeUndefined()
   })
 
   async function createRuntime(options: Parameters<typeof SkillRuntime.create>[1] = {}) {

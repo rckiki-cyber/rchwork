@@ -77,6 +77,41 @@ describe('request history hygiene', () => {
       .toBe(12_000)
   })
 
+  it('makes compressed historical document content impossible to mistake for the executed input', () => {
+    const call = makeToolCallItem({
+      id: 'document_call',
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      callId: 'call_document',
+      toolName: 'document_skill_execute',
+      arguments: {
+        kind: 'docx',
+        operation: 'from-markdown',
+        content: '# 文献综述\n\n'.concat('完整正文。'.repeat(3_000)),
+        outputPath: '综述.docx'
+      }
+    })
+    const result = makeToolResultItem({
+      id: 'document_result',
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      callId: 'call_document',
+      toolName: 'document_skill_execute',
+      output: { status: 'ok', output: '综述.docx' }
+    })
+
+    const compacted = applyRequestHistoryHygiene([call, result])
+    const content = compacted[0]?.kind === 'tool_call'
+      ? String(compacted[0].arguments.content)
+      : ''
+
+    expect(content).toContain('HISTORY VIEW ONLY')
+    expect(content).toContain('original COMPLETE document content was sent to the tool')
+    expect(content).toContain('was NOT the executed argument')
+    expect(content).toContain('do NOT regenerate')
+    expect(content).not.toContain('preview=')
+  })
+
   it('shrinks dense text when the approximate token cap is exceeded before the byte cap', () => {
     const denseOutput = '汉'.repeat(9_000)
     const result = makeToolResultItem({
@@ -153,5 +188,35 @@ describe('request history hygiene', () => {
       data_base64: expect.stringContaining('omitted base64 data'),
       mime: 'image/png'
     })
+  })
+
+  it('caps aggregate structured results even when every nested string is individually small', () => {
+    const output = Object.fromEntries(
+      Array.from({ length: 80 }, (_, index) => [
+        `result_${index}`,
+        { title: `文献 ${index}`, abstract: '摘'.repeat(300), source: `source-${index}` }
+      ])
+    )
+    const result = makeToolResultItem({
+      id: 'structured_result',
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      callId: 'call_mcp',
+      toolName: 'mcp_call',
+      output
+    })
+
+    const compacted = applyRequestHistoryHygiene([result], {
+      maxToolResultBytes: 4 * 1024,
+      maxToolResultTokens: 2_000
+    })
+    const compactedOutput = compacted[0]?.kind === 'tool_result'
+      ? compacted[0].output
+      : undefined
+    const serialized = JSON.stringify(compactedOutput)
+
+    expect(typeof compactedOutput).toBe('string')
+    expect(Buffer.byteLength(serialized, 'utf8')).toBeLessThan(5 * 1024)
+    expect(serialized).toContain('cache hygiene')
   })
 })

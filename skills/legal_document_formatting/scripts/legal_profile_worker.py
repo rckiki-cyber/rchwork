@@ -19,7 +19,7 @@ try:
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
-    from docx.shared import Cm, Pt
+    from docx.shared import Cm, Pt, RGBColor
 except Exception as exc:  # pragma: no cover
     Document = None  # type: ignore[assignment]
     IMPORT_ERROR = str(exc)
@@ -142,12 +142,14 @@ def risky_features(path: Path) -> dict[str, bool]:
     return result
 
 
-def set_font(target: Any, spec: dict[str, Any]) -> None:
+def set_font(target: Any, spec: dict[str, Any], *, force_black: bool = False) -> None:
     latin = spec.get("latin") or "Times New Roman"
     east_asia = spec.get("east_asia") or "宋体"
     size = float(spec.get("size") or 12.0)
     target.font.name = latin
     target.font.size = Pt(size)
+    if force_black:
+        target.font.color.rgb = RGBColor(0, 0, 0)
     if spec.get("bold") is not None:
         target.font.bold = bool(spec["bold"])
     fonts = target._element.get_or_add_rPr().get_or_add_rFonts()
@@ -155,6 +157,23 @@ def set_font(target: Any, spec: dict[str, Any]) -> None:
     fonts.set(qn("w:hAnsi"), latin)
     fonts.set(qn("w:cs"), latin)
     fonts.set(qn("w:eastAsia"), east_asia)
+    fonts.set(qn("w:hint"), "eastAsia")
+
+
+def remove_xml_children(parent: Any, *qualified_names: str) -> None:
+    if parent is None:
+        return
+    wanted = {qn(name) for name in qualified_names}
+    for child in list(parent):
+        if child.tag in wanted:
+            parent.remove(child)
+
+
+def remove_builtin_heading_residue(style: Any) -> None:
+    ppr = style._element.get_or_add_pPr()
+    rpr = style._element.get_or_add_rPr()
+    remove_xml_children(ppr, "w:pBdr", "w:shd", "w:tabs")
+    remove_xml_children(rpr, "w:spacing", "w:shd", "w:effect", "w:outline", "w:shadow")
 
 
 def set_paragraph_format(target: Any, spec: dict[str, Any]) -> None:
@@ -222,8 +241,9 @@ def apply_headings(doc: Any, specs: dict[str, dict[str, Any]]) -> dict[str, int]
     for style_name, spec in specs.items():
         try:
             style = doc.styles[style_name]
-            set_font(style, spec)
+            set_font(style, spec, force_black=True)
             set_paragraph_format(style, spec)
+            remove_builtin_heading_residue(style)
             changed["styles"] += 1
         except KeyError:
             continue
@@ -235,7 +255,7 @@ def apply_headings(doc: Any, specs: dict[str, dict[str, Any]]) -> dict[str, int]
         set_paragraph_format(paragraph, spec)
         for run in paragraph.runs:
             if run.text:
-                set_font(run, spec)
+                set_font(run, spec, force_black=True)
                 changed["runs"] += 1
         changed["paragraphs"] += 1
     return dict(changed)

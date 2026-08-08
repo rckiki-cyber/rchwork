@@ -358,6 +358,23 @@ describe('watched completion notifications', () => {
 })
 
 describe('thread event sink delta dedupe (duplicate-text fix)', () => {
+  it('appends a duplicated seq only once when it appears in the same IPC batch', () => {
+    const { getState, set, get } = makeSinkHarness({ activeThreadId: 'thread-current' })
+    const sink = buildThreadEventSink(set, get, {
+      threadId: 'thread-current',
+      signal: new AbortController().signal
+    })
+
+    sink.onDeltas([
+      { kind: 'agent_message', text: '复杂', seq: 1 },
+      { kind: 'agent_message', text: '复杂', seq: 1 },
+      { kind: 'agent_message', text: '任务', seq: 2 }
+    ])
+
+    expect(getState().liveAssistant).toBe('复杂任务')
+    expect(getState().appliedSeq).toBe(2)
+  })
+
   it('appends only the first occurrence of a seq when reconnected deltas overlap', () => {
     const { getState, set, get } = makeSinkHarness({ activeThreadId: 'thread-current' })
     const controller = new AbortController()

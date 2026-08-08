@@ -85,6 +85,7 @@ export function makeHarness(
       maxStringBytes?: number
     }
     primaryLegalSource?: 'pkulaw' | 'yuandian'
+    turnTokenBudget?: number
   } = {}
 ): Harness {
   const bus = new InMemoryEventBus()
@@ -139,7 +140,8 @@ export function makeHarness(
     ...(options.contextCompaction ? { contextCompaction: options.contextCompaction } : {}),
     ...(options.toolStorm ? { toolStorm: options.toolStorm } : {}),
     ...(options.toolArgumentRepair ? { toolArgumentRepair: options.toolArgumentRepair } : {}),
-    ...(options.primaryLegalSource ? { primaryLegalSource: options.primaryLegalSource } : {})
+    ...(options.primaryLegalSource ? { primaryLegalSource: options.primaryLegalSource } : {}),
+    ...(options.turnTokenBudget !== undefined ? { turnTokenBudget: options.turnTokenBudget } : {})
   })
 
   return {

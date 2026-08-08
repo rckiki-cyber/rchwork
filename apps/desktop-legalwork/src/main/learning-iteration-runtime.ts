@@ -915,7 +915,9 @@ export class LearningIterationRuntime {
         continue
       }
       if (turn.status !== 'completed') {
-        throw new Error(turn.error || `学习线程状态异常：${turn.status}`)
+        throw new Error(
+          turn.error?.trim() || learningTurnFailureDetail(detail, turnId, turn.status, lastText)
+        )
       }
       if (!lastText) throw new Error('学习线程没有返回分析结果。')
       return lastText
@@ -1180,6 +1182,45 @@ export class LearningIterationRuntime {
 
 export function createLearningIterationRuntime(deps: RuntimeDeps): LearningIterationRuntime {
   return new LearningIterationRuntime(deps)
+}
+
+/**
+ * Builds a diagnostic message for a failed learning turn when the turn object
+ * itself carries no `error` field. Extracts the most actionable signal from the
+ * thread's items — the last error item, else a failed tool result, else the
+ * final assistant text — so the reported issue is not just
+ * "学习线程状态异常：failed".
+ */
+export function learningTurnFailureDetail(
+  detail: ThreadDetailJson,
+  turnId: string,
+  status: string,
+  lastText: string
+): string {
+  const fallback = `学习线程状态异常：${status}`
+  const turn = Array.isArray(detail.turns) ? detail.turns.find((item) => item.id === turnId) : undefined
+  const items = Array.isArray(turn?.items) ? turn.items : []
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (item.kind === 'error') {
+      const message = (item.message ?? item.detail ?? item.text ?? item.summary ?? '').trim()
+      if (message) return `${fallback}（${truncateDiagnostic(message)}）`
+    }
+  }
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (item.kind === 'tool_result' && item.isError) {
+      const message = (item.detail ?? item.text ?? item.summary ?? '').trim()
+      if (message) return `${fallback}（工具执行失败：${truncateDiagnostic(message)}）`
+    }
+  }
+  const last = lastText.trim()
+  if (last) return `${fallback}（最后输出：${truncateDiagnostic(last)}）`
+  return fallback
+}
+
+function truncateDiagnostic(text: string, maxLength = 200): string {
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength)}…`
 }
 
 function defaultState(): LearningState {

@@ -16,8 +16,8 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-RUNTIME_VERSION = "v4"
-REQUIRED_IMPORTS = ("docx", "pptx", "openpyxl", "lxml", "PIL")
+RUNTIME_VERSION = "v5"
+REQUIRED_IMPORTS = ("docx", "pptx", "openpyxl", "lxml", "PIL", "reportlab")
 MAX_ERROR_CHARS = 2400
 
 
@@ -80,7 +80,7 @@ def python_version_ok(command: str) -> bool:
         if completed.returncode != 0:
             return False
         major, minor = (int(part) for part in completed.stdout.strip().split(".")[:2])
-        return major == 3 and 10 <= minor <= 13
+        return major == 3 and minor >= 10
     except Exception:
         return False
 
@@ -159,7 +159,7 @@ def choose_bootstrap_python() -> str:
     emit({
         "status": "error",
         "stage": "runtime",
-        "error": "No compatible Python 3.10-3.13 interpreter is available for the development document Skill runtime.",
+        "error": "No compatible Python 3.10+ interpreter is available for the development document Skill runtime.",
         "office_fallback_allowed": False,
     }, 1)
     raise AssertionError("unreachable")
@@ -246,6 +246,7 @@ def ensure_runtime() -> str:
 def worker_path(kind: str) -> Path:
     filenames = {
         "docx": "docx_worker.py",
+        "pdf": "pdf_worker.py",
         "xlsx": "xlsx_worker.py",
         "pptx": "pptx_worker.py",
         "reference": "reference_profile_worker.py",
@@ -307,7 +308,7 @@ def dispatch(kind: str, worker_args: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LegalWork managed document-skill launcher")
-    parser.add_argument("kind", choices=("docx", "xlsx", "pptx", "reference", "profile", "legacy"))
+    parser.add_argument("kind", choices=("docx", "pdf", "xlsx", "pptx", "reference", "profile", "legacy"))
     parser.add_argument("worker_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     dispatch(args.kind, args.worker_args)

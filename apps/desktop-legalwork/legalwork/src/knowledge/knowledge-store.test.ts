@@ -1,8 +1,14 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
-import { FileKnowledgeStore } from './knowledge-store.js'
+import {
+  AUTO_SQLITE_FILE_THRESHOLD,
+  DEFAULT_KNOWLEDGE_SYNC_MAX_FILES,
+  FileKnowledgeStore,
+  shouldAutoEnableKnowledgeSqlite,
+  shouldUpgradeLegacyTruncatedKnowledgeIndex
+} from './knowledge-store.js'
 import { KnowledgeRetrievalPipeline } from './knowledge-retrieval-pipeline.js'
 import type { ModelClient, ModelRequest, ModelStreamChunk } from '../ports/model-client.js'
 
@@ -21,6 +27,101 @@ class StaticClassifierModel implements ModelClient {
 }
 
 describe('FileKnowledgeStore', () => {
+  it('covers 10k-file libraries by default and auto-enables local FTS without model tokens', () => {
+    expect(DEFAULT_KNOWLEDGE_SYNC_MAX_FILES).toBeGreaterThanOrEqual(10_000)
+    expect(shouldAutoEnableKnowledgeSqlite(AUTO_SQLITE_FILE_THRESHOLD - 1, undefined)).toBe(false)
+    expect(shouldAutoEnableKnowledgeSqlite(AUTO_SQLITE_FILE_THRESHOLD, undefined)).toBe(true)
+    expect(shouldAutoEnableKnowledgeSqlite(50_000, false)).toBe(false)
+    expect(shouldUpgradeLegacyTruncatedKnowledgeIndex({
+      candidateFileCount: 10_000,
+      attemptedFileCount: 1_500,
+      truncatedFileCount: 8_500
+    })).toBe(true)
+    expect(shouldUpgradeLegacyTruncatedKnowledgeIndex({
+      candidateFileCount: 10_000,
+      attemptedFileCount: 10_000,
+      truncatedFileCount: 0
+    })).toBe(false)
+  })
+
+  it('ranks a rare multi-concept legal source above 9,999 repetitive distractors', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-10k-ranking-'))
+    const indexRoot = join(root, 'index')
+    try {
+      await mkdir(indexRoot, { recursive: true })
+      const distractors = Array.from({ length: 9_999 }, (_, index) => ({
+        id: `chunk-noise-${index}`,
+        documentId: `doc-noise-${index}`,
+        title: `一般行政材料 ${index}`,
+        path: join(root, `noise-${index}.md`),
+        relativePath: `普通材料/noise-${index}.md`,
+        category: '行政材料',
+        keywords: ['行政'],
+        content: '行政管理行政行为行政机关'.repeat(20)
+      }))
+      const relevant = {
+        id: 'chunk-relevant',
+        documentId: 'doc-relevant',
+        title: '算法行政裁量的法律控制与责任归属研究',
+        path: join(root, '算法行政裁量研究.md'),
+        relativePath: '论文/算法行政裁量研究.md',
+        category: '论文',
+        keywords: ['算法行政', '行政裁量', '责任归属'],
+        content: '本文研究自动化决策中的算法行政裁量、说明理由、法律控制与行政机关责任归属。'
+      }
+      await writeFile(join(indexRoot, 'index.json'), JSON.stringify({
+        roots: [root],
+        documents: [],
+        chunks: [...distractors, relevant],
+        edges: [],
+        skippedCount: 0,
+        candidateFileCount: 10_000,
+        attemptedFileCount: 10_000,
+        failedFileCount: 0,
+        truncatedFileCount: 0
+      }), 'utf8')
+      const store = new FileKnowledgeStore({
+        rootDir: indexRoot,
+        sourceRoots: [],
+        sqliteIndex: { enabled: false }
+      })
+
+      const hits = await store.search({
+        query: '算法行政裁量的法律控制与责任归属',
+        limit: 5,
+        includeContent: true
+      })
+
+      expect(hits[0]).toMatchObject({
+        documentId: 'doc-relevant',
+        title: '算法行政裁量的法律控制与责任归属研究'
+      })
+      expect(hits[0]?.rankReason).toContain('覆盖')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects managed paths that escape through a symbolic link', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-symlink-'))
+    const outside = await mkdtemp(join(tmpdir(), 'legalwork-kb-outside-'))
+    const indexRoot = join(root, 'index')
+    try {
+      const store = new FileKnowledgeStore({ rootDir: indexRoot, sourceRoots: [] })
+      await store.createFolder({ path: 'safe' })
+      await symlink(outside, join(indexRoot, 'files', 'escape'), 'dir')
+
+      await expect(store.writeFile({
+        path: 'escape/leaked.md',
+        content: '不应写到知识库外部',
+        encoding: 'utf8'
+      })).rejects.toThrow(/symbolic link/)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+
   it('syncs local files and searches Chinese legal terms', async () => {
     const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-'))
     const sourceRoot = join(root, 'knowledge-base')

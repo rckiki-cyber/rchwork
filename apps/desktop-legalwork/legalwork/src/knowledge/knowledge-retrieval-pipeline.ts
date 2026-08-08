@@ -3,7 +3,12 @@ import type { KnowledgeStore } from '../knowledge/knowledge-store.js'
 import type { KnowledgeSearchHit } from '../contracts/knowledge.js'
 import type { KnowledgeContextRecord, KnowledgeRetrievalResult, KnowledgeLayer } from '../contracts/knowledge-retrieval.js'
 import { KnowledgeMeta, DEFAULT_KNOWLEDGE_META } from '../contracts/knowledge-retrieval.js'
-import { fieldsFromKnowledgeMeta, formatGbt7714, buildBibliography } from './citation-engine.js'
+import {
+  fieldsFromKnowledgeMeta,
+  formatGbt7714,
+  buildBibliography,
+  type CitationFields
+} from './citation-engine.js'
 import { route, LAYER_LABEL } from './knowledge-pyramid-router.js'
 import { buildKnowledgeRetrievalQueries } from './knowledge-query-planner.js'
 
@@ -72,8 +77,7 @@ export class KnowledgeRetrievalPipeline {
     // 3. Build context records with metadata enrichment
     const records: KnowledgeContextRecord[] = []
     const contextEntries: string[] = []
-    let totalChars = 0
-    const bibliographyEntries: Array<{ title: string; citation: string }> = []
+    const bibliographyEntries: CitationFields[] = []
 
     for (const hit of hits) {
       if (filtered.has(hit.path)) continue
@@ -102,7 +106,6 @@ export class KnowledgeRetrievalPipeline {
         title: hit.title,
         relevanceScore: Math.min(1, hit.score / 30),
         excerpt: hit.snippet,
-        content: hit.content,
         citation,
         tags,
         sourceKind: 'local',
@@ -118,23 +121,17 @@ export class KnowledgeRetrievalPipeline {
       // the context block. This prevents "source metadata without evidence"
       // and keeps citation lists aligned with the text the model can inspect.
       const entry = this.formatEntry(record)
-      if (totalChars + entry.length <= maxChars) {
+      const candidateEntries = [...contextEntries, entry]
+      if (this.formatContextText(candidateEntries, routeResult, targetLayers.length > 0).length <= maxChars) {
         records.push(record)
-        bibliographyEntries.push({ title: hit.title, citation: gbt7714Citation })
+        bibliographyEntries.push(citationFields)
         contextEntries.push(entry)
-        totalChars += entry.length
       }
     }
 
     // 4. Format the final context text
     const contextText = this.formatContextText(contextEntries, routeResult, targetLayers.length > 0)
-    const bibliography = buildBibliography(
-      bibliographyEntries.map((e) => {
-        // Parse citation back from stored format
-        const fields = fieldsFromKnowledgeMeta(e.title, e.title, { source: '', author: '', category: '', tags: [], confidence: 'medium' })
-        return fields
-      })
-    )
+    const bibliography = buildBibliography(bibliographyEntries)
 
     return {
       contextText,
@@ -142,7 +139,7 @@ export class KnowledgeRetrievalPipeline {
       consultedExternal: false,
       latencyMs: Date.now() - startedAt,
       bibliography,
-      citations: bibliographyEntries.map((e) => e.citation)
+      citations: bibliographyEntries.map((entry) => formatGbt7714(entry))
     }
   }
 
@@ -242,8 +239,6 @@ export class KnowledgeRetrievalPipeline {
 }
 
 function fuseKnowledgeHits(groups: KnowledgeSearchHit[][]): KnowledgeSearchHit[] {
-  if (groups.length <= 1) return groups[0] ?? []
-
   const fused = new Map<string, {
     hit: KnowledgeSearchHit
     rrf: number
@@ -252,22 +247,31 @@ function fuseKnowledgeHits(groups: KnowledgeSearchHit[][]): KnowledgeSearchHit[]
   }>()
 
   for (const group of groups) {
-    group.forEach((hit, index) => {
+    // A long document can contribute several matching chunks to one query.
+    // Treat that as one source contribution so document length cannot inflate
+    // RRF score or create duplicate citations.
+    const seenInGroup = new Set<string>()
+    let uniqueRank = 0
+    group.forEach((hit) => {
       const key = hit.relativePath || hit.documentId
-      const contribution = 1 / (RRF_K + index + 1)
+      if (seenInGroup.has(key)) return
+      seenInGroup.add(key)
+      const rank = uniqueRank
+      uniqueRank += 1
+      const contribution = 1 / (RRF_K + rank + 1)
       const existing = fused.get(key)
       if (!existing) {
         fused.set(key, {
           hit,
           rrf: contribution,
           appearances: 1,
-          bestRank: index
+          bestRank: rank
         })
         return
       }
       existing.rrf += contribution
       existing.appearances += 1
-      existing.bestRank = Math.min(existing.bestRank, index)
+      existing.bestRank = Math.min(existing.bestRank, rank)
       if (hit.score > existing.hit.score) existing.hit = hit
     })
   }

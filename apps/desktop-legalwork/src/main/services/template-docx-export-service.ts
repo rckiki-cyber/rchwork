@@ -170,7 +170,11 @@ function replaceParagraphText(paragraphXml: string, replacement: string): string
       if (partStart < prefixLength) {
         nextText += replacement.slice(partStart, Math.min(partEnd, prefixLength))
       }
-      if (!changedInserted && partEnd > prefixLength && partStart < changedOriginalEnd) {
+      const pureInsertion = changedOriginalEnd === prefixLength
+      const containsChange = pureInsertion
+        ? partStart <= prefixLength && partEnd >= prefixLength
+        : partEnd > prefixLength && partStart < changedOriginalEnd
+      if (!changedInserted && containsChange) {
         nextText += changedReplacement
         changedInserted = true
       }

@@ -89,6 +89,14 @@ class ImaSseParsingTest(unittest.TestCase):
 
         self.assertTrue(self.server._is_tool_result_error(result))
 
+    def test_no_match_and_no_answer_are_mcp_errors(self):
+        self.assertTrue(
+            self.server._is_tool_result_error({"answer": "IMA_NO_MATCH: 未命中内容"})
+        )
+        self.assertTrue(
+            self.server._is_tool_result_error({"answer": "IMA_NO_ANSWER: 没有回答正文"})
+        )
+
     def test_normal_answer_is_not_an_mcp_error(self):
         self.assertFalse(
             self.server._is_tool_result_error({"answer": "这是正常回答"})

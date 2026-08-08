@@ -36,17 +36,17 @@ export type DocumentGenerationResult = {
 
 /** Zod schema for IPC payload validation. */
 export const documentGenerationPayloadSchema = z.object({
-  templateName: z.string().min(1),
-  templateDescription: z.string(),
-  templateContent: z.string(),
+  templateName: z.string().trim().min(1).max(200),
+  templateDescription: z.string().max(20_000),
+  templateContent: z.string().max(500_000),
   fields: z.array(
     z.object({
-      id: z.string(),
-      label: z.string(),
-      type: z.string(),
-      value: z.string(),
+      id: z.string().max(200),
+      label: z.string().max(500),
+      type: z.string().max(100),
+      value: z.string().max(100_000),
       required: z.boolean().optional()
-    })
-  ),
-  legalBasis: z.array(z.string()).optional()
-})
+    }).strict()
+  ).max(200),
+  legalBasis: z.array(z.string().max(20_000)).max(100).optional()
+}).strict()

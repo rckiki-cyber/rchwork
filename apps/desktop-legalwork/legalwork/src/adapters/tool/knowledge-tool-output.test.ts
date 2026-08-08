@@ -6,7 +6,8 @@ import {
   KNOWLEDGE_SEARCH_MAX_SOURCES,
   KNOWLEDGE_TOOL_MAX_SERIALIZED_CHARS,
   compactKnowledgeAutoRetrieveToolOutput,
-  compactKnowledgeSearchToolOutput
+  compactKnowledgeSearchToolOutput,
+  compactKnowledgeTreeToolOutput
 } from './knowledge-tool-output.js'
 
 function searchHit(index: number): KnowledgeSearchHit {
@@ -70,6 +71,18 @@ describe('knowledge tool output budgets', () => {
     }
   })
 
+  it('returns one model-facing source when several chunks belong to the same file', () => {
+    const first = searchHit(1)
+    const output = compactKnowledgeSearchToolOutput({
+      query: '人工智能 行政法',
+      layer: 'all',
+      sources: [first, { ...first, chunkId: 'chunk-1-second', snippet: '第二个命中块' }]
+    })
+
+    expect(output.sources).toHaveLength(1)
+    expect(output._meta).toMatchObject({ originalSourceCount: 2, returnedSourceCount: 1, truncated: true })
+  })
+
   it('deduplicates auto-retrieval evidence and enforces a total serialized budget', () => {
     const output = compactKnowledgeAutoRetrieveToolOutput(retrievalResult())
     const serialized = JSON.stringify(output)
@@ -85,5 +98,18 @@ describe('knowledge tool output budgets', () => {
       expect(source).not.toHaveProperty('excerpt')
       expect(source).toHaveProperty('gbt7714Citation')
     }
+  })
+
+  it('paginates tree output and omits recursive children', () => {
+    const output = compactKnowledgeTreeToolOutput(Array.from({ length: 100 }, (_, index) => ({
+      name: `目录${index}`,
+      path: `目录${index}`,
+      kind: 'folder' as const,
+      children: [{ name: '内部文件.md', path: `目录${index}/内部文件.md`, kind: 'file' as const }]
+    })), 10, 5)
+
+    expect(output).toMatchObject({ total: 100, offset: 10, returned: 5, truncated: true, nextOffset: 15 })
+    expect(output.nodes[0]).toMatchObject({ name: '目录10', childCount: 1 })
+    expect(output.nodes[0]).not.toHaveProperty('children')
   })
 })

@@ -130,7 +130,11 @@ type StreamReadResult =
   | { kind: 'aborted' }
   | { kind: 'error'; message: string }
 
-const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 45_000
+// DeepSeek reasoning streams can legitimately pause for longer than 45s
+// between SSE frames, especially at high reasoning effort. Keep this below
+// AgentLoop's 150s hard guard so a dead connection still terminates, while
+// avoiding the repeatable false failures captured in production trajectories.
+const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 120_000
 const DEFAULT_MESSAGES_MAX_TOKENS = 4096
 
 /**
