@@ -81,7 +81,7 @@ describe('KnowledgeRetrievalPipeline', () => {
     )
 
     expect(callIndex).toBe(2)
-    expect(result.sources[0]?.relativePath ?? result.sources[0]?.path).toContain('经济补偿规则')
+    expect(result.sources[0]?.path).toContain('经济补偿规则')
   })
 
   it('only returns source metadata for excerpts that actually fit the context budget', async () => {
