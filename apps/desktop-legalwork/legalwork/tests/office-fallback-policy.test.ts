@@ -1,10 +1,7 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { CapabilityRegistry } from '../src/adapters/tool/capability-registry.js'
 import {
-  DOCUMENT_UNSUPPORTED_MARKER,
   REQUEST_OFFICE_FALLBACK_TOOL_NAME,
   createRequestOfficeFallbackTool
 } from '../src/adapters/tool/builtin-office-fallback-tool.js'
@@ -12,10 +9,10 @@ import { LocalToolHost } from '../src/adapters/tool/local-tool-host.js'
 import {
   LEGAL_DOCUMENT_FORMATTING_SKILL_ID,
   OFFICECLI_TOOL_NAME,
-  clearOfficeFallbackGrant
+  clearOfficeFallbackGrant,
+  markOfficeFallbackEligible
 } from '../src/adapters/tool/office-fallback-policy.js'
 
-const ticketRoot = join(tmpdir(), 'legalwork-office-fallback')
 const context = {
   threadId: 'thread-office-fallback',
   turnId: 'turn-office-fallback',
@@ -26,9 +23,8 @@ const context = {
   awaitApproval: async () => 'allow' as const
 }
 
-afterEach(async () => {
+afterEach(() => {
   clearOfficeFallbackGrant(context)
-  await rm(ticketRoot, { recursive: true, force: true })
 })
 
 describe('Office fallback policy', () => {
@@ -59,49 +55,28 @@ describe('Office fallback policy', () => {
     }, context)).rejects.toThrow(/active tool policy/)
   })
 
-  it('rejects environment/dependency unsupported tickets without structural evidence', async () => {
-    await mkdir(ticketRoot, { recursive: true })
-    const ticket = join(ticketRoot, 'ticket-runtime-error.json')
-    await writeFile(ticket, JSON.stringify({
-      marker: DOCUMENT_UNSUPPORTED_MARKER,
-      status: 'unsupported',
-      source: 'legal-document-formatting',
-      operation: 'normalize',
-      reason: 'python-docx unavailable: import failed',
-      detail: null,
-      created_at: new Date().toISOString()
-    }), 'utf8')
-
+  it('rejects fallback requests unless the trusted executor recorded structural exhaustion', async () => {
     const fallback = createRequestOfficeFallbackTool()
     const host = new LocalToolHost({ registry: CapabilityRegistry.fromLocalTools([fallback]) })
     const result = await host.execute({
-      callId: 'fallback-runtime-error',
+      callId: 'fallback-without-eligibility',
       toolName: REQUEST_OFFICE_FALLBACK_TOOL_NAME,
       providerId: 'builtin',
-      arguments: { ticket }
+      arguments: {}
     }, context)
 
     expect(result.item.kind).toBe('tool_result')
     if (result.item.kind === 'tool_result') {
       expect(result.item.isError).toBe(true)
-      expect(result.item.output).toMatchObject({
-        error: expect.stringMatching(/document-structure limitation/)
-      })
+      expect(result.item.output).toMatchObject({ error: expect.stringMatching(/not eligible/) })
     }
   })
 
-  it('accepts a structurally evidenced worker ticket once and exposes OfficeCLI only for that turn', async () => {
-    await mkdir(ticketRoot, { recursive: true })
-    const ticket = join(ticketRoot, 'ticket-test.json')
-    await writeFile(ticket, JSON.stringify({
-      marker: DOCUMENT_UNSUPPORTED_MARKER,
-      status: 'unsupported',
-      source: 'legal-document-formatting',
+  it('consumes runtime eligibility once and exposes OfficeCLI only for that turn', async () => {
+    markOfficeFallbackEligible(context, {
       operation: 'normalize',
-      reason: 'tracked changes require a richer editor',
-      detail: { tracked_changes: true, macros: false },
-      created_at: new Date().toISOString()
-    }), 'utf8')
+      reason: 'tracked changes require a preservation-safe editor'
+    })
 
     const office = LocalToolHost.defineTool({
       name: OFFICECLI_TOOL_NAME,
@@ -122,7 +97,7 @@ describe('Office fallback policy', () => {
       callId: 'fallback-request',
       toolName: REQUEST_OFFICE_FALLBACK_TOOL_NAME,
       providerId: 'builtin',
-      arguments: { ticket }
+      arguments: {}
     }, context)
 
     expect(granted.item.kind).toBe('tool_result')
