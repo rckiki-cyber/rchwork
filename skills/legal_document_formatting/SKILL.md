@@ -1,17 +1,23 @@
 ---
 name: legal-document-formatting
-description: LegalWork 的 Office 文档确定性执行技能。Word/DOCX 与常规 PPTX 默认通过 document_skill_execute 批量执行；Office MCP 仅在受信任执行器确认本地方法遇到结构性能力边界后最后兜底。Word 中文正文默认宋体、小四 12pt。
+description: LegalWork 的 Office 文档确定性执行技能。Word/DOCX、Excel/XLSX 与常规 PPTX 默认通过 document_skill_execute 批量执行；Office MCP 仅在受信任执行器确认本地方法遇到结构性能力边界后最后兜底。Word 中文正文默认宋体、小四 12pt。
 ---
 
 # LegalWork 文档格式 Skill
 
 ## 核心规则
 
-- Office 文档默认使用 `document_skill_execute`，不要用 bash 手工调用 Python，更不要直接使用 OfficeMCP。
+- Word、Excel、PPT 默认使用 `document_skill_execute`，不要用 bash 手工调用 Python，更不要直接使用 OfficeMCP。
 - 一个确定性任务尽量一次 worker 完成；worker 只返回紧凑 JSON，不渲染整篇 HTML/XML。
 - OfficeMCP 默认不可见。只有 `document_skill_execute` 返回 `fallback_available:true` 后，`request_office_fallback` 才会临时出现；模型自己创建文件不能解锁。
 - 环境、依赖、参数和普通脚本错误均不得触发 OfficeMCP。
 - 修改已有文档默认另存副本。
+
+## 内置 Office Python 环境
+
+正式安装版 LegalWork 随应用携带 Office Python runtime，预装 `python-docx`、`openpyxl`、`python-pptx`、`lxml`、`Pillow`。`document_skill_execute` 会从 `resources/office-runtime` 自动发现并使用它。
+
+**正式安装态禁止现场创建 venv、禁止 pip install、禁止要求用户配置 Python。** 如果内置 runtime 缺失或损坏，直接报告安装损坏，不得改用 OfficeMCP 掩盖环境问题。开发态才允许本地 Python/managed venv 作为调试兜底。
 
 ## 格式优先级
 
@@ -21,7 +27,7 @@ description: LegalWork 的 Office 文档确定性执行技能。Word/DOCX 与常
 
 ## `document_skill_execute`
 
-- `kind`: `docx` / `pptx` / `reference` / `profile` / `legacy`
+- `kind`: `docx` / `xlsx` / `pptx` / `reference` / `profile` / `legacy`
 - `operation`: 对应 worker 操作
 - `args`: 传给该操作的字符串参数数组
 
@@ -63,15 +69,25 @@ description: LegalWork 的 Office 文档确定性执行技能。Word/DOCX 与常
 
 reference worker 会解析 Word 样式继承；不复制样板正文、案名、姓名、页眉页脚文字、批注或修订内容。
 
-## 旧 `.doc` / `.ppt`
+## Excel / XLSX
+
+`kind:"xlsx"` 支持：
+
+- `inspect`：只返回工作表数量、行列规模、合并单元格、冻结窗格和可选的小范围 preview，不把整本工作簿数据塞进上下文；
+- `from-json`：从结构化 JSON 一次生成 XLSX；
+- `replace`：在现有 `.xlsx/.xlsm` 中安全批量替换文本。
+
+案件基本信息表、联系人表、案件进展表、证据目录等优先直接产出 XLSX，而不是让模型逐单元格操作 Office 工具。
+
+## 旧 `.doc` / `.xls` / `.ppt`
 
 先走本地转换，不能因为扩展名旧就直接启用 MCP：
 
 ```text
-document_skill_execute({kind:"legacy",operation:"convert",args:["--input","OLD.doc","--output","NEW.docx"]})
+document_skill_execute({kind:"legacy",operation:"convert",args:["--input","OLD.xls","--output","NEW.xlsx"]})
 ```
 
-worker 会优先使用本机/LegalWork 可用的 LibreOffice/soffice headless 转为 `.docx/.pptx`，成功后继续正常 Skill 流程。只有转换器不存在或全部本地转换尝试失败，才可能返回 `fallback_available:true`。
+worker 会优先使用可用的 LibreOffice/soffice headless 转为 `.docx/.xlsx/.pptx`，成功后继续正常 Skill 流程。只有转换器不存在或全部本地转换尝试失败，才可能返回 `fallback_available:true`。
 
 ## 通用 DOCX / PPTX
 
@@ -79,10 +95,10 @@ worker 会优先使用本机/LegalWork 可用的 LibreOffice/soffice headless �
 
 `kind:"pptx"` 支持 `inspect`、`from-json`、`replace`。先确定内容结构/模板，再一次性生成或修改，不逐页 Office 工具循环。
 
-普通格式修改目标 1-3 次工具调用；新建普通 Word/PPT 目标 2-4 次。文档越长，主要增加本地 Python CPU 时间，不应线性增加模型轮数。
+普通格式修改目标 1-3 次工具调用；新建普通 Word/Excel/PPT 目标 2-4 次。文件越大，主要增加本地 Python CPU 时间，不应线性增加模型轮数。
 
 ## OfficeMCP 最后兜底
 
-只有受信任执行器确认本地路径已遇到真实能力边界时才会返回 `fallback_available:true`，例如复杂 Track Changes/修订、宏、无法安全保持格式的跨-run替换，或 `.doc/.ppt` 本地转换确已失败。
+只有受信任执行器确认本地路径已遇到真实能力边界时才会返回 `fallback_available:true`，例如复杂 Track Changes/修订、宏、无法安全保持格式的跨-run替换，或 `.doc/.xls/.ppt` 本地转换确已失败。
 
 此时才调用 `request_office_fallback`。解锁后只补剩余小部分：禁止 `view html`，禁止反复 help，同类操作 batch，必要 validate 通过后立即结束。
