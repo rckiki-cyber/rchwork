@@ -88,9 +88,73 @@ new_route = """    const imaRouteAction = resolveImaRouteAction({
       return 'continue'
     }
 
-    const requiredToolName = planRequiredToolName ?? imaRouteAction?.requiredToolName
+    const requiredToolName = planRequiredToolName
 """
 loop = replace_once(loop, old_route, new_route, "agent-loop IMA runtime prefetch")
+
+loop = replace_once(
+    loop,
+    "      ...(imaRouteAction ? [imaRouteAction.instruction] : []),\n",
+    "",
+    "remove obsolete IMA context instruction",
+)
+
+old_fallback = """        if (
+          imaRouteAction &&
+          request.requiredToolName === imaRouteAction.requiredToolName
+        ) {
+          const callId = this.opts.ids.next('call_ima_route')
+          const provider = toolProviderMetadata.get(imaRouteAction.requiredToolName)
+          const toolKind = toolKinds.get(imaRouteAction.requiredToolName)
+          const call: ToolCallLike = {
+            callId,
+            toolName: imaRouteAction.requiredToolName,
+            ...(provider?.providerId ? { providerId: provider.providerId } : {}),
+            toolKind,
+            arguments: imaRouteAction.requiredArguments
+          }
+          const itemId = `item_tool_${turnId}_${callId}`
+          await this.opts.turns.applyItem(
+            threadId,
+            makeToolCallItem({
+              id: itemId,
+              turnId,
+              threadId,
+              callId,
+              toolName: imaRouteAction.requiredToolName,
+              toolKind,
+              arguments: imaRouteAction.requiredArguments,
+              summary: 'Runtime-enforced IMA knowledge-base routing.'
+            })
+          )
+          await this.opts.events.record({
+            kind: 'tool_call_ready',
+            threadId,
+            turnId,
+            itemId,
+            callId,
+            toolName: imaRouteAction.requiredToolName,
+            readyCount: 1
+          })
+          const dispatched = await this.dispatchToolCalls({
+            calls: [call],
+            threadId,
+            turnId,
+            workspace: thread?.workspace ?? '',
+            threadMode: effectiveMode,
+            activePlanContext,
+            modelCapabilities,
+            activeSkillIds: skillResolution.activeSkillIds,
+            allowedToolNames,
+            toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
+            approvalPolicy,
+            signal
+          })
+          if (dispatched === 'aborted') return 'aborted'
+          return 'continue'
+        }
+"""
+loop = replace_once(loop, old_fallback, "", "remove obsolete IMA required-tool fallback")
 loop_path.write_text(loop, encoding="utf-8")
 
 tests = test_path.read_text(encoding="utf-8")
