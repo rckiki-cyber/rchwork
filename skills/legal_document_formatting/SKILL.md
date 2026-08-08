@@ -9,8 +9,8 @@ description: LegalWork 的 Office 文档确定性执行技能。Word/DOCX 与常
 
 - Office 文档默认使用 `document_skill_execute`，不要用 bash 手工调用 Python，更不要直接使用 OfficeMCP。
 - 一个确定性任务尽量一次 worker 完成；worker 只返回紧凑 JSON，不渲染整篇 HTML/XML。
-- OfficeMCP 默认不可见。只有 `document_skill_execute` 返回 `fallback_available:true` 后，才可调用一次 `request_office_fallback`；模型自己创建 ticket/文件不能解锁。
-- 环境、依赖、参数、文件类型、普通脚本错误均不得触发 OfficeMCP。
+- OfficeMCP 默认不可见。只有 `document_skill_execute` 返回 `fallback_available:true` 后，`request_office_fallback` 才会临时出现；模型自己创建文件不能解锁。
+- 环境、依赖、参数和普通脚本错误均不得触发 OfficeMCP。
 - 修改已有文档默认另存副本。
 
 ## 格式优先级
@@ -21,31 +21,15 @@ description: LegalWork 的 Office 文档确定性执行技能。Word/DOCX 与常
 
 ## `document_skill_execute`
 
-参数只有三项：
-
-- `kind`: `docx` / `pptx` / `reference` / `profile`
+- `kind`: `docx` / `pptx` / `reference` / `profile` / `legacy`
 - `operation`: 对应 worker 操作
 - `args`: 传给该操作的字符串参数数组
 
-例：
-
-```text
-document_skill_execute({
-  kind:"docx",
-  operation:"normalize",
-  args:["--input","a.docx","--output","b.docx","--profile","legal-default"]
-})
-```
-
-普通任务成功后立即交付，不再追加“再看一下”的 view/HTML 循环。
+普通任务成功后立即交付，不追加“再看一下”的 view/HTML 循环。
 
 ## 法律文档语义 profile
 
-使用：
-
-```text
-document_skill_execute({kind:"profile",operation:"apply",args:["--input","IN.docx","--output","OUT.docx","--profile","PROFILE"]})
-```
+使用 `kind:"profile", operation:"apply"`。
 
 ### `fact-memo`
 案件事实、大事记、待核实问题：正文宋体小四；大板块 Heading 1；事实分组/问题主题 Heading 2；具体“时间+事实+材料来源”仍是正文，不滥用大纲级别。
@@ -53,7 +37,7 @@ document_skill_execute({kind:"profile",operation:"apply",args:["--input","IN.doc
 ### `legal-research`
 法律问题调研：正文宋体小四；**调研问题=Heading 3，法条标题/案例标题=Heading 4，法条内容和法院说理=Normal**；内容优先按“结论→法条→案例”。失效但重要法条要文字标注，关键内容可下划线。
 
-需要精确指定层级时写小型 `structure.json`：
+需要精确指定层级时写很小的 `structure.json`，例如：
 
 ```json
 {"styles":[
@@ -62,7 +46,7 @@ document_skill_execute({kind:"profile",operation:"apply",args:["--input","IN.doc
 ]}
 ```
 
-然后在 `profile apply` 的 args 中增加 `--structure-spec`,`structure.json`。
+然后在 `profile apply` args 中增加 `--structure-spec`,`structure.json`。
 
 ### `engagement-agreement`
 委托代理协议/服务协议：正文仍宋体小四；默认 1.25 倍行距、不强制首行缩进；保留“第1条 / 2.1 / （1）”编号结构，不机械转成 Heading；保留页码、签章页和既有字段。
@@ -75,39 +59,30 @@ document_skill_execute({kind:"profile",operation:"apply",args:["--input","IN.doc
 
 ## 参考 DOCX
 
-查看样板格式：
+`kind:"reference", operation:"inspect"` 提取样板格式摘要；`operation:"apply"` 一次把样板页面、正文和 Title/Heading 1-4 样式应用到目标 DOCX。
+
+reference worker 会解析 Word 样式继承；不复制样板正文、案名、姓名、页眉页脚文字、批注或修订内容。
+
+## 旧 `.doc` / `.ppt`
+
+先走本地转换，不能因为扩展名旧就直接启用 MCP：
 
 ```text
-document_skill_execute({kind:"reference",operation:"inspect",args:["--input","REFERENCE.docx"]})
+document_skill_execute({kind:"legacy",operation:"convert",args:["--input","OLD.doc","--output","NEW.docx"]})
 ```
 
-直接让目标沿用样板：
+worker 会优先使用本机/LegalWork 可用的 LibreOffice/soffice headless 转为 `.docx/.pptx`，成功后继续正常 Skill 流程。只有转换器不存在或全部本地转换尝试失败，才可能返回 `fallback_available:true`。
 
-```text
-document_skill_execute({kind:"reference",operation:"apply",args:["--reference","REFERENCE.docx","--input","TARGET.docx","--output","OUT.docx"]})
-```
+## 通用 DOCX / PPTX
 
-reference worker 会解析 Word 样式继承并覆盖 Title、Heading 1-4、正文和页面规则；不复制样板正文、案名、姓名、页眉页脚文字、批注或修订内容。
-
-## 通用 DOCX
-
-`kind:"docx"` 支持：
-
-- `inspect`
-- `normalize`
-- `page`
-- `from-markdown`
-- `replace`
-- `template-fill`
-
-普通格式修改目标 1-3 次工具调用；新建普通 Word 目标 2-4 次。文档越长，主要增加本地 Python CPU 时间，不应线性增加模型轮数。
-
-## PPTX
+`kind:"docx"` 支持 `inspect`、`normalize`、`page`、`from-markdown`、`replace`、`template-fill`。
 
 `kind:"pptx"` 支持 `inspect`、`from-json`、`replace`。先确定内容结构/模板，再一次性生成或修改，不逐页 Office 工具循环。
 
+普通格式修改目标 1-3 次工具调用；新建普通 Word/PPT 目标 2-4 次。文档越长，主要增加本地 Python CPU 时间，不应线性增加模型轮数。
+
 ## OfficeMCP 最后兜底
 
-只有受信任执行器确认类似以下结构性限制时才可能返回 `fallback_available:true`：复杂 Track Changes/修订、宏、跨 run 且无法安全保持格式的替换等。
+只有受信任执行器确认本地路径已遇到真实能力边界时才会返回 `fallback_available:true`，例如复杂 Track Changes/修订、宏、无法安全保持格式的跨-run替换，或 `.doc/.ppt` 本地转换确已失败。
 
-此时先确认其他本地 Skill 路径确实无解，再调用 `request_office_fallback`。解锁后只补剩余小部分：禁止 `view html`，禁止反复 help，同类操作 batch，必要 validate 通过后立即结束。
+此时才调用 `request_office_fallback`。解锁后只补剩余小部分：禁止 `view html`，禁止反复 help，同类操作 batch，必要 validate 通过后立即结束。
