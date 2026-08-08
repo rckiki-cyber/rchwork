@@ -36,23 +36,40 @@ export function createBuiltinLocalTool(
   options: BuiltinLocalToolsOptions = {}
 ): LocalTool {
   switch (toolName) {
-    case 'read': return createReadLocalTool(options.read)
-    case 'bash': return createBashLocalTool(options.bash)
-    case 'edit': return createEditLocalTool(options.edit)
-    case 'write': return createWriteLocalTool(options.write)
-    case 'grep': return createGrepLocalTool(options.grep)
-    case 'find': return createFindLocalTool(options.find)
-    case 'ls': return createLsLocalTool(options.ls)
-    case 'data_compliance': return createDataComplianceLocalTool(options.dataCompliance ?? {})
-    case 'refresh_skills': return createRefreshSkillsTool(options.skillTools)
-    case 'search_skills': return createSearchSkillsTool(options.skillTools)
-    case 'load_skill': return createLoadSkillTool(options.skillTools)
-    case 'install_skill': return createInstallSkillTool(options.skillTools)
-    case 'document_skill_execute': return createDocumentSkillExecuteTool(options.skillTools)
-    case 'request_document_preferences': return createRequestDocumentPreferencesTool()
-    case 'resolve_legal_document_template': return createResolveLegalDocumentTemplateTool()
-    case 'request_office_fallback': return createRequestOfficeFallbackTool()
-    case 'compress_context': return createCompressContextLocalTool(options.compressContext!)
+    case 'read':
+      return createReadLocalTool(options.read)
+    case 'bash':
+      return createBashLocalTool(options.bash)
+    case 'edit':
+      return createEditLocalTool(options.edit)
+    case 'write':
+      return createWriteLocalTool(options.write)
+    case 'grep':
+      return createGrepLocalTool(options.grep)
+    case 'find':
+      return createFindLocalTool(options.find)
+    case 'ls':
+      return createLsLocalTool(options.ls)
+    case 'data_compliance':
+      return createDataComplianceLocalTool(options.dataCompliance ?? {})
+    case 'refresh_skills':
+      return createRefreshSkillsTool(options.skillTools)
+    case 'search_skills':
+      return createSearchSkillsTool(options.skillTools)
+    case 'load_skill':
+      return createLoadSkillTool(options.skillTools)
+    case 'install_skill':
+      return createInstallSkillTool(options.skillTools)
+    case 'document_skill_execute':
+      return createDocumentSkillExecuteTool(options.skillTools)
+    case 'request_document_preferences':
+      return createRequestDocumentPreferencesTool()
+    case 'resolve_legal_document_template':
+      return createResolveLegalDocumentTemplateTool()
+    case 'request_office_fallback':
+      return createRequestOfficeFallbackTool()
+    case 'compress_context':
+      return createCompressContextLocalTool(options.compressContext!)
   }
 }
 
@@ -74,7 +91,9 @@ export function buildBuiltinLocalTools(options: BuiltinLocalToolsOptions = {}): 
     createFindLocalTool(options.find),
     createLsLocalTool(options.ls)
   ]
-  if (options.dataCompliance?.service) tools.push(createDataComplianceLocalTool(options.dataCompliance))
+  if (options.dataCompliance?.service) {
+    tools.push(createDataComplianceLocalTool(options.dataCompliance))
+  }
   if (options.skillTools?.skillRuntime) {
     tools.push(createSearchSkillsTool(options.skillTools))
     tools.push(createLoadSkillTool(options.skillTools))
@@ -82,7 +101,9 @@ export function buildBuiltinLocalTools(options: BuiltinLocalToolsOptions = {}): 
     tools.push(createInstallSkillTool(options.skillTools))
     tools.push(createDocumentSkillExecuteTool(options.skillTools))
   }
-  if (options.compressContext) tools.push(createCompressContextLocalTool(options.compressContext))
+  if (options.compressContext) {
+    tools.push(createCompressContextLocalTool(options.compressContext))
+  }
   tools.push(createRequestDocumentPreferencesTool())
   tools.push(createResolveLegalDocumentTemplateTool())
   tools.push(createRequestOfficeFallbackTool())
