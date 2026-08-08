@@ -28,7 +28,7 @@ afterEach(() => {
 })
 
 describe('Office fallback policy', () => {
-  it('hides and blocks OfficeCLI before a fallback grant', async () => {
+  it('hides and blocks both fallback request and OfficeCLI before local exhaustion', async () => {
     const office = LocalToolHost.defineTool({
       name: OFFICECLI_TOOL_NAME,
       description: 'office',
@@ -44,9 +44,13 @@ describe('Office fallback policy', () => {
       ])
     })
 
-    expect((await host.listTools(context)).map((tool) => tool.name)).toEqual([
-      REQUEST_OFFICE_FALLBACK_TOOL_NAME
-    ])
+    expect((await host.listTools(context)).map((tool) => tool.name)).toEqual([])
+    await expect(host.execute({
+      callId: 'fallback-before-eligible',
+      toolName: REQUEST_OFFICE_FALLBACK_TOOL_NAME,
+      providerId: 'builtin',
+      arguments: {}
+    }, context)).rejects.toThrow(/active tool policy/)
     await expect(host.execute({
       callId: 'office-before-grant',
       toolName: OFFICECLI_TOOL_NAME,
@@ -55,21 +59,18 @@ describe('Office fallback policy', () => {
     }, context)).rejects.toThrow(/active tool policy/)
   })
 
-  it('rejects fallback requests unless the trusted executor recorded structural exhaustion', async () => {
+  it('shows the fallback request only after runtime-recorded structural exhaustion', async () => {
     const fallback = createRequestOfficeFallbackTool()
     const host = new LocalToolHost({ registry: CapabilityRegistry.fromLocalTools([fallback]) })
-    const result = await host.execute({
-      callId: 'fallback-without-eligibility',
-      toolName: REQUEST_OFFICE_FALLBACK_TOOL_NAME,
-      providerId: 'builtin',
-      arguments: {}
-    }, context)
+    expect((await host.listTools(context)).map((tool) => tool.name)).toEqual([])
 
-    expect(result.item.kind).toBe('tool_result')
-    if (result.item.kind === 'tool_result') {
-      expect(result.item.isError).toBe(true)
-      expect(result.item.output).toMatchObject({ error: expect.stringMatching(/not eligible/) })
-    }
+    markOfficeFallbackEligible(context, {
+      operation: 'normalize',
+      reason: 'tracked changes require a preservation-safe editor'
+    })
+    expect((await host.listTools(context)).map((tool) => tool.name)).toEqual([
+      REQUEST_OFFICE_FALLBACK_TOOL_NAME
+    ])
   })
 
   it('consumes runtime eligibility once and exposes OfficeCLI only for that turn', async () => {
@@ -105,14 +106,11 @@ describe('Office fallback policy', () => {
       expect(granted.item.isError).not.toBe(true)
       expect(granted.item.output).toMatchObject({ granted: true, scope: 'turn' })
     }
-    expect((await host.listTools(context)).map((tool) => tool.name).sort()).toEqual([
-      OFFICECLI_TOOL_NAME,
-      REQUEST_OFFICE_FALLBACK_TOOL_NAME
-    ].sort())
+    expect((await host.listTools(context)).map((tool) => tool.name)).toEqual([
+      OFFICECLI_TOOL_NAME
+    ])
 
     const otherTurn = { ...context, turnId: 'turn-other' }
-    expect((await host.listTools(otherTurn)).map((tool) => tool.name)).toEqual([
-      REQUEST_OFFICE_FALLBACK_TOOL_NAME
-    ])
+    expect((await host.listTools(otherTurn)).map((tool) => tool.name)).toEqual([])
   })
 })
