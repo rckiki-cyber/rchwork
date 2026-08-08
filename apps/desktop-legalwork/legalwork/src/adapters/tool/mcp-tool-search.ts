@@ -5,6 +5,10 @@ import type {
 import type { ToolHostContext } from '../../ports/tool-host.js'
 import type { CapabilityToolProvider } from './capability-registry.js'
 import { LocalToolHost, type LocalTool } from './local-tool-host.js'
+import {
+  OFFICECLI_TOOL_NAME,
+  isOfficeFallbackGranted
+} from './office-fallback-policy.js'
 
 const MCP_SEARCH_TOOL_NAME = 'mcp_search'
 const MCP_DESCRIBE_TOOL_NAME = 'mcp_describe'
@@ -319,7 +323,18 @@ function createMcpSearchTools(options: McpSearchProviderOptions): LocalTool[] {
 }
 
 function trustedRecords(options: McpSearchProviderOptions, context: ToolHostContext): McpSearchCatalogRecord[] {
-  return options.state.records.filter((record) => options.isServerTrusted(record.server, context.workspace))
+  return options.state.records.filter((record) =>
+    options.isServerTrusted(record.server, context.workspace) &&
+    (!isOfficeCliRecord(record) || isOfficeFallbackGranted(context))
+  )
+}
+
+function isOfficeCliRecord(record: McpSearchCatalogRecord): boolean {
+  const serverId = record.serverId.trim().toLowerCase()
+  const toolId = record.toolId.trim().toLowerCase()
+  return serverId === 'officecli' ||
+    toolId.startsWith('officecli/') ||
+    record.normalizedName === OFFICECLI_TOOL_NAME
 }
 
 function resolveTrustedRecord(
