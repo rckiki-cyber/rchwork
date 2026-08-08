@@ -1,6 +1,6 @@
 const MAX_ORIGINAL_QUERY_CHARS = 800
 const MAX_FOCUSED_QUERY_CHARS = 320
-const LONG_QUERY_THRESHOLD = 120
+const LONG_QUERY_THRESHOLD = 80
 const MAX_FOCUS_CLAUSES = 2
 
 const LEGAL_SIGNAL_RE = /法律|法规|法条|司法解释|规范性文件|案例|判例|裁判|法院|检察|合同|协议|违约|解除|劳动|工伤|公司|股权|行政|诉讼|仲裁|证据|合规|监管|政策|个人信息|数据|隐私|算法|人工智能|知识产权|专利|商标|著作权|反不正当竞争|侵权|刑事|民事|商事|请求权|效力|管辖|时效|赔偿|责任/
