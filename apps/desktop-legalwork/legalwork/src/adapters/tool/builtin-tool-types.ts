@@ -260,3 +260,4 @@ export interface LsLocalToolOperations {
 }
 
 export type Tool = LocalTool
+export type ToolDef = LocalTool
