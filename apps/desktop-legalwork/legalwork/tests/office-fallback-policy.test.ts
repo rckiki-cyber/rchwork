@@ -59,7 +59,38 @@ describe('Office fallback policy', () => {
     }, context)).rejects.toThrow(/active tool policy/)
   })
 
-  it('accepts a worker ticket once and exposes OfficeCLI only for that turn', async () => {
+  it('rejects environment/dependency unsupported tickets without structural evidence', async () => {
+    await mkdir(ticketRoot, { recursive: true })
+    const ticket = join(ticketRoot, 'ticket-runtime-error.json')
+    await writeFile(ticket, JSON.stringify({
+      marker: DOCUMENT_UNSUPPORTED_MARKER,
+      status: 'unsupported',
+      source: 'legal-document-formatting',
+      operation: 'normalize',
+      reason: 'python-docx unavailable: import failed',
+      detail: null,
+      created_at: new Date().toISOString()
+    }), 'utf8')
+
+    const fallback = createRequestOfficeFallbackTool()
+    const host = new LocalToolHost({ registry: CapabilityRegistry.fromLocalTools([fallback]) })
+    const result = await host.execute({
+      callId: 'fallback-runtime-error',
+      toolName: REQUEST_OFFICE_FALLBACK_TOOL_NAME,
+      providerId: 'builtin',
+      arguments: { ticket }
+    }, context)
+
+    expect(result.item.kind).toBe('tool_result')
+    if (result.item.kind === 'tool_result') {
+      expect(result.item.isError).toBe(true)
+      expect(result.item.output).toMatchObject({
+        error: expect.stringMatching(/document-structure limitation/)
+      })
+    }
+  })
+
+  it('accepts a structurally evidenced worker ticket once and exposes OfficeCLI only for that turn', async () => {
     await mkdir(ticketRoot, { recursive: true })
     const ticket = join(ticketRoot, 'ticket-test.json')
     await writeFile(ticket, JSON.stringify({
@@ -68,6 +99,7 @@ describe('Office fallback policy', () => {
       source: 'legal-document-formatting',
       operation: 'normalize',
       reason: 'tracked changes require a richer editor',
+      detail: { tracked_changes: true, macros: false },
       created_at: new Date().toISOString()
     }), 'utf8')
 
