@@ -88,7 +88,7 @@ export function hasStructuralOfficeFallbackEvidence(detail: unknown): boolean {
   if (Array.isArray(record.keys) && record.keys.length > 0) return true
   if (
     typeof record.legacy_format === 'string' &&
-    (record.legacy_format === '.doc' || record.legacy_format === '.ppt') &&
+    (record.legacy_format === '.doc' || record.legacy_format === '.xls' || record.legacy_format === '.ppt') &&
     record.local_conversion_attempted === true
   ) return true
   return false
