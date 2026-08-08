@@ -4,6 +4,10 @@ import type {
   ToolProviderPolicy
 } from '../../ports/tool-host.js'
 import type { LocalTool } from './local-tool-host.js'
+import {
+  OFFICECLI_TOOL_NAME,
+  isOfficeFallbackGranted
+} from './office-fallback-policy.js'
 
 export type CapabilityToolRecord = {
   provider: ToolProviderPolicy
@@ -110,12 +114,19 @@ export class CapabilityRegistry {
   }
 
   private canUseTool(toolName: string, context?: ToolHostContext): boolean {
+    // OfficeCLI is intentionally absent from the normal Agent tool catalog.
+    // It becomes visible/executable only after the document Skill produced a
+    // worker-issued unsupported ticket and request_office_fallback granted a
+    // turn-scoped exception.
+    if (toolName === OFFICECLI_TOOL_NAME && !isOfficeFallbackGranted(context)) {
+      return false
+    }
     const allowed = context?.allowedToolNames
     return !allowed || allowed.includes(toolName)
   }
 }
 
-function providerPolicy(provider: ToolProviderPolicy): ToolProviderPolicy {
+function providerPolicy(provider: CapabilityToolProvider): ToolProviderPolicy {
   return {
     id: provider.id,
     kind: provider.kind,
