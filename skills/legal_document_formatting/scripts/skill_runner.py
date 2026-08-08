@@ -2,10 +2,9 @@
 """Managed Python launcher for LegalWork's document-formatting skill.
 
 This script is stdlib-only. It owns a small venv under ~/.legalwork/runtimes,
-installs the skill's pinned dependencies once, then dispatches to the DOCX,
-PPTX, reference-profile, or semantic legal-profile worker. All setup noise
-stays local; stdout is reserved for one compact worker JSON result so model
-context does not grow with pip/venv logs.
+reuses packages from LegalWork's bundled/bootstrap Python when possible,
+installs pinned dependencies only when still necessary, then dispatches to one
+compact document worker. Setup noise never enters model history.
 """
 from __future__ import annotations
 
@@ -18,7 +17,7 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-RUNTIME_VERSION = "v1"
+RUNTIME_VERSION = "v2"
 REQUIRED_IMPORTS = ("docx", "pptx", "openpyxl", "lxml", "PIL")
 MAX_ERROR_CHARS = 2400
 
@@ -157,7 +156,13 @@ def ensure_runtime() -> str:
         shutil.rmtree(root, ignore_errors=True)
 
     if not python.is_file():
-        code, output = run_quiet([bootstrap, "-m", "venv", str(root)], package_root(), 90)
+        # Reuse packages already shipped with a LegalWork-managed/bootstrap
+        # Python where possible; this avoids unnecessary network installs.
+        code, output = run_quiet(
+            [bootstrap, "-m", "venv", "--system-site-packages", str(root)],
+            package_root(),
+            90,
+        )
         if code != 0 or not python.is_file():
             emit({
                 "status": "error",
@@ -177,7 +182,7 @@ def ensure_runtime() -> str:
             emit({
                 "status": "error",
                 "stage": "runtime",
-                "error": f"Failed to install document-skill dependencies: {output}",
+                "error": f"Failed to prepare document-skill dependencies: {output}",
                 "office_fallback_allowed": False,
             }, 1)
 
@@ -191,6 +196,7 @@ def worker_path(kind: str) -> Path:
         "pptx": "pptx_worker.py",
         "reference": "reference_profile_worker.py",
         "profile": "legal_profile_worker.py",
+        "legacy": "legacy_office_worker.py",
     }
     path = Path(__file__).resolve().parent / filenames[kind]
     if not path.is_file():
@@ -232,8 +238,6 @@ def dispatch(kind: str, worker_args: list[str]) -> None:
 
     stdout = completed.stdout.strip()
     if stdout:
-        # Workers are contractually limited to one compact JSON object. If a
-        # library unexpectedly prints noise, keep only the final non-empty line.
         lines = [line.strip() for line in stdout.splitlines() if line.strip()]
         print(lines[-1])
         raise SystemExit(completed.returncode)
@@ -249,7 +253,7 @@ def dispatch(kind: str, worker_args: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LegalWork managed document-skill launcher")
-    parser.add_argument("kind", choices=("docx", "pptx", "reference", "profile"))
+    parser.add_argument("kind", choices=("docx", "pptx", "reference", "profile", "legacy"))
     parser.add_argument("worker_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     dispatch(args.kind, args.worker_args)
