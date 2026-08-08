@@ -81,6 +81,7 @@ type DocumentWritingContextValue = {
   workflow: DocumentWritingWorkflow
   workflowVisibility: DocumentWritingWorkflowVisibility
   setWorkflowVisibility: (visibility: DocumentWritingWorkflowVisibility) => void
+  handleSendGuidance: (text: string) => Promise<void>
   knowledgePanelOpen: boolean
   setKnowledgePanelOpen: (open: boolean) => void
   knowledgePanelWidth: number
@@ -216,6 +217,9 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
   const [knowledgePanelWidth, setKnowledgePanelWidth] = useState(460)
   const workflowAbortRef = useRef<AbortController | null>(null)
   const workflowRunRef = useRef(0)
+  // 当前运行中的文书生成线程/turn，供用户中途发文字引导（steer）。
+  const activeRunRef = useRef<{ threadId: string; turnId: string } | null>(null)
+  const [guidanceSending, setGuidanceSending] = useState(false)
 
   const normalizedBuiltInTemplates = useMemo(
     () => builtInTemplates.map(withInferredTemplateFields),
@@ -367,6 +371,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       const sent = await provider.sendUserMessage(thread.id, buildDocumentWritingAgentPrompt(request), {
         mode: 'agent'
       })
+      activeRunRef.current = { threadId: thread.id, turnId: sent.turnId }
       let assistantText = ''
       let reasoning = ''
       let completed = false
@@ -465,6 +470,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       if (workflowRunRef.current === runId) {
         setGenerating(false)
         workflowAbortRef.current = null
+        activeRunRef.current = null
       }
     }
   }, [activeTemplate, fieldValues, instruction, saveCurrentToHistory, t, uploadedMaterials])
@@ -668,6 +674,24 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
     setKnowledgePanelOpen((open) => !open)
   }, [])
 
+  const handleSendGuidance = useCallback(async (text: string) => {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    const run = activeRunRef.current
+    if (!run || workflow.status !== 'running') {
+      setError('文书生成已结束，无法再发送引导。')
+      return
+    }
+    setGuidanceSending(true)
+    try {
+      await getProvider().steerUserMessage?.(run.threadId, run.turnId, trimmed)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '发送引导失败，请重试。')
+    } finally {
+      setGuidanceSending(false)
+    }
+  }, [workflow.status])
+
   const value = useMemo<DocumentWritingContextValue>(
     () => ({
       leftTab,
@@ -692,6 +716,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       workflow,
       workflowVisibility,
       setWorkflowVisibility,
+      handleSendGuidance,
       knowledgePanelOpen,
       setKnowledgePanelOpen,
       knowledgePanelWidth,
@@ -731,6 +756,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       handleGeneratedContentChange,
       handleGenerate,
       handleKnowledgeToggle,
+      handleSendGuidance,
       handleNewDocument,
       handleRemoveMaterial,
       handleRestoreHistory,

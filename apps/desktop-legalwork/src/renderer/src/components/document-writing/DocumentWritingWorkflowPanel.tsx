@@ -1,5 +1,5 @@
-import type { ReactElement } from 'react'
-import { Check, ChevronDown, ChevronUp, Circle, SearchCheck, X } from 'lucide-react'
+import { useState, type FormEvent, type ReactElement } from 'react'
+import { Check, ChevronDown, ChevronUp, Circle, SearchCheck, Send, X } from 'lucide-react'
 import { ThinkingOrbStatus } from '../chat/ThinkingOrbStatus'
 import { orbStateForToolName } from '../chat/orb-state'
 import { extractToolName } from '../chat/tool-summary'
@@ -31,6 +31,35 @@ function runningWorkflowOrbState(reasoning: string, lastTool: string | undefined
     if (fromTool === 'searching') return 'searching'
   }
   return 'composing'
+}
+
+function GuidanceComposer(): ReactElement {
+  const { handleSendGuidance } = useDocumentWriting()
+  const [text, setText] = useState('')
+  const submit = (event: FormEvent): void => {
+    event.preventDefault()
+    if (!text.trim()) return
+    void handleSendGuidance(text)
+    setText('')
+  }
+  return (
+    <form onSubmit={submit} className="flex items-center gap-2 border-t border-ds-border-muted px-3 py-2.5">
+      <input
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        placeholder="补充信息或引导方向，发送给 Agent…"
+        className="min-w-0 flex-1 rounded-[9px] border border-ds-border bg-ds-subtle px-2.5 py-1.5 text-[12px] text-ds-ink outline-none placeholder:text-ds-faint focus:border-accent/50"
+      />
+      <button
+        type="submit"
+        disabled={!text.trim()}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-accent text-white transition hover:brightness-110 disabled:opacity-40"
+        title="发送引导给 Agent"
+      >
+        <Send className="h-3.5 w-3.5" strokeWidth={2} />
+      </button>
+    </form>
+  )
 }
 
 export function DocumentWritingWorkflowPanel(): ReactElement | null {
@@ -93,6 +122,8 @@ export function DocumentWritingWorkflowPanel(): ReactElement | null {
       </ol>
 
       {workflow.lastTool ? <div className="border-t border-ds-border-muted px-4 py-2 text-[10.5px] text-ds-faint">已调用：{workflow.lastTool}</div> : null}
+
+      {workflow.status === 'running' ? <GuidanceComposer /> : null}
     </aside>
   )
 }
