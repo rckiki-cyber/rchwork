@@ -29,6 +29,15 @@ export function markOfficeFallbackEligible(
   eligibility.set(key(context), { ...evidence, createdAt: now })
 }
 
+export function isOfficeFallbackEligible(
+  context: Pick<ToolHostContext, 'threadId' | 'turnId'> | undefined,
+  now = Date.now()
+): boolean {
+  if (!context) return false
+  pruneExpired(now)
+  return eligibility.has(key(context))
+}
+
 export function consumeOfficeFallbackEligibility(
   context: Pick<ToolHostContext, 'threadId' | 'turnId'>,
   now = Date.now()
@@ -71,7 +80,6 @@ export function isLegalDocumentFormattingActive(context: ToolHostContext | undef
   return Boolean(context?.activeSkillIds?.some((skillId) => skillId === LEGAL_DOCUMENT_FORMATTING_SKILL_ID))
 }
 
-/** Only genuine structure/preservation limits after local attempts may unlock Office MCP. */
 export function hasStructuralOfficeFallbackEvidence(detail: unknown): boolean {
   if (!detail || typeof detail !== 'object' || Array.isArray(detail)) return false
   const record = detail as Record<string, unknown>
