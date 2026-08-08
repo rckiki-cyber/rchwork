@@ -3,9 +3,9 @@
 
 This script is stdlib-only. It owns a small venv under ~/.legalwork/runtimes,
 installs the skill's pinned dependencies once, then dispatches to the DOCX,
-PPTX, or reference-profile worker. All setup noise stays local; stdout is
-reserved for one compact worker JSON result so model context does not grow
-with pip/venv logs.
+PPTX, reference-profile, or semantic legal-profile worker. All setup noise
+stays local; stdout is reserved for one compact worker JSON result so model
+context does not grow with pip/venv logs.
 """
 from __future__ import annotations
 
@@ -190,6 +190,7 @@ def worker_path(kind: str) -> Path:
         "docx": "docx_worker.py",
         "pptx": "pptx_worker.py",
         "reference": "reference_profile_worker.py",
+        "profile": "legal_profile_worker.py",
     }
     path = Path(__file__).resolve().parent / filenames[kind]
     if not path.is_file():
@@ -248,7 +249,7 @@ def dispatch(kind: str, worker_args: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LegalWork managed document-skill launcher")
-    parser.add_argument("kind", choices=("docx", "pptx", "reference"))
+    parser.add_argument("kind", choices=("docx", "pptx", "reference", "profile"))
     parser.add_argument("worker_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     dispatch(args.kind, args.worker_args)
