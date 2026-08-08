@@ -7,6 +7,12 @@ on:
     paths:
       - .legalwork-patches/apply_ima_direct_dispatch.py
       - .github/workflows/apply-knowledge-retrieval-efficiency.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .legalwork-patches/apply_ima_direct_dispatch.py
+      - .github/workflows/apply-knowledge-retrieval-efficiency.yml
 
 permissions:
   contents: write
