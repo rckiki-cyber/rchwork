@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Managed Python launcher for LegalWork's document-formatting skill.
+"""Managed launcher for LegalWork Office document workers.
 
-This script is stdlib-only. It owns a small venv under ~/.legalwork/runtimes,
-reuses packages from LegalWork's bundled/bootstrap Python when possible,
-installs pinned dependencies only when still necessary, then dispatches to one
-compact document worker. Setup noise never enters model history.
+Packaged LegalWork must provide LEGALWORK_OFFICE_PYTHON with all Word/Excel/PPT
+libraries preinstalled at release time. End users never create a venv or run
+pip for Office tasks. The managed venv path remains only as a development
+fallback when LEGALWORK_OFFICE_RUNTIME_REQUIRED is not set.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-RUNTIME_VERSION = "v2"
+RUNTIME_VERSION = "v3"
 REQUIRED_IMPORTS = ("docx", "pptx", "openpyxl", "lxml", "PIL")
 MAX_ERROR_CHARS = 2400
 
@@ -76,7 +76,7 @@ def imports_ok(command: str) -> bool:
             [command, "-c", code],
             capture_output=True,
             text=True,
-            timeout=12,
+            timeout=15,
             check=False,
         )
         return completed.returncode == 0
@@ -84,9 +84,33 @@ def imports_ok(command: str) -> bool:
         return False
 
 
+def bundled_office_python() -> str | None:
+    raw = os.environ.get("LEGALWORK_OFFICE_PYTHON", "").strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser().resolve()
+    if not path.is_file():
+        emit({
+            "status": "error",
+            "stage": "runtime",
+            "error": f"Bundled Office Python is missing: {path}. Reinstall LegalWork.",
+            "office_fallback_allowed": False,
+        }, 1)
+    command = str(path)
+    if not python_version_ok(command) or not imports_ok(command):
+        emit({
+            "status": "error",
+            "stage": "runtime",
+            "error": "Bundled Office Python is incomplete or incompatible. Reinstall LegalWork; runtime pip installation is disabled for packaged Office tasks.",
+            "office_fallback_allowed": False,
+        }, 1)
+    return command
+
+
 def candidate_bootstrap_pythons() -> Iterable[str]:
     seen: set[str] = set()
     raw = [
+        os.environ.get("LEGALWORK_OFFICE_PYTHON"),
         os.environ.get("LEGALWORK_SKILL_PYTHON"),
         os.environ.get("LEGALWORK_PYTHON"),
         os.environ.get("LEGALWORK_OCR_PYTHON"),
@@ -103,6 +127,9 @@ def candidate_bootstrap_pythons() -> Iterable[str]:
 
 
 def choose_bootstrap_python() -> str:
+    bundled = bundled_office_python()
+    if bundled:
+        return bundled
     for candidate in candidate_bootstrap_pythons():
         if python_version_ok(candidate):
             return candidate
@@ -134,10 +161,22 @@ def run_quiet(command: list[str], cwd: Path, timeout: int) -> tuple[int, str]:
 
 
 def ensure_runtime() -> str:
+    bundled = bundled_office_python()
+    if bundled:
+        return bundled
+
+    if os.environ.get("LEGALWORK_OFFICE_RUNTIME_REQUIRED", "").strip() == "1":
+        emit({
+            "status": "error",
+            "stage": "runtime",
+            "error": "Packaged Office runtime is required but LEGALWORK_OFFICE_PYTHON is unavailable. Reinstall LegalWork.",
+            "office_fallback_allowed": False,
+        }, 1)
+
+    # Development-only fallback: create/reuse a local managed environment.
     root = runtime_root()
     python = platform_python(root)
     marker = marker_path(root)
-
     if python.is_file() and python_version_ok(str(python)) and marker.is_file() and imports_ok(str(python)):
         return str(python)
 
@@ -165,7 +204,7 @@ def ensure_runtime() -> str:
             emit({
                 "status": "error",
                 "stage": "runtime",
-                "error": f"Failed to create managed document-skill venv: {output}",
+                "error": f"Failed to create development document-skill venv: {output}",
                 "office_fallback_allowed": False,
             }, 1)
 
@@ -180,7 +219,7 @@ def ensure_runtime() -> str:
             emit({
                 "status": "error",
                 "stage": "runtime",
-                "error": f"Failed to prepare document-skill dependencies: {output}",
+                "error": f"Failed to prepare development document-skill dependencies: {output}",
                 "office_fallback_allowed": False,
             }, 1)
 
@@ -191,6 +230,7 @@ def ensure_runtime() -> str:
 def worker_path(kind: str) -> Path:
     filenames = {
         "docx": "docx_worker.py",
+        "xlsx": "xlsx_worker.py",
         "pptx": "pptx_worker.py",
         "reference": "reference_profile_worker.py",
         "profile": "legal_profile_worker.py",
@@ -208,8 +248,8 @@ def worker_path(kind: str) -> Path:
 
 
 def dispatch(kind: str, worker_args: list[str]) -> None:
-    # Legacy .doc/.ppt conversion is stdlib-only and should be attempted even
-    # when python-docx/python-pptx dependencies are not yet prepared.
+    # Legacy conversion is stdlib-only; in packaged builds it still uses the
+    # bundled interpreter so no system Python dependency leaks to end users.
     python = choose_bootstrap_python() if kind == "legacy" else ensure_runtime()
     worker = worker_path(kind)
     try:
@@ -253,7 +293,7 @@ def dispatch(kind: str, worker_args: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LegalWork managed document-skill launcher")
-    parser.add_argument("kind", choices=("docx", "pptx", "reference", "profile", "legacy"))
+    parser.add_argument("kind", choices=("docx", "xlsx", "pptx", "reference", "profile", "legacy"))
     parser.add_argument("worker_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     dispatch(args.kind, args.worker_args)
