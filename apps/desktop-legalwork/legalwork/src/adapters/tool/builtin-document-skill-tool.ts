@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { LocalToolHost, type LocalTool } from './local-tool-host.js'
@@ -20,7 +20,8 @@ const OPERATIONS: Record<string, ReadonlySet<string>> = {
   docx: new Set(['inspect', 'normalize', 'page', 'replace', 'from-markdown', 'template-fill']),
   pptx: new Set(['inspect', 'from-json', 'replace']),
   reference: new Set(['inspect', 'apply']),
-  profile: new Set(['profiles', 'apply'])
+  profile: new Set(['profiles', 'apply']),
+  legacy: new Set(['convert'])
 }
 
 type PythonCandidate = { command: string; prefix: string[] }
@@ -33,7 +34,7 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
     inputSchema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['docx', 'pptx', 'reference', 'profile'] },
+        kind: { type: 'string', enum: ['docx', 'pptx', 'reference', 'profile', 'legacy'] },
         operation: { type: 'string' },
         args: {
           type: 'array',
@@ -204,7 +205,7 @@ async function runProcess(
     let stderr = ''
     let settled = false
     let timedOut = false
-    let child
+    let child: ChildProcessWithoutNullStreams
     try {
       child = spawn(command, args, {
         cwd,
@@ -220,8 +221,8 @@ async function runProcess(
       const next = current + (Buffer.isBuffer(chunk) ? chunk.toString('utf8') : chunk)
       return next.length <= MAX_OUTPUT_CHARS ? next : next.slice(-MAX_OUTPUT_CHARS)
     }
-    child.stdout.on('data', (chunk) => { stdout = append(stdout, chunk) })
-    child.stderr.on('data', (chunk) => { stderr = append(stderr, chunk) })
+    child.stdout.on('data', (chunk: Buffer | string) => { stdout = append(stdout, chunk) })
+    child.stderr.on('data', (chunk: Buffer | string) => { stderr = append(stderr, chunk) })
     const finish = (result: { exitCode: number | null; error?: string }) => {
       if (settled) return
       settled = true
@@ -238,8 +239,8 @@ async function runProcess(
       child.kill()
     }, timeoutMs)
     signal.addEventListener('abort', onAbort, { once: true })
-    child.on('error', (error) => finish({ exitCode: null, error: errorMessage(error) }))
-    child.on('close', (code) => {
+    child.on('error', (error: Error) => finish({ exitCode: null, error: errorMessage(error) }))
+    child.on('close', (code: number | null) => {
       finish({
         exitCode: code,
         ...(timedOut ? { error: `document Skill execution timed out after ${timeoutMs}ms` } : {})
