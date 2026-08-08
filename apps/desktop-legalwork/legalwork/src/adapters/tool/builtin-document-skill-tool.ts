@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -72,14 +73,13 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
         return { output: { status: 'error', error: errorMessage(error) }, isError: true }
       }
 
-      const python = await findPython(context.abortSignal)
+      const python = await findPython(skill.root, context.abortSignal)
       if (!python) {
-        const packagedRequired = process.env.LEGALWORK_OFFICE_RUNTIME_REQUIRED === '1'
         return {
           output: {
             status: 'error',
             stage: 'runtime',
-            error: packagedRequired
+            error: isPackagedSkillRoot(skill.root)
               ? 'Bundled Office Python runtime is missing or cannot start. Reinstall LegalWork; end-user runtime setup is disabled.'
               : 'No compatible Python launcher is available for the development document Skill runtime.',
             office_fallback_allowed: false
@@ -162,10 +162,30 @@ function stringArrayArg(value: unknown): string[] | null {
   return out
 }
 
-function pythonCandidates(): PythonCandidate[] {
-  const officePython = process.env.LEGALWORK_OFFICE_PYTHON?.trim()
-  if (process.env.LEGALWORK_OFFICE_RUNTIME_REQUIRED === '1') {
-    return officePython ? [{ command: officePython, prefix: [] }] : []
+function packagedResourcesRoot(skillRoot: string): string {
+  return join(skillRoot, '..', '..')
+}
+
+function bundledOfficePythonPath(skillRoot: string): string {
+  const runtimeRoot = join(packagedResourcesRoot(skillRoot), 'office-runtime', 'python')
+  return process.platform === 'win32'
+    ? join(runtimeRoot, 'python.exe')
+    : join(runtimeRoot, 'bin', 'python3')
+}
+
+function isPackagedSkillRoot(skillRoot: string): boolean {
+  const resourcesRoot = packagedResourcesRoot(skillRoot)
+  return existsSync(join(resourcesRoot, 'app.asar')) || existsSync(join(resourcesRoot, 'app.asar.unpacked'))
+}
+
+function pythonCandidates(skillRoot: string): PythonCandidate[] {
+  const bundled = bundledOfficePythonPath(skillRoot)
+  if (existsSync(bundled)) {
+    return [{ command: bundled, prefix: [] }]
+  }
+  if (isPackagedSkillRoot(skillRoot)) {
+    // Never fall back to system Python or runtime pip on an end-user install.
+    return []
   }
 
   const seen = new Set<string>()
@@ -178,7 +198,7 @@ function pythonCandidates(): PythonCandidate[] {
     seen.add(id)
     out.push({ command: value, prefix })
   }
-  add(officePython)
+  add(process.env.LEGALWORK_OFFICE_PYTHON)
   add(process.env.LEGALWORK_SKILL_PYTHON)
   add(process.env.LEGALWORK_PYTHON)
   add(process.env.LEGALWORK_OCR_PYTHON)
@@ -188,8 +208,8 @@ function pythonCandidates(): PythonCandidate[] {
   return out
 }
 
-async function findPython(signal: AbortSignal): Promise<PythonCandidate | null> {
-  for (const candidate of pythonCandidates()) {
+async function findPython(skillRoot: string, signal: AbortSignal): Promise<PythonCandidate | null> {
+  for (const candidate of pythonCandidates(skillRoot)) {
     const result = await runProcess(
       candidate.command,
       [...candidate.prefix, '-c', 'import sys; raise SystemExit(0 if (3,10) <= sys.version_info[:2] <= (3,13) else 1)'],
