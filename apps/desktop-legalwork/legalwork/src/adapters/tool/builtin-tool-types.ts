@@ -112,6 +112,7 @@ export type BuiltinToolName =
   | 'install_skill'
   | 'request_document_preferences'
   | 'resolve_legal_document_template'
+  | 'request_office_fallback'
   | 'compress_context'
 export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'read',
@@ -128,6 +129,7 @@ export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'install_skill',
   'request_document_preferences',
   'resolve_legal_document_template',
+  'request_office_fallback',
   'compress_context'
 ])
 export type ToolName = BuiltinToolName
