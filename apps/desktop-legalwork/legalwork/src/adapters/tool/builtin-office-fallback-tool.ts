@@ -16,7 +16,7 @@ export function createRequestOfficeFallbackTool(): LocalTool {
   return LocalToolHost.defineTool({
     name: REQUEST_OFFICE_FALLBACK_TOOL_NAME,
     description:
-      'Unlock the Office MCP for this turn only after the legal-document-formatting local worker has explicitly returned unsupported and provided a fallback_ticket. This tool does not edit the document.',
+      'Unlock Office MCP for this turn only after legal-document-formatting exhausted its safe local path and produced a worker unsupported ticket with structural evidence. Environment, dependency, argument, file-type, and profile errors never unlock Office MCP.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -32,17 +32,14 @@ export function createRequestOfficeFallbackTool(): LocalTool {
     execute: async (args, context) => {
       const ticket = typeof args.ticket === 'string' ? args.ticket.trim() : ''
       if (!ticket) {
-        return {
-          output: { error: 'fallback ticket is required' },
-          isError: true
-        }
+        return { output: { error: 'fallback ticket is required' }, isError: true }
       }
       const validation = await validateFallbackTicket(ticket)
       if (!validation.ok) {
         return {
           output: {
             error: validation.error,
-            note: 'Run the legal-document-formatting local worker first. Office MCP cannot be unlocked without a worker-generated unsupported ticket.'
+            note: 'Continue with local document Skill methods. Office MCP is only a last-resort capability for evidenced document-structure limitations.'
           },
           isError: true
         }
@@ -95,11 +92,23 @@ async function validateFallbackTicket(rawPath: string): Promise<
     if (!reason || !operation) {
       return { ok: false, error: 'fallback ticket is missing operation/reason evidence' }
     }
+    if (!hasStructuralFallbackEvidence(parsed.detail)) {
+      return {
+        ok: false,
+        error: 'fallback ticket does not prove a document-structure limitation; environment/dependency/argument/file-type errors cannot unlock Office MCP'
+      }
+    }
     return { ok: true, path, reason, operation }
   } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : String(error)
-    }
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
+}
+
+function hasStructuralFallbackEvidence(detail: unknown): boolean {
+  if (!detail || typeof detail !== 'object' || Array.isArray(detail)) return false
+  const record = detail as Record<string, unknown>
+  if (record.tracked_changes === true || record.macros === true) return true
+  if (typeof record.spanning_paragraphs === 'number' && record.spanning_paragraphs > 0) return true
+  if (Array.isArray(record.keys) && record.keys.length > 0) return true
+  return false
 }
