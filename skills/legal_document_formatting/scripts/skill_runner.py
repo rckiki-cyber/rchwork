@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Managed launcher for LegalWork Office document workers.
 
-Packaged LegalWork must provide LEGALWORK_OFFICE_PYTHON with all Word/Excel/PPT
-libraries preinstalled at release time. End users never create a venv or run
-pip for Office tasks. The managed venv path remains only as a development
-fallback when LEGALWORK_OFFICE_RUNTIME_REQUIRED is not set.
+Packaged LegalWork discovers the bundled Office Python runtime next to the
+packaged skills directory. End users never create a venv or run pip for
+Word/Excel/PPT tasks. A managed venv remains available only in development.
 """
 from __future__ import annotations
 
@@ -17,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-RUNTIME_VERSION = "v3"
+RUNTIME_VERSION = "v4"
 REQUIRED_IMPORTS = ("docx", "pptx", "openpyxl", "lxml", "PIL")
 MAX_ERROR_CHARS = 2400
 
@@ -33,6 +32,12 @@ def platform_python(venv_root: Path) -> Path:
     return venv_root / "bin" / "python"
 
 
+def office_runtime_python(runtime_root: Path) -> Path:
+    if os.name == "nt":
+        return runtime_root / "python" / "python.exe"
+    return runtime_root / "python" / "bin" / "python3"
+
+
 def runtime_root() -> Path:
     explicit = os.environ.get("LEGALWORK_DOCUMENT_SKILL_VENV", "").strip()
     if explicit:
@@ -42,6 +47,17 @@ def runtime_root() -> Path:
 
 def package_root() -> Path:
     return Path(__file__).resolve().parent.parent
+
+
+def resources_root() -> Path:
+    # packaged: <Resources>/skills/legal_document_formatting
+    # development: <repo>/skills/legal_document_formatting
+    return package_root().parent.parent
+
+
+def packaged_install() -> bool:
+    root = resources_root()
+    return (root / "app.asar").is_file() or (root / "app.asar.unpacked").is_dir()
 
 
 def requirements_path() -> Path:
@@ -85,32 +101,39 @@ def imports_ok(command: str) -> bool:
 
 
 def bundled_office_python() -> str | None:
-    raw = os.environ.get("LEGALWORK_OFFICE_PYTHON", "").strip()
-    if not raw:
-        return None
-    path = Path(raw).expanduser().resolve()
-    if not path.is_file():
+    explicit = os.environ.get("LEGALWORK_OFFICE_PYTHON", "").strip()
+    candidates = []
+    if explicit:
+        candidates.append(Path(explicit).expanduser().resolve())
+    candidates.append(office_runtime_python(resources_root() / "office-runtime"))
+
+    for path in candidates:
+        if not path.is_file():
+            continue
+        command = str(path)
+        if python_version_ok(command) and imports_ok(command):
+            return command
         emit({
             "status": "error",
             "stage": "runtime",
-            "error": f"Bundled Office Python is missing: {path}. Reinstall LegalWork.",
+            "error": f"Bundled Office Python is incomplete or incompatible: {path}. Reinstall LegalWork.",
             "office_fallback_allowed": False,
         }, 1)
-    command = str(path)
-    if not python_version_ok(command) or not imports_ok(command):
+
+    if packaged_install():
+        expected = office_runtime_python(resources_root() / "office-runtime")
         emit({
             "status": "error",
             "stage": "runtime",
-            "error": "Bundled Office Python is incomplete or incompatible. Reinstall LegalWork; runtime pip installation is disabled for packaged Office tasks.",
+            "error": f"Bundled Office Python is missing: {expected}. Reinstall LegalWork. Runtime setup on end-user machines is disabled.",
             "office_fallback_allowed": False,
         }, 1)
-    return command
+    return None
 
 
 def candidate_bootstrap_pythons() -> Iterable[str]:
     seen: set[str] = set()
     raw = [
-        os.environ.get("LEGALWORK_OFFICE_PYTHON"),
         os.environ.get("LEGALWORK_SKILL_PYTHON"),
         os.environ.get("LEGALWORK_PYTHON"),
         os.environ.get("LEGALWORK_OCR_PYTHON"),
@@ -136,7 +159,7 @@ def choose_bootstrap_python() -> str:
     emit({
         "status": "error",
         "stage": "runtime",
-        "error": "No compatible Python 3.10-3.13 interpreter is available for the LegalWork document skill runtime.",
+        "error": "No compatible Python 3.10-3.13 interpreter is available for the development document Skill runtime.",
         "office_fallback_allowed": False,
     }, 1)
     raise AssertionError("unreachable")
@@ -165,15 +188,8 @@ def ensure_runtime() -> str:
     if bundled:
         return bundled
 
-    if os.environ.get("LEGALWORK_OFFICE_RUNTIME_REQUIRED", "").strip() == "1":
-        emit({
-            "status": "error",
-            "stage": "runtime",
-            "error": "Packaged Office runtime is required but LEGALWORK_OFFICE_PYTHON is unavailable. Reinstall LegalWork.",
-            "office_fallback_allowed": False,
-        }, 1)
-
-    # Development-only fallback: create/reuse a local managed environment.
+    # Development-only fallback. packaged_install() is already rejected by
+    # bundled_office_python(), so end-user machines never reach venv/pip setup.
     root = runtime_root()
     python = platform_python(root)
     marker = marker_path(root)
@@ -185,7 +201,7 @@ def ensure_runtime() -> str:
         emit({
             "status": "error",
             "stage": "runtime",
-            "error": f"Document skill requirements are missing: {requirements}",
+            "error": f"Document Skill requirements are missing: {requirements}",
             "office_fallback_allowed": False,
         }, 1)
 
@@ -248,8 +264,6 @@ def worker_path(kind: str) -> Path:
 
 
 def dispatch(kind: str, worker_args: list[str]) -> None:
-    # Legacy conversion is stdlib-only; in packaged builds it still uses the
-    # bundled interpreter so no system Python dependency leaks to end users.
     python = choose_bootstrap_python() if kind == "legacy" else ensure_runtime()
     worker = worker_path(kind)
     try:
