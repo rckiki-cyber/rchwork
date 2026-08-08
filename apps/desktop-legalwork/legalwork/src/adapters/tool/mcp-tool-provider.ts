@@ -1075,10 +1075,13 @@ export function truncateMcpTextOutput(result: unknown): unknown {
     const entry = item as { type?: unknown; text?: unknown }
     if (entry.type !== 'text' || typeof entry.text !== 'string') return item
     const text = entry.text
-    if (text.length <= MCP_TEXT_RESULT_MAX_CHARS) return item
-    const omitted = text.length - MCP_TEXT_RESULT_MAX_CHARS - MCP_TEXT_RESULT_TAIL_CHARS
+    // Only truncate when the output would actually shrink: head(MAX) + tail(TAIL)
+    // must be smaller than the input, otherwise the "truncated" result would be
+    // larger than the original and report a negative omitted count.
+    if (text.length <= MCP_TEXT_RESULT_MAX_CHARS + MCP_TEXT_RESULT_TAIL_CHARS) return item
     const head = text.slice(0, MCP_TEXT_RESULT_MAX_CHARS)
     const tail = text.slice(-MCP_TEXT_RESULT_TAIL_CHARS)
+    const omitted = Math.max(0, text.length - head.length - tail.length)
     return {
       ...entry,
       text:

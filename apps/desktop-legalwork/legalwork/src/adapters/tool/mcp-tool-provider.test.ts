@@ -608,4 +608,26 @@ describe('normalizeOfficeCliArguments', () => {
 
     expect(out.content[0]?.text).toBe('short result')
   })
+
+  it('does not truncate in the 8001-9500 char band (would grow the output and report negative omitted)', () => {
+    // head(8000) + tail(1500) = 9500; input in (8000, 9500] must stay untouched.
+    const input = { content: [{ type: 'text', text: 'x'.repeat(9_000) }] }
+
+    const out = truncateMcpTextOutput(input) as { content: Array<{ text: string }> }
+
+    expect(out.content[0]?.text.length).toBe(9_000)
+    expect(out.content[0]?.text).not.toContain('输出已截断')
+  })
+
+  it('truncates only when the output actually shrinks and reports a non-negative omitted count', () => {
+    const input = { content: [{ type: 'text', text: 'x'.repeat(9_501) }] }
+
+    const out = truncateMcpTextOutput(input) as { content: Array<{ text: string }> }
+
+    const text = out.content[0]?.text
+    expect(text).toContain('输出已截断')
+    // head(8000) + tail(1500) + marker; the middle of the input is dropped.
+    expect(text).not.toContain('x'.repeat(8_500))
+    expect(text).toMatch(/省略约 \d+ 字符/) // no negative count
+  })
 })

@@ -141,10 +141,16 @@ def _load_batch_input_files(task: dict, manifest_path: Path) -> list[dict]:
 
 def _copy_batch_output(output_file: Path, output_dir: Path, stem: str) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    target = output_dir / f'{stem}_{output_file.name}'
+    # 若 output_file 已以 stem 开头（如 process_desensitization 产出的
+    # {stem}_脱敏.docx），直接用原名，避免 {stem}_{stem}_脱敏.docx 重复前缀。
+    # 仅当输出名不含 stem（如 subject_mapping.md 这类固定名）才补前缀，用于区分文档。
+    name = output_file.name
+    if not name.startswith(stem):
+        name = f'{stem}_{name}'
+    target = output_dir / name
     counter = 2
     while target.exists():
-        target = output_dir / f'{stem}_{counter}_{output_file.name}'
+        target = output_dir / f'{Path(name).stem}_{counter}{Path(name).suffix}'
         counter += 1
     shutil.copy2(output_file, target)
     return target
