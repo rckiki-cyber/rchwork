@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { LocalToolHost, type LocalTool } from './local-tool-host.js'
@@ -203,7 +203,7 @@ async function runProcess(
     let stderr = ''
     let settled = false
     let timedOut = false
-    let child: ChildProcessWithoutNullStreams
+    let child: ChildProcess
     try {
       child = spawn(command, args, {
         cwd,
@@ -219,8 +219,8 @@ async function runProcess(
       const next = current + (Buffer.isBuffer(chunk) ? chunk.toString('utf8') : chunk)
       return next.length <= MAX_OUTPUT_CHARS ? next : next.slice(-MAX_OUTPUT_CHARS)
     }
-    child.stdout.on('data', (chunk: Buffer | string) => { stdout = append(stdout, chunk) })
-    child.stderr.on('data', (chunk: Buffer | string) => { stderr = append(stderr, chunk) })
+    child.stdout?.on('data', (chunk: Buffer | string) => { stdout = append(stdout, chunk) })
+    child.stderr?.on('data', (chunk: Buffer | string) => { stderr = append(stderr, chunk) })
     const finish = (result: { exitCode: number | null; error?: string }) => {
       if (settled) return
       settled = true
