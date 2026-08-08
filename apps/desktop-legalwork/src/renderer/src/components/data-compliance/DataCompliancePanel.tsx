@@ -377,11 +377,58 @@ async function fileToPayload(file: File): Promise<DataComplianceFilePayload> {
   }
 }
 
-function localFileParentDirectory(file: File): string {
-  const filePath = window.dsGui?.getLocalFilePath?.(file)
+function localParentDirectory(filePath: string): string {
   if (!filePath) return ''
   const separatorIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
   return separatorIndex > 0 ? filePath.slice(0, separatorIndex) : ''
+}
+
+function localFileParentDirectory(file: File): string {
+  const filePath = window.dsGui?.getLocalFilePath?.(file)
+  return filePath ? localParentDirectory(filePath) : ''
+}
+
+function localPathBasename(path: string): string {
+  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path
+}
+
+function joinLocalPath(directory: string, leaf: string): string {
+  const trimmed = directory.replace(/[\\/]+$/, '')
+  if (!trimmed) return leaf
+  const separator = trimmed.includes('\\') && !trimmed.includes('/') ? '\\' : '/'
+  return `${trimmed}${separator}${leaf}`
+}
+
+const MATERIAL_DESENSITIZE_FOLDER_EXTENSIONS = new Set([
+  '.txt', '.md', '.markdown', '.log', '.rtf', '.html', '.htm', '.xml', '.yaml', '.yml',
+  '.toml', '.ini', '.cfg', '.conf', '.env', '.docx', '.doc', '.pdf', '.csv', '.tsv',
+  '.xlsx', '.xls', '.ods', '.json', '.jsonl', '.ndjson', '.png', '.jpg', '.jpeg', '.webp',
+  '.bmp', '.tif', '.tiff', '.pptx'
+])
+
+function isSupportedMaterialFolderFile(file: File): boolean {
+  const dotIndex = file.name.lastIndexOf('.')
+  if (dotIndex < 0) return false
+  return MATERIAL_DESENSITIZE_FOLDER_EXTENSIONS.has(file.name.slice(dotIndex).toLowerCase())
+}
+
+function isGeneratedDesensitizeFolderFile(file: File): boolean {
+  const relativePath = file.webkitRelativePath?.replace(/\\/g, '/') || ''
+  const segments = relativePath.split('/').filter(Boolean)
+  return segments.slice(1, -1).some((segment) => /^脱敏后文件(?:$|[-_（(])/.test(segment))
+}
+
+function localFolderRootFromFile(file: File): string {
+  const filePath = window.dsGui?.getLocalFilePath?.(file)
+  const relativePath = file.webkitRelativePath?.trim()
+  if (!filePath || !relativePath) return ''
+  const parts = relativePath.replace(/\\/g, '/').split('/').filter(Boolean)
+  if (parts.length < 2) return localParentDirectory(filePath)
+  let root = filePath
+  for (let index = 1; index < parts.length; index += 1) {
+    root = localParentDirectory(root)
+  }
+  return root
 }
 
 async function fallbackRequest(
@@ -1526,8 +1573,10 @@ export function DataCompliancePanel({
   const [documentName, setDocumentName] = useState('')
   const [inputText, setInputText] = useState('')
   const [files, setFiles] = useState<File[]>([])
+  const [folderRoot, setFolderRoot] = useState('')
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const sharedSelectedTaskId = useComplianceHistoryStore((state) => modeScope === 'desensitize'
@@ -1596,11 +1645,20 @@ export function DataCompliancePanel({
   }, [])
 
   useEffect(() => {
+    const input = folderInputRef.current
+    if (!input) return
+    input.setAttribute('webkitdirectory', '')
+    input.setAttribute('directory', '')
+  }, [])
+
+  useEffect(() => {
     if (outputDirTouched) return
     const parentDir = files[0] ? localFileParentDirectory(files[0]) : ''
-    const nextOutputDir = parentDir || workspaceRoot || ''
+    const nextOutputDir = folderRoot
+      ? joinLocalPath(folderRoot, '脱敏后文件')
+      : parentDir || workspaceRoot || ''
     setOutputDir((current) => current === nextOutputDir ? current : nextOutputDir)
-  }, [files, outputDirTouched, workspaceRoot])
+  }, [files, folderRoot, outputDirTouched, workspaceRoot])
 
   useEffect(() => {
     if (typeof window.dsGui?.onDataComplianceInstallProgress !== 'function') return
@@ -1821,15 +1879,46 @@ export function DataCompliancePanel({
 
   const onPickFile = (event: ChangeEvent<HTMLInputElement>): void => {
     const nextFiles = Array.from(event.target.files ?? [])
+    setFolderRoot('')
     addSelectedFiles(nextFiles)
     // 允许重复选择同一文件
     if (event.target) event.target.value = ''
+  }
+
+  const onPickFolder = (event: ChangeEvent<HTMLInputElement>): void => {
+    const pickedFiles = Array.from(event.target.files ?? [])
+    if (pickedFiles.length === 0) return
+    const root = localFolderRootFromFile(pickedFiles[0])
+    const nextFiles = pickedFiles.filter((file) =>
+      isSupportedMaterialFolderFile(file) && !isGeneratedDesensitizeFolderFile(file)
+    )
+    if (nextFiles.length === 0) {
+      setNotice({ tone: 'error', text: '所选文件夹中没有可脱敏的受支持文件。' })
+      event.target.value = ''
+      return
+    }
+    const skippedCount = pickedFiles.length - nextFiles.length
+    setFiles(nextFiles)
+    setFolderRoot(root)
+    if (!documentName.trim()) {
+      setDocumentName(root ? localPathBasename(root) : `批量材料 ${nextFiles.length} 个文件`)
+    }
+    setOutputFormat('docx')
+    if (!outputDirTouched && root) {
+      setOutputDir(joinLocalPath(root, '脱敏后文件'))
+    }
+    setNotice(skippedCount > 0
+      ? { tone: 'info', text: `已导入 ${nextFiles.length} 个文件，跳过 ${skippedCount} 个不支持或已生成的脱敏文件。` }
+      : null)
+    // 允许重复选择同一文件夹
+    event.target.value = ''
   }
 
   const onDropFile = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
     event.preventDefault()
     event.stopPropagation()
     setDragActive(false)
+    setFolderRoot('')
     const dropped = Array.from(event.dataTransfer.files ?? [])
     addSelectedFiles(dropped)
   }, [addSelectedFiles])
@@ -1848,7 +1937,9 @@ export function DataCompliancePanel({
 
   const clearFile = useCallback((): void => {
     setFiles([])
+    setFolderRoot('')
     if (fileInputRef.current) fileInputRef.current.value = ''
+    if (folderInputRef.current) folderInputRef.current.value = ''
   }, [])
 
   const removeFile = useCallback((fileToRemove: File): void => {
@@ -2136,7 +2227,27 @@ export function DataCompliancePanel({
           />
         </label>
         <div className="block">
-          <span className="text-[12px] font-medium text-ds-muted">上传文件</span>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[12px] font-medium text-ds-muted">上传文件</span>
+            {mode === 'desensitize' && effectiveDesensitizeKind === 'material' ? (
+              <button
+                type="button"
+                onClick={() => folderInputRef.current?.click()}
+                disabled={busy || statusBusy || installProgress.kind === 'installing'}
+                className="inline-flex items-center gap-1.5 rounded-[8px] border border-ds-border-muted bg-ds-subtle px-2.5 py-1.5 text-[12px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink disabled:opacity-55"
+              >
+                <Folder className="h-3.5 w-3.5" strokeWidth={1.8} />
+                选择文件夹
+              </button>
+            ) : null}
+          </div>
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            onChange={onPickFolder}
+            className="hidden"
+          />
           <div
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
@@ -2159,8 +2270,10 @@ export function DataCompliancePanel({
             {files.length > 0 ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 text-[13px] font-medium text-ds-ink">
-                    已选择 {files.length} 个文件
+                  <div className="min-w-0 text-[13px] font-medium text-ds-ink" title={folderRoot || undefined}>
+                    {folderRoot
+                      ? `已选择文件夹「${localPathBasename(folderRoot)}」 · ${files.length} 个文件`
+                      : `已选择 ${files.length} 个文件`}
                   </div>
                   <button
                     type="button"
@@ -2215,6 +2328,9 @@ export function DataCompliancePanel({
                 </div>
                 <div className="text-[13px] font-medium text-ds-ink">拖拽文件到此处</div>
                 <div className="text-[12px] text-ds-muted">或点击选择文件，可一次选择多个</div>
+                {mode === 'desensitize' && effectiveDesensitizeKind === 'material' ? (
+                  <div className="text-[11.5px] text-ds-faint">也可使用右上角“选择文件夹”一次导入整批材料。</div>
+                ) : null}
               </div>
             )}
           </div>
@@ -2270,7 +2386,9 @@ export function DataCompliancePanel({
                 </button>
               </div>
               <p className="mt-1.5 text-[11.5px] text-ds-faint">
-                脱敏后的文件和主体映射表将保存到该目录。
+                {folderRoot && !outputDirTouched
+                  ? '选择文件夹时，默认在原文件夹内新建“脱敏后文件”目录，批量脱敏文件统一保存到其中。'
+                  : '脱敏后的文件和主体映射表将保存到该目录。'}
               </p>
             </label>
           </>
