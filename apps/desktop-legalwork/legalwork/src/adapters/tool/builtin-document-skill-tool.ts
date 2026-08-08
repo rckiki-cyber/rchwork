@@ -6,7 +6,6 @@ import type { SkillToolsOptions } from './builtin-tool-types.js'
 import {
   LEGAL_DOCUMENT_FORMATTING_SKILL_ID,
   hasStructuralOfficeFallbackEvidence,
-  isLegalDocumentFormattingActive,
   markOfficeFallbackEligible
 } from './office-fallback-policy.js'
 
@@ -30,7 +29,7 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
   return LocalToolHost.defineTool({
     name: DOCUMENT_SKILL_EXECUTE_TOOL_NAME,
     description:
-      'Run the active legal-document-formatting Skill through LegalWork\'s trusted managed Python launcher. Use this instead of bash or Office MCP for Word/PPT formatting. Returns one compact JSON result.',
+      'LegalWork document Skill executor. Use for Word/DOCX, legacy DOC conversion, and normal PPTX formatting instead of bash or Office MCP. Runs only the bundled legal-document-formatting workers and returns compact JSON.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -47,7 +46,6 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
     },
     policy: 'auto',
     toolKind: 'tool_call',
-    shouldAdvertise: (context) => isLegalDocumentFormattingActive(context),
     execute: async (rawArgs, context) => {
       const kind = stringArg(rawArgs.kind)
       const operation = stringArg(rawArgs.operation)
