@@ -17,6 +17,7 @@ const WORKER_TIMEOUT_MS = 5 * 60 * 1000
 
 const OPERATIONS: Record<string, ReadonlySet<string>> = {
   docx: new Set(['inspect', 'normalize', 'page', 'replace', 'from-markdown', 'template-fill']),
+  xlsx: new Set(['inspect', 'from-json', 'replace']),
   pptx: new Set(['inspect', 'from-json', 'replace']),
   reference: new Set(['inspect', 'apply']),
   profile: new Set(['profiles', 'apply']),
@@ -29,11 +30,11 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
   return LocalToolHost.defineTool({
     name: DOCUMENT_SKILL_EXECUTE_TOOL_NAME,
     description:
-      'LegalWork document Skill executor. Use for Word/DOCX, legacy DOC conversion, and normal PPTX formatting instead of bash or Office MCP. Runs only the bundled legal-document-formatting workers and returns compact JSON.',
+      'LegalWork Office document Skill executor. Use for Word/DOCX, Excel/XLSX, PowerPoint/PPTX, reference templates, and legacy Office conversion instead of bash or Office MCP. Runs only bundled legal-document-formatting workers and returns compact JSON.',
     inputSchema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['docx', 'pptx', 'reference', 'profile', 'legacy'] },
+        kind: { type: 'string', enum: ['docx', 'xlsx', 'pptx', 'reference', 'profile', 'legacy'] },
         operation: { type: 'string' },
         args: {
           type: 'array',
@@ -73,11 +74,14 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
 
       const python = await findPython(context.abortSignal)
       if (!python) {
+        const packagedRequired = process.env.LEGALWORK_OFFICE_RUNTIME_REQUIRED === '1'
         return {
           output: {
             status: 'error',
             stage: 'runtime',
-            error: 'No compatible Python launcher is available for the managed document Skill runtime.',
+            error: packagedRequired
+              ? 'Bundled Office Python runtime is missing or cannot start. Reinstall LegalWork; end-user runtime setup is disabled.'
+              : 'No compatible Python launcher is available for the development document Skill runtime.',
             office_fallback_allowed: false
           },
           isError: true
@@ -111,6 +115,8 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
         }
       }
 
+      // Compatibility cleanup for older worker builds. Fallback authorization
+      // itself is runtime-memory based; model-created files cannot unlock MCP.
       const fallbackTicket = typeof payload.fallback_ticket === 'string' ? payload.fallback_ticket : ''
       if (fallbackTicket) await unlink(fallbackTicket).catch(() => undefined)
       delete payload.fallback_ticket
@@ -157,6 +163,11 @@ function stringArrayArg(value: unknown): string[] | null {
 }
 
 function pythonCandidates(): PythonCandidate[] {
+  const officePython = process.env.LEGALWORK_OFFICE_PYTHON?.trim()
+  if (process.env.LEGALWORK_OFFICE_RUNTIME_REQUIRED === '1') {
+    return officePython ? [{ command: officePython, prefix: [] }] : []
+  }
+
   const seen = new Set<string>()
   const out: PythonCandidate[] = []
   const add = (command: string | undefined, prefix: string[] = []) => {
@@ -167,6 +178,7 @@ function pythonCandidates(): PythonCandidate[] {
     seen.add(id)
     out.push({ command: value, prefix })
   }
+  add(officePython)
   add(process.env.LEGALWORK_SKILL_PYTHON)
   add(process.env.LEGALWORK_PYTHON)
   add(process.env.LEGALWORK_OCR_PYTHON)
