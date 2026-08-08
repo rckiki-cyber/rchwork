@@ -1,13 +1,15 @@
 import { readFileSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
 import type { KnowledgeStore } from '../knowledge/knowledge-store.js'
+import type { KnowledgeSearchHit } from '../contracts/knowledge.js'
 import type { KnowledgeContextRecord, KnowledgeRetrievalResult, KnowledgeLayer } from '../contracts/knowledge-retrieval.js'
 import { KnowledgeMeta, DEFAULT_KNOWLEDGE_META } from '../contracts/knowledge-retrieval.js'
 import { fieldsFromKnowledgeMeta, formatGbt7714, buildBibliography } from './citation-engine.js'
 import { route, LAYER_LABEL } from './knowledge-pyramid-router.js'
+import { buildKnowledgeRetrievalQueries } from './knowledge-query-planner.js'
 
 const MAX_CONTEXT_CHARS = 8_000
 const MAX_SOURCES = 12
+const RRF_K = 60
 
 /**
  * Auto-retrieval pipeline that, given a user query, automatically:
@@ -40,17 +42,22 @@ export class KnowledgeRetrievalPipeline {
     const routeResult = route(query)
     const targetLayers = options?.layers ?? (options?.layer ? [options.layer] : undefined) ?? routeResult.targetLayers
 
-    // 1. Search local knowledge base (with layer filter if applicable)
-    const rawHits = await this.store.search({
-      query,
-      limit: MAX_SOURCES,
-      includeContent: true,
-      ...(options?.pathPrefix ? { pathPrefix: options.pathPrefix } : {}),
-      ...(targetLayers.length > 0 ? { layers: targetLayers } : {})
-    })
-    const hits = rawHits.filter((hit, index) =>
-      rawHits.findIndex((candidate) => candidate.relativePath === hit.relativePath) === index
-    )
+    // 1. Search local knowledge base. Short questions use one query; long task
+    // prompts get one additional focused query that removes output-format/task
+    // scaffolding. Results are fused with deterministic reciprocal-rank fusion,
+    // improving recall without spending model tokens on query rewriting.
+    const retrievalQueries = buildKnowledgeRetrievalQueries(query)
+    const hitGroups: KnowledgeSearchHit[][] = []
+    for (const retrievalQuery of retrievalQueries) {
+      hitGroups.push(await this.store.search({
+        query: retrievalQuery,
+        limit: MAX_SOURCES,
+        includeContent: true,
+        ...(options?.pathPrefix ? { pathPrefix: options.pathPrefix } : {}),
+        ...(targetLayers.length > 0 ? { layers: targetLayers } : {})
+      }))
+    }
+    const hits = fuseKnowledgeHits(hitGroups).slice(0, MAX_SOURCES)
 
     // 2. Filter by expiry and deprecation if requested
     const filtered = excludeExpired
@@ -101,12 +108,14 @@ export class KnowledgeRetrievalPipeline {
         doi: citationFields.doi,
         layer: hit.layer
       }
-      records.push(record)
-      bibliographyEntries.push({ title: hit.title, citation: gbt7714Citation })
 
-      // Accumulate context text up to the limit
+      // Only expose a source to callers/model if its excerpt actually fits in
+      // the context block. This prevents "source metadata without evidence"
+      // and keeps citation lists aligned with the text the model can inspect.
       const entry = this.formatEntry(record)
       if (totalChars + entry.length <= maxChars) {
+        records.push(record)
+        bibliographyEntries.push({ title: hit.title, citation: gbt7714Citation })
         contextEntries.push(entry)
         totalChars += entry.length
       }
@@ -115,7 +124,7 @@ export class KnowledgeRetrievalPipeline {
     // 4. Format the final context text
     const contextText = this.formatContextText(contextEntries, query, routeResult)
     const bibliography = buildBibliography(
-      bibliographyEntries.map((e, i) => {
+      bibliographyEntries.map((e) => {
         // Parse citation back from stored format
         const fields = fieldsFromKnowledgeMeta(e.title, e.title, { source: '', author: '', category: '', tags: [], confidence: 'medium' })
         return fields
@@ -219,6 +228,48 @@ export class KnowledgeRetrievalPipeline {
     }
     return expired
   }
+}
+
+function fuseKnowledgeHits(groups: KnowledgeSearchHit[][]): KnowledgeSearchHit[] {
+  if (groups.length <= 1) return groups[0] ?? []
+
+  const fused = new Map<string, {
+    hit: KnowledgeSearchHit
+    rrf: number
+    appearances: number
+    bestRank: number
+  }>()
+
+  for (const group of groups) {
+    group.forEach((hit, index) => {
+      const key = hit.relativePath || hit.documentId
+      const contribution = 1 / (RRF_K + index + 1)
+      const existing = fused.get(key)
+      if (!existing) {
+        fused.set(key, {
+          hit,
+          rrf: contribution,
+          appearances: 1,
+          bestRank: index
+        })
+        return
+      }
+      existing.rrf += contribution
+      existing.appearances += 1
+      existing.bestRank = Math.min(existing.bestRank, index)
+      if (hit.score > existing.hit.score) existing.hit = hit
+    })
+  }
+
+  return [...fused.values()]
+    .sort((left, right) =>
+      right.rrf - left.rrf ||
+      right.appearances - left.appearances ||
+      left.bestRank - right.bestRank ||
+      right.hit.score - left.hit.score ||
+      left.hit.relativePath.localeCompare(right.hit.relativePath)
+    )
+    .map((entry) => entry.hit)
 }
 
 /** Detect if a query likely relates to legal/time-sensitive information. */
