@@ -1057,6 +1057,37 @@ type HostedMcpResult = {
   artifacts: string[]
 }
 
+/**
+ * 最大单条 MCP 文本输出长度（字符）。超过则保留头部 + 尾部、中间省略，
+ * 防止 officecli `view html` 之类返回完整文档（几十 KB HTML）作为
+ * tool_result 全量进 history——那会让后续每次请求都重发大段内容，既费
+ * token 又拖慢。模型需要细节时可改用更精确的命令（如 get /body/p[N]）。
+ */
+const MCP_TEXT_RESULT_MAX_CHARS = 8_000
+const MCP_TEXT_RESULT_TAIL_CHARS = 1_500
+
+export function truncateMcpTextOutput(result: unknown): unknown {
+  if (!result || typeof result !== 'object') return result
+  const record = result as { content?: unknown }
+  if (!Array.isArray(record.content)) return result
+  const truncated = record.content.map((item) => {
+    if (!item || typeof item !== 'object') return item
+    const entry = item as { type?: unknown; text?: unknown }
+    if (entry.type !== 'text' || typeof entry.text !== 'string') return item
+    const text = entry.text
+    if (text.length <= MCP_TEXT_RESULT_MAX_CHARS) return item
+    const omitted = text.length - MCP_TEXT_RESULT_MAX_CHARS - MCP_TEXT_RESULT_TAIL_CHARS
+    const head = text.slice(0, MCP_TEXT_RESULT_MAX_CHARS)
+    const tail = text.slice(-MCP_TEXT_RESULT_TAIL_CHARS)
+    return {
+      ...entry,
+      text:
+        `${head}\n\n… [输出已截断，省略约 ${omitted} 字符；如需更多内容请用更精确的命令（如 get /body/p[N]）] …\n\n${tail}`
+    }
+  })
+  return { ...record, content: truncated }
+}
+
 async function normalizeMcpResultForHost(
   serverId: string,
   toolName: string,
@@ -1064,7 +1095,8 @@ async function normalizeMcpResultForHost(
   workspace: string
 ): Promise<HostedMcpResult> {
   if (!isFlintChartServer(serverId) || toolName !== 'render_chart') {
-    return { result, artifacts: [] }
+    // 通用大输出防护：所有 MCP 工具的文本结果都截断，避免大 tool_result 进 history。
+    return { result: truncateMcpTextOutput(result), artifacts: [] }
   }
   if (
     !result ||

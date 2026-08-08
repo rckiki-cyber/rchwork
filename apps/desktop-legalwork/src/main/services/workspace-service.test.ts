@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, readFile, realpath, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -368,6 +368,24 @@ describe('workspace-service boundary checks', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.message).toContain('within the selected workspace')
+    }
+  })
+
+  it('previews an absolute path outside the workspace (no-project generated file)', async () => {
+    // A generated file that lives outside the active workspace (e.g. desktop in
+    // no-project mode) must still be readable/previewable.
+    const outsideDir = await mkdtemp(join(tmpdir(), 'legalwork-outside-'))
+    const outsideFile = join(outsideDir, 'generated.md')
+    await writeFile(outsideFile, '# generated output', 'utf8')
+
+    try {
+      const result = await readWorkspaceFile({ path: outsideFile, workspaceRoot })
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.content).toContain('generated output')
+      }
+    } finally {
+      await rm(outsideDir, { recursive: true, force: true })
     }
   })
 })

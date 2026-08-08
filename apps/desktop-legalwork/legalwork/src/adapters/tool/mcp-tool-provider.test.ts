@@ -8,6 +8,7 @@ import {
   buildMcpToolProviders,
   normalizeOfficeCliArguments,
   pendingMcpToolProviders,
+  truncateMcpTextOutput,
   type McpClientLike
 } from './mcp-tool-provider.js'
 
@@ -587,5 +588,24 @@ describe('normalizeOfficeCliArguments', () => {
     })).toMatchObject({
       error: expect.stringContaining('OfficeCLI command is required')
     })
+  })
+
+  it('truncates large MCP text outputs so big tool results do not bloat history', () => {
+    const bigText = 'x'.repeat(20_000)
+    const input = { content: [{ type: 'text', text: bigText }] }
+
+    const out = truncateMcpTextOutput(input) as { content: Array<{ text: string }> }
+
+    expect(out.content[0]?.text.length).toBeLessThan(10_000)
+    expect(out.content[0]?.text).toContain('输出已截断')
+    expect(out.content[0]?.text).toContain('x'.repeat(1_000)) // 头部保留
+  })
+
+  it('leaves small MCP text outputs unchanged', () => {
+    const input = { content: [{ type: 'text', text: 'short result' }] }
+
+    const out = truncateMcpTextOutput(input) as { content: Array<{ text: string }> }
+
+    expect(out.content[0]?.text).toBe('short result')
   })
 })

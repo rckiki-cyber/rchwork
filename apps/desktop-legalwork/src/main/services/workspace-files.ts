@@ -119,7 +119,9 @@ export async function listWorkspaceDirectory(
 
 export async function readWorkspaceFile(payload: WorkspaceFileTarget): Promise<WorkspaceFileReadResult> {
   try {
-    const targetPath = await resolveOpenTargetPath(payload.path, payload.workspaceRoot)
+    // Read-only preview: allow absolute paths outside the active workspace so a
+    // generated file (e.g. in no-project mode) can still be previewed.
+    const targetPath = await resolveOpenTargetPath(payload.path, payload.workspaceRoot, { allowOutsideWorkspace: true })
     const fileInfo = await stat(targetPath)
     if (fileInfo.isDirectory()) {
       return { ok: false, message: 'Cannot preview a directory.' }
@@ -159,7 +161,7 @@ export async function readWorkspaceBinary(
   payload: WorkspaceFileTarget
 ): Promise<WorkspaceBinaryReadResult> {
   try {
-    const targetPath = await resolveOpenTargetPath(payload.path, payload.workspaceRoot)
+    const targetPath = await resolveOpenTargetPath(payload.path, payload.workspaceRoot, { allowOutsideWorkspace: true })
     const fileInfo = await stat(targetPath)
     if (fileInfo.isDirectory()) {
       return { ok: false, message: 'Cannot preview a directory.' }
@@ -190,7 +192,7 @@ export async function readWorkspaceImage(
   payload: WorkspaceFileTarget
 ): Promise<WorkspaceImageReadResult> {
   try {
-    const targetPath = await resolveOpenTargetPath(payload.path, payload.workspaceRoot)
+    const targetPath = await resolveOpenTargetPath(payload.path, payload.workspaceRoot, { allowOutsideWorkspace: true })
     const fileInfo = await stat(targetPath)
     if (fileInfo.isDirectory()) {
       return { ok: false, message: 'Cannot preview a directory.' }

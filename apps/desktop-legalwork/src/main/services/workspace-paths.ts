@@ -6,6 +6,11 @@ import type { WorkspaceDirectoryTarget } from '../../shared/workspace-file'
 
 export type ResolveTargetOptions = {
   allowBasenameFallback?: boolean
+  /** Allow resolving an absolute path even when it lies outside workspaceRoot.
+   * Used for read-only file previews (a generated file can live outside the
+   * active workspace when working in the no-project mode). Writes/deletes must
+   * keep the workspace boundary. */
+  allowOutsideWorkspace?: boolean
 }
 
 const SKIP_SEARCH_DIRS = new Set([
@@ -194,6 +199,7 @@ export async function resolveOpenTargetPath(
   const expanded = expandHomePath(value)
   const workspace = workspaceRoot?.trim() ? expandHomePath(workspaceRoot) : ''
   const allowBasenameFallback = options?.allowBasenameFallback ?? true
+  const allowOutside = options?.allowOutsideWorkspace === true
   const direct = isAbsolute(expanded)
     ? resolve(expanded)
     : workspace
@@ -201,6 +207,9 @@ export async function resolveOpenTargetPath(
       : resolve(expanded)
 
   if (await pathExists(direct)) {
+    if (allowOutside && isAbsolute(expanded)) {
+      return await canonicalPath(direct)
+    }
     return enforceWorkspaceBoundary(direct, workspaceRoot)
   }
 

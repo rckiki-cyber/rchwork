@@ -37,10 +37,11 @@ function fileNameFromPath(path: string): string {
  */
 const INTERNAL_PROCESS_BASENAMES = new Set([
   'events.jsonl',
-  'metadata.jsonl'
+  'metadata.jsonl',
+  'batch_cmds.json'
 ])
 const INTERNAL_PROCESS_NAME_PATTERN =
-  /^(?:export_traj|import_traj|fix_font|fix_\w+_font|kg_page(?:-\d+)?|traj_export|extract_\w+|parse_\w+)\.\w+$/i
+  /^(?:export_traj|import_traj|fix_font|fix_\w+_font|kg_page(?:-\d+)?|traj_export|extract_\w+|parse_\w+|batch_cmds|batch_commands|scratch|staging|tmp_cmd)\.\w+$/i
 
 function isInternalProcessFile(name: string): boolean {
   const base = name.toLowerCase()
@@ -134,7 +135,11 @@ export function deriveConversationFiles(blocks: ChatBlock[]): ConversationFile[]
       // metadata.jsonl, exporter scripts, kg_page-*.png, …) — these clutter
       // the conversation file list and are not meaningful productions.
       if (isInternalProcessFile(fileName)) continue
-      const key = `workspace:${path.replaceAll('\\', '/')}`
+      // Dedup by basename (not full path): the same produced file may be
+      // referenced with different path spellings across turns (absolute vs
+      // workspace-relative, or a renamed scratch path). Showing it once — the
+      // latest occurrence — matches the "对话文件只显示最新、不重复" expectation.
+      const key = `workspace:${base}`
       files.set(key, {
         id: key,
         kind: 'workspace',

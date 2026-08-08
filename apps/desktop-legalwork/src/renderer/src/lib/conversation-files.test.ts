@@ -58,13 +58,14 @@ describe('deriveConversationFiles', () => {
     expect(files[0]).toEqual(expect.objectContaining({ kind: 'attachment', name: 'traj_数字行政法综述_20260801.jsonl', attachmentId: 'att-1' }))
   })
 
-  it('filters internal process files (events.jsonl, metadata.jsonl, exporter scripts, kg_page pngs)', () => {
+  it('filters internal process files (events.jsonl, metadata.jsonl, exporter scripts, kg_page pngs, batch_cmds.json)', () => {
     const blocks: ChatBlock[] = [
       { kind: 'tool', id: 't1', summary: '生成报告', status: 'success', toolKind: 'file_change', filePath: '/case/报告.docx' },
       { kind: 'tool', id: 't2', summary: '写事件', status: 'success', toolKind: 'file_change', filePath: '/.legalwork/threads/thr_1/events.jsonl' },
       { kind: 'tool', id: 't3', summary: '写元数据', status: 'success', toolKind: 'file_change', filePath: '/.legalwork/threads/thr_1/metadata.jsonl' },
       { kind: 'tool', id: 't4', summary: '导出', status: 'success', toolKind: 'file_change', filePath: '/workspace/export_traj.py' },
-      { kind: 'tool', id: 't5', summary: '截图', status: 'success', toolKind: 'file_change', filePath: '/workspace/kg_page-1.png' }
+      { kind: 'tool', id: 't5', summary: '截图', status: 'success', toolKind: 'file_change', filePath: '/workspace/kg_page-1.png' },
+      { kind: 'tool', id: 't6', summary: '暂存命令', status: 'success', toolKind: 'file_change', filePath: '/tmp/batch_cmds.json' }
     ]
 
     const files = deriveConversationFiles(blocks)
@@ -80,5 +81,19 @@ describe('deriveConversationFiles', () => {
 
     const files = deriveConversationFiles(blocks)
     expect(files).toHaveLength(2)
+  })
+
+  it('dedups the same produced file referenced with different path spellings, keeping the latest', () => {
+    const blocks: ChatBlock[] = [
+      { kind: 'tool', id: 't1', summary: '生成', status: 'success', toolKind: 'file_change', filePath: '/workspace/行政法选题建议.docx' },
+      { kind: 'assistant', id: 'a1', text: '已生成：`/Users/xiangyang/Desktop/行政法选题建议.docx`' }
+    ]
+
+    const files = deriveConversationFiles(blocks)
+    expect(files).toHaveLength(1)
+    expect(files[0]).toEqual(expect.objectContaining({
+      kind: 'workspace',
+      name: '行政法选题建议.docx'
+    }))
   })
 })
