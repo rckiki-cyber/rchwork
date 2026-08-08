@@ -1,6 +1,7 @@
 const MAX_ORIGINAL_QUERY_CHARS = 800
 const MAX_FOCUSED_QUERY_CHARS = 320
 const LONG_QUERY_THRESHOLD = 80
+const TASK_WITH_OUTPUT_THRESHOLD = 40
 const MAX_FOCUS_CLAUSES = 2
 
 const LEGAL_SIGNAL_RE = /法律|法规|法条|司法解释|规范性文件|案例|判例|裁判|法院|检察|合同|协议|违约|解除|劳动|工伤|公司|股权|行政|诉讼|仲裁|证据|合规|监管|政策|个人信息|数据|隐私|算法|人工智能|知识产权|专利|商标|著作权|反不正当竞争|侵权|刑事|民事|商事|请求权|效力|管辖|时效|赔偿|责任/
@@ -13,7 +14,12 @@ export function buildKnowledgeRetrievalQueries(rawQuery: string): string[] {
   if (!normalized) return []
 
   const original = boundQuery(normalized, MAX_ORIGINAL_QUERY_CHARS)
-  if (normalized.length <= LONG_QUERY_THRESHOLD) return [original]
+  const shouldFocus = normalized.length > LONG_QUERY_THRESHOLD || (
+    normalized.length > TASK_WITH_OUTPUT_THRESHOLD &&
+    LEGAL_SIGNAL_RE.test(normalized) &&
+    OUTPUT_FORMAT_RE.test(normalized)
+  )
+  if (!shouldFocus) return [original]
 
   const focused = buildFocusedQuery(normalized)
   if (!focused || focused === original) return [original]
@@ -57,7 +63,10 @@ function focusScore(clause: string): number {
   if (LEGAL_SIGNAL_RE.test(clause)) score += 7
   if (/\d/.test(clause)) score += 2
   if (TASK_SCAFFOLD_RE.test(clause)) score -= 2
-  if (OUTPUT_FORMAT_RE.test(clause) && !LEGAL_SIGNAL_RE.test(clause)) score -= 8
+  // Output-shape instructions are useful for generation but harmful retrieval
+  // features. Penalize them even when the phrase itself contains a legal word
+  // such as “法律意见书”.
+  if (OUTPUT_FORMAT_RE.test(clause)) score -= 12
   score += Math.min(4, Math.max(0, Math.floor(clause.length / 36)))
   return score
 }
