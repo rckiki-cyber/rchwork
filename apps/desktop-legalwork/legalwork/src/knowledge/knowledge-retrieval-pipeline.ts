@@ -1,13 +1,15 @@
 import { readFileSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
 import type { KnowledgeStore } from '../knowledge/knowledge-store.js'
+import type { KnowledgeSearchHit } from '../contracts/knowledge.js'
 import type { KnowledgeContextRecord, KnowledgeRetrievalResult, KnowledgeLayer } from '../contracts/knowledge-retrieval.js'
 import { KnowledgeMeta, DEFAULT_KNOWLEDGE_META } from '../contracts/knowledge-retrieval.js'
 import { fieldsFromKnowledgeMeta, formatGbt7714, buildBibliography } from './citation-engine.js'
 import { route, LAYER_LABEL } from './knowledge-pyramid-router.js'
+import { buildKnowledgeRetrievalQueries } from './knowledge-query-planner.js'
 
 const MAX_CONTEXT_CHARS = 8_000
 const MAX_SOURCES = 12
+const RRF_K = 60
 
 /**
  * Auto-retrieval pipeline that, given a user query, automatically:
@@ -36,21 +38,31 @@ export class KnowledgeRetrievalPipeline {
     const maxChars = options?.maxChars ?? MAX_CONTEXT_CHARS
     const excludeExpired = options?.excludeExpired ?? true
 
-    // Pyramid layer routing: determine target layers
+    // The L1-L5 pyramid is a software/engineering abstraction taxonomy. For
+    // ordinary legal queries, auto-routing terms such as "如何" or "规范" can
+    // point at the wrong engineering layer and suppress relevant labelled
+    // documents. Explicit layer selections are still respected; legal queries
+    // simply default to all layers.
     const routeResult = route(query)
-    const targetLayers = options?.layers ?? (options?.layer ? [options.layer] : undefined) ?? routeResult.targetLayers
+    const autoLayers = isLegalQuery(query) ? [] : routeResult.targetLayers
+    const targetLayers = options?.layers ?? (options?.layer ? [options.layer] : undefined) ?? autoLayers
 
-    // 1. Search local knowledge base (with layer filter if applicable)
-    const rawHits = await this.store.search({
-      query,
-      limit: MAX_SOURCES,
-      includeContent: true,
-      ...(options?.pathPrefix ? { pathPrefix: options.pathPrefix } : {}),
-      ...(targetLayers.length > 0 ? { layers: targetLayers } : {})
-    })
-    const hits = rawHits.filter((hit, index) =>
-      rawHits.findIndex((candidate) => candidate.relativePath === hit.relativePath) === index
-    )
+    // 1. Search local knowledge base. Short questions use one query; long task
+    // prompts get one additional focused query that removes output-format/task
+    // scaffolding. Results are fused with deterministic reciprocal-rank fusion,
+    // improving recall without spending model tokens on query rewriting.
+    const retrievalQueries = buildKnowledgeRetrievalQueries(query)
+    const hitGroups: KnowledgeSearchHit[][] = []
+    for (const retrievalQuery of retrievalQueries) {
+      hitGroups.push(await this.store.search({
+        query: retrievalQuery,
+        limit: MAX_SOURCES,
+        includeContent: true,
+        ...(options?.pathPrefix ? { pathPrefix: options.pathPrefix } : {}),
+        ...(targetLayers.length > 0 ? { layers: targetLayers } : {})
+      }))
+    }
+    const hits = fuseKnowledgeHits(hitGroups).slice(0, MAX_SOURCES)
 
     // 2. Filter by expiry and deprecation if requested
     const filtered = excludeExpired
@@ -101,21 +113,23 @@ export class KnowledgeRetrievalPipeline {
         doi: citationFields.doi,
         layer: hit.layer
       }
-      records.push(record)
-      bibliographyEntries.push({ title: hit.title, citation: gbt7714Citation })
 
-      // Accumulate context text up to the limit
+      // Only expose a source to callers/model if its excerpt actually fits in
+      // the context block. This prevents "source metadata without evidence"
+      // and keeps citation lists aligned with the text the model can inspect.
       const entry = this.formatEntry(record)
       if (totalChars + entry.length <= maxChars) {
+        records.push(record)
+        bibliographyEntries.push({ title: hit.title, citation: gbt7714Citation })
         contextEntries.push(entry)
         totalChars += entry.length
       }
     }
 
     // 4. Format the final context text
-    const contextText = this.formatContextText(contextEntries, query, routeResult)
+    const contextText = this.formatContextText(contextEntries, routeResult, targetLayers.length > 0)
     const bibliography = buildBibliography(
-      bibliographyEntries.map((e, i) => {
+      bibliographyEntries.map((e) => {
         // Parse citation back from stored format
         const fields = fieldsFromKnowledgeMeta(e.title, e.title, { source: '', author: '', category: '', tags: [], confidence: 'medium' })
         return fields
@@ -181,13 +195,19 @@ export class KnowledgeRetrievalPipeline {
   }
 
   /**
-   * Format context records into a compact block for model injection.
+   * Format context records into a compact block for model injection. The user
+   * query already exists in the preceding tool call/history, so repeating it in
+   * the tool result only creates new miss tokens.
    */
-  private formatContextText(entries: string[], query: string, routeResult?: { primaryLayer?: string; primaryLabel?: string }): string {
+  private formatContextText(
+    entries: string[],
+    routeResult: { primaryLayer?: string; primaryLabel?: string },
+    layerFilterApplied: boolean
+  ): string {
     if (!entries.length) return ''
 
-    let header = `【知识库检索结果】\n查询：${query}\n匹配 ${entries.length} 个来源`
-    if (routeResult?.primaryLabel) {
+    let header = `【知识库检索结果】\n匹配 ${entries.length} 个来源`
+    if (layerFilterApplied && routeResult.primaryLabel) {
       header += `\n主要检索层级：${routeResult.primaryLabel}`
     }
     header += '\n\n'
@@ -219,6 +239,48 @@ export class KnowledgeRetrievalPipeline {
     }
     return expired
   }
+}
+
+function fuseKnowledgeHits(groups: KnowledgeSearchHit[][]): KnowledgeSearchHit[] {
+  if (groups.length <= 1) return groups[0] ?? []
+
+  const fused = new Map<string, {
+    hit: KnowledgeSearchHit
+    rrf: number
+    appearances: number
+    bestRank: number
+  }>()
+
+  for (const group of groups) {
+    group.forEach((hit, index) => {
+      const key = hit.relativePath || hit.documentId
+      const contribution = 1 / (RRF_K + index + 1)
+      const existing = fused.get(key)
+      if (!existing) {
+        fused.set(key, {
+          hit,
+          rrf: contribution,
+          appearances: 1,
+          bestRank: index
+        })
+        return
+      }
+      existing.rrf += contribution
+      existing.appearances += 1
+      existing.bestRank = Math.min(existing.bestRank, index)
+      if (hit.score > existing.hit.score) existing.hit = hit
+    })
+  }
+
+  return [...fused.values()]
+    .sort((left, right) =>
+      right.rrf - left.rrf ||
+      right.appearances - left.appearances ||
+      left.bestRank - right.bestRank ||
+      right.hit.score - left.hit.score ||
+      left.hit.relativePath.localeCompare(right.hit.relativePath)
+    )
+    .map((entry) => entry.hit)
 }
 
 /** Detect if a query likely relates to legal/time-sensitive information. */
