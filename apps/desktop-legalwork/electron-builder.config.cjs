@@ -96,6 +96,13 @@ module.exports = {
       filter: ['**/*', '!__pycache__/**/*', '!_gen_skill.py', '!_tmp_gen.py']
     },
     {
+      // beforePack prepares exactly this target. FileSet supports ${os}/${arch}
+      // macros, so each installer carries only its own relocatable Python runtime.
+      from: 'vendor/office-runtime/${os}-${arch}',
+      to: 'office-runtime',
+      filter: ['**/*']
+    },
+    {
       from: 'vendor/ocr-runtime',
       to: 'ocr-runtime',
       filter: ['**/*']
@@ -176,19 +183,18 @@ module.exports = {
       provider: 'github'
     }
   ],
+  beforePack: './scripts/before-pack.cjs',
   afterPack: './scripts/after-pack.cjs',
   afterSign: './scripts/mac-notarize.cjs',
   mac: {
     category: 'public.app-category.developer-tools',
     identity: hasExplicitMacSigningIdentity ? undefined : null,
-    // We notarize in scripts/mac-notarize.cjs so APPLE_API_KEY_BASE64 can be supported.
     notarize: false,
     hardenedRuntime: hasExplicitMacSigningIdentity,
     gatekeeperAssess: false,
     entitlements: 'build/entitlements.mac.plist',
     entitlementsInherit: 'build/entitlements.mac.inherit.plist',
     icon: './src/asset/img/legalwork.png',
-    // arm64 (Apple Silicon) + x64 (Intel). On M 系列 Mac 本地打包会各出一组 dmg/zip。
     target: [
       { target: 'dmg', arch: ['arm64', 'x64'] },
       { target: 'zip', arch: ['arm64', 'x64'] }
@@ -207,7 +213,6 @@ module.exports = {
     perMachine: false,
     allowElevation: true,
     selectPerMachineByDefault: false,
-    // 明确创建快捷方式；always 在覆盖安装时也会重建（即使用户曾删掉桌面图标）
     createDesktopShortcut: 'always',
     createStartMenuShortcut: true,
     shortcutName: 'legalwork',
