@@ -13,6 +13,8 @@ import { createCompressContextLocalTool } from './builtin-compress-context-tool.
 import { createFindLocalTool, createGrepLocalTool, createLsLocalTool } from './builtin-search-tools.js'
 import { createRequestDocumentPreferencesTool } from './builtin-document-preference-tools.js'
 import { createResolveLegalDocumentTemplateTool } from './builtin-legal-document-template-tool.js'
+import { createDocumentSkillExecuteTool } from './builtin-document-skill-tool.js'
+import { createRequestOfficeFallbackTool } from './builtin-office-fallback-tool.js'
 import {
   createRefreshSkillsTool,
   createInstallSkillTool,
@@ -26,6 +28,8 @@ export * from './builtin-read-tool.js'
 export * from './builtin-file-tools.js'
 export * from './builtin-search-tools.js'
 export * from './builtin-bash-tool.js'
+export * from './builtin-document-skill-tool.js'
+export * from './builtin-office-fallback-tool.js'
 
 export function createBuiltinLocalTool(
   toolName: BuiltinToolName,
@@ -56,10 +60,14 @@ export function createBuiltinLocalTool(
       return createLoadSkillTool(options.skillTools)
     case 'install_skill':
       return createInstallSkillTool(options.skillTools)
+    case 'document_skill_execute':
+      return createDocumentSkillExecuteTool(options.skillTools)
     case 'request_document_preferences':
       return createRequestDocumentPreferencesTool()
     case 'resolve_legal_document_template':
       return createResolveLegalDocumentTemplateTool()
+    case 'request_office_fallback':
+      return createRequestOfficeFallbackTool()
     case 'compress_context':
       return createCompressContextLocalTool(options.compressContext!)
   }
@@ -91,12 +99,14 @@ export function buildBuiltinLocalTools(options: BuiltinLocalToolsOptions = {}): 
     tools.push(createLoadSkillTool(options.skillTools))
     tools.push(createRefreshSkillsTool(options.skillTools))
     tools.push(createInstallSkillTool(options.skillTools))
+    tools.push(createDocumentSkillExecuteTool(options.skillTools))
   }
   if (options.compressContext) {
     tools.push(createCompressContextLocalTool(options.compressContext))
   }
   tools.push(createRequestDocumentPreferencesTool())
   tools.push(createResolveLegalDocumentTemplateTool())
+  tools.push(createRequestOfficeFallbackTool())
   return tools
 }
 
@@ -146,8 +156,10 @@ export function buildBuiltinLocalToolRecord(
     load_skill: createLoadSkillTool(options.skillTools),
     refresh_skills: createRefreshSkillsTool(options.skillTools),
     install_skill: createInstallSkillTool(options.skillTools),
+    document_skill_execute: createDocumentSkillExecuteTool(options.skillTools),
     request_document_preferences: createRequestDocumentPreferencesTool(),
     resolve_legal_document_template: createResolveLegalDocumentTemplateTool(),
+    request_office_fallback: createRequestOfficeFallbackTool(),
     compress_context: createCompressContextLocalTool(options.compressContext!)
   }
 }

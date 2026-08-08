@@ -1,9 +1,8 @@
 import type { TurnItem } from '../contracts/items.js'
+import { OFFICECLI_TOOL_NAME } from '../adapters/tool/office-fallback-policy.js'
 
-export const OFFICECLI_TOOL_NAME = 'mcp_officecli_officecli'
+export { OFFICECLI_TOOL_NAME }
 
-const DOCUMENT_INTENT_PATTERN =
-  /(?:\b(?:word|docx)\b|Word\s*文档|(?:生成|创建|制作|写入|导出|整理|完善).{0,12}文档|文档.{0,12}(?:生成|创建|制作|写入|导出|整理|完善))/i
 const MUTATING_OFFICECLI_VERBS = new Set([
   'create',
   'set',
@@ -30,10 +29,9 @@ type OfficeCliCall = {
 }
 
 /**
- * Adds a quality-preserving execution contract only for turns that are
- * actually creating/editing Office documents. The instruction is advisory:
- * it reduces mechanical tool chatter without imposing a time/call ceiling
- * that could cut off substantive content or necessary repairs.
+ * OfficeCLI is no longer the primary document executor. If this instruction is
+ * present, the runtime has already granted a turn-scoped last-resort fallback.
+ * Keep the fallback narrow so it cannot recreate the previous tool storm.
  */
 export function officeDocumentWorkflowInstruction(
   input: OfficeDocumentWorkflowInput
@@ -41,8 +39,6 @@ export function officeDocumentWorkflowInstruction(
   if (!input.officeCliAvailable) return undefined
 
   const calls = collectOfficeCliCalls(input.items, input.turnId)
-  if (!DOCUMENT_INTENT_PATTERN.test(input.prompt) && calls.length === 0) return undefined
-
   const results = new Map<string, Extract<TurnItem, { kind: 'tool_result' }>>()
   for (const item of input.items) {
     if (
@@ -53,13 +49,12 @@ export function officeDocumentWorkflowInstruction(
       results.set(item.callId, item)
     }
   }
+
   const successfulValidate = [...calls].reverse().find((call) => {
     const result = results.get(call.callId)
     return call.verb === 'validate' && result?.status === 'completed' && result.isError !== true
   })
-  const atomicMutationCount = calls.filter((call) =>
-    BATCHABLE_OFFICECLI_VERBS.has(call.verb)
-  ).length
+  const atomicMutationCount = calls.filter((call) => BATCHABLE_OFFICECLI_VERBS.has(call.verb)).length
   const batchCount = calls.filter((call) => call.verb === 'batch').length
   const errorCount = [...results.values()].filter((result) => result.isError === true).length
   const repairsAfterValidation = successfulValidate
@@ -68,35 +63,29 @@ export function officeDocumentWorkflowInstruction(
       ).length
     : 0
 
-  const stateNotes: string[] = []
+  const notes: string[] = []
   if (atomicMutationCount >= 3 && batchCount === 0) {
-    stateNotes.push(
-      `本轮已出现 ${atomicMutationCount} 次逐条文档修改；后续同类操作应合并为 batch，除非批量执行本身失败。`
-    )
+    notes.push(`已出现 ${atomicMutationCount} 次逐条修改；后续必须合并 batch。`)
   }
   if (errorCount > 0) {
-    stateNotes.push(
-      `本轮已有 ${errorCount} 次 OfficeCLI 错误；不得原样重试失败参数，应先修正命令形态，批量失败时只重试失败子项。`
-    )
+    notes.push(`已有 ${errorCount} 次 OfficeCLI 错误；不得原样重试失败参数。`)
   }
   if (successfulValidate) {
-    stateNotes.push(
+    notes.push(
       repairsAfterValidation > 0
-        ? `文档已验证通过，之后又执行了 ${repairsAfterValidation} 次修改；请立即复核这些修改，只在仍有实质质量问题时继续。`
-        : '文档已经验证通过；将其视为交付检查点，只修复影响内容、结构或用户要求版式的问题。'
+        ? `validate 后又修改 ${repairsAfterValidation} 次；只复核这些修改，禁止重做整份文档。`
+        : 'validate 已通过；没有实质错误就立即交付。'
     )
   }
 
   return [
-    'Office 文档任务执行约束（质量优先，减少机械浪费）：',
-    '- 先确定完整内容、引证、层级和版式，再执行写入；不得为减少调用而删减用户要求或降低产物质量。',
-    '- 三个及以上同类 add/set 操作优先使用 OfficeCLI batch；按章节或 5–20 个操作分组，保留失败后的局部重试能力。',
-    '- batch 的每个元素使用裸 command 与同级 parent/path/type/props 字段；批量部分失败时只修复失败子项。',
-    '- 同一失败命令不得原样重试；需要语法帮助时只查询一次，然后改变命令结构。',
-    '- 完成主体写入后统一设置样式，随后 save、validate。验证通过后通常只进行一次有针对性的修复与复验；若仍存在实质问题则继续，纯提示性或不可见告警不应引发无休止抛光。',
-    '- 工具操作必须通过真实工具调用发出。思考中不要编造“工具调用 N”清单，不要复述原始命令日志或长篇工具返回；只保留简洁的阶段判断。',
-    '- 结束时说明产物位置和验证结果。',
-    ...stateNotes
+    'Office MCP 已作为最后兜底临时解锁：',
+    '- 只处理 legal-document-formatting 本地 worker 明确无法完成的剩余部分；不要重做已成功的本地步骤。',
+    '- 禁止 view html；禁止为了查看格式把整篇文档 HTML/XML 放回 history。',
+    '- 禁止反复 help；同类 set/add/remove 必须 batch。',
+    '- 保存后最多做一次必要 validate；通过后立即结束，warning 不触发无休止抛光。',
+    '- 工具输出只保留必要摘要，不复述日志。',
+    ...notes
   ].join('\n')
 }
 

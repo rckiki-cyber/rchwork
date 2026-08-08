@@ -110,8 +110,10 @@ export type BuiltinToolName =
   | 'load_skill'
   | 'refresh_skills'
   | 'install_skill'
+  | 'document_skill_execute'
   | 'request_document_preferences'
   | 'resolve_legal_document_template'
+  | 'request_office_fallback'
   | 'compress_context'
 export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'read',
@@ -126,8 +128,10 @@ export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'load_skill',
   'refresh_skills',
   'install_skill',
+  'document_skill_execute',
   'request_document_preferences',
   'resolve_legal_document_template',
+  'request_office_fallback',
   'compress_context'
 ])
 export type ToolName = BuiltinToolName

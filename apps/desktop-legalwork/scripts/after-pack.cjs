@@ -33,6 +33,8 @@ const DOCUMENT_OCR_REQUIRED_PATHS = [
   'document/ocr/router.py'
 ]
 
+const OFFICE_RUNTIME_IMPORTS = ['docx', 'openpyxl', 'pptx', 'lxml', 'PIL']
+const OFFICE_RUNTIME_PYTHON_LINE = '3.11'
 const IMA_MCP_SCRIPT_RELATIVE_PATH = 'scripts/ima-mcp-server.py'
 
 // legalwork 不使用相机 / 麦克风 / 蓝牙 / 相册。Electron 框架默认在 Info.plist 里塞了这些
@@ -165,7 +167,6 @@ function patchOfficeCliShimWindowsHide(targetDir) {
     return
   }
   const original = readFileSync(shimPath, 'utf8')
-  // 用宽松正则匹配（容忍空格/引号差异），避免 officecli 升级改格式后补丁静默失效。
   const patched = original.replace(
     /(\{[\s'"]*stdio[\s'"]*:[\s'"]*inherit[\s'"]*)(\})/,
     "$1, windowsHide: true }"
@@ -189,6 +190,47 @@ function validateBundledLegalworkRuntime(context) {
     join(root, 'node_modules', 'better-sqlite3', 'package.json'),
     'root better-sqlite3 dependency'
   )
+}
+
+function officeRuntimePythonPath(context) {
+  const root = join(packedResourcesDir(context), 'office-runtime', 'python')
+  return normalizePlatform(context.electronPlatformName) === 'win32'
+    ? join(root, 'python.exe')
+    : join(root, 'bin', 'python3')
+}
+
+function officeRuntimeSitePackagesPath(context) {
+  const root = join(packedResourcesDir(context), 'office-runtime', 'python')
+  return normalizePlatform(context.electronPlatformName) === 'win32'
+    ? join(root, 'Lib', 'site-packages')
+    : join(root, 'lib', `python${OFFICE_RUNTIME_PYTHON_LINE}`, 'site-packages')
+}
+
+function validateBundledOfficeRuntime(context) {
+  const root = join(packedResourcesDir(context), 'office-runtime')
+  const python = officeRuntimePythonPath(context)
+  const sitePackages = officeRuntimeSitePackagesPath(context)
+  assertExists(join(root, 'runtime.json'), 'Office runtime manifest')
+  assertExists(python, 'Office runtime Python executable')
+  assertExists(sitePackages, 'Office runtime site-packages')
+  for (const moduleName of OFFICE_RUNTIME_IMPORTS) {
+    assertExists(join(sitePackages, moduleName), `Office Python module ${moduleName}`)
+  }
+  if (normalizePlatform(context.electronPlatformName) !== 'win32') {
+    chmodSync(python, 0o755)
+  }
+  let manifest
+  try {
+    manifest = JSON.parse(readFileSync(join(root, 'runtime.json'), 'utf8'))
+  } catch (error) {
+    throw new Error(`[after-pack] Invalid Office runtime manifest: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  if (manifest.pythonLine !== OFFICE_RUNTIME_PYTHON_LINE) {
+    throw new Error(`[after-pack] Office runtime Python line mismatch: expected ${OFFICE_RUNTIME_PYTHON_LINE}, got ${String(manifest.pythonLine)}`)
+  }
+  if (!Array.isArray(manifest.imports) || OFFICE_RUNTIME_IMPORTS.some((name) => !manifest.imports.includes(name))) {
+    throw new Error('[after-pack] Office runtime manifest is missing required Word/Excel/PPT imports')
+  }
 }
 
 function validateBundledDataComplianceRuntime(context) {
@@ -314,6 +356,7 @@ async function afterPack(context) {
   prunePackedLegalworkDependencies(context)
   restoreBundledOfficeCli(context)
   validateBundledLegalworkRuntime(context)
+  validateBundledOfficeRuntime(context)
   validateBundledDataComplianceRuntime(context)
   validateBundledDocumentOcrRuntime(context)
   validateBundledImaMcpServer(context)
@@ -325,6 +368,8 @@ exports.LEGALWORK_RUNTIME_REQUIRED_PATHS = LEGALWORK_RUNTIME_REQUIRED_PATHS
 exports.DATA_COMPLIANCE_REQUIRED_PATHS = DATA_COMPLIANCE_REQUIRED_PATHS
 exports.DATA_COMPLIANCE_OPTIONAL_PATHS = DATA_COMPLIANCE_OPTIONAL_PATHS
 exports.DOCUMENT_OCR_REQUIRED_PATHS = DOCUMENT_OCR_REQUIRED_PATHS
+exports.OFFICE_RUNTIME_IMPORTS = OFFICE_RUNTIME_IMPORTS
+exports.OFFICE_RUNTIME_PYTHON_LINE = OFFICE_RUNTIME_PYTHON_LINE
 exports.IMA_MCP_SCRIPT_RELATIVE_PATH = IMA_MCP_SCRIPT_RELATIVE_PATH
 exports._internals = {
   appBundlePath,
@@ -333,9 +378,12 @@ exports._internals = {
   npmCommand,
   findInfoPlists,
   macInfoPlistPaths,
+  officeRuntimePythonPath,
+  officeRuntimeSitePackagesPath,
   prunePackedLegalworkDependencies,
   restoreBundledOfficeCli,
   validateBundledLegalworkRuntime,
+  validateBundledOfficeRuntime,
   validateBundledDataComplianceRuntime,
   validateBundledDocumentOcrRuntime,
   validateBundledImaMcpServer,

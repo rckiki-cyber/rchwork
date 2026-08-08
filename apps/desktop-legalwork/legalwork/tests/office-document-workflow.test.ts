@@ -43,16 +43,16 @@ function toolResult(callId: string, isError = false): TurnItem {
 }
 
 describe('officeDocumentWorkflowInstruction', () => {
-  it('stays out of unrelated turns', () => {
+  it('stays out when OfficeCLI is not explicitly available', () => {
     expect(officeDocumentWorkflowInstruction({
-      prompt: '解释一下行政处罚法',
+      prompt: '把综述整理成 Word 文档',
       items: [],
       turnId: 'turn-word',
-      officeCliAvailable: true
+      officeCliAvailable: false
     })).toBeUndefined()
   })
 
-  it('activates for Word output without imposing a hard speed limit', () => {
+  it('describes Office MCP as a last-resort fallback after runtime unlock', () => {
     const instruction = officeDocumentWorkflowInstruction({
       prompt: '把综述整理成 Word 文档',
       items: [],
@@ -60,13 +60,13 @@ describe('officeDocumentWorkflowInstruction', () => {
       officeCliAvailable: true
     })
 
-    expect(instruction).toContain('质量优先')
-    expect(instruction).toContain('优先使用 OfficeCLI batch')
-    expect(instruction).toContain('若仍存在实质问题则继续')
-    expect(instruction).not.toContain('最多调用')
+    expect(instruction).toContain('最后兜底临时解锁')
+    expect(instruction).toContain('禁止 view html')
+    expect(instruction).toContain('同类 set/add/remove 必须 batch')
+    expect(instruction).toContain('最多做一次必要 validate')
   })
 
-  it('adds targeted feedback after granular edits, errors, and validation', () => {
+  it('adds compact feedback after granular edits, errors, and validation', () => {
     const items = [
       toolCall('add-1', ['add', '/tmp/report.docx', '/body']),
       toolResult('add-1'),
@@ -86,9 +86,8 @@ describe('officeDocumentWorkflowInstruction', () => {
       officeCliAvailable: true
     })
 
-    expect(instruction).toContain('本轮已出现 4 次逐条文档修改')
-    expect(instruction).toContain('本轮已有 1 次 OfficeCLI 错误')
-    expect(instruction).toContain('文档已验证通过，之后又执行了 1 次修改')
-    expect(instruction).toContain('不要编造“工具调用 N”清单')
+    expect(instruction).toContain('已出现 4 次逐条修改')
+    expect(instruction).toContain('已有 1 次 OfficeCLI 错误')
+    expect(instruction).toContain('validate 后又修改 1 次')
   })
 })
