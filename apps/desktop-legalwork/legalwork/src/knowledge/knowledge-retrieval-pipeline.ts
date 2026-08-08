@@ -38,9 +38,14 @@ export class KnowledgeRetrievalPipeline {
     const maxChars = options?.maxChars ?? MAX_CONTEXT_CHARS
     const excludeExpired = options?.excludeExpired ?? true
 
-    // Pyramid layer routing: determine target layers
+    // The L1-L5 pyramid is a software/engineering abstraction taxonomy. For
+    // ordinary legal queries, auto-routing terms such as "如何" or "规范" can
+    // point at the wrong engineering layer and suppress relevant labelled
+    // documents. Explicit layer selections are still respected; legal queries
+    // simply default to all layers.
     const routeResult = route(query)
-    const targetLayers = options?.layers ?? (options?.layer ? [options.layer] : undefined) ?? routeResult.targetLayers
+    const autoLayers = isLegalQuery(query) ? [] : routeResult.targetLayers
+    const targetLayers = options?.layers ?? (options?.layer ? [options.layer] : undefined) ?? autoLayers
 
     // 1. Search local knowledge base. Short questions use one query; long task
     // prompts get one additional focused query that removes output-format/task
@@ -122,7 +127,7 @@ export class KnowledgeRetrievalPipeline {
     }
 
     // 4. Format the final context text
-    const contextText = this.formatContextText(contextEntries, query, routeResult)
+    const contextText = this.formatContextText(contextEntries, routeResult, targetLayers.length > 0)
     const bibliography = buildBibliography(
       bibliographyEntries.map((e) => {
         // Parse citation back from stored format
@@ -190,13 +195,19 @@ export class KnowledgeRetrievalPipeline {
   }
 
   /**
-   * Format context records into a compact block for model injection.
+   * Format context records into a compact block for model injection. The user
+   * query already exists in the preceding tool call/history, so repeating it in
+   * the tool result only creates new miss tokens.
    */
-  private formatContextText(entries: string[], query: string, routeResult?: { primaryLayer?: string; primaryLabel?: string }): string {
+  private formatContextText(
+    entries: string[],
+    routeResult: { primaryLayer?: string; primaryLabel?: string },
+    layerFilterApplied: boolean
+  ): string {
     if (!entries.length) return ''
 
-    let header = `【知识库检索结果】\n查询：${query}\n匹配 ${entries.length} 个来源`
-    if (routeResult?.primaryLabel) {
+    let header = `【知识库检索结果】\n匹配 ${entries.length} 个来源`
+    if (layerFilterApplied && routeResult.primaryLabel) {
       header += `\n主要检索层级：${routeResult.primaryLabel}`
     }
     header += '\n\n'
