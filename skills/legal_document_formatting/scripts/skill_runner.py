@@ -156,8 +156,6 @@ def ensure_runtime() -> str:
         shutil.rmtree(root, ignore_errors=True)
 
     if not python.is_file():
-        # Reuse packages already shipped with a LegalWork-managed/bootstrap
-        # Python where possible; this avoids unnecessary network installs.
         code, output = run_quiet(
             [bootstrap, "-m", "venv", "--system-site-packages", str(root)],
             package_root(),
@@ -210,7 +208,9 @@ def worker_path(kind: str) -> Path:
 
 
 def dispatch(kind: str, worker_args: list[str]) -> None:
-    python = ensure_runtime()
+    # Legacy .doc/.ppt conversion is stdlib-only and should be attempted even
+    # when python-docx/python-pptx dependencies are not yet prepared.
+    python = choose_bootstrap_python() if kind == "legacy" else ensure_runtime()
     worker = worker_path(kind)
     try:
         completed = subprocess.run(
