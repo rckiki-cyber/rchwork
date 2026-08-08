@@ -2,9 +2,10 @@
 """Managed Python launcher for LegalWork's document-formatting skill.
 
 This script is stdlib-only. It owns a small venv under ~/.legalwork/runtimes,
-installs the skill's pinned dependencies once, then dispatches to the DOCX or
-PPTX worker. All setup noise stays local; stdout is reserved for one compact
-worker JSON result so model context does not grow with pip/venv logs.
+installs the skill's pinned dependencies once, then dispatches to the DOCX,
+PPTX, or reference-profile worker. All setup noise stays local; stdout is
+reserved for one compact worker JSON result so model context does not grow
+with pip/venv logs.
 """
 from __future__ import annotations
 
@@ -185,8 +186,12 @@ def ensure_runtime() -> str:
 
 
 def worker_path(kind: str) -> Path:
-    filename = "docx_worker.py" if kind == "docx" else "pptx_worker.py"
-    path = Path(__file__).resolve().parent / filename
+    filenames = {
+        "docx": "docx_worker.py",
+        "pptx": "pptx_worker.py",
+        "reference": "reference_profile_worker.py",
+    }
+    path = Path(__file__).resolve().parent / filenames[kind]
     if not path.is_file():
         emit({
             "status": "error",
@@ -243,7 +248,7 @@ def dispatch(kind: str, worker_args: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LegalWork managed document-skill launcher")
-    parser.add_argument("kind", choices=("docx", "pptx"))
+    parser.add_argument("kind", choices=("docx", "pptx", "reference"))
     parser.add_argument("worker_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     dispatch(args.kind, args.worker_args)
