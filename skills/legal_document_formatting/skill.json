@@ -1,8 +1,8 @@
 {
   "id": "legal-document-formatting",
   "name": "legal-document-formatting",
-  "description": "LegalWork 的 Office 文档格式执行技能。Word/DOCX 与常规 PPTX 任务默认使用本技能自带的本地 Python worker；支持从参考 DOCX 提取并复用页面、正文与标题样式；Office MCP 仅在 worker 明确返回 unsupported 并取得一次性 fallback ticket 后作为最后兜底。Word 默认正文中文宋体、英文 Times New Roman、小四 12pt。",
-  "version": "2.2.0",
+  "description": "LegalWork 的 Office 文档格式执行技能。Word/DOCX 与常规 PPTX 默认使用本技能自带的本地 Python worker；支持参考 DOCX 与法律文档语义 profile；Office MCP 仅在 worker 明确返回 unsupported 并取得一次性 fallback ticket 后作为最后兜底。Word 正文默认中文宋体、小四 12pt。",
+  "version": "2.3.0",
   "entry": "SKILL.md",
   "triggers": {
     "commands": [
@@ -14,8 +14,8 @@
     "promptPatterns": [
       "(?:Word|DOCX|\\.docx|\\.doc|Word文档|PPT|PPTX|\\.pptx|演示文稿).{0,30}(?:生成|创建|新建|起草|编辑|修改|排版|格式|模板|导出|交付|转换|合并|修复)",
       "(?:生成|创建|新建|起草|编辑|修改|排版|格式化|套用模板|导出|交付|转换|合并|修复).{0,30}(?:Word|DOCX|\\.docx|\\.doc|Word文档|PPT|PPTX|\\.pptx|演示文稿|正式文档|可打印文档)",
-      "(?:生成|制作|起草|排版|格式化|套模板).{0,24}(?:起诉状|答辩状|上诉状|再审申请书|代理词|辩护词|证据目录|质证意见|法律意见书|法律备忘录|尽调报告|律师函|合同|协议|会议纪要|研究报告|课程论文|期刊论文|学位论文|演示文稿|幻灯片)",
-      "(?:起诉状|答辩状|上诉状|再审申请书|代理词|辩护词|证据目录|质证意见|法律意见书|法律备忘录|尽调报告|律师函|合同|协议|会议纪要|研究报告|课程论文|期刊论文|学位论文|演示文稿|幻灯片).{0,24}(?:生成|制作|起草|排版|格式化|套模板|Word|DOCX|PPT|PPTX)",
+      "(?:生成|制作|起草|排版|格式化|套模板).{0,24}(?:起诉状|答辩状|上诉状|再审申请书|代理词|辩护词|证据目录|质证意见|法律意见书|法律备忘录|尽调报告|律师函|合同|协议|会议纪要|研究报告|调研报告|办案手记|大事记|案件事实|案件基本信息|课程论文|期刊论文|学位论文|演示文稿|幻灯片)",
+      "(?:起诉状|答辩状|上诉状|再审申请书|代理词|辩护词|证据目录|质证意见|法律意见书|法律备忘录|尽调报告|律师函|合同|协议|会议纪要|研究报告|调研报告|办案手记|大事记|案件事实|案件基本信息|课程论文|期刊论文|学位论文|演示文稿|幻灯片).{0,24}(?:生成|制作|起草|排版|格式化|套模板|Word|DOCX|PPT|PPTX)",
       "(?:页边距|宋体|小四|行距|首行缩进|页眉|页脚|页码|Word格式|文档格式|文档排版|论文排版)",
       "(?:参考|照着|仿照|按这个|按这份).{0,16}(?:Word|DOCX|文档|格式|样式|模板)",
       "(?:这个|该|当前).{0,8}(?:文档|文件).{0,12}(?:修改|改一下|格式|排版|字体|字号)"
@@ -32,6 +32,7 @@
   "assets": [
     "scripts/skill_runner.py",
     "scripts/docx_worker.py",
+    "scripts/legal_profile_worker.py",
     "scripts/reference_profile_worker.py",
     "scripts/pptx_worker.py",
     "requirements.txt"
