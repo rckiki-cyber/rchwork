@@ -81,6 +81,34 @@ describe('HybridThreadStore', () => {
     })
   })
 
+  it('does not reparse already indexed conversation bodies during startup', async () => {
+    if (!sqliteAvailable) return
+    const first = await createHybridStores()
+    const record = await seedThreadWithMessage(first.threadStore, first.sessionStore, 'keep indexed')
+    first.threadStore.close()
+
+    // A malformed body makes the old full-history startup backfill overwrite
+    // the indexed count with zero. The optimized startup trusts rows written
+    // through the hybrid store and only parses JSONL for missing index rows.
+    await writeFile(
+      join(dataDir, 'threads', record.id, 'messages.jsonl'),
+      '{malformed-jsonl}\n',
+      'utf8'
+    )
+
+    const reopened = await createHybridStores()
+    const summaries = await reopened.threadStore.list({ search: 'Hybrid demo' })
+    const sqlite = await import('better-sqlite3')
+    const db = new sqlite.default(join(dataDir, 'index.sqlite3'), { readonly: true })
+    const indexed = db
+      .prepare('SELECT message_count FROM threads WHERE id = ?')
+      .get(record.id) as { message_count: number }
+    db.close()
+
+    expect(summaries).toHaveLength(1)
+    expect(indexed.message_count).toBe(1)
+  })
+
   it('recovers turn attachment ids from user messages when metadata is stripped', async () => {
     const { threadStore, sessionStore } = await createHybridStores()
     const thread = createThreadRecord({

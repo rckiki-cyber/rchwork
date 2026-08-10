@@ -103,6 +103,13 @@ module.exports = {
       filter: ['**/*']
     },
     {
+      // Deterministic PDF rendering uses this bundled OFL-licensed CJK font.
+      // It must never fall back to fonts or office/PDF apps installed by users.
+      from: 'vendor/office-fonts',
+      to: 'office-fonts',
+      filter: ['NotoSerifSC-Regular.ttf', 'NotoSerifSC-Bold.ttf', 'OFL.txt', 'fonts.json']
+    },
+    {
       from: 'vendor/ocr-runtime',
       to: 'ocr-runtime',
       filter: ['**/*']

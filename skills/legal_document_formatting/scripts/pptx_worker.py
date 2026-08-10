@@ -14,7 +14,6 @@ UNSUPPORTED_MARKER = "LEGALWORK_DOCUMENT_UNSUPPORTED"
 
 try:
     from pptx import Presentation
-    from pptx.util import Inches, Pt
 except Exception as exc:  # pragma: no cover - environment-dependent
     Presentation = None  # type: ignore[assignment]
     IMPORT_ERROR = str(exc)
@@ -117,61 +116,6 @@ def cmd_inspect(args: argparse.Namespace) -> None:
         fail(str(exc), operation)
 
 
-def cmd_from_json(args: argparse.Namespace) -> None:
-    operation = "from-json"
-    require_pptx(operation)
-    spec_path = Path(args.input).expanduser().resolve()
-    out = Path(args.output).expanduser().resolve()
-    if not spec_path.is_file():
-        fail(f"file not found: {spec_path}", operation)
-    if out.suffix.lower() != ".pptx":
-        fail("output must end with .pptx", operation)
-    try:
-        spec = json.loads(spec_path.read_text(encoding="utf-8"))
-        slides = spec.get("slides") if isinstance(spec, dict) else None
-        if not isinstance(slides, list) or not slides:
-            fail("JSON must contain a non-empty slides array", operation)
-        prs = Presentation()
-        prs.slide_width = Inches(13.333)
-        prs.slide_height = Inches(7.5)
-        for entry in slides:
-            if not isinstance(entry, dict):
-                continue
-            title = str(entry.get("title", ""))
-            subtitle = entry.get("subtitle")
-            bullets = entry.get("bullets")
-            body = entry.get("body")
-            if subtitle is not None:
-                slide = prs.slides.add_slide(prs.slide_layouts[0])
-                slide.shapes.title.text = title
-                slide.placeholders[1].text = str(subtitle)
-            else:
-                slide = prs.slides.add_slide(prs.slide_layouts[1])
-                slide.shapes.title.text = title
-                frame = slide.placeholders[1].text_frame
-                frame.clear()
-                items = bullets if isinstance(bullets, list) else ([body] if body is not None else [])
-                for idx, item in enumerate(items):
-                    p = frame.paragraphs[0] if idx == 0 else frame.add_paragraph()
-                    p.text = str(item)
-                    p.level = 0
-            for shape in slide.shapes:
-                if not getattr(shape, "has_text_frame", False):
-                    continue
-                for paragraph in shape.text_frame.paragraphs:
-                    for run in paragraph.runs:
-                        run.font.name = "Arial"
-                        if run.font.size is None:
-                            run.font.size = Pt(20)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        prs.save(str(out))
-        emit({"status": "ok", "operation": operation, "output": str(out), "slides": len(prs.slides)})
-    except SystemExit:
-        raise
-    except Exception as exc:
-        fail(str(exc), operation)
-
-
 def cmd_replace(args: argparse.Namespace) -> None:
     operation = "replace"
     require_pptx(operation)
@@ -219,10 +163,6 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("inspect")
     p.add_argument("--input", required=True)
     p.set_defaults(func=cmd_inspect)
-    p = sub.add_parser("from-json")
-    p.add_argument("--input", required=True)
-    p.add_argument("--output", required=True)
-    p.set_defaults(func=cmd_from_json)
     p = sub.add_parser("replace")
     p.add_argument("--input", required=True)
     p.add_argument("--output", required=True)

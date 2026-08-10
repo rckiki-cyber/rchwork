@@ -539,6 +539,7 @@ function skillInstructionText(skill: LoadedSkill, activation: string): string {
   return [
     `Active Skill: ${skill.name} (${skill.id})`,
     `Activation: ${activation}`,
+    `Skill root (resolve all relative Skill paths here; never guess ~/.legalwork/skills): ${skill.root}`,
     LEGALWORK_SKILL_EXECUTION_CONTRACT,
     skill.description ? `Description: ${skill.description}` : '',
     skill.allowedTools.length ? `Allowed tools: ${skill.allowedTools.join(', ')}` : '',

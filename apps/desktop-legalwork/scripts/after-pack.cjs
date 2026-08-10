@@ -1,4 +1,5 @@
 const { execFileSync } = require('node:child_process')
+const { createHash } = require('node:crypto')
 const { chmodSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 
@@ -33,8 +34,11 @@ const DOCUMENT_OCR_REQUIRED_PATHS = [
   'document/ocr/router.py'
 ]
 
-const OFFICE_RUNTIME_IMPORTS = ['docx', 'openpyxl', 'pptx', 'lxml', 'PIL']
+const OFFICE_RUNTIME_IMPORTS = ['docx', 'openpyxl', 'pptx', 'lxml', 'PIL', 'reportlab']
 const OFFICE_RUNTIME_PYTHON_LINE = '3.11'
+const BUNDLED_PDF_FONT_SOURCE_SHA256 = '050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9'
+const BUNDLED_PDF_FONT_PREPARATION_VERSION = 2
+const BUNDLED_PDF_FONT_NAMES = ['NotoSerifSC-Regular.ttf', 'NotoSerifSC-Bold.ttf']
 const IMA_MCP_SCRIPT_RELATIVE_PATH = 'scripts/ima-mcp-server.py'
 
 // legalwork 不使用相机 / 麦克风 / 蓝牙 / 相册。Electron 框架默认在 Info.plist 里塞了这些
@@ -72,6 +76,10 @@ function assertExists(path, label) {
   if (!existsSync(path)) {
     throw new Error(`[after-pack] Missing ${label}: ${path}`)
   }
+}
+
+function sha256File(path) {
+  return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
 function npmCommand(args, platform = process.platform) {
@@ -233,6 +241,36 @@ function validateBundledOfficeRuntime(context) {
   }
 }
 
+function validateBundledPdfFonts(context) {
+  const root = join(packedResourcesDir(context), 'office-fonts')
+  assertExists(join(root, 'OFL.txt'), 'bundled PDF font license')
+  const manifestPath = join(root, 'fonts.json')
+  assertExists(manifestPath, 'bundled PDF font manifest')
+  let manifest
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  } catch (error) {
+    throw new Error(`[after-pack] Invalid bundled PDF font manifest: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  if (
+    manifest.preparationVersion !== BUNDLED_PDF_FONT_PREPARATION_VERSION ||
+    manifest.sourceSha256 !== BUNDLED_PDF_FONT_SOURCE_SHA256
+  ) {
+    throw new Error('[after-pack] Bundled PDF font manifest has an untrusted source checksum')
+  }
+  for (const name of BUNDLED_PDF_FONT_NAMES) {
+    const font = join(root, name)
+    assertExists(font, 'bundled deterministic PDF CJK font')
+    const actual = sha256File(font)
+    const expected = manifest.fonts?.[name]
+    if (actual !== expected) {
+      throw new Error(
+        `[after-pack] Bundled PDF font checksum mismatch for ${name}: expected ${expected}, got ${actual}`
+      )
+    }
+  }
+}
+
 function validateBundledDataComplianceRuntime(context) {
   const root = unpackedAppRoot(context)
   for (const relativePath of DATA_COMPLIANCE_REQUIRED_PATHS) {
@@ -357,6 +395,7 @@ async function afterPack(context) {
   restoreBundledOfficeCli(context)
   validateBundledLegalworkRuntime(context)
   validateBundledOfficeRuntime(context)
+  validateBundledPdfFonts(context)
   validateBundledDataComplianceRuntime(context)
   validateBundledDocumentOcrRuntime(context)
   validateBundledImaMcpServer(context)
@@ -384,6 +423,7 @@ exports._internals = {
   restoreBundledOfficeCli,
   validateBundledLegalworkRuntime,
   validateBundledOfficeRuntime,
+  validateBundledPdfFonts,
   validateBundledDataComplianceRuntime,
   validateBundledDocumentOcrRuntime,
   validateBundledImaMcpServer,

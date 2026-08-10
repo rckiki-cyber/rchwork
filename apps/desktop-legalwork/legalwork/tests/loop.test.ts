@@ -14,9 +14,11 @@ import {
   MAX_AGENT_LOOP_STEPS_ENV,
   MAX_AGENT_LOOP_STEPS_ENV_CAP,
   isBareResearchTopicPrompt,
+  knowledgeShellBypassError,
   requestedDocumentArtifacts,
   requestsLocalKnowledgeRetrieval,
   requestsDocumentMutation,
+  requestsAcademicCitationVerification,
   resolveMaxAgentLoopSteps,
   skillRoutingPrompt
 } from '../src/loop/agent-loop.js'
@@ -49,6 +51,24 @@ describe('AgentLoop', () => {
     expect(requestedDocumentArtifacts(request)).toEqual(['docx', 'pdf', 'pptx'])
     expect(requestedDocumentArtifacts('请生成一份研究报告')).toEqual(['docx'])
     expect(requestsLocalKnowledgeRetrieval('先检索本地知识库，再生成报告')).toBe(true)
+    expect(requestsLocalKnowledgeRetrieval(
+      '查一下食药犯罪中的宽严相济案例。后续要求：撰写这篇论文。当前追问：文献应该尽可能参考多的'
+    )).toBe(true)
+  })
+
+  it('does not turn an ordinary report bibliography into a forced citation-verification loop', () => {
+    expect(requestsAcademicCitationVerification(
+      '请撰写算法行政研究报告，正文不少于15000字，附参考文献不少于20条，并交付 Word、PDF、PPT。'
+    )).toBe(false)
+    expect(requestsAcademicCitationVerification(
+      '请撰写算法行政文献综述，正文引用需标注出处，并附参考文献。'
+    )).toBe(true)
+    expect(requestsAcademicCitationVerification(
+      '请生成研究报告，并逐条核验正文引用与参考文献来源。'
+    )).toBe(true)
+    expect(requestsAcademicCitationVerification(
+      '查一下食药犯罪中的宽严相济案例。后续要求：撰写这篇论文。当前追问：文献应该尽可能参考多的。'
+    )).toBe(true)
   })
 
   it('does not treat a bare academic title as authorization for paid research', () => {
@@ -76,6 +96,46 @@ describe('AgentLoop', () => {
 
     expect(skillRoutingPrompt('？', items, 'turn_question')).toContain('写一篇文献综述word')
     expect(skillRoutingPrompt('重新分析合同', items, 'turn_new')).toBe('重新分析合同')
+  })
+
+  it('keeps the original legal topic across referential artifact follow-ups', () => {
+    const messages = [
+      ['u1', 'turn_1', '查一下食药领域犯罪里，宽严相济刑事政策贯彻的案例，越多越好。'],
+      ['u2', 'turn_2', '宽严相济刑事政策贯彻，核心'],
+      ['u3', 'turn_3', '我纯纯想知道有没有该领域的案例，里面体现了宽严相济的刑事政策'],
+      ['u4', 'turn_4', '把这几个案例主要内容导出来做成excel'],
+      ['u5', 'turn_5', '他妈的原文呢？？'],
+      ['u6', 'turn_6', '撰写这篇论文']
+    ] as const
+    const items: TurnItem[] = messages.map(([id, turnId, text]) => makeUserItem({
+      id,
+      turnId,
+      threadId: 'thr_topic',
+      text
+    }))
+
+    const routed = skillRoutingPrompt('文献应该尽可能参考多的', items, 'turn_7')
+    expect(routed).toContain('食药领域犯罪')
+    expect(routed).toContain('宽严相济刑事政策贯彻')
+    expect(routed).toContain('撰写这篇论文')
+    expect(routed).toContain('文献应该尽可能参考多的')
+    expect(routed).not.toContain('他妈的原文呢')
+  })
+
+  it('blocks shell scripts that bulk-parse the managed knowledge PDF store', () => {
+    const blocked = knowledgeShellBypassError({
+      callId: 'bulk-pdf',
+      toolName: 'bash',
+      arguments: {
+        command: "python3 -c \"import glob,fitz; [fitz.open(p) for p in glob.glob('/Users/me/.legalwork/legalwork/knowledge/files/**/*.pdf', recursive=True)]\""
+      }
+    })
+    expect(blocked).toContain('knowledge_search')
+    expect(knowledgeShellBypassError({
+      callId: 'single-attachment',
+      toolName: 'bash',
+      arguments: { command: "pdftotext '/tmp/attachment.pdf' -" }
+    })).toBeUndefined()
   })
 
   it('resolves a configurable agent loop step limit', () => {
@@ -599,6 +659,25 @@ describe('AgentLoop', () => {
             output: `/tmp/report.${kind}`
           }
         }
+      }),
+      define('bash', async (args) => {
+        executed.push({ name: 'bash', args })
+        return {
+          output: {
+            exit_code: 0,
+            output: JSON.stringify({
+              status: 'ok',
+              operation: 'export',
+              engine: 'open-kimi-ppt',
+              exporter: 'local-python-pptx',
+              styleValidated: true,
+              scenario: 'academic-research',
+              slides: 16,
+              bytes: 72_000,
+              output: '/tmp/report.pptx'
+            })
+          }
+        }
       })
     ]
     let callIndex = 0
@@ -622,14 +701,10 @@ describe('AgentLoop', () => {
           const progress = request.contextInstructions?.join('\n') ?? ''
           const kind = progress.includes('本步仍需生成：DOCX')
             ? 'docx'
-            : progress.includes('本步仍需生成：PDF')
-              ? 'pdf'
-              : 'pptx'
+            : 'pdf'
           const operation = kind === 'docx'
             ? 'from-markdown'
-            : kind === 'pdf'
-              ? 'from-docx'
-              : 'from-json'
+            : 'from-docx'
           yield {
             kind: 'tool_call_complete',
             callId: `call_compound_${++callIndex}`,
@@ -639,13 +714,35 @@ describe('AgentLoop', () => {
           yield { kind: 'completed', stopReason: 'tool_calls' }
           return
         }
+        if (request.requiredToolName === 'bash') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_compound_${++callIndex}`,
+            toolName: 'bash',
+            arguments: {
+              command: 'python3 /opt/legalwork/skills/open-kimi-ppt/scripts/skill_runner.py export /tmp/report/deck.pptd --scenario academic-research --output /tmp/report.pptx'
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
         yield { kind: 'assistant_text_delta', text: '三份文件均已生成。' }
         yield { kind: 'completed', stopReason: 'stop' }
       }
-    }, { tools })
+    }, {
+      tools,
+      skillRuntime: {
+        resolveTurn: () => ({
+          activeSkillIds: ['open-kimi-ppt'],
+          activations: [],
+          instructions: ['Use the unified open-kimi-ppt skill_runner.py workflow.'],
+          injectedBytes: 100
+        })
+      } as never
+    })
     await bootstrapThread(h, {
       request: {
-        prompt: '请先检索本地知识库，再检索 IMA，研究自动化行政处罚责任界定，并交付 Word、PDF、PPT 三份完整文件。'
+        prompt: '请先检索本地知识库，再检索 IMA，研究自动化行政处罚责任界定，报告附参考文献不少于20条，并交付 Word、PDF、PPT 三份完整文件。'
       }
     })
 
@@ -661,9 +758,9 @@ describe('AgentLoop', () => {
       'mcp_call',
       'document_skill_execute',
       'document_skill_execute',
-      'document_skill_execute'
+      'bash'
     ])
-    expect(documentKinds).toEqual(['docx', 'pdf', 'pptx'])
+    expect(documentKinds).toEqual(['docx', 'pdf'])
     expect(requests.at(-1)?.requiredToolName).toBeUndefined()
   })
 
@@ -807,8 +904,87 @@ describe('AgentLoop', () => {
     ])
   })
 
+  it('caps forced retrieval batches to one search and the remaining distinct PDF count', async () => {
+    const executed: string[] = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const h = makeHarness({
+      provider: 'forced-retrieval-cardinality',
+      model: 'forced-retrieval-cardinality',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        if (request.requiredToolName === 'knowledge_auto_retrieve') {
+          for (const suffix of ['主检索', '模型擅自追加检索']) {
+            yield {
+              kind: 'tool_call_complete',
+              callId: `call_auto_${suffix}`,
+              toolName: 'knowledge_auto_retrieve',
+              arguments: { query: suffix }
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (request.requiredToolName === 'knowledge_read_file') {
+          for (let index = 1; index <= 5; index += 1) {
+            yield {
+              kind: 'tool_call_complete',
+              callId: `call_pdf_${index}`,
+              toolName: 'knowledge_read_file',
+              arguments: { path: `论文${index}.pdf` }
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '检索与三篇 PDF 阅读完成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, {
+      tools: [
+        define('knowledge_auto_retrieve', async (args) => {
+          executed.push(`auto:${String(args.query)}`)
+          return {
+            output: {
+              sources: [{ path: '论文1.pdf' }, { path: '论文2.pdf' }, { path: '论文3.pdf' }],
+              contextText: '知识库返回了足够长的算法行政论文证据，可供后续逐篇研读与综合回答。'
+            }
+          }
+        }),
+        define('knowledge_read_file', async (args) => {
+          executed.push(`read:${String(args.path)}`)
+          return {
+            output: {
+              path: args.path,
+              content: `这是 ${String(args.path)} 的有效正文内容，包含算法行政的规范分析和程序保障。`
+            }
+          }
+        })
+      ]
+    })
+    await bootstrapThread(h, {
+      request: { prompt: '请检索本地知识库并执行 OCR，提取至少 3 篇 PDF 的正文，然后回答。' }
+    })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(executed).toEqual([
+      'auto:主检索',
+      'read:论文1.pdf',
+      'read:论文2.pdf',
+      'read:论文3.pdf'
+    ])
+  })
+
   it('enforces a complex report contract before citation verification and Word/PDF delivery', async () => {
     const executed: string[] = []
+    const documentInputs: Record<string, unknown>[] = []
     const fullDraft = [
       '# 一、问题的提出',
       '# 二、规范体系',
@@ -829,8 +1005,19 @@ describe('AgentLoop', () => {
       execute
     })
     const tools = [
-      define('knowledge_auto_retrieve', async () => {
+      define('knowledge_auto_retrieve', async (args) => {
         executed.push('knowledge_auto_retrieve')
+        if (String(args.query).includes('典型案例')) {
+          return {
+            output: {
+              sources: [
+                { path: '案例/行政处罚案例一.md' },
+                { path: '案例/行政处罚案例二.md' }
+              ],
+              contextText: '案例材料包含（2019）鲁13行终415号与（2021）京01行终88号的法院、裁判要旨和争议焦点。'
+            }
+          }
+        }
         return {
           output: {
             sources: [
@@ -866,6 +1053,7 @@ describe('AgentLoop', () => {
         return { output: { verificationPassed: true } }
       }),
       define('document_skill_execute', async (args) => {
+        documentInputs.push(args)
         const kind = String(args.kind)
         executed.push(`document_skill_execute:${kind}`)
         return {
@@ -883,6 +1071,7 @@ describe('AgentLoop', () => {
     let callIndex = 0
     let citationAttempts = 0
     let readAttempts = 0
+    let modelDocxRequests = 0
     const h = makeHarness({
       provider: 'complex-contract-regression',
       model: 'complex-contract-regression',
@@ -926,6 +1115,7 @@ describe('AgentLoop', () => {
         } else if (required === 'document_skill_execute') {
           const progress = request.contextInstructions?.join('\n') ?? ''
           const kind = progress.includes('本步仍需生成：DOCX') ? 'docx' : 'pdf'
+          if (kind === 'docx') modelDocxRequests += 1
           yield {
             kind: 'tool_call_complete',
             callId: `call_complex_${++callIndex}`,
@@ -972,6 +1162,7 @@ describe('AgentLoop', () => {
 
     const status = await h.loop.runTurn(h.threadId, h.turnId)
     const items = await h.sessionStore.loadItems(h.threadId)
+    const finishedThread = await h.threadStore.get(h.threadId)
 
     expect(status).toBe('completed')
     expect(executed).toEqual([
@@ -979,12 +1170,23 @@ describe('AgentLoop', () => {
       'knowledge_read_file:论文一.pdf',
       'knowledge_read_file:论文二.pdf',
       'knowledge_read_file:论文三.pdf',
+      'knowledge_auto_retrieve',
       'data_compliance',
       'knowledge_citation_verify',
       'document_skill_execute:docx',
       'document_skill_execute:pdf'
     ])
     expect(citationAttempts).toBe(2)
+    expect(modelDocxRequests).toBe(0)
+    expect(documentInputs[0]).toMatchObject({
+      kind: 'docx',
+      operation: 'from-markdown',
+      content: fullDraft,
+      outputPath: '数字行政法体系建构研究报告.docx',
+      profile: 'academic'
+    })
+    expect(finishedThread?.todos?.items.length).toBeGreaterThan(3)
+    expect(finishedThread?.todos?.items.every((item) => item.status === 'completed')).toBe(true)
     expect(items.some((item) =>
       item.kind === 'tool_result' &&
       item.toolName === 'knowledge_citation_verify' &&
@@ -1139,9 +1341,24 @@ describe('AgentLoop', () => {
       define('read', async () => ({ output: { ok: true } })),
       define('write', async () => ({ output: { ok: true } })),
       define('edit', async () => ({ output: { ok: true } })),
-      define('bash', async () => {
+      define('bash', async (args) => {
         executed.push('bash')
-        return { output: { status: 'ok', project: '民法典解读.pptd', output: '民法典解读.pptx' } }
+        expect(String(args.command)).toContain('skill_runner.py export')
+        return {
+          output: {
+            exit_code: 0,
+            output: JSON.stringify({
+              engine: 'open-kimi-ppt',
+              exporter: 'local-python-pptx',
+              styleValidated: true,
+              scenario: 'education-training',
+              slides: 15,
+              fadeTransitions: 15,
+              bytes: 64_000,
+              output: '/tmp/民法典解读/民法典解读.pptx'
+            })
+          }
+        }
       }),
       define('knowledge_auto_retrieve', async () => {
         executed.push('knowledge_auto_retrieve')
@@ -1194,7 +1411,9 @@ describe('AgentLoop', () => {
             kind: 'tool_call_complete',
             callId: 'call_pptd_export',
             toolName: 'bash',
-            arguments: { command: 'build and export the PPTD project' }
+            arguments: {
+              command: 'python3 /opt/legalwork/skills/open-kimi-ppt/scripts/skill_runner.py export /tmp/民法典解读/deck.pptd --scenario education-training --output /tmp/民法典解读/民法典解读.pptx'
+            }
           }
           yield { kind: 'completed', stopReason: 'tool_calls' }
           return
@@ -1229,13 +1448,14 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(executed).toEqual(['knowledge_auto_retrieve', 'mcp_search', 'mcp_call', 'bash'])
-    const specialistRequests = requests.filter((request) => request.requiredToolName === undefined)
-    expect(specialistRequests.length).toBeGreaterThan(0)
-    expect(specialistRequests.every((request) =>
+    const specialistRequests = requests.filter((request) => request.requiredToolName === 'bash')
+    expect(specialistRequests).toHaveLength(1)
+    expect(specialistRequests[0]?.tools.map((tool) => tool.name)).toEqual(['bash'])
+    expect(specialistRequests[0]?.contextInstructions?.join('\n')).toContain('open-kimi-ppt / PPTD')
+    expect(specialistRequests[0]?.contextInstructions?.join('\n')).toContain('scripts/skill_runner.py')
+    expect(requests.every((request) =>
       !request.tools.some((tool) => tool.name === 'document_skill_execute')
     )).toBe(true)
-    expect(specialistRequests[0]?.tools.map((tool) => tool.name)).toContain('bash')
-    expect(specialistRequests[0]?.contextInstructions?.join('\n')).toContain('open-kimi-ppt / PPTD')
     expect(requests.at(-1)?.tools).toEqual([])
   })
 
@@ -1377,6 +1597,54 @@ describe('AgentLoop', () => {
     expect(calls).toBe(3)
   })
 
+  it('fails the presentation delivery lane after its bounded export budget', async () => {
+    let executions = 0
+    const bashTool = LocalToolHost.defineTool({
+      name: 'bash',
+      description: 'run the active presentation skill',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => {
+        executions += 1
+        return { output: { exit_code: 1, output: 'local exporter failed' }, isError: true }
+      }
+    })
+    let calls = 0
+    const h = makeHarness({
+      provider: 'presentation-failure-cap',
+      model: 'presentation-failure-cap',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        calls += 1
+        yield {
+          kind: 'tool_call_complete',
+          callId: `call_presentation_failure_${calls}`,
+          toolName: 'bash',
+          arguments: {
+            command: 'python3 /opt/legalwork/skills/open-kimi-ppt/scripts/skill_runner.py export /tmp/deck.pptd --scenario analysis-decision --output /tmp/deck.pptx'
+          }
+        }
+        yield { kind: 'completed', stopReason: 'tool_calls' }
+      }
+    }, {
+      tools: [bashTool],
+      skillRuntime: {
+        resolveTurn: () => ({
+          activeSkillIds: ['open-kimi-ppt'],
+          activations: [],
+          instructions: ['Use the unified local open-kimi-ppt export workflow.'],
+          injectedBytes: 80
+        })
+      } as never
+    })
+    await bootstrapThread(h, { request: { prompt: '请制作并交付一份 PPT 演示文稿' } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('failed')
+    expect(executions).toBe(2)
+    expect(calls).toBe(3)
+  })
+
   it('blocks document delivery when explicit IMA retrieval exhausts timeout recovery', async () => {
     const executed: string[] = []
     const define = (
@@ -1446,7 +1714,8 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(recoveryRequests).toBe(4)
+    // One initial model pass plus the evidence lane's two bounded recovery passes.
+    expect(recoveryRequests).toBe(3)
     expect(executed).toEqual(['mcp_search', 'mcp_call'])
     expect(requests.at(-1)?.tools).toEqual([])
     expect(requests.at(-1)?.contextInstructions?.join('\n')).toContain('知识库证据门禁未通过')
@@ -1795,7 +2064,7 @@ describe('AgentLoop', () => {
     })
   })
 
-	  it('suppresses repeated identical tool calls within a turn', async () => {
+	  it('suppresses an immediately repeated successful tool call within a turn', async () => {
 	    let executions = 0
     const echoTool = LocalToolHost.defineTool({
       name: 'echo',
@@ -1839,21 +2108,21 @@ describe('AgentLoop', () => {
 	    const items = await h.sessionStore.loadItems(h.threadId)
 	    const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
 	    const stormResult = items.find(
-	      (item) => item.kind === 'tool_result' && item.callId === 'call_echo_3'
+	      (item) => item.kind === 'tool_result' && item.callId === 'call_echo_2'
 	    )
-    const thirdCall = items.find(
-      (item) => item.kind === 'tool_call' && item.callId === 'call_echo_3'
+    const duplicateCall = items.find(
+      (item) => item.kind === 'tool_call' && item.callId === 'call_echo_2'
     )
 
     expect(status).toBe('completed')
-    expect(executions).toBe(2)
-    expect(thirdCall).toMatchObject({ kind: 'tool_call', status: 'failed' })
+    expect(executions).toBe(1)
+    expect(duplicateCall).toMatchObject({ kind: 'tool_call', status: 'failed' })
 	    expect(stormResult?.kind === 'tool_result' ? stormResult.isError : false).toBe(true)
 	    expect(stormResult?.kind === 'tool_result' ? JSON.stringify(stormResult.output) : '')
 	      .toContain('repeat-loop guard suppressed')
 	    expect(events.find((event) => event.kind === 'tool_storm_suppressed')).toMatchObject({
 	      kind: 'tool_storm_suppressed',
-	      callId: 'call_echo_3',
+	      callId: 'call_echo_2',
 	      toolName: 'echo'
 	    })
 	  })
@@ -2351,6 +2620,89 @@ describe('AgentLoop', () => {
     )
     expect(result).toMatchObject({ kind: 'tool_result', isError: true, toolName: 'read' })
     expect(result?.kind === 'tool_result' ? JSON.stringify(result.output) : '')
+      .toContain('not advertised by active tool policy')
+  })
+
+  it('does not let a provider bypass a forced document step by calling bash', async () => {
+    let modelCalls = 0
+    let bashExecutions = 0
+    let documentExecutions = 0
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const h = makeHarness({
+      provider: 'request-tool-policy',
+      model: 'request-tool-policy',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        modelCalls += 1
+        if (modelCalls === 1) {
+          expect(request.requiredToolName).toBe('document_skill_execute')
+          expect(request.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_forbidden_bash',
+            toolName: 'bash',
+            arguments: { command: 'python3 handwritten_docx.py' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (modelCalls === 2) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_required_document',
+            toolName: 'document_skill_execute',
+            arguments: {
+              kind: 'docx',
+              operation: 'from-markdown',
+              content: '# 算法行政报告\n\n完整正文。',
+              outputPath: '算法行政报告.docx'
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: 'Word 已由文档主路径生成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, {
+      tools: [
+        define('bash', async () => {
+          bashExecutions += 1
+          return { output: { exit_code: 0 } }
+        }),
+        define('document_skill_execute', async () => {
+          documentExecutions += 1
+          return {
+            output: {
+              status: 'ok',
+              kind: 'docx',
+              operation: 'from-markdown',
+              output: '/tmp/算法行政报告.docx'
+            }
+          }
+        })
+      ]
+    })
+    await bootstrapThread(h, {
+      request: { prompt: '请生成一份算法行政 Word 报告。' }
+    })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(bashExecutions).toBe(0)
+    expect(documentExecutions).toBe(1)
+    const forbiddenResult = (await h.sessionStore.loadItems(h.threadId)).find(
+      (item) => item.kind === 'tool_result' && item.callId === 'call_forbidden_bash'
+    )
+    expect(forbiddenResult).toMatchObject({ kind: 'tool_result', isError: true })
+    expect(forbiddenResult?.kind === 'tool_result' ? JSON.stringify(forbiddenResult.output) : '')
       .toContain('not advertised by active tool policy')
   })
 

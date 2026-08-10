@@ -6,7 +6,7 @@ import time
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "export_pptx.py"
@@ -207,6 +207,31 @@ class ExportPptxTests(unittest.TestCase):
             ["open", "http://127.0.0.1:9/export_host.html"],
             timeout=90,
         )
+
+    @patch.object(MODULE, "is_pptx", return_value=True)
+    def test_managed_download_is_used_off_windows(self, _is_pptx):
+        browser = Mock()
+        target = Path("/tmp/kimi-export.pptx")
+        with patch.object(MODULE.sys, "platform", "darwin"):
+            result = MODULE.download_pptx(browser, "e7", target, [], time.time())
+        self.assertEqual(result, target)
+        browser.run.assert_called_once_with(
+            ["download", "@e7", str(target)],
+            timeout=180,
+        )
+
+    @patch.object(MODULE, "find_download", return_value=Path("/tmp/windows-export.pptx"))
+    def test_windows_keeps_plain_click_download_fallback(self, find_download):
+        browser = Mock()
+        since = time.time()
+        roots = [Path("/tmp")]
+        with patch.object(MODULE.sys, "platform", "win32"):
+            result = MODULE.download_pptx(
+                browser, "e8", Path("C:/tmp/kimi-export.pptx"), roots, since
+            )
+        self.assertEqual(result, Path("/tmp/windows-export.pptx"))
+        browser.run.assert_called_once_with(["click", "@e8"], timeout=180)
+        find_download.assert_called_once_with(roots, timeout=150, since=since)
 
     def test_ensure_debug_chrome_is_windows_only(self):
         with patch.object(MODULE.sys, "platform", "linux"):

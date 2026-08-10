@@ -146,7 +146,7 @@ describe('LearningIterationRuntime scheduling', () => {
     runtime.stop()
   })
 
-  it('waits while a data-compliance task is pending', async () => {
+  it('starts a manual check immediately while other tasks are pending', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'legalwork-learning-compliance-busy-'))
     tempRoots.push(dataDir)
     const appSettings = settings(dataDir)
@@ -170,23 +170,26 @@ describe('LearningIterationRuntime scheduling', () => {
       }
       return { ok: false, status: 404, body: 'not found' }
     })
+    const getSystemIdleSeconds = vi.fn(() => 0)
+    const getExternalBusy = vi.fn(async () => true)
     const runtime = createLearningIterationRuntime({
       store: { load: vi.fn(async () => appSettings) } as never,
       runtimeRequest,
-      getSystemIdleSeconds: () => 60 * 60,
-      getExternalBusy: async () => false,
+      getSystemIdleSeconds,
+      getExternalBusy,
       logError: vi.fn()
     })
-    runtime.sync(appSettings)
     await runtime.queue()
     await vi.waitFor(async () => {
       const status = await runtime.status()
-      expect(status.status).toBe('waiting')
-      expect(status.message).toBe('正在等待所有任务结束并达到空闲条件')
+      expect(status.status).not.toBe('waiting')
+      expect(status.message).toBe('本周期没有可学习的新数据')
     })
+    expect(getSystemIdleSeconds).not.toHaveBeenCalled()
+    expect(getExternalBusy).not.toHaveBeenCalled()
     expect(runtimeRequest).not.toHaveBeenCalledWith(
       expect.anything(),
-      '/v1/knowledge/tree',
+      '/data-compliance/tasks',
       expect.anything()
     )
     runtime.stop()

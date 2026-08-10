@@ -583,6 +583,34 @@ def find_download(
     raise ExportError(f"timed out waiting for download; observed files:\n  {visible}")
 
 
+def download_pptx(
+    browser: BrowserSession,
+    download_ref: str,
+    direct_target: Path,
+    search_roots: Iterable[Path],
+    since: float,
+) -> Path:
+    """Download deterministically where agent-browser supports a target path.
+
+    Plain clicking relies on Chrome's default download directory and has
+    become unreliable on macOS/Linux. Keep that fallback only for Windows,
+    where older agent-browser releases could corrupt verbatim download paths.
+    """
+    if sys.platform != "win32":
+        browser.run(
+            ["download", f"@{download_ref}", str(direct_target)],
+            timeout=180,
+        )
+        if not is_pptx(direct_target):
+            raise ExportError(
+                f"agent-browser reported a download but no valid PPTX was saved: {direct_target}"
+            )
+        return direct_target
+
+    browser.run(["click", f"@{download_ref}"], timeout=180)
+    return find_download(search_roots, timeout=150, since=since)
+
+
 def replace_transition(slide_xml: bytes, transition: str) -> bytes:
     text = slide_xml.decode("utf-8")
     pattern = re.compile(
@@ -777,16 +805,15 @@ def export_pptx(
             elif embed_fonts:
                 log("warning: the official export dialog exposed no font switch")
 
-            # Plain click (not agent-browser `download`) so Chrome saves to the
-            # default Downloads folder; --download-path is broken on some Windows setups.
             started_at = time.time() - 1.0
             download_ref = ref_by_name(dialog, "下载", "button")
             log("generating PPTX in the browser")
-            browser.run(["click", f"@{download_ref}"], timeout=180)
-            downloaded = find_download(
+            downloaded = download_pptx(
+                browser,
+                download_ref,
+                download_dir / "kimi-export.pptx",
                 (downloads, download_dir, temp_dir),
-                timeout=90,
-                since=started_at,
+                started_at,
             )
             shutil.copy2(downloaded, output)
             if keep_download:

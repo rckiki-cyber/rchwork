@@ -53,13 +53,20 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
           const layer = ['principle', 'architecture', 'standard', 'implementation', 'experience'].includes(args.layer as string)
             ? args.layer as KnowledgeLayer
             : undefined
-          const sources = await store.search({ query, limit, includeContent: false, layer })
-          return {
-            output: compactKnowledgeSearchToolOutput({
-              query,
-              layer: layer ?? 'all',
-              sources
-            })
+          try {
+            const sources = await store.search({ query, limit, includeContent: false, layer })
+            return {
+              output: compactKnowledgeSearchToolOutput({
+                query,
+                layer: layer ?? 'all',
+                sources
+              })
+            }
+          } catch (error) {
+            return {
+              output: { error: `knowledge_search failed: ${error instanceof Error ? error.message : String(error)}` },
+              isError: true
+            }
           }
         }
       }),
@@ -339,10 +346,17 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
             : undefined
 
           // Dynamic import to avoid circular dependency
-          const { KnowledgeRetrievalPipeline } = await import('../../knowledge/knowledge-retrieval-pipeline.js')
-          const pipeline = new KnowledgeRetrievalPipeline(store)
-          const result = await pipeline.retrieve(query, { excludeExpired, layer })
-          return { output: compactKnowledgeAutoRetrieveToolOutput(result) }
+          try {
+            const { KnowledgeRetrievalPipeline } = await import('../../knowledge/knowledge-retrieval-pipeline.js')
+            const pipeline = new KnowledgeRetrievalPipeline(store)
+            const result = await pipeline.retrieve(query, { excludeExpired, layer })
+            return { output: compactKnowledgeAutoRetrieveToolOutput(result) }
+          } catch (error) {
+            return {
+              output: { error: `knowledge_auto_retrieve failed: ${error instanceof Error ? error.message : String(error)}` },
+              isError: true
+            }
+          }
         }
       }),
       LocalToolHost.defineTool({
@@ -389,10 +403,12 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
           if (diagnostics.documentCount === 0) {
             return {
               output: {
+                verificationPassed: false,
                 documentStats: { totalCitations: 0, verified: 0, notFound: 0, contentMismatch: 0, suspicious: 0 },
                 checks: [],
                 recommendations: ['知识库为空，无法核验引用。请先同步知识库。']
-              }
+              },
+              isError: true
             }
           }
 
@@ -437,13 +453,19 @@ export function buildKnowledgeToolProviders(store: KnowledgeStore | undefined): 
             }
             result = verifyPaperCitations(draft, { documents: allDocs as any, chunks: [] })
           }
+          const hasCitations = result.documentStats.totalCitations > 0
+          const hasVerificationErrors =
+            result.documentStats.notFound > 0 || result.documentStats.contentMismatch > 0
+          const recommendations = hasCitations
+            ? result.recommendations
+            : ['未发现 [N] 格式的正文引用标记，不能视为已完成引用核验。']
           return {
             output: {
-              verificationPassed:
-                result.documentStats.notFound === 0 && result.documentStats.contentMismatch === 0,
-              ...result
+              ...result,
+              recommendations,
+              verificationPassed: hasCitations && !hasVerificationErrors
             },
-            isError: result.documentStats.notFound > 0 || result.documentStats.contentMismatch > 0
+            isError: !hasCitations || hasVerificationErrors
           }
         }
       }),

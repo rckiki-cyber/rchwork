@@ -81,7 +81,7 @@ import {
 } from '../adapters/tool/office-fallback-policy.js'
 import { LEGALWORK_SYSTEM_PROMPT } from '../prompt/legalwork-system-prompt.js'
 import { resolveImaRouteAction, shouldAutoRouteToIma } from './ima-knowledge-router.js'
-import { recoverDsmlToolCall } from './dsml-tool-call-recovery.js'
+import { recoverDsmlToolCalls } from './dsml-tool-call-recovery.js'
 import { isKnowledgeQaThreadTitle, knowledgeQaToolSpecs } from './knowledge-qa-mode.js'
 import {
   OFFICECLI_TOOL_NAME,
@@ -97,6 +97,20 @@ import {
   validateDocumentContent,
   type DocumentTaskContract
 } from './document-task-contract.js'
+import {
+  automaticTaskPlanInstruction,
+  buildAutomaticTaskPlan,
+  completedGenericAutomaticTaskPlan,
+  reconcileAutomaticTaskTodos,
+  type AutomaticTaskPlan
+} from './automatic-task-plan.js'
+import {
+  evaluateWorkflowAcceptance,
+  selectWorkflowAction,
+  workflowAcceptanceInstruction,
+  workflowActionInstruction,
+  workflowAttemptLimit
+} from './workflow-governance.js'
 
 const PARALLEL_READ_ONLY_TOOL_NAMES = new Set(['read', 'grep', 'find', 'ls'])
 const MAX_PARALLEL_TOOL_CALLS = 3
@@ -500,21 +514,47 @@ export function skillRoutingPrompt(
   turnId: string
 ): string {
   const current = prompt.trim()
-  if (!isContinuationOnlyPrompt(current)) return current
+  if (!isContextDependentPrompt(current)) return current
+  let anchor = ''
+  let recentContext = ''
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index]
     if (
       !item ||
       item.turnId === turnId ||
       item.kind !== 'user_message' ||
-      !item.text.trim() ||
-      isContinuationOnlyPrompt(item.text.trim())
+      !item.text.trim()
     ) {
       continue
     }
-    return `${item.text.trim()}\n\n当前追问：${current}`
+    const prior = item.text.trim()
+    if (isLowSignalComplaint(prior)) continue
+    if (isContextDependentPrompt(prior)) {
+      if (!recentContext) recentContext = prior
+      continue
+    }
+    anchor = prior
+    break
   }
-  return current
+  const context = [anchor, recentContext].filter(Boolean)
+  if (context.length === 0) return current
+  return `${context.join('\n\n后续要求：')}\n\n当前追问：${current}`
+}
+
+function isContextDependentPrompt(prompt: string): boolean {
+  if (isContinuationOnlyPrompt(prompt)) return true
+  const compact = prompt.replace(/\s+/g, '')
+  if (!compact || compact.length > 120) return false
+  return /(?:这篇|这份|这个|这些|这几个|上述|前述|前面|刚才|该领域|该案|该文|原文|全文)/.test(compact) ||
+    /^(?:文献|引用|案例|格式|字数|标题|内容)(?:还|也|应该|需要|必须|尽可能)/.test(compact) ||
+    /(?:核心|重点|原文呢|全文呢)[?？!！。]*$/.test(compact)
+}
+
+function isLowSignalComplaint(prompt: string): boolean {
+  const compact = prompt.replace(/\s+/g, '')
+  if (/(?:他妈|妈的|傻逼|搞什么鬼)/.test(compact) && compact.length <= 40) return true
+  return /(?:在干嘛|干什么|怎么还|怎么又|还没|卡住|卡顿|快点|搞什么)/.test(compact) &&
+    !/(?:原文|全文|Word|PDF|Excel|论文|报告|案例|文献)/i.test(compact)
 }
 
 function isContinuationOnlyPrompt(prompt: string): boolean {
@@ -536,12 +576,26 @@ export function requestsDocumentMutation(prompt: string): boolean {
   ) {
     return false
   }
-  const documentTarget = /(?:Word|DOCX|\.docx|\.doc\b|Excel|XLSX|\.xlsx|PPTX?|\.pptx|文档|文件|表格|工作簿|演示文稿|文献综述|报告|起诉状|答辩状|意见书)/i
+  const documentTarget = /(?:Word|DOCX|\.docx|\.doc\b|Excel|XLSX|\.xlsx|PPTX?|\.pptx|文档|文件|表格|工作簿|演示文稿|论文|文献综述|报告|起诉状|答辩状|意见书)/i
   const mutationIntent = /(?:写|撰写|编写|生成|创建|新建|起草|制作|编辑|修改|排版|格式化|套用|导出|转换|合并|修复|保存|交付|给我|发我|提供)/
   return documentTarget.test(compact) && mutationIntent.test(compact)
 }
 
 type DocumentArtifactKind = 'docx' | 'pdf' | 'pptx' | 'xlsx'
+
+function presentationScenarioFor(prompt: string): string {
+  if (/(?:普法|培训|课件|课程|教学|宣讲|科普|入门|解读|操作指南)/i.test(prompt)) {
+    return 'education-training'
+  }
+  if (/(?:论文|答辩|学术|课题|研究|文献综述|研究报告|开题|结题)/i.test(prompt)) {
+    return 'academic-research'
+  }
+  if (/(?:商业计划|融资|路演|营销|销售|招商|商业提案)/i.test(prompt)) return 'business-plan'
+  if (/(?:工作汇报|项目汇报|复盘|季度|年度总结|OKR|项目进展)/i.test(prompt)) return 'management-report'
+  if (/(?:技术|架构|工程|研发|人工智能|AI|算法|数据|运维|网络安全)/i.test(prompt)) return 'tech-engineering'
+  if (/(?:品牌|创意|作品集|发布会|文化活动|视觉展示)/i.test(prompt)) return 'brand-creative'
+  return 'analysis-decision'
+}
 
 function taskContractToolCallError(input: {
   call: ToolCallLike
@@ -553,6 +607,7 @@ function taskContractToolCallError(input: {
   const hasContentRequirements = Boolean(
     contract.minimumContentCharacters ||
     contract.requiredHeadings.length ||
+    contract.requiredTopicTerms.length ||
     contract.minimumCaseCount ||
     contract.forbidPlaceholders ||
     contract.requiresDesensitization
@@ -570,6 +625,24 @@ function taskContractToolCallError(input: {
   const operation = typeof call.arguments.operation === 'string'
     ? call.arguments.operation.toLowerCase()
     : ''
+  const outputPath = typeof call.arguments.outputPath === 'string'
+    ? call.arguments.outputPath
+    : Array.isArray(call.arguments.args)
+      ? (() => {
+          const args = call.arguments.args.filter((value): value is string => typeof value === 'string')
+          const outputIndex = args.findIndex((value) => value === '--output' || value === '-o')
+          return outputIndex >= 0 ? args[outputIndex + 1] ?? '' : ''
+        })()
+      : ''
+  const artifactFilenameFragment = input.contract.requiredArtifactFilenameFragments?.[kind as DocumentArtifactKind] ??
+    (kind === 'docx' ? input.contract.requiredFilenameFragment : undefined)
+  if (
+    artifactFilenameFragment &&
+    operation !== 'inspect' && operation !== 'profiles' &&
+    !outputPath.includes(artifactFilenameFragment)
+  ) {
+    return `${kind.toUpperCase()} 生成前的文件名验收未通过：文件名必须包含“${artifactFilenameFragment}”。`
+  }
   if (kind === 'pdf' && operation === 'from-docx' && !input.completedArtifacts.has('docx')) {
     return 'PDF 生成被拒绝：必须先成功生成并验收完整 DOCX，再从该 DOCX 转换 PDF。'
   }
@@ -580,7 +653,6 @@ function taskContractToolCallError(input: {
       ? validateDocumentContent(content, contract)
       : ['Word 生成缺少完整 content']
     : []
-  const outputPath = typeof call.arguments.outputPath === 'string' ? call.arguments.outputPath : ''
   if (
     contract.requiredFilenameFragment &&
     !outputPath.includes(contract.requiredFilenameFragment)
@@ -596,6 +668,19 @@ function taskContractToolCallError(input: {
   return issues.length
     ? `Word 生成前的终稿验收未通过：${issues.join('；')}。不得用脚本或其他工具绕过。`
     : undefined
+}
+
+export function knowledgeShellBypassError(call: ToolCallLike): string | undefined {
+  if (call.toolName !== 'bash') return undefined
+  const command = JSON.stringify(call.arguments)
+  const targetsKnowledgeStore = /(?:\.legalwork|legalwork)[/\\](?:legalwork[/\\])?knowledge(?:[/\\]|\b)|knowledge[/\\]files/i.test(command)
+  const bulkPdfTraversal = /(?:glob\.glob|\.rglob\s*\(|os\.walk|find\s+[^\n]*-name\s+[^\n]*pdf|for\s+[^\n]*(?:\*\.pdf|\.pdf\b))/i.test(command)
+  const lowLevelPdfExtraction = /(?:fitz|pymupdf|pdfplumber|pypdf|pdftotext|tesseract|ocrmypdf)/i.test(command)
+  if (!targetsKnowledgeStore || !bulkPdfTraversal || !lowLevelPdfExtraction) return undefined
+  return [
+    '禁止用 bash/Python 批量遍历或解析 LegalWork 知识库中的 PDF。',
+    '先用 knowledge_auto_retrieve 或 knowledge_search 缩小候选范围；只有确需完整原文时，才对明确选中的单个文件调用 knowledge_read_file。'
+  ].join('')
 }
 
 export function requestedDocumentArtifacts(prompt: string): DocumentArtifactKind[] {
@@ -621,7 +706,11 @@ export function requestedDocumentArtifacts(prompt: string): DocumentArtifactKind
 
 export function requestsLocalKnowledgeRetrieval(prompt: string): boolean {
   const compact = prompt.replace(/\s+/g, '')
-  return /本地知识库/.test(compact) && /(?:查询|查找|检索|搜索|研究|依据|引用|来源|材料)/.test(compact)
+  const explicitLocal = /本地知识库/.test(compact) &&
+    /(?:查询|查找|检索|搜索|研究|依据|引用|来源|材料)/.test(compact)
+  const sourcedAcademicWriting = /(?:撰写|写作|写一篇|生成).{0,20}(?:论文|文献综述)|(?:论文|文献综述).{0,20}(?:撰写|写作|生成)/s.test(compact) &&
+    /(?:参考文献|参考资料|引用|引文|标注出处|真实来源|尽可能参考)|文献.{0,16}(?:参考|尽可能多)/s.test(compact)
+  return explicitLocal || sourcedAcademicWriting
 }
 
 export function requestsImaKnowledgeRetrieval(prompt: string): boolean {
@@ -630,8 +719,11 @@ export function requestsImaKnowledgeRetrieval(prompt: string): boolean {
 }
 
 export function requestsAcademicCitationVerification(prompt: string): boolean {
-  return requestsDocumentMutation(prompt) &&
-    /(?:文献综述|学术论文|研究论文|论文写作|参考文献|引文|引用)/.test(prompt)
+  if (!requestsDocumentMutation(prompt)) return false
+  const explicitVerification = /(?:引用|引文|参考文献|来源).{0,16}(?:核验|校验|验证|查证|逐条核对)|(?:核验|校验|验证|查证|逐条核对).{0,16}(?:引用|引文|参考文献|来源)/s.test(prompt)
+  const academicWritingWithCitations = /(?:文献综述|学术论文|研究论文|论文写作)|(?:撰写|写作|写一篇|生成).{0,20}论文|论文.{0,20}(?:撰写|写作|生成)/s.test(prompt) &&
+    /(?:参考文献|引文|引用|标注出处|真实来源)|文献.{0,16}(?:参考|尽可能多)/s.test(prompt)
+  return explicitVerification || academicWritingWithCitations
 }
 
 /**
@@ -651,7 +743,8 @@ export function isBareResearchTopicPrompt(prompt: string): boolean {
 function successfulDocumentArtifacts(
   items: readonly TurnItem[],
   turnId: string,
-  includePreviousRequest: boolean
+  includePreviousRequest: boolean,
+  requiredFilenameFragments: Partial<Record<DocumentArtifactKind, string>> = {}
 ): Set<DocumentArtifactKind> {
   let startIndex = 0
   if (includePreviousRequest) {
@@ -685,15 +778,18 @@ function successfulDocumentArtifacts(
     const operation = typeof output.operation === 'string' ? output.operation : ''
     if (output.status !== 'ok' || operation === 'inspect' || operation === 'profiles') continue
     const explicitKind = typeof output.kind === 'string' ? output.kind.toLowerCase() : ''
+    const outputPath = typeof output.output === 'string' ? output.output : ''
     if (explicitKind === 'docx' || explicitKind === 'pdf' || explicitKind === 'pptx' || explicitKind === 'xlsx') {
+      const requiredFragment = requiredFilenameFragments[explicitKind]
+      if (requiredFragment && !outputPath.includes(requiredFragment)) continue
       completed.add(explicitKind)
       continue
     }
-    const outputPath = typeof output.output === 'string' ? output.output.toLowerCase() : ''
-    if (outputPath.endsWith('.docx')) completed.add('docx')
-    else if (outputPath.endsWith('.pdf')) completed.add('pdf')
-    else if (outputPath.endsWith('.pptx')) completed.add('pptx')
-    else if (outputPath.endsWith('.xlsx')) completed.add('xlsx')
+    const lowerOutputPath = outputPath.toLowerCase()
+    if (lowerOutputPath.endsWith('.docx') && (!requiredFilenameFragments.docx || outputPath.includes(requiredFilenameFragments.docx))) completed.add('docx')
+    else if (lowerOutputPath.endsWith('.pdf') && (!requiredFilenameFragments.pdf || outputPath.includes(requiredFilenameFragments.pdf))) completed.add('pdf')
+    else if (lowerOutputPath.endsWith('.pptx') && (!requiredFilenameFragments.pptx || outputPath.includes(requiredFilenameFragments.pptx))) completed.add('pptx')
+    else if (lowerOutputPath.endsWith('.xlsx') && (!requiredFilenameFragments.xlsx || outputPath.includes(requiredFilenameFragments.xlsx))) completed.add('xlsx')
   }
   return completed
 }
@@ -701,7 +797,9 @@ function successfulDocumentArtifacts(
 function hasSuccessfulSpecializedPresentationExport(
   items: readonly TurnItem[],
   turnId: string,
-  includePreviousRequest: boolean
+  includePreviousRequest: boolean,
+  requiredFilenameFragment?: string,
+  requiredScenario?: string
 ): boolean {
   let startIndex = 0
   if (includePreviousRequest) {
@@ -745,14 +843,63 @@ function hasSuccessfulSpecializedPresentationExport(
     if (!result) continue
     const callText = JSON.stringify(item.arguments)
     const resultText = JSON.stringify(result)
-    const structuredPptdDelivery =
-      typeof result.project === 'string' && result.project.toLowerCase().endsWith('.pptd') &&
-      typeof result.output === 'string' && result.output.toLowerCase().endsWith('.pptx')
-    const recognizableExportCommand =
-      /(?:export_pptx|open-kimi-ppt|pptd)/i.test(callText) && /\.pptx/i.test(`${callText}\n${resultText}`)
-    if (structuredPptdDelivery || recognizableExportCommand) return true
+    const verifiedPresentationExport = presentationExportResultLooksComplete(callText, result)
+    const filenameAccepted = !requiredFilenameFragment ||
+      `${callText}\n${resultText}`.includes(requiredFilenameFragment)
+    const scenarioAccepted = !requiredScenario ||
+      new RegExp(`["']scenario["']\\s*:\\s*["']${requiredScenario}["']`, 'i').test(
+        typeof result.output === 'string' ? result.output : ''
+      )
+    if (verifiedPresentationExport && filenameAccepted && scenarioAccepted) return true
   }
   return false
+}
+
+function presentationExportResultLooksComplete(
+  callText: string,
+  result: Record<string, unknown>
+): boolean {
+  const stdout = typeof result.output === 'string' ? result.output : ''
+  return /scripts[/\\]skill_runner\.py[^\r\n]*\bexport\b/i.test(callText) &&
+    /["']engine["']\s*:\s*["']open-kimi-ppt["']/i.test(stdout) &&
+    /["']styleValidated["']\s*:\s*true/i.test(stdout) &&
+    /["']exporter["']\s*:\s*["']local-python-pptx["']/i.test(stdout) &&
+    /["']scenario["']\s*:\s*["'](?:analysis-decision|business-plan|management-report|academic-research|education-training|tech-engineering|brand-creative)["']/i.test(stdout) &&
+    /["']slides["']\s*:\s*[1-9]\d*/i.test(stdout) &&
+    /["']bytes["']\s*:\s*[1-9]\d*/i.test(stdout) &&
+    /["']output["']\s*:\s*["'][^"'\r\n]+\.pptx["']/i.test(stdout)
+}
+
+function consecutivePresentationExportFailures(items: readonly TurnItem[], turnId: string): number {
+  const exportCalls = new Map<string, string>()
+  for (const item of items) {
+    if (item.turnId !== turnId || item.kind !== 'tool_call' || item.toolName !== 'bash') continue
+    const callText = JSON.stringify(item.arguments)
+    if (/scripts[/\\]skill_runner\.py[^\r\n]*\bexport\b/i.test(callText)) {
+      exportCalls.set(item.callId, callText)
+    }
+  }
+  let failures = 0
+  for (const item of items) {
+    if (
+      item.turnId !== turnId ||
+      item.kind !== 'tool_result' ||
+      item.toolName !== 'bash' ||
+      item.status !== 'completed'
+    ) continue
+    const callText = exportCalls.get(item.callId)
+    if (!callText) continue
+    const result = item.output && typeof item.output === 'object'
+      ? item.output as Record<string, unknown>
+      : {}
+    const exitCode = result.exit_code
+    const outputStatus = typeof result.status === 'string' ? result.status.toLowerCase() : ''
+    const processSucceeded = item.isError !== true &&
+      (exitCode === 0 || outputStatus === 'ok' || outputStatus === 'completed')
+    if (processSucceeded && presentationExportResultLooksComplete(callText, result)) failures = 0
+    else failures += 1
+  }
+  return failures
 }
 
 function consecutiveDocumentFailures(items: readonly TurnItem[], turnId: string): number {
@@ -799,6 +946,50 @@ function hasUsableLocalKnowledgeEvidence(items: readonly TurnItem[], turnId: str
   })
 }
 
+function caseResearchProgress(
+  items: readonly TurnItem[],
+  turnId: string,
+  minimumCaseCount: number
+): { attempts: number; satisfied: boolean } {
+  if (minimumCaseCount <= 0) return { attempts: 0, satisfied: true }
+  const calls = new Map<string, Record<string, unknown>>()
+  for (const item of items) {
+    if (
+      item.turnId === turnId &&
+      item.kind === 'tool_call' &&
+      (item.toolName === 'knowledge_auto_retrieve' || item.toolName === 'knowledge_search')
+    ) {
+      const query = typeof item.arguments.query === 'string' ? item.arguments.query : ''
+      if (/(?:案例|案件|案号|裁判|法院|行政诉讼)/.test(query)) calls.set(item.callId, item.arguments)
+    }
+  }
+  let attempts = 0
+  let satisfied = false
+  for (const item of items) {
+    if (
+      item.turnId !== turnId ||
+      item.kind !== 'tool_result' ||
+      !calls.has(item.callId) ||
+      (item.toolName !== 'knowledge_auto_retrieve' && item.toolName !== 'knowledge_search')
+    ) continue
+    attempts += 1
+    if (item.isError === true) continue
+    const output = objectRecord(item.output)
+    const sources = Array.isArray(output.sources) ? output.sources : []
+    const evidence = item.toolName === 'knowledge_auto_retrieve'
+      ? output.contextText
+      : sources.map((source) => objectRecord(source).snippet).join('\n')
+    const sourceText = sources.map((source) => JSON.stringify(source)).join('\n')
+    const caseSpecificEvidence = /(?:案例|案件|案号|法院|裁判|[（(]\s*\d{4}\s*[）)])/.test(
+      `${sourceText}\n${String(evidence ?? '')}`
+    )
+    if (sources.length >= minimumCaseCount && meaningfulEvidenceText(evidence) && caseSpecificEvidence) {
+      satisfied = true
+    }
+  }
+  return { attempts, satisfied }
+}
+
 function hasSuccessfulAcademicCitationVerification(
   items: readonly TurnItem[],
   turnId: string
@@ -812,8 +1003,47 @@ function hasSuccessfulAcademicCitationVerification(
     ) {
       return false
     }
-    return objectRecord(item.output).verificationPassed === true
+    const output = objectRecord(item.output)
+    const totalCitations = objectRecord(output.documentStats).totalCitations
+    return output.verificationPassed === true &&
+      (typeof totalCitations !== 'number' || totalCitations > 0)
   })
+}
+
+function canonicalVerifiedDraftArguments(
+  toolName: string,
+  args: Record<string, unknown>,
+  verifiedDraft: string | undefined
+): { arguments: Record<string, unknown>; replaced: boolean } {
+  if (
+    verifiedDraft === undefined ||
+    toolName !== DOCUMENT_SKILL_EXECUTE_TOOL_NAME ||
+    String(args.kind).toLowerCase() !== 'docx' ||
+    String(args.operation).toLowerCase() !== 'from-markdown'
+  ) {
+    return { arguments: args, replaced: false }
+  }
+  const supplied = typeof args.content === 'string' ? args.content : ''
+  if (normalizedFinalDraft(supplied) === normalizedFinalDraft(verifiedDraft)) {
+    return { arguments: args, replaced: false }
+  }
+  return {
+    arguments: { ...args, content: verifiedDraft },
+    replaced: true
+  }
+}
+
+function safeAutomaticDocxOutputPath(fragment: string | undefined): string | undefined {
+  const value = fragment?.trim()
+  if (!value || value.length > 180 || /[\\/\u0000-\u001f]/.test(value)) return undefined
+  return /\.docx$/i.test(value) ? value : `${value}.docx`
+}
+
+function automaticCaseResearchQuery(prompt: string): string {
+  const topic = prompt.match(/(?:以|围绕)\s*[「“"]([^」”"]{2,80})[」”"]\s*(?:为主题|开展|进行)?/)?.[1]
+  return [topic, '典型案例', '案号', '法院', '裁判要旨', '争议焦点']
+    .filter(Boolean)
+    .join(' ')
 }
 
 function failedAcademicCitationVerificationCount(
@@ -922,6 +1152,7 @@ function documentArtifactProgressInstruction(input: {
   requested: readonly DocumentArtifactKind[]
   completed: ReadonlySet<DocumentArtifactKind>
   specializedPresentationPending?: boolean
+  presentationScenario?: string
 }): string | undefined {
   if (input.requested.length === 0) return undefined
   const missing = input.requested.filter((kind) => !input.completed.has(kind))
@@ -935,8 +1166,12 @@ function documentArtifactProgressInstruction(input: {
     : ''
   const pptSourceInstruction = missing.includes('pptx')
     ? input.specializedPresentationPending
-      ? 'PPTX 必须遵循已激活的 open-kimi-ppt / PPTD 专用工作流，交付可编辑 PPTD 项目目录和导出的 PPTX；不要调用通用 document_skill_execute，也不要退化成仅含标题和项目符号的模板。'
-      : 'PPTX 应使用 document_skill_execute 的 pptx/from-json。'
+      ? [
+          'PPTX 必须遵循已激活的统一 open-kimi-ppt / PPTD 工作流，交付可编辑 PPTD 项目目录和导出的 PPTX；禁止调用通用 document_skill_execute、python-pptx、OfficeMCP 或底层 export_pptx.py 新建演示文稿。',
+          `风格规范与生成程序已经合并：只使用 Skill root 下 scripts/skill_runner.py。本任务必须使用 --scenario ${input.presentationScenario ?? 'analysis-decision'}；runner 会统一加载对应 Kimi 场景规范、验证集中式 theme、页面边界和占位符，再直接执行本地导出，不打开 Kimi 网页。`,
+          '只有 skill_runner.py export 成功返回 engine=open-kimi-ppt、exporter=local-python-pptx、styleValidated=true、scenario、slides、bytes、output 后才算交付。环境检查、目录搜索、单独创建 PPTD 或仅声称完成均不算 PPTX 已生成。'
+        ].join('')
+      : 'PPTX 只能由 open-kimi-ppt 生成；若该 Skill 不可用，明确报告运行时配置错误，不得改用通用文档模板。'
     : ''
   return [
     '<document_artifact_progress>',
@@ -1156,6 +1391,31 @@ export class AgentLoop {
     return this.opts.nowMs?.() ?? Date.now()
   }
 
+  private async syncAutomaticTaskPlan(
+    threadId: string,
+    turnId: string,
+    plan: AutomaticTaskPlan
+  ): Promise<boolean> {
+    const current = await this.opts.threadStore.get(threadId)
+    if (!current) return false
+    const now = this.opts.nowIso()
+    const reconciled = reconcileAutomaticTaskTodos({
+      threadId,
+      turnId,
+      current: current.todos,
+      plan,
+      now
+    })
+    if (!reconciled?.changed) return false
+    await this.opts.threadStore.upsert(touchThread({ ...current, todos: reconciled.todos }, now))
+    await this.opts.events.record({
+      kind: 'todos_updated',
+      threadId,
+      todos: reconciled.todos
+    })
+    return true
+  }
+
   private async startGoalElapsedTimer(threadId: string): Promise<GoalElapsedTimer | null> {
     const thread = await this.opts.threadStore.get(threadId)
     const goal = thread?.goal
@@ -1338,7 +1598,7 @@ export class AgentLoop {
       modelCapabilities
     })
     const routedSkillPrompt = skillRoutingPrompt(turn?.prompt ?? '', healed.items, turnId)
-    const continuationPrompt = isContinuationOnlyPrompt(turn?.prompt?.trim() ?? '')
+    const continuationPrompt = isContextDependentPrompt(turn?.prompt?.trim() ?? '')
     const skillResolution = this.opts.skillRuntime?.resolveTurn({
       prompt: routedSkillPrompt,
       workspace: thread?.workspace ?? ''
@@ -1431,15 +1691,26 @@ export class AgentLoop {
       toolSpecs.some((tool) => tool.name === CREATE_PLAN_TOOL_NAME)
         ? CREATE_PLAN_TOOL_NAME
         : undefined
+    const explicitTaskContract = documentTaskContract(routedSkillPrompt)
     const requestedArtifacts = requestedDocumentArtifacts(routedSkillPrompt)
+    const requiredPresentationScenario = requestedArtifacts.includes('pptx')
+      ? presentationScenarioFor(routedSkillPrompt)
+      : undefined
     const completedArtifacts = successfulDocumentArtifacts(
       healed.items,
       turnId,
-      continuationPrompt
+      continuationPrompt,
+      explicitTaskContract.requiredArtifactFilenameFragments
     )
     if (
       skillResolution.activeSkillIds.includes('open-kimi-ppt') &&
-      hasSuccessfulSpecializedPresentationExport(healed.items, turnId, continuationPrompt)
+      hasSuccessfulSpecializedPresentationExport(
+        healed.items,
+        turnId,
+        continuationPrompt,
+        explicitTaskContract.requiredArtifactFilenameFragments?.pptx,
+        requiredPresentationScenario
+      )
     ) {
       completedArtifacts.add('pptx')
     }
@@ -1451,14 +1722,40 @@ export class AgentLoop {
       skillResolution.activeSkillIds.includes('open-kimi-ppt') &&
       missingArtifacts.length === 1 &&
       missingArtifacts[0] === 'pptx'
+    const presentationFailureCount = consecutivePresentationExportFailures(healed.items, turnId)
+    if (
+      missingArtifacts.length === 1 &&
+      missingArtifacts[0] === 'pptx' &&
+      !skillResolution.activeSkillIds.includes('open-kimi-ppt')
+    ) {
+      throw new Error(
+        'PPTX generation requires the unified open-kimi-ppt Skill, but that Skill was not activated. Generic document PPT generation is disabled.'
+      )
+    }
     const documentFailureCount = consecutiveDocumentFailures(healed.items, turnId)
-    if (documentMutationRequested && !documentMutationSatisfied && documentFailureCount >= 3) {
+    if (
+      documentMutationRequested &&
+      !documentMutationSatisfied &&
+      documentFailureCount >= workflowAttemptLimit('document-delivery')
+    ) {
       throw new Error(
         `Document generation stopped after ${documentFailureCount} consecutive failures; ` +
         `missing required artifacts: ${missingArtifacts.join(', ')}.`
       )
     }
-    const explicitTaskContract = documentTaskContract(routedSkillPrompt)
+    if (
+      specializedPresentationPending &&
+      presentationFailureCount >= workflowAttemptLimit('presentation-delivery')
+    ) {
+      throw new Error(
+        `Presentation generation stopped after ${presentationFailureCount} failed exports; ` +
+        'the required PPTX was not produced or did not pass the unified style and delivery checks.'
+      )
+    }
+    // Keep the full verified draft in runtime memory. Request-history hygiene
+    // may abbreviate its old tool arguments before the next model request, so
+    // the model must never be responsible for reconstructing those bytes.
+    const verifiedDraft = successfullyVerifiedDraft(healed.items, turnId)
     const readKnowledgePdfPaths = successfulKnowledgePdfReadPaths(healed.items, turnId)
     const knowledgePdfReadAttemptCount = healed.items.filter((item) =>
       item.turnId === turnId && item.kind === 'tool_result' && item.toolName === 'knowledge_read_file'
@@ -1473,6 +1770,14 @@ export class AgentLoop {
     const localKnowledgeRequested = requestsLocalKnowledgeRetrieval(routedSkillPrompt)
     const localKnowledgeSatisfied = localKnowledgeRequested &&
       hasUsableLocalKnowledgeEvidence(healed.items, turnId)
+    const caseResearchRequested = Boolean(
+      localKnowledgeRequested && explicitTaskContract.minimumCaseCount
+    )
+    const caseProgress = caseResearchProgress(
+      healed.items,
+      turnId,
+      explicitTaskContract.minimumCaseCount ?? 0
+    )
     const localAutoRetrieveAttempted = hasCompletedToolAttempt(
       healed.items,
       turnId,
@@ -1502,7 +1807,8 @@ export class AgentLoop {
       !planTurnActive &&
       localKnowledgeSatisfied &&
       !knowledgePdfReadsSatisfied &&
-      knowledgePdfReadAttemptCount < explicitTaskContract.requiredKnowledgePdfReads + 3 &&
+      knowledgePdfReadAttemptCount <
+        explicitTaskContract.requiredKnowledgePdfReads + workflowAttemptLimit('extraction') &&
       toolSpecs.some((tool) => tool.name === 'knowledge_read_file')
         ? 'knowledge_read_file'
         : undefined
@@ -1520,7 +1826,7 @@ export class AgentLoop {
       !localKnowledgeRequiredToolName &&
       hasFailedImaResearchAttempt(healed.items, turnId) &&
       !hasSuccessfulImaEvidence(healed.items, turnId) &&
-      imaRecoveryPassCount < 3
+      imaRecoveryPassCount < workflowAttemptLimit('evidence')
     if (deferDocumentForImaRecovery) {
       this.imaRecoveryPasses.set(turnId, imaRecoveryPassCount + 1)
     }
@@ -1536,7 +1842,7 @@ export class AgentLoop {
       planTurnActive
     })
     const imaRouteAction = resolveImaRouteAction({
-      prompt: turn?.prompt ?? '',
+      prompt: routedSkillPrompt,
       tools: scopedToolSpecs,
       items: healed.items,
       turnId,
@@ -1549,11 +1855,19 @@ export class AgentLoop {
         !knowledgePdfReadRequiredToolName
     })
 
+    // IMA is reachable only when a concrete IMA research tool is advertised
+    // (`mcp_ima_*`) or the agent has already attempted an IMA call this turn
+    // (even a failing one — that still means the tool exists in this runtime).
+    // `mcp_search`/`mcp_call` are generic MCP plumbing and exist even when the
+    // IMA server exposes no research tools, so they must not count alone.
+    const imaToolAdvertised = scopedToolSpecs.some((tool) =>
+      /^mcp_ima_/.test(tool.name)
+    ) || hasFailedImaResearchAttempt(healed.items, turnId)
     const imaKnowledgeBlocked =
       !planTurnActive &&
       imaKnowledgeRequested &&
       !imaKnowledgeSatisfied &&
-      !imaRouteAction &&
+      imaToolAdvertised &&
       !deferDocumentForImaRecovery
     const academicCitationVerificationRequested =
       requestsAcademicCitationVerification(routedSkillPrompt) &&
@@ -1564,12 +1878,34 @@ export class AgentLoop {
     const evidenceSourcesReady =
       (!localKnowledgeRequested || localKnowledgeSatisfied) &&
       (!imaKnowledgeRequested || imaKnowledgeSatisfied)
+    const caseResearchRequiredToolName =
+      !planTurnActive &&
+      caseResearchRequested &&
+      evidenceSourcesReady &&
+      knowledgePdfReadsSatisfied &&
+      !caseProgress.satisfied &&
+      caseProgress.attempts < workflowAttemptLimit('evidence')
+        ? caseProgress.attempts === 0 && toolSpecs.some((tool) => tool.name === 'knowledge_auto_retrieve')
+          ? 'knowledge_auto_retrieve'
+          : toolSpecs.some((tool) => tool.name === 'knowledge_search')
+            ? 'knowledge_search'
+            : undefined
+        : undefined
+    const caseResearchBlocked =
+      !planTurnActive &&
+      caseResearchRequested &&
+      evidenceSourcesReady &&
+      knowledgePdfReadsSatisfied &&
+      !caseProgress.satisfied &&
+      !caseResearchRequiredToolName
+    const caseResearchSatisfied = !caseResearchRequested || caseProgress.satisfied
     const desensitizationRequiredToolName =
       !planTurnActive &&
       evidenceSourcesReady &&
       knowledgePdfReadsSatisfied &&
+      caseResearchSatisfied &&
       !desensitizationSatisfied &&
-      desensitizationAttemptCount < 3 &&
+      desensitizationAttemptCount < workflowAttemptLimit('compliance') &&
       toolSpecs.some((tool) => tool.name === 'data_compliance')
         ? 'data_compliance'
         : undefined
@@ -1577,16 +1913,17 @@ export class AgentLoop {
       !planTurnActive &&
       evidenceSourcesReady &&
       knowledgePdfReadsSatisfied &&
+      caseResearchSatisfied &&
       !desensitizationSatisfied &&
       !desensitizationRequiredToolName
     const workflowPrerequisitesReady =
-      evidenceSourcesReady && knowledgePdfReadsSatisfied && desensitizationSatisfied
+      evidenceSourcesReady && knowledgePdfReadsSatisfied && caseResearchSatisfied && desensitizationSatisfied
     const citationVerificationRequiredToolName =
       !planTurnActive &&
       academicCitationVerificationRequested &&
       workflowPrerequisitesReady &&
       !academicCitationVerified &&
-      citationFailureCount < 3 &&
+      citationFailureCount < workflowAttemptLimit('validation') &&
       toolSpecs.some((tool) => tool.name === 'knowledge_citation_verify')
         ? 'knowledge_citation_verify'
         : undefined
@@ -1606,16 +1943,56 @@ export class AgentLoop {
       ...(imaKnowledgeBlocked
         ? ['IMA 未返回可用回答或来源证据，自动研究及有界降级均未成功。']
         : []),
+      ...(caseResearchBlocked
+        ? [`未取得至少 ${explicitTaskContract.minimumCaseCount ?? 1} 个案例的可用知识库来源。`]
+        : []),
       ...(desensitizationBlocked
         ? ['用户要求实际执行脱敏，但 data_compliance 不可用或连续执行失败。']
         : []),
       ...(academicCitationBlocked
-        ? [citationFailureCount >= 3
+        ? [citationFailureCount >= workflowAttemptLimit('validation')
           ? '知识库引用核验连续失败，未引用或无法匹配的文献仍然存在。'
           : '当前运行时没有可用的知识库引用核验工具。']
         : [])
     ]
-    const evidenceBarrierActive = evidenceBarrierReasons.length > 0
+    const workflowRequiredKeys: string[] = []
+    const workflowCompletedKeys = new Set<string>()
+    const registerAcceptanceGate = (key: string, required: boolean, completed: boolean): void => {
+      if (!required) return
+      workflowRequiredKeys.push(key)
+      if (completed) workflowCompletedKeys.add(key)
+    }
+    registerAcceptanceGate('evidence.local', localKnowledgeRequested, localKnowledgeSatisfied)
+    registerAcceptanceGate(
+      'extraction.pdf',
+      explicitTaskContract.requiredKnowledgePdfReads > 0,
+      knowledgePdfReadsSatisfied
+    )
+    // IMA is a best-effort supplemental source, not a hard gate. When the IMA
+    // MCP tool is not advertised in this runtime (unconfigured or disconnected),
+    // the task must not be blocked on it — fall back to local knowledge base and
+    // legal databases instead.
+    registerAcceptanceGate('evidence.ima', imaKnowledgeRequested && imaToolAdvertised, imaKnowledgeSatisfied)
+    registerAcceptanceGate('evidence.case', caseResearchRequested, caseResearchSatisfied)
+    registerAcceptanceGate(
+      'compliance.desensitization',
+      explicitTaskContract.requiresDesensitization,
+      desensitizationSatisfied
+    )
+    registerAcceptanceGate(
+      'validation.citations',
+      academicCitationVerificationRequested,
+      academicCitationVerified
+    )
+    for (const artifact of requestedArtifacts) {
+      registerAcceptanceGate(`artifact.${artifact}`, true, completedArtifacts.has(artifact))
+    }
+    const workflowAcceptance = evaluateWorkflowAcceptance({
+      requiredKeys: workflowRequiredKeys,
+      completedKeys: workflowCompletedKeys,
+      blockerReasons: evidenceBarrierReasons
+    })
+    const evidenceBarrierActive = workflowAcceptance.blockerReasons.length > 0
     const documentRequiredToolName =
       !planTurnActive &&
       documentMutationRequested &&
@@ -1624,11 +2001,116 @@ export class AgentLoop {
       !deferDocumentForImaRecovery &&
       !evidenceBarrierActive &&
       !knowledgePdfReadRequiredToolName &&
+      !caseResearchRequiredToolName &&
       !desensitizationRequiredToolName &&
       !citationVerificationRequiredToolName &&
       toolSpecs.some((tool) => tool.name === DOCUMENT_SKILL_EXECUTE_TOOL_NAME)
         ? DOCUMENT_SKILL_EXECUTE_TOOL_NAME
         : undefined
+    const presentationRequiredToolName =
+      !planTurnActive &&
+      specializedPresentationPending &&
+      presentationFailureCount < workflowAttemptLimit('presentation-delivery') &&
+      !deferDocumentForImaRecovery &&
+      !evidenceBarrierActive &&
+      toolSpecs.some((tool) => tool.name === 'bash')
+        ? 'bash'
+        : undefined
+    if (
+      !planTurnActive &&
+      specializedPresentationPending &&
+      !deferDocumentForImaRecovery &&
+      !evidenceBarrierActive &&
+      !presentationRequiredToolName
+    ) {
+      throw new Error(
+        'PPTX generation requires the bash tool to run the active open-kimi-ppt / PPTD workflow, but bash is unavailable.'
+      )
+    }
+    const automaticPlan = !planTurnActive
+      ? buildAutomaticTaskPlan({
+          prompt: routedSkillPrompt,
+          signals: {
+            requestedArtifacts,
+            completedArtifacts: new Set(completedArtifacts),
+            localKnowledgeRequested,
+            localKnowledgeSatisfied,
+            imaKnowledgeRequested,
+            imaKnowledgeSatisfied,
+            requiredKnowledgePdfReads: explicitTaskContract.requiredKnowledgePdfReads,
+            completedKnowledgePdfReads: readKnowledgePdfPaths.size,
+            caseResearchRequested,
+            caseResearchSatisfied,
+            desensitizationRequired: explicitTaskContract.requiresDesensitization,
+            desensitizationSatisfied,
+            citationVerificationRequested: academicCitationVerificationRequested,
+            citationVerificationSatisfied: academicCitationVerified,
+            evidenceBarrierActive
+          }
+        })
+      : undefined
+    if (automaticPlan) {
+      // Persist user-visible progress before doing work. Continue in the same
+      // loop step: the dedicated automatic-plan instruction below already has
+      // the fresh state, so no extra loop iteration or model call is needed.
+      await this.syncAutomaticTaskPlan(threadId, turnId, automaticPlan)
+    }
+
+    if (caseResearchRequiredToolName) {
+      const callId = this.opts.ids.next('call_case_research')
+      const provider = toolProviderMetadata.get(caseResearchRequiredToolName)
+      const toolKind = toolKinds.get(caseResearchRequiredToolName)
+      const argumentsForCaseResearch = {
+        query: automaticCaseResearchQuery(routedSkillPrompt),
+        limit: Math.max(5, (explicitTaskContract.minimumCaseCount ?? 2) * 3)
+      }
+      const call: ToolCallLike = {
+        callId,
+        toolName: caseResearchRequiredToolName,
+        ...(provider?.providerId ? { providerId: provider.providerId } : {}),
+        toolKind,
+        arguments: argumentsForCaseResearch
+      }
+      const itemId = `item_tool_${turnId}_${callId}`
+      await this.opts.turns.applyItem(
+        threadId,
+        makeToolCallItem({
+          id: itemId,
+          turnId,
+          threadId,
+          callId,
+          toolName: caseResearchRequiredToolName,
+          toolKind,
+          arguments: argumentsForCaseResearch,
+          summary: 'Runtime-prefetched the explicit case-research stage without a model round-trip.'
+        })
+      )
+      await this.opts.events.record({
+        kind: 'tool_call_ready',
+        threadId,
+        turnId,
+        itemId,
+        callId,
+        toolName: caseResearchRequiredToolName,
+        readyCount: 1
+      })
+      const dispatched = await this.dispatchToolCalls({
+        calls: [call],
+        threadId,
+        turnId,
+        workspace: thread?.workspace ?? '',
+        threadMode: effectiveMode,
+        activePlanContext,
+        modelCapabilities,
+        activeSkillIds: skillResolution.activeSkillIds,
+        allowedToolNames,
+        toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
+        approvalPolicy,
+        signal
+      })
+      if (dispatched === 'aborted') return 'aborted'
+      return 'continue'
+    }
 
     // IMA auto-routing is already a deterministic runtime decision. Do not pay
     // for a full model round-trip merely to make the model emit the one tool
@@ -1688,16 +2170,147 @@ export class AgentLoop {
       return 'continue'
     }
 
-    const requiredToolName =
-      planRequiredToolName ??
-      localKnowledgeRequiredToolName ??
-      knowledgePdfReadRequiredToolName ??
-      desensitizationRequiredToolName ??
-      citationVerificationRequiredToolName ??
-      documentRequiredToolName
-    const visibleScopedToolSpecs = specializedPresentationPending
+    // Once citation verification has accepted a complete draft, creating the
+    // DOCX is a deterministic transport step. Dispatch it directly instead of
+    // paying for another model round-trip that can rewrite the draft or copy a
+    // cache-hygiene placeholder into `content`.
+    const automaticDocxOutputPath = safeAutomaticDocxOutputPath(
+      explicitTaskContract.requiredFilenameFragment
+    )
+    if (
+      documentRequiredToolName === DOCUMENT_SKILL_EXECUTE_TOOL_NAME &&
+      !completedArtifacts.has('docx') &&
+      verifiedDraft !== undefined &&
+      automaticDocxOutputPath
+    ) {
+      const callId = this.opts.ids.next('call_verified_docx')
+      const provider = toolProviderMetadata.get(DOCUMENT_SKILL_EXECUTE_TOOL_NAME)
+      const toolKind = toolKinds.get(DOCUMENT_SKILL_EXECUTE_TOOL_NAME)
+      const argumentsForDocument = {
+        kind: 'docx',
+        operation: 'from-markdown',
+        content: verifiedDraft,
+        outputPath: automaticDocxOutputPath,
+        profile: academicCitationVerificationRequested ? 'academic' : 'legal-default'
+      }
+      const call: ToolCallLike = {
+        callId,
+        toolName: DOCUMENT_SKILL_EXECUTE_TOOL_NAME,
+        ...(provider?.providerId ? { providerId: provider.providerId } : {}),
+        toolKind,
+        arguments: argumentsForDocument
+      }
+      const itemId = `item_tool_${turnId}_${callId}`
+      await this.opts.turns.applyItem(
+        threadId,
+        makeToolCallItem({
+          id: itemId,
+          turnId,
+          threadId,
+          callId,
+          toolName: DOCUMENT_SKILL_EXECUTE_TOOL_NAME,
+          toolKind,
+          arguments: argumentsForDocument,
+          summary: 'Runtime reused the exact citation-verified draft to create DOCX without retransmission.'
+        })
+      )
+      await this.opts.events.record({
+        kind: 'tool_call_ready',
+        threadId,
+        turnId,
+        itemId,
+        callId,
+        toolName: DOCUMENT_SKILL_EXECUTE_TOOL_NAME,
+        readyCount: 1
+      })
+      const dispatched = await this.dispatchToolCalls({
+        calls: [call],
+        threadId,
+        turnId,
+        workspace: thread?.workspace ?? '',
+        threadMode: effectiveMode,
+        activePlanContext,
+        modelCapabilities,
+        activeSkillIds: skillResolution.activeSkillIds,
+        allowedToolNames,
+        toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
+        approvalPolicy,
+        signal,
+        taskContract: explicitTaskContract,
+        verifiedDraft,
+        completedArtifacts
+      })
+      if (dispatched === 'aborted') return 'aborted'
+      return 'continue'
+    }
+
+    const workflowAction = selectWorkflowAction([
+      {
+        key: 'planning.create',
+        lane: 'planning',
+        toolName: planRequiredToolName,
+        ready: Boolean(planRequiredToolName),
+        reason: '保存并验收当前计划模式要求的实施计划'
+      },
+      {
+        key: 'evidence.local',
+        lane: 'evidence',
+        toolName: localKnowledgeRequiredToolName,
+        ready: Boolean(localKnowledgeRequiredToolName),
+        reason: '取得本地知识库的可用来源和正文证据'
+      },
+      {
+        key: 'extraction.pdf',
+        lane: 'extraction',
+        toolName: knowledgePdfReadRequiredToolName,
+        ready: Boolean(knowledgePdfReadRequiredToolName),
+        reason: '完成用户明确要求的逐篇 PDF/OCR 提取'
+      },
+      {
+        key: 'evidence.case',
+        lane: 'evidence',
+        toolName: caseResearchRequiredToolName,
+        ready: Boolean(caseResearchRequiredToolName),
+        reason: '取得用户要求数量的案例证据'
+      },
+      {
+        key: 'compliance.desensitization',
+        lane: 'compliance',
+        toolName: desensitizationRequiredToolName,
+        ready: Boolean(desensitizationRequiredToolName),
+        reason: '完成显式要求的数据脱敏操作'
+      },
+      {
+        key: 'validation.citations',
+        lane: 'validation',
+        toolName: citationVerificationRequiredToolName,
+        ready: Boolean(citationVerificationRequiredToolName),
+        reason: '执行用户明确要求或学术体裁必需的引用核验'
+      },
+      {
+        key: 'artifact.document',
+        lane: 'document-delivery',
+        toolName: documentRequiredToolName,
+        ready: Boolean(documentRequiredToolName),
+        reason: '生成并验收下一个 Word、PDF 或 Excel 交付物'
+      },
+      {
+        key: 'artifact.presentation',
+        lane: 'presentation-delivery',
+        toolName: presentationRequiredToolName,
+        ready: Boolean(presentationRequiredToolName),
+        reason: '通过统一 PPT Skill 生成并验收演示文稿'
+      }
+    ])
+    const requiredToolName = workflowAction?.toolName
+    const presentationScopedToolSpecs = specializedPresentationPending
       ? scopedToolSpecs.filter((tool) => tool.name !== DOCUMENT_SKILL_EXECUTE_TOOL_NAME)
       : scopedToolSpecs
+    const visibleScopedToolSpecs = automaticPlan
+      ? presentationScopedToolSpecs.filter(
+          (tool) => tool.name !== TODO_LIST_TOOL_NAME && tool.name !== TODO_WRITE_TOOL_NAME
+        )
+      : presentationScopedToolSpecs
     const requestToolSpecs = requiredToolName
       ? visibleScopedToolSpecs.filter((tool) => tool.name === requiredToolName)
       : turnBudgetWrapUp || bareResearchTopic || documentMutationSatisfied || evidenceBarrierActive
@@ -1714,7 +2327,8 @@ export class AgentLoop {
     const artifactProgressInstruction = documentArtifactProgressInstruction({
       requested: requestedArtifacts,
       completed: completedArtifacts,
-      specializedPresentationPending
+      specializedPresentationPending,
+      ...(requiredPresentationScenario ? { presentationScenario: requiredPresentationScenario } : {})
     })
     const explicitContractInstruction = taskContractInstruction({
       contract: explicitTaskContract,
@@ -1748,7 +2362,7 @@ export class AgentLoop {
       ...(attachments.fileReferences.length ? [attachmentFileReferenceInstruction(attachments.fileReferences)] : []),
       ...(attachments.ocrResults.length ? [attachmentOcrInstruction(attachments.ocrResults)] : []),
       ...(activeGoalInstruction ? [activeGoalInstruction] : []),
-      ...(activeTodoInstruction ? [activeTodoInstruction] : []),
+      ...(activeTodoInstruction && !automaticPlan ? [activeTodoInstruction] : []),
       // Primary legal-source configuration must outrank long-term memory.
       // Memories may carry stale source preferences (e.g. recorded before the
       // user switched the preferred source in the plugin); the configured
@@ -1759,6 +2373,9 @@ export class AgentLoop {
       ...(officeWorkflowInstruction ? [officeWorkflowInstruction] : []),
       ...(artifactProgressInstruction ? [artifactProgressInstruction] : []),
       ...(explicitContractInstruction ? [explicitContractInstruction] : []),
+      ...(automaticPlan ? [automaticTaskPlanInstruction(automaticPlan)] : []),
+      ...(workflowAction ? [workflowActionInstruction(workflowAction)] : []),
+      ...(workflowRequiredKeys.length ? [workflowAcceptanceInstruction(workflowAcceptance)] : []),
       ...(requiredToolRecoveryInstruction ? [requiredToolRecoveryInstruction] : []),
       ...(recoveryInstruction ? [recoveryInstruction] : []),
       ...(knowledgeEvidenceBarrierInstruction ? [knowledgeEvidenceBarrierInstruction] : []),
@@ -1809,6 +2426,14 @@ export class AgentLoop {
     let textItemId = ''
     let reasoningItemId = ''
     const completedToolCalls: ToolCallLike[] = []
+    const selectedKnowledgePdfPaths = new Set(readKnowledgePdfPaths)
+    const maximumRequiredToolCalls = request.requiredToolName === 'knowledge_read_file'
+      ? Math.max(1, explicitTaskContract.requiredKnowledgePdfReads - readKnowledgePdfPaths.size)
+      : request.requiredToolName === 'bash' && specializedPresentationPending
+        ? MAX_PARALLEL_TOOL_CALLS
+        : request.requiredToolName
+          ? 1
+          : Number.POSITIVE_INFINITY
     let stopReason: 'stop' | 'tool_calls' | 'length' | 'error' = 'stop'
     await this.recordPipelineStage(threadId, turnId, 'pre_send', {
       model: request.model,
@@ -1889,12 +2514,34 @@ export class AgentLoop {
               ? { maxStringBytes: this.opts.toolArgumentRepair.maxStringBytes }
               : {})
           })
+          const canonical = canonicalVerifiedDraftArguments(
+            chunk.toolName,
+            repaired.arguments,
+            verifiedDraft
+          )
+          // Most forced workflow steps need one semantic action. PDF reading
+          // accepts exactly the remaining distinct sources, while the PPTD
+          // workflow accepts a small batch of bash actions so prerequisite,
+          // guide-reading, and project/export work do not each cost a separate
+          // model round-trip. All completion gates are still re-evaluated after
+          // the batch.
+          if (completedToolCalls.length >= maximumRequiredToolCalls) break
+          if (
+            request.requiredToolName === 'knowledge_read_file' &&
+            chunk.toolName === 'knowledge_read_file'
+          ) {
+            const path = typeof canonical.arguments.path === 'string'
+              ? canonical.arguments.path.trim()
+              : ''
+            if (path && selectedKnowledgePdfPaths.has(path)) break
+            if (path) selectedKnowledgePdfPaths.add(path)
+          }
           completedToolCalls.push({
             callId: chunk.callId,
             toolName: chunk.toolName,
             ...(provider?.providerId ? { providerId: provider.providerId } : {}),
             toolKind,
-            arguments: repaired.arguments
+            arguments: canonical.arguments
           })
           const itemId = `item_tool_${turnId}_${chunk.callId}`
           await this.opts.turns.applyItem(
@@ -1906,9 +2553,18 @@ export class AgentLoop {
               callId: chunk.callId,
               toolName: chunk.toolName,
               toolKind,
-              arguments: repaired.arguments,
-              ...(repaired.notes.length
-                ? { summary: `Repaired tool arguments: ${repaired.notes.join('; ')}` }
+              arguments: canonical.arguments,
+              ...(repaired.notes.length || canonical.replaced
+                ? {
+                    summary: [
+                      ...(repaired.notes.length
+                        ? [`Repaired tool arguments: ${repaired.notes.join('; ')}`]
+                        : []),
+                      ...(canonical.replaced
+                        ? ['Reused the runtime-held citation-verified draft instead of model retransmission.']
+                        : [])
+                    ].join(' ')
+                  }
                 : {})
             })
           )
@@ -1963,53 +2619,63 @@ export class AgentLoop {
       toolCallCount: completedToolCalls.length
     })
     if (completedToolCalls.length === 0 && textAccumulator.value) {
-      const recovered = recoverDsmlToolCall(
+      const recovered = recoverDsmlToolCalls(
         textAccumulator.value,
         new Set(request.tools.map((tool) => tool.name))
       )
       if (recovered) {
-        const callId = this.opts.ids.next('call_dsml_recovered')
-        const provider = toolProviderMetadata.get(recovered.toolName)
-        const toolKind = toolKinds.get(recovered.toolName)
-        const repaired = repairDispatchToolArguments(recovered.arguments, {
-          toolName: recovered.toolName,
-          ...(toolKind ? { toolKind } : {}),
-          ...(this.opts.toolArgumentRepair?.maxStringBytes !== undefined
-            ? { maxStringBytes: this.opts.toolArgumentRepair.maxStringBytes }
-            : {})
-        })
-        const call: ToolCallLike = {
-          callId,
-          toolName: recovered.toolName,
-          ...(provider?.providerId ? { providerId: provider.providerId } : {}),
-          toolKind,
-          arguments: repaired.arguments
-        }
-        completedToolCalls.push(call)
         textAccumulator.value = recovered.visibleText
-        const itemId = `item_tool_${turnId}_${callId}`
-        await this.opts.turns.applyItem(
-          threadId,
-          makeToolCallItem({
-            id: itemId,
-            turnId,
-            threadId,
-            callId,
-            toolName: recovered.toolName,
-            toolKind,
-            arguments: repaired.arguments,
-            summary: 'Recovered a structured tool call that the model emitted as DSML text.'
+        for (const recoveredCall of recovered.calls) {
+          if (completedToolCalls.length >= maximumRequiredToolCalls) break
+          const callId = this.opts.ids.next('call_dsml_recovered')
+          const provider = toolProviderMetadata.get(recoveredCall.toolName)
+          const toolKind = toolKinds.get(recoveredCall.toolName)
+          const repaired = repairDispatchToolArguments(recoveredCall.arguments, {
+            toolName: recoveredCall.toolName,
+            ...(toolKind ? { toolKind } : {}),
+            ...(this.opts.toolArgumentRepair?.maxStringBytes !== undefined
+              ? { maxStringBytes: this.opts.toolArgumentRepair.maxStringBytes }
+              : {})
           })
-        )
-        await this.opts.events.record({
-          kind: 'tool_call_ready',
-          threadId,
-          turnId,
-          itemId,
-          callId,
-          toolName: recovered.toolName,
-          readyCount: 1
-        })
+          const canonical = canonicalVerifiedDraftArguments(
+            recoveredCall.toolName,
+            repaired.arguments,
+            verifiedDraft
+          )
+          const call: ToolCallLike = {
+            callId,
+            toolName: recoveredCall.toolName,
+            ...(provider?.providerId ? { providerId: provider.providerId } : {}),
+            toolKind,
+            arguments: canonical.arguments
+          }
+          completedToolCalls.push(call)
+          const itemId = `item_tool_${turnId}_${callId}`
+          await this.opts.turns.applyItem(
+            threadId,
+            makeToolCallItem({
+              id: itemId,
+              turnId,
+              threadId,
+              callId,
+              toolName: recoveredCall.toolName,
+              toolKind,
+              arguments: canonical.arguments,
+              summary: canonical.replaced
+                ? 'Recovered a structured tool call and reused the runtime-held citation-verified draft.'
+                : 'Recovered a structured tool call that the model emitted as DSML text.'
+            })
+          )
+          await this.opts.events.record({
+            kind: 'tool_call_ready',
+            threadId,
+            turnId,
+            itemId,
+            callId,
+            toolName: recoveredCall.toolName,
+            readyCount: completedToolCalls.length
+          })
+        }
       }
     }
     if (reasoningAccumulator.value && !request.requiredToolName) {
@@ -2107,7 +2773,7 @@ export class AgentLoop {
             activePlanContext,
             modelCapabilities,
             activeSkillIds: skillResolution.activeSkillIds,
-            allowedToolNames,
+            allowedToolNames: request.tools.map((tool) => tool.name),
             toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
             approvalPolicy,
             signal
@@ -2118,9 +2784,10 @@ export class AgentLoop {
         const missKey = `${turnId}:${request.requiredToolName}`
         const missCount = (this.requiredToolMisses.get(missKey) ?? 0) + 1
         this.requiredToolMisses.set(missKey, missCount)
-        if (missCount < 3) {
+        const missLimit = workflowAction?.attemptLimit ?? workflowAttemptLimit('planning')
+        if (missCount < missLimit) {
           // Some compatible providers occasionally ignore forced tool_choice
-          // and emit prose. Retry twice with a stronger instruction while the
+          // and emit prose. Retry within the category budget while the
           // prose remains buffered and invisible to the user.
           return 'continue'
         }
@@ -2150,12 +2817,22 @@ export class AgentLoop {
       if (stopReason === 'stop' && activeGoalInstruction && stepIndex < MAX_GOAL_NO_TOOL_CONTINUATIONS) {
         return 'continue'
       }
+      if (
+        automaticPlan?.genericTextCompletion &&
+        !evidenceBarrierActive &&
+        textAccumulator.value.trim()
+      ) {
+        await this.syncAutomaticTaskPlan(
+          threadId,
+          turnId,
+          completedGenericAutomaticTaskPlan(automaticPlan)
+        )
+      }
       return 'stop'
     }
     if (request.requiredToolName) {
       this.requiredToolMisses.delete(`${turnId}:${request.requiredToolName}`)
     }
-    const verifiedDraft = successfullyVerifiedDraft(healed.items, turnId)
     const dispatched = await this.dispatchToolCalls({
       calls: completedToolCalls,
       threadId,
@@ -2165,7 +2842,12 @@ export class AgentLoop {
       activePlanContext,
       modelCapabilities,
       activeSkillIds: skillResolution.activeSkillIds,
-      allowedToolNames,
+      // Enforce the exact tool catalog advertised for this model request, not
+      // merely the broader Skill allowlist. DeepSeek-compatible providers can
+      // occasionally emit a native call to bash even when this step forcibly
+      // advertises only document_skill_execute; executing that call lets the
+      // model bypass artifact and contract gates and causes long shell loops.
+      allowedToolNames: request.tools.map((tool) => tool.name),
       toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
       approvalPolicy,
       signal,
@@ -2203,14 +2885,15 @@ export class AgentLoop {
       const call = input.calls[index]
       if (!call) break
 
-      const contractError = input.taskContract
+      const knowledgeBypassError = knowledgeShellBypassError(call)
+      const contractError = knowledgeBypassError ?? (input.taskContract
         ? taskContractToolCallError({
             call,
             contract: input.taskContract,
             ...(input.verifiedDraft !== undefined ? { verifiedDraft: input.verifiedDraft } : {}),
             completedArtifacts: input.completedArtifacts ?? new Set<DocumentArtifactKind>()
           })
-        : undefined
+        : undefined)
       if (contractError) {
         const result: ToolHostResult = {
           item: makeToolResultItem({
@@ -2222,7 +2905,9 @@ export class AgentLoop {
             toolKind: call.toolKind ?? 'tool_call',
             output: {
               error: contractError,
-              code: 'explicit_task_contract_failed'
+              code: knowledgeBypassError
+                ? 'knowledge_tool_bypass_blocked'
+                : 'explicit_task_contract_failed'
             },
             isError: true
           }),

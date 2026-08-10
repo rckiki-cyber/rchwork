@@ -73,6 +73,51 @@ describe('deriveConversationFiles', () => {
     expect(files[0]).toEqual(expect.objectContaining({ kind: 'workspace', name: '报告.docx' }))
   })
 
+  it('shows only explicitly delivered outputs when a turn also creates process files', () => {
+    const blocks: ChatBlock[] = [
+      { kind: 'user', id: 'u1', text: '整理案例并生成表格和报告' },
+      { kind: 'tool', id: 't1', summary: '写导出脚本', status: 'success', toolKind: 'file_change', filePath: '/case/export_food_cases.py' },
+      { kind: 'tool', id: 't2', summary: '写论文草稿', status: 'success', toolKind: 'file_change', filePath: '/case/paper_draft.txt' },
+      { kind: 'tool', id: 't3', summary: '写最终草稿', status: 'success', toolKind: 'file_change', filePath: '/case/_final_draft.txt' },
+      { kind: 'tool', id: 't4', summary: '生成表格', status: 'success', toolKind: 'file_change', filePath: '/case/食品安全犯罪宽严相济典型案例.xlsx' },
+      { kind: 'tool', id: 't5', summary: '生成报告', status: 'success', toolKind: 'file_change', filePath: '/case/刑事政策视野下食药犯罪两法衔接机制.pdf' },
+      {
+        kind: 'assistant',
+        id: 'a1',
+        text: '已完成：[案例表格](/case/食品安全犯罪宽严相济典型案例.xlsx)；[研究报告](/case/刑事政策视野下食药犯罪两法衔接机制.pdf)。'
+      }
+    ]
+
+    expect(deriveConversationFiles(blocks).map((file) => file.name)).toEqual([
+      '食品安全犯罪宽严相济典型案例.xlsx',
+      '刑事政策视野下食药犯罪两法衔接机制.pdf'
+    ])
+  })
+
+  it('filters helper scripts and drafts when tool events are the only output source', () => {
+    const blocks: ChatBlock[] = [
+      { kind: 'tool', id: 't1', summary: '写导出脚本', status: 'success', toolKind: 'file_change', filePath: '/case/export_food_cases.py' },
+      { kind: 'tool', id: 't2', summary: '写论文草稿', status: 'success', toolKind: 'file_change', filePath: '/case/paper_draft.txt' },
+      { kind: 'tool', id: 't3', summary: '写最终草稿', status: 'success', toolKind: 'file_change', filePath: '/case/_final_draft.txt' },
+      { kind: 'tool', id: 't4', summary: '生成表格', status: 'success', toolKind: 'file_change', filePath: '/case/食品安全犯罪宽严相济典型案例.xlsx' }
+    ]
+
+    expect(deriveConversationFiles(blocks).map((file) => file.name)).toEqual([
+      '食品安全犯罪宽严相济典型案例.xlsx'
+    ])
+  })
+
+  it('does not treat reads, failed writes, or running writes as agent outputs', () => {
+    const blocks: ChatBlock[] = [
+      { kind: 'tool', id: 't1', summary: '读取来源', status: 'success', toolKind: 'tool_call', filePath: '/case/来源.pdf' },
+      { kind: 'tool', id: 't2', summary: '读取文件', status: 'success', toolKind: 'file_change', filePath: '/case/材料.docx', meta: { toolName: 'read_file' } },
+      { kind: 'tool', id: 't3', summary: '写入失败', status: 'error', toolKind: 'file_change', filePath: '/case/失败稿.docx' },
+      { kind: 'tool', id: 't4', summary: '正在写入', status: 'running', toolKind: 'file_change', filePath: '/case/未完成稿.docx' }
+    ]
+
+    expect(deriveConversationFiles(blocks)).toEqual([])
+  })
+
   it('keeps user-like traj and knowledge files that only share a prefix', () => {
     const blocks: ChatBlock[] = [
       { kind: 'tool', id: 't1', summary: '生成', status: 'success', toolKind: 'file_change', filePath: '/case/traj_数字行政法综述_20260801.jsonl' },
@@ -95,5 +140,37 @@ describe('deriveConversationFiles', () => {
       kind: 'workspace',
       name: '行政法选题建议.docx'
     }))
+  })
+
+  it('replaces an older named version with the latest version of the same deliverable', () => {
+    const blocks: ChatBlock[] = [
+      { kind: 'user', id: 'u1', text: '先生成初稿' },
+      { kind: 'assistant', id: 'a1', text: '初稿：[研究报告](/case/算法行政研究报告_v1.docx)' },
+      { kind: 'user', id: 'u2', text: '修正格式并给我新版' },
+      { kind: 'assistant', id: 'a2', text: '新版：[研究报告](/case/算法行政研究报告_格式修正版.docx)' }
+    ]
+
+    const files = deriveConversationFiles(blocks)
+    expect(files).toHaveLength(1)
+    expect(files[0]).toEqual(expect.objectContaining({
+      kind: 'workspace',
+      name: '算法行政研究报告_格式修正版.docx',
+      path: '/case/算法行政研究报告_格式修正版.docx'
+    }))
+  })
+
+  it('keeps different final formats as separate deliverables', () => {
+    const blocks: ChatBlock[] = [
+      {
+        kind: 'assistant',
+        id: 'a1',
+        text: '[Word](/case/算法行政研究报告_最终版.docx) [PDF](/case/算法行政研究报告_最终版.pdf)'
+      }
+    ]
+
+    expect(deriveConversationFiles(blocks).map((file) => file.name)).toEqual([
+      '算法行政研究报告_最终版.docx',
+      '算法行政研究报告_最终版.pdf'
+    ])
   })
 })

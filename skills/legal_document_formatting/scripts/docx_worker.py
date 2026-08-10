@@ -246,6 +246,41 @@ def set_style_font(style: Any, east_asia: str, latin: str, size_pt: float, bold:
     rfonts.set(qn("w:hint"), "eastAsia")
 
 
+def ensure_generated_font_table(path: Path) -> None:
+    """Declare LegalWork's CJK fonts for stricter DOCX consumers.
+
+    Word resolves ``w:rFonts`` without an explicit font-table entry, but some
+    converters treat the missing declaration as an unavailable font and apply
+    an arbitrary sans-serif fallback. Keep the user-facing run/style names as
+    宋体/黑体 while making the package self-consistent.
+    """
+    staged = path.with_name(f".{path.name}.font-table-{uuid.uuid4().hex}")
+    try:
+        with zipfile.ZipFile(path) as source, zipfile.ZipFile(staged, "w") as target:
+            for info in source.infolist():
+                payload = source.read(info.filename)
+                if info.filename == "word/fontTable.xml":
+                    text = payload.decode("utf-8", errors="strict")
+                    entries: list[str] = []
+                    if 'w:name="宋体"' not in text:
+                        entries.append(
+                            '<w:font w:name="宋体"><w:charset w:val="86"/>'
+                            '<w:family w:val="roman"/><w:pitch w:val="variable"/></w:font>'
+                        )
+                    if 'w:name="黑体"' not in text:
+                        entries.append(
+                            '<w:font w:name="黑体"><w:charset w:val="86"/>'
+                            '<w:family w:val="swiss"/><w:pitch w:val="variable"/></w:font>'
+                        )
+                    if entries:
+                        text = text.replace("</w:fonts>", "".join(entries) + "</w:fonts>")
+                        payload = text.encode("utf-8")
+                target.writestr(info, payload)
+        staged.replace(path)
+    finally:
+        staged.unlink(missing_ok=True)
+
+
 def remove_xml_children(parent: Any, *qualified_names: str) -> None:
     if parent is None:
         return
@@ -771,6 +806,8 @@ def cmd_from_markdown(args: argparse.Namespace) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
         doc = Document()
+        doc.core_properties.author = "LegalWork"
+        doc.core_properties.last_modified_by = "LegalWork"
         apply_profile(doc, args.profile, {"page", "styles"})
         blocks = parse_markdown_blocks(md.read_text(encoding="utf-8"))
         for block in blocks:
@@ -805,6 +842,7 @@ def cmd_from_markdown(args: argparse.Namespace) -> None:
                 add_markdown_runs(doc.add_paragraph(style="Normal"), block["text"])
         apply_profile(doc, args.profile, {"body", "headings"})
         doc.save(str(out))
+        ensure_generated_font_table(out)
         reloaded = Document(str(out))
         emit({
             "status": "ok",

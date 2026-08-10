@@ -10,6 +10,14 @@ function call(argumentsValue: Record<string, unknown>): ToolCallLike {
   }
 }
 
+function mcpCall(toolId: string, argumentsValue: Record<string, unknown>): ToolCallLike {
+  return {
+    callId: Math.random().toString(36),
+    toolName: 'mcp_call',
+    arguments: { toolId, arguments: argumentsValue }
+  }
+}
+
 describe('ToolStormBreaker', () => {
   it('suppresses the third identical tool call in a turn', () => {
     const breaker = new ToolStormBreaker()
@@ -77,5 +85,74 @@ describe('ToolStormBreaker', () => {
       callId: 'office-2',
       arguments: { command: ['add', '/tmp/report.docx', '/body', '--type', 'footer'] }
     }).suppress).toBe(false)
+  })
+
+  it('suppresses the first consecutive retry after an identical call succeeds', () => {
+    const breaker = new ToolStormBreaker()
+    const first = call({ path: '论文/算法行政.pdf' })
+
+    expect(breaker.inspect(first).suppress).toBe(false)
+    breaker.observeResult(first, false)
+
+    const duplicate = breaker.inspect(call({ path: '论文/算法行政.pdf' }))
+    expect(duplicate.suppress).toBe(true)
+    expect(duplicate.reason).toContain('already completed successfully')
+  })
+
+  it('allows the same check after a different semantic action', () => {
+    const breaker = new ToolStormBreaker()
+    const first = call({ path: 'report.docx' })
+    breaker.inspect(first)
+    breaker.observeResult(first, false)
+
+    const edit: ToolCallLike = {
+      callId: 'edit-1',
+      toolName: 'edit',
+      toolKind: 'file_change',
+      arguments: { path: 'report.md', oldText: 'a', newText: 'b' }
+    }
+    expect(breaker.inspect(edit).suppress).toBe(false)
+    breaker.observeResult(edit, false)
+
+    expect(breaker.inspect(call({ path: 'report.docx' })).suppress).toBe(false)
+  })
+
+  it('deduplicates concurrent and completed legal-database queries for the whole turn', () => {
+    const breaker = new ToolStormBreaker()
+    const first = mcpCall('yuandian-case/yuandian_rh_qwal_search', {
+      qw: '食品药品 宽严相济',
+      top_k: 50
+    })
+    expect(breaker.inspect(first).suppress).toBe(false)
+    expect(breaker.inspect({ ...first, callId: 'parallel-duplicate' }).reason).toContain('already running')
+
+    breaker.observeResult(first, false)
+    const unrelated = mcpCall('yuandian-law/yuandian_rh_fg_search', { keyword: '食品安全法' })
+    expect(breaker.inspect(unrelated).suppress).toBe(false)
+    breaker.observeResult(unrelated, false)
+
+    expect(breaker.inspect({ ...first, callId: 'later-duplicate' }).reason).toContain('already completed')
+  })
+
+  it('requires a changed query after a legal-database failure', () => {
+    const breaker = new ToolStormBreaker()
+    const failed = mcpCall('pkulaw-case-semantic-search/search_case', { text: '宽严相济' })
+    breaker.inspect(failed)
+    breaker.observeResult(failed, true)
+
+    expect(breaker.inspect({ ...failed, callId: 'unchanged' }).suppress).toBe(true)
+    expect(breaker.inspect(mcpCall(
+      'pkulaw-case-semantic-search/search_case',
+      { text: '食药犯罪 宽严相济' }
+    )).suppress).toBe(false)
+  })
+
+  it('caps distinct case-research calls in a turn', () => {
+    const breaker = new ToolStormBreaker({ researchLimits: { case: 2 } })
+    expect(breaker.inspect(mcpCall('yuandian-case/search', { qw: '查询一' })).suppress).toBe(false)
+    expect(breaker.inspect(mcpCall('yuandian-case/search', { qw: '查询二' })).suppress).toBe(false)
+    const capped = breaker.inspect(mcpCall('yuandian-case/search', { qw: '查询三' }))
+    expect(capped.suppress).toBe(true)
+    expect(capped.reason).toContain('per-turn limit of 2')
   })
 })

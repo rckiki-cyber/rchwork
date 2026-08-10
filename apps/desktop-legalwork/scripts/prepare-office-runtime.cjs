@@ -29,17 +29,34 @@ const {
   writeFileSync
 } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { basename, dirname, join, resolve } = require('node:path')
+const { basename, delimiter, dirname, join, resolve } = require('node:path')
 
 const DESKTOP_ROOT = resolve(__dirname, '..')
 const REPO_ROOT = resolve(DESKTOP_ROOT, '..', '..')
 const REQUIREMENTS = join(REPO_ROOT, 'skills', 'legal_document_formatting', 'requirements.txt')
 const VENDOR_ROOT = join(DESKTOP_ROOT, 'vendor', 'office-runtime')
+const FONT_VENDOR_ROOT = join(DESKTOP_ROOT, 'vendor', 'office-fonts')
 const CACHE_ROOT = join(DESKTOP_ROOT, '.cache', 'office-runtime')
 const PYTHON_LINE = '3.11'
 const REQUIRED_IMPORTS = ['docx', 'openpyxl', 'pptx', 'lxml', 'PIL', 'reportlab']
 const RELEASE_REPOS = ['astral-sh/python-build-standalone', 'indygreg/python-build-standalone']
 const SUPPORTED_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64', 'win-ia32', 'linux-x64'])
+const FONTTOOLS_VERSION = '4.63.0'
+const FONT_PREPARATION_VERSION = 2
+const BUNDLED_FONT_SOURCE = {
+  name: 'NotoSerifSC-VF.ttf',
+  url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notoserifsc/NotoSerifSC%5Bwght%5D.ttf',
+  sha256: '050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9'
+}
+const BUNDLED_FONT_LICENSE = {
+  name: 'OFL.txt',
+  url: 'https://raw.githubusercontent.com/google/fonts/main/ofl/notoserifsc/OFL.txt',
+  sha256: '5e0da210fb04058a8c0087985d2d456b931c2579811a49655721d3cf0c36b6d6'
+}
+const BUNDLED_STATIC_FONTS = [
+  { name: 'NotoSerifSC-Regular.ttf', weight: 400 },
+  { name: 'NotoSerifSC-Bold.ttf', weight: 700 }
+]
 
 function fail(message) {
   console.error(`[office-runtime] ${message}`)
@@ -65,21 +82,29 @@ function configuredTargetsForPlatform(platform) {
 }
 
 function parseArgs(argv) {
-  const args = { platform: '', arch: '', force: false, allCurrent: false }
+  const args = { platform: '', arch: '', force: false, allCurrent: false, fontsOnly: false }
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i]
     if (value === '--platform') args.platform = String(argv[++i] || '')
     else if (value === '--arch') args.arch = String(argv[++i] || '')
     else if (value === '--all-current') args.allCurrent = true
+    else if (value === '--fonts-only') args.fontsOnly = true
     else if (value === '--force') args.force = true
     else if (value === '--help' || value === '-h') {
       console.log([
         'Usage:',
         '  node prepare-office-runtime.cjs --platform mac|win|linux --arch arm64|x64|ia32 [--force]',
-        '  node prepare-office-runtime.cjs --all-current [--force]'
+        '  node prepare-office-runtime.cjs --all-current [--force]',
+        '  node prepare-office-runtime.cjs --fonts-only'
       ].join('\n'))
       process.exit(0)
     } else fail(`Unknown argument: ${value}`)
+  }
+  if (args.fontsOnly) {
+    if (args.platform || args.arch || args.allCurrent || args.force) {
+      fail('--fonts-only cannot be combined with runtime target options')
+    }
+    return { ...args, targets: [] }
   }
   if (args.allCurrent) {
     if (args.platform || args.arch) fail('--all-current cannot be combined with --platform/--arch')
@@ -220,6 +245,111 @@ async function download(url, destination) {
   if (!response.ok) throw new Error(`download failed: ${response.status} ${response.statusText}`)
   const bytes = Buffer.from(await response.arrayBuffer())
   writeFileSync(destination, bytes)
+}
+
+async function prepareBundledFonts() {
+  mkdirSync(FONT_VENDOR_ROOT, { recursive: true })
+  mkdirSync(CACHE_ROOT, { recursive: true })
+  const source = join(CACHE_ROOT, BUNDLED_FONT_SOURCE.name)
+  if (!existsSync(source) || sha256File(source) !== BUNDLED_FONT_SOURCE.sha256) {
+    rmSync(source, { force: true })
+    await download(BUNDLED_FONT_SOURCE.url, source)
+  }
+  if (sha256File(source) !== BUNDLED_FONT_SOURCE.sha256) {
+    rmSync(source, { force: true })
+    fail(`Bundled font source checksum mismatch for ${BUNDLED_FONT_SOURCE.name}`)
+  }
+
+  const license = join(FONT_VENDOR_ROOT, BUNDLED_FONT_LICENSE.name)
+  if (!existsSync(license) || sha256File(license) !== BUNDLED_FONT_LICENSE.sha256) {
+    rmSync(license, { force: true })
+    await download(BUNDLED_FONT_LICENSE.url, license)
+  }
+  if (sha256File(license) !== BUNDLED_FONT_LICENSE.sha256) {
+    rmSync(license, { force: true })
+    fail(`Bundled font license checksum mismatch for ${BUNDLED_FONT_LICENSE.name}`)
+  }
+
+  const manifestPath = join(FONT_VENDOR_ROOT, 'fonts.json')
+  let existingManifest = null
+  try {
+    existingManifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  } catch {
+    existingManifest = null
+  }
+  const outputsValid = existingManifest?.preparationVersion === FONT_PREPARATION_VERSION &&
+    existingManifest?.sourceSha256 === BUNDLED_FONT_SOURCE.sha256 &&
+    existingManifest?.fontToolsVersion === FONTTOOLS_VERSION &&
+    BUNDLED_STATIC_FONTS.every((font) => {
+      const path = join(FONT_VENDOR_ROOT, font.name)
+      return existsSync(path) && existingManifest.fonts?.[font.name] === sha256File(path)
+    })
+  if (!outputsValid) {
+    const python = builderPython()
+    if (!python) fail('A build-time Python is required to prepare deterministic static PDF fonts')
+    const fontToolsRoot = join(CACHE_ROOT, `fonttools-${FONTTOOLS_VERSION}`)
+    const pythonEnv = {
+      ...process.env,
+      PYTHONPATH: [fontToolsRoot, process.env.PYTHONPATH].filter(Boolean).join(delimiter)
+    }
+    try {
+      execFileSync(python, ['-c', `import fontTools; assert fontTools.__version__ == '${FONTTOOLS_VERSION}'`], {
+        stdio: 'ignore', windowsHide: true, env: pythonEnv
+      })
+    } catch {
+      rmSync(fontToolsRoot, { recursive: true, force: true })
+      mkdirSync(fontToolsRoot, { recursive: true })
+      execFileSync(python, [
+        '-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '--quiet',
+        '--target', fontToolsRoot, `fonttools==${FONTTOOLS_VERSION}`
+      ], { stdio: 'inherit', windowsHide: true })
+    }
+    const script = [
+      'import sys',
+      'from fontTools.ttLib import TTFont',
+      'from fontTools.varLib.instancer import instantiateVariableFont',
+      'source = sys.argv[1]',
+      'pairs = ((400, "Regular", sys.argv[2]), (700, "Bold", sys.argv[3]))',
+      'for weight, style, output in pairs:',
+      '    font = TTFont(source)',
+      '    instantiateVariableFont(font, {"wght": weight}, inplace=True)',
+      '    family = "Noto Serif SC"',
+      '    full = f"{family} {style}"',
+      '    postscript = f"NotoSerifSC-{style}"',
+      '    for name_id, value in ((1, family), (2, style), (3, full), (4, full), (6, postscript), (16, family), (17, style)):',
+      '        font["name"].setName(value, name_id, 3, 1, 0x409)',
+      '        font["name"].setName(value, name_id, 1, 0, 0)',
+      '    if style == "Bold":',
+      '        font["OS/2"].fsSelection = (font["OS/2"].fsSelection | (1 << 5)) & ~(1 << 6)',
+      '        font["head"].macStyle |= 1',
+      '    else:',
+      '        font["OS/2"].fsSelection = (font["OS/2"].fsSelection | (1 << 6)) & ~(1 << 5)',
+      '        font["head"].macStyle &= ~1',
+      '    font.save(output)',
+      '    font.close()'
+    ].join('\n')
+    execFileSync(python, [
+      '-c', script, source,
+      ...BUNDLED_STATIC_FONTS.map((font) => join(FONT_VENDOR_ROOT, font.name))
+    ], { stdio: 'inherit', windowsHide: true, env: pythonEnv })
+  }
+  const fontHashes = {}
+  for (const font of BUNDLED_STATIC_FONTS) {
+    const path = join(FONT_VENDOR_ROOT, font.name)
+    if (!existsSync(path) || statSync(path).size < 1_000_000) {
+      fail(`Static bundled PDF font is missing or truncated: ${font.name}`)
+    }
+    fontHashes[font.name] = sha256File(path)
+  }
+  writeFileSync(manifestPath, `${JSON.stringify({
+    preparationVersion: FONT_PREPARATION_VERSION,
+    source: BUNDLED_FONT_SOURCE.url,
+    sourceSha256: BUNDLED_FONT_SOURCE.sha256,
+    fontToolsVersion: FONTTOOLS_VERSION,
+    fonts: fontHashes
+  }, null, 2)}\n`, 'utf8')
+  rmSync(join(FONT_VENDOR_ROOT, BUNDLED_FONT_SOURCE.name), { force: true })
+  info(`Prepared deterministic PDF fonts at ${FONT_VENDOR_ROOT}`)
 }
 
 function extractArchive(archive, destination) {
@@ -401,6 +531,8 @@ async function prepareTarget(target, force, requirementsSha) {
 async function main() {
   if (!existsSync(REQUIREMENTS)) fail(`Missing Office requirements: ${REQUIREMENTS}`)
   const args = parseArgs(process.argv.slice(2))
+  await prepareBundledFonts()
+  if (args.fontsOnly) return
   const requirementsSha = sha256File(REQUIREMENTS)
   for (const target of args.targets) {
     await prepareTarget(target, args.force, requirementsSha)

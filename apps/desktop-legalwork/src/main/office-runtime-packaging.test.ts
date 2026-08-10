@@ -53,6 +53,11 @@ describe('bundled Office runtime packaging contract', () => {
         from: 'vendor/office-runtime/${os}-${arch}',
         to: 'office-runtime',
         filter: ['**/*']
+      }),
+      expect.objectContaining({
+        from: 'vendor/office-fonts',
+        to: 'office-fonts',
+        filter: ['NotoSerifSC-Regular.ttf', 'NotoSerifSC-Bold.ttf', 'OFL.txt', 'fonts.json']
       })
     ]))
   })
@@ -88,5 +93,14 @@ describe('bundled Office runtime packaging contract', () => {
 
     rmSync(join(sitePackages, 'openpyxl'), { recursive: true, force: true })
     expect(() => afterPack._internals.validateBundledOfficeRuntime(context)).toThrow(/openpyxl/)
+  })
+
+  it('rejects a package that is missing the application-owned PDF font', () => {
+    const root = tempRoot()
+    const context = macContext(root)
+
+    expect(() => afterPack._internals.validateBundledPdfFonts(context)).toThrow(
+      /bundled PDF font/
+    )
   })
 })

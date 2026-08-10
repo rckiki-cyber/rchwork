@@ -157,7 +157,7 @@ describe('SkillRuntime', () => {
     expect(matches('你怎么还不给我word？')).toBe(true)
   })
 
-  it('keeps the specialist PPT Skill ahead of generic document formatting within the real injection budget', async () => {
+  it('activates only the unified PPT Skill for presentation creation', async () => {
     const openKimiRoot = fileURLToPath(new URL('../../../../skills/open-kimi-ppt', import.meta.url))
     const genericDocumentRoot = fileURLToPath(new URL('../../../../skills/legal_document_formatting', import.meta.url))
     const config = LegalworkCapabilitiesConfig.parse({
@@ -175,12 +175,11 @@ describe('SkillRuntime', () => {
       workspace: root
     })
 
-    expect(resolution.activations.map((activation) => activation.skillId)).toEqual([
-      'open-kimi-ppt',
-      'legal-document-formatting'
-    ])
+    expect(resolution.activations.map((activation) => activation.skillId)).toEqual(['open-kimi-ppt'])
     expect(resolution.activeSkillIds).toEqual(['open-kimi-ppt'])
     expect(resolution.instructions.join('\n')).toContain('PPTD')
+    expect(resolution.instructions.join('\n')).toContain(openKimiRoot)
+    expect(resolution.instructions.join('\n')).toContain('never guess ~/.legalwork/skills')
   })
 
   it('declares retrieval, IMA, and Word delivery tools in the real contract review Skill', async () => {
@@ -384,11 +383,47 @@ describe('SkillRuntime', () => {
 
   it('hands PPT-only creation to open-kimi-ppt instead of forcing the generic document executor', async () => {
     const requests: ModelRequest[] = []
+    let bashCalls = 0
+    const executedBashCommands: string[] = []
     const model: ModelClient = {
       provider: 'fake',
       model: 'fake',
       async *stream(request) {
         requests.push(request)
+        if (request.requiredToolName === 'bash') {
+          bashCalls += 1
+          if (bashCalls === 1) {
+            yield {
+              kind: 'assistant_text_delta',
+              text: [
+                '<｜｜DSML｜｜tool_calls>',
+                '<｜｜DSML｜｜invoke name="bash">',
+                '<｜｜DSML｜｜parameter name="command" string="true">node --version</｜｜DSML｜｜parameter>',
+                '</｜｜DSML｜｜invoke>',
+                '<｜｜DSML｜｜invoke name="bash">',
+                '<｜｜DSML｜｜parameter name="command" string="true">python3 /opt/legalwork/skills/open-kimi-ppt/scripts/skill_runner.py check /tmp/deck/deck.pptd --scenario education-training</｜｜DSML｜｜parameter>',
+                '</｜｜DSML｜｜invoke>',
+                '</｜｜DSML｜｜tool_calls>'
+              ].join('\n')
+            }
+            yield { kind: 'completed', stopReason: 'stop' }
+            return
+          }
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_ppt_${bashCalls}`,
+            toolName: 'bash',
+            arguments: {
+              command: [
+                'python3 /opt/legalwork/skills/open-kimi-ppt/scripts/skill_runner.py export',
+                '/tmp/deck/deck.pptd --scenario education-training --output /tmp/deck/deck.pptx'
+              ].join(' ')
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: 'PPTD 项目和 PPTX 已生成。' }
         yield { kind: 'completed', stopReason: 'stop' }
       }
     }
@@ -397,7 +432,24 @@ describe('SkillRuntime', () => {
       description: name,
       inputSchema: { type: 'object' },
       policy: 'auto',
-      execute: async () => ({ output: { ok: true } })
+      execute: async (args) => {
+        if (name === 'bash') executedBashCommands.push(String(args.command))
+        return { output: name === 'bash' && String(args.command).includes('skill_runner.py export')
+          ? {
+              exit_code: 0,
+              output: JSON.stringify({
+                engine: 'open-kimi-ppt',
+                exporter: 'local-python-pptx',
+                styleValidated: true,
+                scenario: 'education-training',
+                slides: 12,
+                bytes: 48_000,
+                output: '/tmp/deck/deck.pptx'
+              })
+            }
+          : { exit_code: 0, output: String(args.command).includes('skill_runner.py check') ? '{"styleValidated":true}' : 'v22.0.0' }
+        }
+      }
     })
     const h = makeHarness(model, {
       skillRuntime: {
@@ -419,13 +471,22 @@ describe('SkillRuntime', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(requests).toHaveLength(1)
-    expect(requests[0]?.requiredToolName).toBeUndefined()
-    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
-      'read', 'write', 'edit', 'bash'
-    ]))
-    expect(requests[0]?.tools.map((tool) => tool.name)).not.toContain('document_skill_execute')
+    expect(requests).toHaveLength(3)
+    expect(requests[0]?.requiredToolName).toBe('bash')
+    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(['bash'])
+    expect(requests[1]?.requiredToolName).toBe('bash')
+    expect(requests[1]?.tools.map((tool) => tool.name)).toEqual(['bash'])
+    expect(requests[2]?.tools).toEqual([])
+    expect(executedBashCommands).toHaveLength(3)
+    expect(executedBashCommands[0]).toBe('node --version')
+    expect(executedBashCommands[1]).toContain('skill_runner.py check')
+    expect(executedBashCommands[2]).toContain('skill_runner.py export')
+    expect(requests.every((request) =>
+      !request.tools.some((tool) => tool.name === 'document_skill_execute')
+    )).toBe(true)
     expect(requests[0]?.contextInstructions?.join('\n')).toContain('open-kimi-ppt / PPTD')
+    expect(requests[1]?.contextInstructions?.join('\n')).toContain('scripts/skill_runner.py')
+    expect(requests[1]?.contextInstructions?.join('\n')).toContain('--scenario education-training')
   })
 
   it('removes document tools after one successful artifact generation', async () => {

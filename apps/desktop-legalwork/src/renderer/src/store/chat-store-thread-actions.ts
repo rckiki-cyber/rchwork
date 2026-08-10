@@ -66,7 +66,6 @@ import {
   looksLikeActiveTurnError,
   rememberPendingClawFeishuMirror,
   runtimeErrorDetail,
-  runtimeStreamRecoveringMessage,
   shouldOpenSettingsForError,
   syncTurnCompletionPoll,
   watchTurnCompletionNotification
@@ -225,16 +224,6 @@ export function createThreadActions(
       sseAbortRef.current?.abort()
       sseAbortRef.current = null
       clearBusyWatchdog()
-      // Fast snapshot re-syncs are normal after a transient disconnect. Do not
-      // flash an alarming recovery banner for work that completes within one
-      // paint cycle; only surface it when recovery is genuinely taking time.
-      const recoveryStatusTimer = setTimeout(() => {
-        set((current) => (
-          current.activeThreadId === activeThreadId && !current.error
-            ? { error: runtimeStreamRecoveringMessage() }
-            : {}
-        ))
-      }, 750)
       try {
         const {
           blocks: rawBlocks,
@@ -271,10 +260,10 @@ export function createThreadActions(
           appliedSeq: 0,
           liveReasoning: '',
           liveAssistant: '',
-          error:
-            busy && s.error === runtimeStreamRecoveringMessage()
-              ? s.error
-              : null,
+          // Snapshot re-sync is an internal continuity mechanism, not an error.
+          // Keep it silent while the task remains visibly busy; genuine recovery
+          // failures are still surfaced by the catch branch below.
+          error: null,
           busy,
           currentTurnId,
           currentTurnUserId,
@@ -305,8 +294,6 @@ export function createThreadActions(
         })
         if (state.busy) armBusyWatchdog(set, get)
         return state.busy
-      } finally {
-        clearTimeout(recoveryStatusTimer)
       }
     })()
     const entry = { threadId: activeThreadId, promise: task }

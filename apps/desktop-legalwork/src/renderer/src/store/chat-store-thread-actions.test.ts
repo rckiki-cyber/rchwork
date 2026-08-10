@@ -180,6 +180,66 @@ describe('createThreadActions recovery', () => {
     expect(drainQueuedMessages).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps background event-stream recovery silent while the snapshot is pending', async () => {
+    vi.useFakeTimers()
+    try {
+      let resolveDetail!: (value: {
+        blocks: []
+        latestSeq: number
+        threadStatus: string
+      }) => void
+      const detail = new Promise<{
+        blocks: []
+        latestSeq: number
+        threadStatus: string
+      }>((resolve) => {
+        resolveDetail = resolve
+      })
+      const provider = {
+        getThreadDetail: vi.fn(() => detail),
+        subscribeThreadEvents: vi.fn(() => new Promise<void>(() => undefined))
+      }
+      registryMock.getProvider.mockReturnValue(provider)
+
+      const state = {
+        activeThreadId: 'thr_slow_recovery',
+        activeThreadGoal: null,
+        activeThreadTodos: null,
+        blocks: [],
+        busy: true,
+        currentTurnId: 'turn_1',
+        currentTurnUserId: 'user_1',
+        drainQueuedMessages: vi.fn(async () => undefined),
+        error: null,
+        lastSeq: 0,
+        liveAssistant: '',
+        liveReasoning: '',
+        queuedMessages: [],
+        turnDurationByUserId: {}
+      } as unknown as ChatState
+      const get: ChatStoreGet = () => state
+      const set: ChatStoreSet = (partial) => {
+        const update = typeof partial === 'function' ? partial(state) : partial
+        Object.assign(state, update)
+      }
+      const actions = createThreadActions({
+        set,
+        get,
+        sseAbortRef: { current: null }
+      })
+
+      const recovery = actions.recoverActiveTurn()
+      await vi.advanceTimersByTimeAsync(5_000)
+
+      expect(state.error).toBeNull()
+
+      resolveDetail({ blocks: [], latestSeq: 5, threadStatus: 'idle' })
+      await recovery
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('settles residual running blocks when threadStatus is not running (recovery loop guard)', async () => {
     const provider = {
       getThreadDetail: vi.fn(async () => ({

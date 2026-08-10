@@ -12,7 +12,7 @@ export const IMA_RESEARCH_TIMEOUT_SECONDS = 210
 const LEGAL_DOMAIN_PATTERN =
   /法律|法规|法条|司法解释|规范性文件|案例|判例|裁判|法院|检察|合规|合同|劳动|用工|公司法|行政法|诉讼|仲裁|证据|监管|政策|法学|立法|司法|数据治理|人工智能|算法治理|知识产权|侵权|刑事|民事|商事/
 const KNOWLEDGE_ACTION_PATTERN =
-  /查询|查找|检索|研究|分析|依据|规定|是什么|怎么|如何|是否|能否|风险|起草|审查|比较|总结|解释|适用|效力|引用|出处|梳理|论证|评估|意见/
+  /查询|查找|查一下|检索|研究|分析|依据|规定|是什么|怎么|如何|是否|能否|风险|起草|审查|比较|总结|解释|适用|效力|引用|出处|梳理|论证|评估|意见/
 const IMA_MANAGEMENT_PATTERN =
   /登录|扫码|刷新|配置|插件|接口|协议|报错|错误|调试|代码|MCP|RAG|向量|路由|有哪些知识库|知识库列表/i
 
@@ -43,11 +43,16 @@ export function shouldAutoRouteToIma(prompt: string): boolean {
   if (/IMA/i.test(text)) return true
   if (
     /起草|撰写|生成|写一份/.test(text) &&
-    !/查询|检索|研究|分析|依据|规定|风险|论证/.test(text)
+    !/查询|查找|查一下|检索|研究|分析|依据|规定|风险|论证/.test(text)
   ) {
     return false
   }
   return LEGAL_DOMAIN_PATTERN.test(text) && KNOWLEDGE_ACTION_PATTERN.test(text)
+}
+
+export function shouldSupplementWithIma(prompt: string): boolean {
+  return shouldAutoRouteToIma(prompt) &&
+    /(?:越多越好|全面|系统|深入|综合|多源|论文|文献综述|研究报告|尽可能多|不少于\s*\d+\s*(?:篇|条))/i.test(prompt)
 }
 
 export function resolveImaRouteAction(input: {
@@ -80,7 +85,8 @@ export function resolveImaRouteAction(input: {
   if (
     hasPkulawTools &&
     LEGAL_DOMAIN_PATTERN.test(input.prompt) &&
-    !explicitlyPrefersIma
+    !explicitlyPrefersIma &&
+    !shouldSupplementWithIma(input.prompt)
   ) {
     return null
   }

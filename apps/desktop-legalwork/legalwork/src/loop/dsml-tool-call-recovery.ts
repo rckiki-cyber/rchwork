@@ -4,37 +4,58 @@ export type RecoveredDsmlToolCall = {
   visibleText: string
 }
 
+export type RecoveredDsmlToolCalls = {
+  calls: Array<Omit<RecoveredDsmlToolCall, 'visibleText'>>
+  visibleText: string
+}
+
 /**
  * Some DeepSeek-compatible gateways occasionally serialize their internal
  * DSML tool syntax into assistant text instead of returning structured
- * tool_calls. Recover one well-formed invocation only when its name is in the
- * tool list advertised for this exact request.
+ * tool_calls. Recover every well-formed invocation whose name is in the tool
+ * list advertised for this exact request. A single DSML block may contain
+ * multiple invocations (for example, two independent bash checks), and
+ * dropping all but the first can strand a required artifact workflow.
  */
+export function recoverDsmlToolCalls(
+  text: string,
+  advertisedToolNames: ReadonlySet<string>
+): RecoveredDsmlToolCalls | null {
+  if (!text.includes('DSML') || !text.includes('invoke')) return null
+  const invocation = /<[^<>]*invoke\s+name=["']([^"']+)["'][^<>]*>([\s\S]*?)<\/[^<>]*invoke\s*>/gi
+  const calls: RecoveredDsmlToolCalls['calls'] = []
+  let invocationMatch: RegExpExecArray | null
+  while ((invocationMatch = invocation.exec(text)) !== null) {
+    const toolName = invocationMatch[1]?.trim() ?? ''
+    if (!toolName || !advertisedToolNames.has(toolName)) continue
+    const body = invocationMatch[2] ?? ''
+    const args: Record<string, unknown> = {}
+    const parameter = /<[^<>]*parameter\s+name=["']([^"']+)["'](?:\s+string=["']([^"']+)["'])?[^<>]*>([\s\S]*?)<\/[^<>]*parameter\s*>/gi
+    let parameterMatch: RegExpExecArray | null
+    while ((parameterMatch = parameter.exec(body)) !== null) {
+      const name = parameterMatch[1]?.trim()
+      if (!name) continue
+      const raw = decodeXmlEntities(parameterMatch[3] ?? '').trim()
+      args[name] = parameterMatch[2]?.toLowerCase() === 'true' ? raw : parseJsonValue(raw)
+    }
+    calls.push({ toolName, arguments: args })
+  }
+  if (calls.length === 0) return null
+
+  const wholeBlock = /<[^<>]*tool_calls[^<>]*>[\s\S]*?<\/[^<>]*tool_calls\s*>/gi
+  const visibleText = text.replace(wholeBlock, '').trim()
+  return { calls, visibleText }
+}
+
+/** Backward-compatible single-call view for callers that only need one call. */
 export function recoverDsmlToolCall(
   text: string,
   advertisedToolNames: ReadonlySet<string>
 ): RecoveredDsmlToolCall | null {
-  if (!text.includes('DSML') || !text.includes('invoke')) return null
-  const invocation = text.match(
-    /<[^<>]*invoke\s+name=["']([^"']+)["'][^<>]*>([\s\S]*?)<\/[^<>]*invoke\s*>/i
-  )
-  const toolName = invocation?.[1]?.trim() ?? ''
-  const body = invocation?.[2] ?? ''
-  if (!toolName || !advertisedToolNames.has(toolName)) return null
-
-  const args: Record<string, unknown> = {}
-  const parameter = /<[^<>]*parameter\s+name=["']([^"']+)["'](?:\s+string=["']([^"']+)["'])?[^<>]*>([\s\S]*?)<\/[^<>]*parameter\s*>/gi
-  let match: RegExpExecArray | null
-  while ((match = parameter.exec(body)) !== null) {
-    const name = match[1]?.trim()
-    if (!name) continue
-    const raw = decodeXmlEntities(match[3] ?? '').trim()
-    args[name] = match[2]?.toLowerCase() === 'true' ? raw : parseJsonValue(raw)
-  }
-
-  const wholeBlock = /<[^<>]*tool_calls[^<>]*>[\s\S]*?<\/[^<>]*tool_calls\s*>/i
-  const visibleText = text.replace(wholeBlock, '').trim()
-  return { toolName, arguments: args, visibleText }
+  const recovered = recoverDsmlToolCalls(text, advertisedToolNames)
+  const first = recovered?.calls[0]
+  if (!recovered || !first) return null
+  return { ...first, visibleText: recovered.visibleText }
 }
 
 function parseJsonValue(value: string): unknown {

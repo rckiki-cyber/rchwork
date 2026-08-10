@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from docx import Document
@@ -52,7 +53,13 @@ class FromMarkdownFormattingTest(unittest.TestCase):
             payload = json.loads(completed.stdout)
             self.assertEqual(payload["status"], "ok")
 
+            with zipfile.ZipFile(output) as archive:
+                font_table = archive.read("word/fontTable.xml").decode("utf-8")
+            self.assertIn('w:name="宋体"', font_table)
+            self.assertIn('w:name="黑体"', font_table)
+
             doc = Document(output)
+            self.assertEqual(doc.core_properties.author, "LegalWork")
             self.assertEqual([p.text for p in doc.paragraphs[:3]], [
                 "自动化行政行为程序要件重构",
                 "摘要",

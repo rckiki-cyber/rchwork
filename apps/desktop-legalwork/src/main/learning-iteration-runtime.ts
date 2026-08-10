@@ -450,12 +450,19 @@ export class LearningIterationRuntime {
         this.queued = false
         this.message = '今日已有成功记录，请在下一个自然日再检查'
       }
+      // Clear any pending manual run so it cannot leak into the next day and
+      // bypass the isBusy gate on the first automatic tick.
+      this.forceRun = false
+      this.manualQueue = false
       return
     }
     if (!this.forceRun && state.lastRetryAt && !retryIsDue(state, this.now())) {
       return
     }
-    if (await this.isBusy(settings)) {
+    // A manual "learn now" request is explicit user intent and must start even
+    // when the app, compliance runtime, or another thread is currently busy.
+    // Automatic background iterations still wait for the configured idle window.
+    if (!this.forceRun && await this.isBusy(settings)) {
       if (this.queued) this.message = '正在等待所有任务结束并达到空闲条件'
       return
     }

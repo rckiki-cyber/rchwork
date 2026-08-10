@@ -230,6 +230,86 @@ describe('MCP tool provider', () => {
         }
       })
     }
+
+    const invalidCall = await host.execute({
+      callId: 'call_tool_invalid',
+      toolName: 'mcp_call',
+      arguments: { toolId: 'github/search_issues', arguments: { query: 42 } }
+    }, context)
+    expect(invalidCall.item).toMatchObject({
+      kind: 'tool_result',
+      isError: true,
+      output: {
+        code: 'mcp_argument_validation_failed',
+        issues: [expect.stringContaining('query must be string')]
+      }
+    })
+
+    const emptySearchCall = await host.execute({
+      callId: 'call_tool_empty_search',
+      toolName: 'mcp_call',
+      arguments: { toolId: 'github/search_issues', arguments: {} }
+    }, context)
+    expect(emptySearchCall.item).toMatchObject({
+      kind: 'tool_result',
+      isError: true,
+      output: {
+        code: 'mcp_argument_validation_failed',
+        issues: expect.arrayContaining([
+          expect.stringContaining('non-empty query or filter')
+        ])
+      }
+    })
+  })
+
+  it('marks nested MCP business failures as tool errors', async () => {
+    const config = LegalworkCapabilitiesConfig.parse({
+      mcp: {
+        enabled: true,
+        search: { enabled: true, mode: 'search' },
+        servers: {
+          yuandian: {
+            transport: 'stdio',
+            command: 'node',
+            trustScope: 'user'
+          }
+        }
+      }
+    })
+    const built = await buildMcpToolProviders(config.mcp, {
+      clientFactory: async () => ({
+        async listTools() {
+          return {
+            tools: [{
+              name: 'search_cases',
+              inputSchema: { type: 'object', properties: { qw: { type: 'string' } } }
+            }]
+          }
+        },
+        async callTool() {
+          return {
+            content: [{ type: 'text', text: '{"code":500,"message":"请求参数json异常","status":"failed"}' }],
+            structuredContent: {
+              ok: true,
+              status: 200,
+              data: { code: 500, status: 'failed' }
+            },
+            isError: false
+          }
+        },
+        async close() {
+          // no-op
+        }
+      })
+    })
+    const host = new LocalToolHost({ registry: new CapabilityRegistry(built.providers) })
+    const result = await host.execute({
+      callId: 'call_nested_failure',
+      toolName: 'mcp_call',
+      arguments: { toolId: 'yuandian/search_cases', arguments: { qw: '宽严相济' } }
+    }, buildContext('/tmp/project'))
+
+    expect(result.item).toMatchObject({ kind: 'tool_result', isError: true })
   })
 
   it('advertises workspace-scoped tools outside trusted roots', async () => {

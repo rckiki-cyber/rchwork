@@ -1,8 +1,8 @@
 {
   "id": "open-kimi-ppt",
   "name": "AI 生成 PPT（open-kimi-ppt）",
-  "description": "AI 生成 PPT/演示文稿：以 YAML 中间格式（.pptd）创建、编辑、复刻、阅读和导出演示文稿，默认同时交付可编辑的 PPTD 项目目录和本地生成的 .pptx（内嵌字体 + 淡入淡出翻页）。支持从零创建、上传 PPTX 编辑、图片/PDF 复刻、套用设计系统/模板/风格迁移。触发场景：用户请求制作 PPT、演示文稿、幻灯片、汇报 PPT、课件、宣讲材料、信息图、海报等任务时使用。",
-  "version": "1.0.0",
+  "description": "LegalWork 唯一的 PPT/PPTX 权威生成技能：把 Kimi 风格与细节规则、PPTD 项目生成、结构/风格校验、视觉 QA 和确定性本地 PPTX 导出整合为一个不可拆分的工作流；导出不登录 Kimi、不依赖公共编辑器。所有制作、编辑、复刻、课件、培训、宣讲、汇报、幻灯片、信息图和海报任务均使用本技能。",
+  "version": "1.2.0",
   "entry": "SKILL.md",
   "triggers": {
     "commands": [],

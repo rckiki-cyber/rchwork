@@ -34,7 +34,7 @@ const OPERATIONS: Record<string, ReadonlySet<string>> = {
   docx: new Set(['inspect', 'normalize', 'page', 'replace', 'from-markdown', 'template-fill']),
   pdf: new Set(['from-docx']),
   xlsx: new Set(['inspect', 'from-json', 'replace']),
-  pptx: new Set(['inspect', 'from-json', 'replace']),
+  pptx: new Set(['inspect', 'replace']),
   reference: new Set(['inspect', 'apply']),
   profile: new Set(['profiles', 'apply']),
   legacy: new Set(['convert'])
@@ -46,7 +46,7 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
   return {
     name: DOCUMENT_SKILL_EXECUTE_TOOL_NAME,
     description:
-      'Create or edit Office/PDF files with LegalWork\'s local document Skill instead of bash or Office MCP. Word uses docx/from-markdown: complete Markdown in content, outputPath=.docx. PDF from an existing Word file uses pdf/from-docx: args=["--input","report.docx","--output","report.pdf"]. PPT uses pptx/from-json: complete slide JSON in content, outputPath=.pptx. content must be complete final source; never pass cache-hygiene text, previews, ellipses, omitted/truncated markers, or placeholders. Valid pairs: docx=inspect|normalize|page|replace|from-markdown|template-fill; pdf=from-docx; xlsx=inspect|from-json|replace; pptx=inspect|from-json|replace; reference=inspect|apply; profile=profiles|apply; legacy=convert. Do not probe with help/list or search for another PDF/PPT tool.',
+      'Create or edit Word/PDF/Excel files with LegalWork\'s local document Skill instead of bash or Office MCP. Word uses docx/from-markdown: complete Markdown in content, outputPath=.docx. PDF from an existing Word file uses pdf/from-docx: args=["--input","report.docx","--output","report.pdf"] and is rendered only by LegalWork\'s bundled runtime/fonts, never by user-installed LibreOffice, Office, WPS, Acrobat, Preview, or system fonts. New PPT/PPTX creation is intentionally unsupported here and must use the unified open-kimi-ppt Skill. content must be complete final source; never pass cache-hygiene text, previews, ellipses, omitted/truncated markers, or placeholders. Valid pairs: docx=inspect|normalize|page|replace|from-markdown|template-fill; pdf=from-docx; xlsx=inspect|from-json|replace; pptx=inspect|replace; reference=inspect|apply; profile=profiles|apply; legacy=convert. Do not probe with help/list or search for another PDF/PPT tool.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -72,7 +72,7 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
         content: {
           type: 'string',
           description:
-            'Complete final inline Markdown for docx/from-markdown, or complete JSON object with a non-empty slides array for pptx/from-json. Never use a preview, ellipsis, cache-hygiene/history marker, omitted/truncated note, or placeholder.'
+            'Complete final inline Markdown for docx/from-markdown. Never use a preview, ellipsis, cache-hygiene/history marker, omitted/truncated note, or placeholder.'
         },
         outputPath: {
           type: 'string',
@@ -154,14 +154,12 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
           isError: true
         }
       }
-      const supportsInlineContent =
-        (kind === 'docx' && operation === 'from-markdown') ||
-        (kind === 'pptx' && operation === 'from-json')
+      const supportsInlineContent = kind === 'docx' && operation === 'from-markdown'
       if (content !== undefined && !supportsInlineContent) {
         return {
           output: {
             status: 'error',
-            error: 'inline content is supported only for docx/from-markdown or pptx/from-json'
+            error: 'inline content is supported only for docx/from-markdown; use open-kimi-ppt for presentation creation'
           },
           isError: true
         }
@@ -170,7 +168,7 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
         return {
           output: {
             status: 'error',
-            error: 'outputPath is required for inline docx/from-markdown or pptx/from-json content'
+            error: 'outputPath is required for inline docx/from-markdown content'
           },
           isError: true
         }
@@ -179,12 +177,12 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
         return {
           output: {
             status: 'error',
-            error: 'outputPath is a top-level option only for inline docx/from-markdown or pptx/from-json; use args otherwise'
+            error: 'outputPath is a top-level option only for inline docx/from-markdown; use args otherwise'
           },
           isError: true
         }
       }
-      const expectedInlineExtension = kind === 'pptx' ? '.pptx' : '.docx'
+      const expectedInlineExtension = '.docx'
       if (
         outputPath &&
         (outputPath.length > MAX_PATH_CHARS || !outputPath.toLowerCase().endsWith(expectedInlineExtension))
@@ -204,15 +202,6 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
             error: 'args cannot be combined with inline content; use content, outputPath, and profile only'
           },
           isError: true
-        }
-      }
-      if (kind === 'pptx' && operation === 'from-json' && content !== undefined) {
-        const validationError = inlinePptJsonError(content)
-        if (validationError) {
-          return {
-            output: { status: 'error', error: validationError },
-            isError: true
-          }
         }
       }
       if (profile && !DOCUMENT_PROFILES.has(profile)) {
@@ -240,33 +229,6 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
           output: {
             status: 'error',
             error: 'docx/from-markdown requires inline content + outputPath, or args containing --input and --output'
-          },
-          isError: true
-        }
-      }
-      if (
-        kind === 'pptx' &&
-        operation === 'from-json' &&
-        content === undefined &&
-        (!hasArg(args, '--input') || !hasArg(args, '--output'))
-      ) {
-        return {
-          output: {
-            status: 'error',
-            error: 'pptx/from-json requires inline content + outputPath, or args containing --input and --output'
-          },
-          isError: true
-        }
-      }
-      if (
-        kind === 'pptx' &&
-        operation === 'from-json' &&
-        inputArgLooksLikeInlineJson(args)
-      ) {
-        return {
-          output: {
-            status: 'error',
-            error: 'pptx/from-json --input expects a JSON file path, not JSON text; pass complete JSON via content with outputPath instead'
           },
           isError: true
         }
@@ -318,7 +280,6 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
           content,
           outputPath,
           profile,
-          kind,
           workspace: context.workspace
         })
       } catch (error) {
@@ -348,6 +309,20 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
             office_fallback_allowed: false
           },
           isError: true
+        }
+      }
+      if (kind === 'pdf' && operation === 'from-docx') {
+        const verificationError = deterministicPdfPayloadError(payload)
+        if (verificationError) {
+          return {
+            output: {
+              status: 'error',
+              stage: 'verification',
+              error: verificationError,
+              office_fallback_allowed: false
+            },
+            isError: true
+          }
         }
       }
 
@@ -384,6 +359,25 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
   }
 }
 
+export function deterministicPdfPayloadError(payload: Record<string, unknown>): string | undefined {
+  if (payload.status !== 'ok') return undefined
+  const verification = payload.verification && typeof payload.verification === 'object' &&
+    !Array.isArray(payload.verification)
+    ? payload.verification as Record<string, unknown>
+    : {}
+  if (payload.converter !== 'legalwork-reportlab-bundled') {
+    return 'PDF worker used an untrusted external converter instead of LegalWork bundled rendering.'
+  }
+  if (
+    verification.songti_embedded !== true ||
+    verification.font_program_embedded !== true ||
+    verification.external_office_used !== false
+  ) {
+    return 'PDF worker did not prove that the bundled Chinese font was embedded without external Office/PDF software.'
+  }
+  return undefined
+}
+
 function stringArg(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -409,33 +403,6 @@ function hasArg(args: string[], name: string): boolean {
   return index >= 0 && Boolean(args[index + 1])
 }
 
-function inputArgLooksLikeInlineJson(args: string[]): boolean {
-  const index = args.indexOf('--input')
-  if (index < 0) return false
-  const value = args[index + 1]?.trim() ?? ''
-  return value.startsWith('{') || value.startsWith('[')
-}
-
-function inlinePptJsonError(content: string): string | undefined {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(content)
-  } catch {
-    return 'pptx/from-json content must be valid JSON'
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return 'pptx/from-json content must be a JSON object with a non-empty slides array'
-  }
-  const slides = (parsed as Record<string, unknown>).slides
-  if (!Array.isArray(slides) || slides.length === 0) {
-    return 'pptx/from-json content must contain a non-empty slides array'
-  }
-  if (slides.some((slide) => !slide || typeof slide !== 'object' || Array.isArray(slide))) {
-    return 'pptx/from-json slides must contain JSON objects'
-  }
-  return undefined
-}
-
 function resolveWorkerPathArgs(args: string[], workspace: string): string[] {
   const out = [...args]
   for (let index = 0; index < out.length - 1; index += 1) {
@@ -454,7 +421,6 @@ export async function prepareDocumentWorkerArgs(input: {
   content?: string
   outputPath?: string
   profile?: string
-  kind?: string
   workspace: string
 }): Promise<{ workerArgs: string[]; cleanup: () => Promise<void> }> {
   if (input.content === undefined || !input.outputPath) {
@@ -465,7 +431,7 @@ export async function prepareDocumentWorkerArgs(input: {
   }
   const resolvedOutputPath = resolveInlineOutputPath(input.outputPath, input.workspace)
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'legalwork-document-source-'))
-  const sourcePath = join(temporaryRoot, input.kind === 'pptx' ? 'source.json' : 'source.md')
+  const sourcePath = join(temporaryRoot, 'source.md')
   try {
     await writeFile(sourcePath, input.content, 'utf8')
   } catch (error) {
@@ -478,9 +444,7 @@ export async function prepareDocumentWorkerArgs(input: {
       '--output',
       resolvedOutputPath
     ]
-  if (input.kind !== 'pptx') {
-    workerArgs.push('--profile', input.profile || 'legal-default')
-  }
+  workerArgs.push('--profile', input.profile || 'legal-default')
   return {
     workerArgs,
     cleanup: async () => rm(temporaryRoot, { recursive: true, force: true })

@@ -1,5 +1,13 @@
 version: v2
 title: Open Kimi PPT Local Export Test
 size: [960, 540]
+theme:
+  colors:
+    primary: "#172554"
+    accent: "#EA580C"
+    text: "#111827"
+  textStyles:
+    title: {fontSize: 42, color: "$text", fontFamily: MiSans, bold: true}
+    body: {fontSize: 18, color: "$text", fontFamily: MiSans}
 pages:
   - pages/01.page

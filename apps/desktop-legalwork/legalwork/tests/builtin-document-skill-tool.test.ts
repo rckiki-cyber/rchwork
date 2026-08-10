@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createDocumentSkillExecuteTool,
+  deterministicPdfPayloadError,
   prepareDocumentWorkerArgs
 } from '../src/adapters/tool/builtin-document-skill-tool.js'
 import type { ToolHostContext } from '../src/ports/tool-host.js'
@@ -65,35 +66,21 @@ describe('document_skill_execute', () => {
 
     expect(result.isError).toBe(true)
     expect(result.output).toMatchObject({
-      error: 'inline content is supported only for docx/from-markdown or pptx/from-json'
+      error: 'inline content is supported only for docx/from-markdown; use open-kimi-ppt for presentation creation'
     })
   })
 
-  it('prepares inline PPT JSON and advertises local PDF conversion', async () => {
+  it('advertises local PDF conversion and delegates new PPT creation to open-kimi-ppt', async () => {
     const tool = createDocumentSkillExecuteTool()
     const properties = tool.inputSchema.properties as Record<string, Record<string, unknown>>
     expect(properties.kind?.enum).toContain('pdf')
     expect(properties.operation?.enum).toContain('from-docx')
     expect(tool.description).toContain('pdf/from-docx')
-    expect(tool.description).toContain('pptx/from-json')
-
-    const content = JSON.stringify({ slides: [{ title: '结论', bullets: ['行政机关承担主体责任'] }] })
-    const prepared = await prepareDocumentWorkerArgs({
-      args: [],
-      content,
-      outputPath: '交付/汇报.pptx',
-      kind: 'pptx',
-      workspace
-    })
-    const inputIndex = prepared.workerArgs.indexOf('--input')
-    expect(prepared.workerArgs).not.toContain('--profile')
-    expect(prepared.workerArgs[prepared.workerArgs.indexOf('--output') + 1])
-      .toBe(join(workspace, '交付', '汇报.pptx'))
-    await expect(readFile(prepared.workerArgs[inputIndex + 1] ?? '', 'utf8')).resolves.toBe(content)
-    await prepared.cleanup()
+    expect(tool.description).toContain('unified open-kimi-ppt Skill')
+    expect(tool.description).not.toContain('PPT uses pptx/from-json')
   })
 
-  it('rejects malformed inline PPT JSON and JSON text masquerading as an input path', async () => {
+  it('rejects every generic pptx/from-json creation attempt', async () => {
     const tool = createDocumentSkillExecuteTool()
 
     await expect(tool.execute({
@@ -103,7 +90,7 @@ describe('document_skill_execute', () => {
       outputPath: 'empty.pptx'
     }, context())).resolves.toMatchObject({
       isError: true,
-      output: { error: 'pptx/from-json content must contain a non-empty slides array' }
+      output: { error: expect.stringContaining('supported operations: inspect, replace') }
     })
     await expect(tool.execute({
       kind: 'pptx',
@@ -111,7 +98,7 @@ describe('document_skill_execute', () => {
       args: ['--input', '{"slides":[{"title":"错误路径"}]}', '--output', 'result.pptx']
     }, context())).resolves.toMatchObject({
       isError: true,
-      output: { error: expect.stringContaining('--input expects a JSON file path') }
+      output: { error: expect.stringContaining('supported operations: inspect, replace') }
     })
   })
 
@@ -125,6 +112,28 @@ describe('document_skill_execute', () => {
       isError: true,
       output: { error: 'pdf/from-docx requires args containing --input and --output' }
     })
+  })
+
+  it('accepts only application-owned PDF rendering with embedded bundled fonts', () => {
+    expect(deterministicPdfPayloadError({
+      status: 'ok',
+      converter: 'legalwork-reportlab-bundled',
+      verification: {
+        songti_embedded: true,
+        font_program_embedded: true,
+        external_office_used: false
+      }
+    })).toBeUndefined()
+    expect(deterministicPdfPayloadError({
+      status: 'ok',
+      converter: 'LibreOffice',
+      verification: { songti_embedded: true, font_program_embedded: true }
+    })).toContain('untrusted external converter')
+    expect(deterministicPdfPayloadError({
+      status: 'ok',
+      converter: 'legalwork-reportlab-bundled',
+      verification: { songti_embedded: true, external_office_used: false }
+    })).toContain('bundled Chinese font was embedded')
   })
 
   it('returns the valid operation list instead of leaving the model to probe repeatedly', async () => {

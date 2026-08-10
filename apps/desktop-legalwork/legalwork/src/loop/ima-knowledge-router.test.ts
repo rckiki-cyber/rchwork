@@ -3,7 +3,8 @@ import type { TurnItem } from '../contracts/items.js'
 import {
   IMA_RESEARCH_TIMEOUT_SECONDS,
   resolveImaRouteAction,
-  shouldAutoRouteToIma
+  shouldAutoRouteToIma,
+  shouldSupplementWithIma
 } from './ima-knowledge-router.js'
 
 const prompt = '请分析企业解除劳动合同的合规风险和法律依据'
@@ -66,6 +67,24 @@ describe('IMA knowledge router', () => {
     })
 
     expect(action).toBeNull()
+  })
+
+  it('uses IMA once as a supplement for broad multi-source research even when PKULaw exists', () => {
+    const broadPrompt = '查一下食药领域犯罪中宽严相济刑事政策贯彻的案例，越多越好，并撰写论文。'
+    expect(shouldSupplementWithIma(broadPrompt)).toBe(true)
+    const action = resolveImaRouteAction({
+      prompt: broadPrompt,
+      tools: [
+        { name: 'mcp_ima_knowledge_base_research_ima', description: 'research', inputSchema: {} },
+        { name: 'mcp_pkulaw_case_semantic_search_search_case', description: 'cases', inputSchema: {} }
+      ],
+      items: [],
+      turnId
+    })
+    expect(action).toMatchObject({
+      kind: 'direct',
+      requiredToolName: 'mcp_ima_knowledge_base_research_ima'
+    })
   })
 
   it('still honors an explicit request to use IMA first', () => {

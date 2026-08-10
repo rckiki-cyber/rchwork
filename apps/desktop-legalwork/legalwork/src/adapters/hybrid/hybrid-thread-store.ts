@@ -247,16 +247,25 @@ export class HybridThreadStore implements ThreadStore {
 
   private async backfill(): Promise<void> {
     if (!this.db) return
-    const discovered = new Set<string>()
-    for (const threadId of await this.threadIdsFromFilesystem()) {
+    const rows = this.db.prepare('SELECT id FROM threads').all() as Array<{ id: string }>
+    const indexed = new Set(rows.map((row) => row.id))
+    const filesystemThreadIds = await this.threadIdsFromFilesystem()
+    const discovered = new Set(filesystemThreadIds)
+
+    // JSONL is canonical, but every normal write updates SQLite immediately
+    // after the file write. Re-reading every indexed messages/events file here
+    // made startup proportional to the complete conversation history (often
+    // hundreds of MB). Existing rows therefore only need the cheap directory
+    // reconciliation below; parse JSONL when an index row is actually missing,
+    // such as after first install or a deleted/rebuilt database.
+    for (const threadId of filesystemThreadIds) {
+      if (indexed.has(threadId)) continue
       const thread = await this.readThreadFromDisk(threadId)
       if (!thread) continue
-      discovered.add(thread.id)
       this.upsertIndexBestEffort(await this.indexRecordForThread(thread))
     }
 
     try {
-      const rows = this.db.prepare('SELECT id FROM threads').all() as Array<{ id: string }>
       for (const row of rows) {
         if (discovered.has(row.id)) continue
         if (!(await pathExists(this.threadDir(row.id)))) {

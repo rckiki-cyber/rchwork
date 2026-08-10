@@ -284,6 +284,27 @@ function createMcpSearchTools(options: McpSearchProviderOptions): LocalTool[] {
         const record = resolveTrustedRecord(options, context, toolId)
         if (!record) return { output: { error: `unknown MCP tool: ${toolId}` }, isError: true }
         const callArgs = objectArg(args.arguments)
+        const argumentIssues = [
+          ...validateMcpArguments(callArgs, record.descriptor.inputSchema),
+          ...validateSearchArguments(record.descriptor.name, callArgs)
+        ]
+        // Only hard-block on hard issues (missing required params, empty
+        // search/filter). `[soft]` issues (type mismatch, unknown params under
+        // a strict schema) are recorded for diagnostics but the call still goes
+        // through — many MCP servers declare imprecise schemas and rejecting
+        // locally would break calls the server itself would accept.
+        const hardIssues = argumentIssues.filter((issue) => !issue.startsWith('[soft]'))
+        if (hardIssues.length > 0) {
+          return {
+            output: {
+              error: `MCP arguments do not match the schema for ${toolId}`,
+              code: 'mcp_argument_validation_failed',
+              issues: hardIssues,
+              inputSchema: record.descriptor.inputSchema ?? { type: 'object' }
+            },
+            isError: true
+          }
+        }
         const result = await record.client.callTool(
           { name: record.descriptor.name, arguments: callArgs },
           { signal: context.abortSignal, timeout: record.server.timeoutMs }
@@ -295,7 +316,7 @@ function createMcpSearchTools(options: McpSearchProviderOptions): LocalTool[] {
             toolId: record.toolId,
             result
           },
-          isError: typeof result === 'object' && result !== null && (result as { isError?: boolean }).isError === true
+          isError: mcpResultIndicatesError(result)
         }
       }
     }),
@@ -320,6 +341,42 @@ function createMcpSearchTools(options: McpSearchProviderOptions): LocalTool[] {
       }
     })
   ]
+}
+
+function mcpResultIndicatesError(value: unknown): boolean {
+  const root = recordValue(value)
+  if (root.isError === true || typeof root.error === 'string') return true
+  if (errorLikeRecord(root.structuredContent)) return true
+  const content = Array.isArray(root.content) ? root.content : []
+  for (const item of content) {
+    const block = recordValue(item)
+    if (block.type !== 'text' || typeof block.text !== 'string') continue
+    const text = block.text.trim()
+    if (!text.startsWith('{') || !text.endsWith('}')) continue
+    try {
+      if (errorLikeRecord(JSON.parse(text))) return true
+    } catch {
+      // Non-JSON text remains ordinary MCP output.
+    }
+  }
+  return false
+}
+
+function errorLikeRecord(value: unknown): boolean {
+  const record = recordValue(value)
+  if (Object.keys(record).length === 0) return false
+  if (record.ok === false || record.success === false) return true
+  const status = typeof record.status === 'string' ? record.status.toLowerCase() : ''
+  if (['failed', 'failure', 'error', 'rejected'].includes(status)) return true
+  if (typeof record.code === 'number' && record.code >= 400) return true
+  if (typeof record.code === 'string' && /^(?:4|5)\d\d$/.test(record.code)) return true
+  return errorLikeRecord(record.data)
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }
 
 function trustedRecords(options: McpSearchProviderOptions, context: ToolHostContext): McpSearchCatalogRecord[] {
@@ -556,10 +613,138 @@ function summarizeSchema(schema: unknown): Record<string, unknown> {
   const properties = obj.properties && typeof obj.properties === 'object' && !Array.isArray(obj.properties)
     ? obj.properties
     : {}
+  const required = Array.isArray(obj.required)
+    ? obj.required.filter((item): item is string => typeof item === 'string')
+    : []
   return {
-    required: Array.isArray(obj.required) ? obj.required.filter((item) => typeof item === 'string') : [],
-    parameters: Object.keys(properties).slice(0, 12)
+    required,
+    parameters: Object.entries(properties).slice(0, 12).map(([name, raw]) => {
+      const property = raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? raw as Record<string, unknown>
+        : {}
+      return {
+        name,
+        required: required.includes(name),
+        ...(typeof property.type === 'string' ? { type: property.type } : {}),
+        ...(Array.isArray(property.enum) ? { enum: property.enum.slice(0, 12) } : {}),
+        ...(typeof property.description === 'string'
+          ? { description: property.description.slice(0, 240) }
+          : {})
+      }
+    })
   }
+}
+
+function validateMcpArguments(
+  value: Record<string, unknown>,
+  schema: Record<string, unknown> | undefined
+): string[] {
+  if (!schema || !isObjectSchema(schema)) return []
+  const issues: string[] = []
+  const properties = schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)
+    ? schema.properties as Record<string, unknown>
+    : {}
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((item): item is string => typeof item === 'string')
+    : []
+  for (const name of required) {
+    if (!(name in value) || value[name] === undefined || value[name] === null || value[name] === '') {
+      issues.push(`missing required parameter: ${name}`)
+    }
+  }
+  if (schema.additionalProperties === false) {
+    for (const name of Object.keys(value)) {
+      if (!(name in properties)) issues.push(`[soft] unknown parameter: ${name}`)
+    }
+  }
+  for (const [name, child] of Object.entries(value)) {
+    const property = properties[name]
+    if (!property || typeof property !== 'object' || Array.isArray(property)) continue
+    validateMcpValue(child, property as Record<string, unknown>, name, issues)
+  }
+  return issues.slice(0, 20)
+}
+
+function validateSearchArguments(toolName: string, value: Record<string, unknown>): string[] {
+  if (!/(?:search|query|find|lookup|retrieve|检索|查询|查找)/i.test(toolName)) return []
+  return Object.values(value).some(hasMeaningfulArgument)
+    ? []
+    : ['search request must contain at least one non-empty query or filter parameter']
+}
+
+function hasMeaningfulArgument(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().length > 0
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (typeof value === 'boolean') return true
+  if (Array.isArray(value)) return value.some(hasMeaningfulArgument)
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).some(hasMeaningfulArgument)
+  }
+  return false
+}
+
+function validateMcpValue(
+  value: unknown,
+  schema: Record<string, unknown>,
+  path: string,
+  issues: string[]
+): void {
+  // Complex union schemas are intentionally left to the MCP server. A local
+  // partial validator must never reject a value that satisfies another arm.
+  if (Array.isArray(schema.anyOf) || Array.isArray(schema.oneOf)) return
+  const allowedTypes = Array.isArray(schema.type)
+    ? schema.type.filter((item): item is string => typeof item === 'string')
+    : typeof schema.type === 'string'
+      ? [schema.type]
+      : []
+  if (allowedTypes.length > 0 && !allowedTypes.some((type) => matchesJsonSchemaType(value, type))) {
+    // A clear type mismatch (e.g. number where a string is declared) is a real
+    // caller bug and should be hard-blocked. This stays a hard issue.
+    issues.push(`${path} must be ${allowedTypes.join(' or ')}, received ${jsonValueType(value)}`)
+    return
+  }
+  if (Array.isArray(schema.enum) && !schema.enum.some((candidate) => Object.is(candidate, value))) {
+    // Enum membership is often declared loosely by MCP servers; record but do
+    // not hard-block so a near-miss value is still attempted server-side.
+    issues.push(`[soft] ${path} must be one of: ${schema.enum.map(String).join(', ')}`)
+    return
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value) && isObjectSchema(schema)) {
+    for (const issue of validateMcpArguments(value as Record<string, unknown>, schema)) {
+      issues.push(`${path}.${issue}`)
+    }
+  }
+  if (Array.isArray(value) && schema.items && typeof schema.items === 'object' && !Array.isArray(schema.items)) {
+    value.slice(0, 100).forEach((item, index) => {
+      validateMcpValue(item, schema.items as Record<string, unknown>, `${path}[${index}]`, issues)
+    })
+  }
+}
+
+function isObjectSchema(schema: Record<string, unknown>): boolean {
+  if (schema.type === undefined) {
+    return Boolean(schema.properties) || Array.isArray(schema.required)
+  }
+  if (schema.type === 'object') return true
+  return Array.isArray(schema.type) && schema.type.includes('object')
+}
+
+function matchesJsonSchemaType(value: unknown, type: string): boolean {
+  if (type === 'null') return value === null
+  if (type === 'array') return Array.isArray(value)
+  if (type === 'object') return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  if (type === 'integer') return typeof value === 'number' && Number.isInteger(value)
+  if (type === 'number') return typeof value === 'number' && Number.isFinite(value)
+  if (type === 'string') return typeof value === 'string'
+  if (type === 'boolean') return typeof value === 'boolean'
+  return true
+}
+
+function jsonValueType(value: unknown): string {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'array'
+  if (typeof value === 'number' && Number.isInteger(value)) return 'integer'
+  return typeof value
 }
 
 function actionWords(name: string): string {
