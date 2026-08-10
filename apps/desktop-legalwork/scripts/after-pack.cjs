@@ -228,11 +228,14 @@ function validateRelocatableSymlinks(root) {
         const fromRoot = relative(root, resolvedTarget)
         if (isAbsolute(target) || fromRoot === '..' || fromRoot.startsWith(`..${sep}`)) {
           // Some bundled Python builds embed an absolute build-time symlink
-          // (e.g. share/terminfo/z/z19 -> /tmp/<build>/share/terminfo/h/h19).
-          // When the absolute target still resolves to a real file inside the
-          // same tree, rewrite it as a relocatable relative link instead of
-          // failing the whole release (seen intermittently on Linux CI where
-          // the temporary build dir name changes between runs).
+          // (e.g. share/terminfo/z/z19 -> /tmp/<build>/python/share/terminfo/h/h19).
+          // The temp build dir no longer exists after packaging, so these are
+          // dead links. If the absolute target still resolves to a real file
+          // inside the same tree, rewrite it as a relocatable relative link;
+          // otherwise drop the dead link entirely (terminfo alias entries like
+          // z19 -> h19 are purely cosmetic terminal aliases — removing them does
+          // not affect functionality). This was failing intermittently on Linux
+          // CI where the temp build dir name changes between runs.
           const absTarget = isAbsolute(target) ? target : resolve(dirname(path), target)
           const absFromRoot = relative(root, absTarget)
           if (!absFromRoot.startsWith('..') && existsSync(absTarget)) {
@@ -240,6 +243,11 @@ function validateRelocatableSymlinks(root) {
             // Rewrite the symlink in place to a relative target.
             rmSync(path, { force: true })
             symlinkSync(relTarget, path)
+            continue
+          }
+          if (!existsSync(absTarget)) {
+            // Dead link to a removed build-time path: remove it.
+            rmSync(path, { force: true })
             continue
           }
           throw new Error(`[after-pack] Office runtime contains a non-relocatable symlink: ${path} -> ${target}`)
