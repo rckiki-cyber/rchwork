@@ -18,7 +18,10 @@ import os
 import re
 import sys
 import base64
+import concurrent.futures
+import hashlib
 import secrets
+import threading
 import time
 import uuid
 import urllib.error
@@ -31,6 +34,12 @@ REFRESH_PATH = "/cgi-bin/auth_login/refresh"
 INIT_SESSION_PATH = "/cgi-bin/session_logic/init_session"
 KNOWLEDGE_BASE_LIST_PATH = "/cgi-bin/knowledge_tab_reader/get_home_page_data"
 RUNTIME_CLIENT_ID = str(uuid.uuid4())
+CATALOG_CACHE_TTL_SECONDS = 60
+MAX_AUTO_SELECTED_KBS = 2
+
+# Only catalog metadata is cached. Credentials, tokens, raw responses and QA
+# content are deliberately excluded.
+_catalog_cache = {"expires_at": 0.0, "credential_fingerprint": "", "knowledge_bases": []}
 
 # ── 凭证读取（文件优先于环境变量）──
 
@@ -390,11 +399,79 @@ def _rank_knowledge_bases(query, knowledge_bases):
         item.pop("_order", None)
     return ranked
 
-def _fetch_cookie_knowledge_bases(timeout=30):
+BROAD_RESEARCH_PATTERN = re.compile(
+    r"全面|系统|综合|多源|文献综述|研究报告|分别|以及|同时|包括|与.{0,16}关系|"
+    r"不少于\s*\d+|越多越好"
+)
+
+def _plan_knowledge_base_route(query, ranked):
+    """Choose one or two KBs using score confidence instead of unconditional Top-1."""
+    if not ranked:
+        return {
+            "confidence": "none",
+            "reason": "catalog_empty",
+            "selected": [],
+            "score_ratio": 0.0,
+        }
+
+    first = ranked[0]
+    first_score = float(first.get("routing_score") or 0)
+    first_terms = first.get("matched_terms")
+    if first_score <= 0 or not isinstance(first_terms, list) or not first_terms:
+        return {
+            "confidence": "none",
+            "reason": "no_catalog_match",
+            "selected": [],
+            "score_ratio": 0.0,
+        }
+
+    second = ranked[1] if len(ranked) > 1 else None
+    second_score = float(second.get("routing_score") or 0) if second else 0.0
+    score_ratio = second_score / first_score if first_score > 0 else 0.0
+    broad = bool(BROAD_RESEARCH_PATTERN.search(str(query or ""))) or len(str(query or "")) >= 120
+
+    # Close candidates are genuinely ambiguous. Broad compound research also
+    # gets a second source when it is materially relevant, but never fans out
+    # beyond two KBs.
+    use_second = bool(
+        second
+        and second_score > 0
+        and (score_ratio >= 0.72 or (broad and score_ratio >= 0.45))
+    )
+    if use_second:
+        return {
+            "confidence": "medium",
+            "reason": "close_candidates" if score_ratio >= 0.72 else "broad_question",
+            "selected": ranked[:MAX_AUTO_SELECTED_KBS],
+            "score_ratio": round(score_ratio, 4),
+        }
+
+    margin = 1.0 - score_ratio
+    confidence = "high" if len(first_terms) >= 2 and margin >= 0.35 else "medium"
+    return {
+        "confidence": confidence,
+        "reason": "clear_top_candidate" if confidence == "high" else "best_available_candidate",
+        "selected": [first],
+        "score_ratio": round(score_ratio, 4),
+    }
+
+def _fetch_cookie_knowledge_bases(timeout=30, use_cache=True):
     """Cookie-only：刷新 token 后直接读取 IMA 知识库首页数据。"""
     cookie, bkn = _get_cookie_creds()
     if not cookie or not bkn:
         return [], "需要 IMA 登录凭证，请在插件中重新登录"
+    credential_fingerprint = hashlib.sha256(
+        f"{cookie}\0{bkn}".encode("utf-8", errors="ignore")
+    ).hexdigest()
+    now = time.monotonic()
+    cached = _catalog_cache.get("knowledge_bases", [])
+    if (
+        use_cache
+        and cached
+        and credential_fingerprint == _catalog_cache.get("credential_fingerprint")
+        and now < float(_catalog_cache.get("expires_at", 0))
+    ):
+        return cached, None
     try:
         timeout = max(10, min(int(timeout), 60))
     except (TypeError, ValueError):
@@ -431,7 +508,12 @@ def _fetch_cookie_knowledge_bases(timeout=30):
         if status != 200 or code not in (0, None):
             detail = payload.get("msg") or payload.get("message") or "未知错误"
             return [], f"IMA_LIST_ERROR: 无法读取知识库列表（HTTP {status}）：{detail}"
-        return _extract_remote_knowledge_bases(payload), None
+        knowledge_bases = _extract_remote_knowledge_bases(payload)
+        if knowledge_bases:
+            _catalog_cache["knowledge_bases"] = knowledge_bases
+            _catalog_cache["expires_at"] = time.monotonic() + CATALOG_CACHE_TTL_SECONDS
+            _catalog_cache["credential_fingerprint"] = credential_fingerprint
+        return knowledge_bases, None
     except Exception as error:
         return [], f"IMA_LIST_ERROR: 读取知识库列表失败：{error}"
 
@@ -814,14 +896,45 @@ def handle_search_knowledge(args: dict) -> dict:
             "is_end": result.get("is_end", True), "next_cursor": result.get("next_cursor", ""),
         }
 
-    # 未指定知识库 → 全库搜索（遍历所有知识库，合并结果）
-    kb_ids = _list_all_kb_ids(50)
-    if not kb_ids:
-        return {"error": "没有可搜索的知识库", "results": []}
+    # 未指定知识库 → 默认按目录置信度只搜 Top-1/Top-2。
+    # 只有调用者显式要求 search_all 才保留旧的全库遍历能力。
+    selected_bases = []
+    route_plan = None
+    if args.get("search_all") is True:
+        kb_ids = _list_all_kb_ids(50)
+        selected_bases = [{"id": kb_id, "name": ""} for kb_id in kb_ids]
+        route_plan = {
+            "confidence": "explicit_all",
+            "reason": "explicit_all_knowledge_bases",
+            "score_ratio": 0.0,
+        }
+    else:
+        catalog_result = handle_search_ima_catalog({
+            "query": query,
+            "top_k": 3,
+            "timeout": args.get("timeout", 20),
+        })
+        if "error" in catalog_result:
+            return catalog_result
+        route_plan = _plan_knowledge_base_route(
+            query,
+            catalog_result.get("knowledge_bases", []),
+        )
+        selected_bases = route_plan["selected"]
+
+    if not selected_bases:
+        return {
+            "error": "IMA_ROUTE_UNCERTAIN: 没有可靠匹配的知识库，请指定 knowledge_base_id",
+            "results": [],
+            "routing": route_plan,
+        }
 
     all_results = []
     per_kb_limit = args.get("limit", 10)
-    for kid in kb_ids:
+    for knowledge_base in selected_bases:
+        kid = str(knowledge_base.get("id", ""))
+        if not kid:
+            continue
         r = api_call("search_knowledge", {
             "query": query, "cursor": "", "knowledge_base_id": kid, "limit": per_kb_limit,
         })
@@ -831,12 +944,27 @@ def handle_search_knowledge(args: dict) -> dict:
             all_results.append({
                 "media_id": i.get("media_id", ""), "title": i.get("title", ""),
                 "highlight_content": i.get("highlight_content", ""),
-                "kb_id": kid,
+                "kb_id": kid, "knowledge_base_name": knowledge_base.get("name", ""),
             })
 
-    # 按包含查询词的次数简单排序（结果多的排在前面）
-    all_results.sort(key=lambda x: x["highlight_content"].count(query) if x["highlight_content"] else 0, reverse=True)
-    return {"results": all_results[:20], "total_kbs": len(kb_ids), "matched_kbs": len(set(r["kb_id"] for r in all_results))}
+    query_tokens = _catalog_tokens(query)
+
+    def result_score(item):
+        title_tokens = _catalog_tokens(item.get("title"))
+        highlight_tokens = _catalog_tokens(item.get("highlight_content"))
+        return len(query_tokens & title_tokens) * 2 + len(query_tokens & highlight_tokens)
+
+    all_results.sort(key=result_score, reverse=True)
+    return {
+        "results": all_results[:20],
+        "searched_kbs": len(selected_bases),
+        "matched_kbs": len(set(item["kb_id"] for item in all_results)),
+        "routing": {
+            "confidence": route_plan.get("confidence"),
+            "reason": route_plan.get("reason"),
+            "score_ratio": route_plan.get("score_ratio"),
+        },
+    }
 
 def handle_get_knowledge_base(args: dict) -> dict:
     ids = args.get("ids", [])
@@ -873,6 +1001,58 @@ def handle_get_knowledge_list(args: dict) -> dict:
     return {"folders": folders, "files": files, "is_end": result.get("is_end", True),
             "next_cursor": result.get("next_cursor", "")}
 
+def _ima_creds_dir():
+    """返回 IMA 凭证所在目录（缓存文件写在这里，供 runtime 注入给 agent）。"""
+    creds_path = os.environ.get("IMA_CREDS_FILE", "")
+    if creds_path and os.path.isfile(creds_path):
+        return os.path.dirname(creds_path)
+    # 无 env 时的兜底：macOS 默认 userData 目录（开发版）。
+    home = os.path.expanduser("~")
+    fallback = os.path.join(home, "Library", "Application Support", "legalwork")
+    if os.path.isdir(fallback):
+        return fallback
+    return os.path.dirname(creds_path) if creds_path else "."
+
+def _spawn_background_kb_cache():
+    """后台线程执行一次知识库列表预取，不阻塞 MCP 主循环。"""
+    try:
+        threading.Thread(target=_write_knowledge_base_cache, daemon=True).start()
+    except Exception:
+        return
+
+def _write_knowledge_base_cache():
+    """把当前 IMA 知识库列表写入缓存文件，供 runtime 注入给 agent。
+
+    列表来源优先 Cookie API 动态结果，其次登录窗口捕获快照；两者合并去重。
+    文件放在 IMA 凭证同目录下 `ima-knowledge-bases.json`，包含知识库 id/name，
+    以及最近捕获时间。失败静默（不阻塞 MCP 工具本身）。
+    """
+    try:
+        remote_bases, _remote_error = _fetch_cookie_knowledge_bases(20)
+        captured_bases = _get_captured_knowledge_bases()
+        merged = _merge_knowledge_bases(remote_bases, captured_bases)
+        if not merged:
+            return
+        creds = _read_creds_file()
+        cache = {
+            "captured_at": creds.get("last_verified_at", ""),
+            "count": len(merged),
+            "knowledge_bases": [
+                {"id": item.get("id", ""), "name": str(item.get("name") or "").strip()}
+                for item in merged
+            ],
+        }
+        target_dir = _ima_creds_dir()
+        os.makedirs(target_dir, exist_ok=True)
+        target = os.path.join(target_dir, "ima-knowledge-bases.json")
+        tmp = target + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, target)
+    except Exception:
+        # 缓存是 best-effort，任何失败都不应影响 IMA 工具主流程。
+        return
+
 def handle_list_available_knowledge_bases(args: dict) -> dict:
     """Cookie-only：动态读取 IMA 知识库，失败时使用登录窗口快照。"""
     remote_bases, remote_error = _fetch_cookie_knowledge_bases(
@@ -880,6 +1060,7 @@ def handle_list_available_knowledge_bases(args: dict) -> dict:
     )
     captured_bases = _get_captured_knowledge_bases()
     knowledge_bases = _merge_knowledge_bases(remote_bases, captured_bases)
+    _write_knowledge_base_cache()
     creds = _read_creds_file()
     return {
         "knowledge_bases": knowledge_bases,
@@ -925,13 +1106,60 @@ def handle_search_ima_catalog(args: dict) -> dict:
         ),
     }
 
+def _ima_answer_error(answer):
+    text = str(answer or "").lstrip()
+    return text.startswith((
+        "IMA_NO_MATCH:",
+        "IMA_NO_ANSWER:",
+        "IMA_PROTOCOL_ERROR:",
+        "IMA_AUTH_EXPIRED:",
+        "IMA_SESSION_ERROR:",
+        "Q&A 接口返回",
+        "Q&A 请求失败:",
+        "需要 IMA 登录凭证",
+    ))
+
+def _ask_routed_knowledge_bases(question, selected, timeout):
+    """Ask at most two selected KBs, in parallel when both are needed."""
+    if not selected:
+        return []
+    try:
+        timeout = max(30, min(int(timeout), 240))
+    except (TypeError, ValueError):
+        timeout = 90
+
+    def ask(item):
+        return item, qa_ask(question, str(item.get("id", "")), timeout)
+
+    if len(selected) == 1:
+        return [ask(selected[0])]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_AUTO_SELECTED_KBS) as executor:
+        futures = [executor.submit(ask, item) for item in selected[:MAX_AUTO_SELECTED_KBS]]
+        return [future.result() for future in futures]
+
+def _format_routed_answers(answer_pairs):
+    usable = [(item, answer) for item, answer in answer_pairs if not _ima_answer_error(answer)]
+    if not usable:
+        details = "\n".join(
+            f'「{item.get("name") or "未命名知识库"}」：{answer}'
+            for item, answer in answer_pairs
+        )
+        return "", details
+    if len(usable) == 1:
+        return str(usable[0][1]), ""
+    sections = []
+    for item, answer in usable:
+        name = str(item.get("name") or "未命名知识库")
+        sections.append(f"### 来自知识库「{name}」\n\n{answer}")
+    return "\n\n".join(sections), ""
+
 def handle_research_ima(args: dict) -> dict:
-    """统一入口：目录级 RAG 自动选库，然后执行 IMA 全文问答。"""
+    """统一入口：置信度目录路由，然后执行有界 IMA 全文问答。"""
     question = str(args.get("question", "")).strip()
     if not question:
         return {"error": "需要 question"}
     explicit_id = str(args.get("knowledge_base_id", "")).strip()
-    selected = None
+    route_plan = None
     if explicit_id:
         remote_bases, _ = _fetch_cookie_knowledge_bases(args.get("timeout", 30))
         catalog = _merge_knowledge_bases(
@@ -942,6 +1170,12 @@ def handle_research_ima(args: dict) -> dict:
             (item for item in catalog if item.get("id") == explicit_id),
             {"id": explicit_id, "name": "指定知识库", "routing_score": 1.0},
         )
+        route_plan = {
+            "confidence": "explicit",
+            "reason": "explicit_knowledge_base",
+            "selected": [selected],
+            "score_ratio": 0.0,
+        }
     else:
         # Catalog routing should stay fast. Preserve most of the caller's
         # timeout budget for the streaming full-text answer instead of letting
@@ -952,7 +1186,7 @@ def handle_research_ima(args: dict) -> dict:
             catalog_timeout = 20
         catalog_result = handle_search_ima_catalog({
             "query": question,
-            "top_k": 1,
+            "top_k": 3,
             "timeout": catalog_timeout,
         })
         if "error" in catalog_result:
@@ -960,21 +1194,82 @@ def handle_research_ima(args: dict) -> dict:
         candidates = catalog_result.get("knowledge_bases", [])
         if not candidates:
             return {"error": "IMA 当前账号没有可用于问答的知识库"}
-        selected = candidates[0]
+        route_plan = _plan_knowledge_base_route(question, candidates)
+        if not route_plan["selected"]:
+            candidate_names = "、".join(
+                str(item.get("name") or "未命名知识库") for item in candidates[:3]
+            )
+            return {
+                "error": (
+                    "IMA_ROUTE_UNCERTAIN: 问题与知识库目录没有可靠匹配，"
+                    f"请指定知识库。候选：{candidate_names}"
+                ),
+                "routing": route_plan,
+            }
 
-    answer = qa_ask(
+    selected = route_plan["selected"][:MAX_AUTO_SELECTED_KBS]
+    # 路由到具体知识库后，把当前知识库列表同步到缓存文件，供 runtime 注入给 agent。
+    _write_knowledge_base_cache()
+    answer_pairs = _ask_routed_knowledge_bases(
         question,
-        str(selected.get("id", "")),
+        selected,
         args.get("timeout", 90),
     )
-    name = str(selected.get("name") or "未命名知识库")
+
+    # A clear Top-1 miss gets exactly one bounded fallback to the next
+    # positively-scored catalog candidate. Protocol/auth failures do not fan out.
+    if (
+        len(selected) == 1
+        and answer_pairs
+        and str(answer_pairs[0][1]).lstrip().startswith(("IMA_NO_MATCH:", "IMA_NO_ANSWER:"))
+        and not explicit_id
+    ):
+        candidates = catalog_result.get("knowledge_bases", [])
+        fallback = next(
+            (
+                item for item in candidates[1:]
+                if float(item.get("routing_score") or 0) > 0
+            ),
+            None,
+        )
+        if fallback:
+            selected.append(fallback)
+            fallback_timeout = max(30, min(int(args.get("timeout", 90)) // 2, 90))
+            answer_pairs.extend(_ask_routed_knowledge_bases(
+                question,
+                [fallback],
+                fallback_timeout,
+            ))
+            route_plan["reason"] = "top_candidate_no_match_fallback"
+            route_plan["confidence"] = "fallback"
+
+    answer, error_details = _format_routed_answers(answer_pairs)
+    if not answer:
+        return {
+            "error": "IMA 选库后未获得有效回答\n" + error_details,
+            "routing": route_plan,
+        }
+
+    names = [str(item.get("name") or "未命名知识库") for item in selected]
+    route_label = "、".join(names)
     return {
-        "answer": f"【IMA 自动选库：{name}】\n\n{answer}",
+        "answer": f"【IMA 自动选库：{route_label}】\n\n{answer}",
         "selected_knowledge_base": {
-            "id": selected.get("id", ""),
-            "name": name,
-            "routing_score": selected.get("routing_score"),
-            "matched_terms": selected.get("matched_terms", []),
+            "id": selected[0].get("id", ""),
+            "name": names[0],
+            "routing_score": selected[0].get("routing_score"),
+            "matched_terms": selected[0].get("matched_terms", []),
+        },
+        "selected_knowledge_bases": [{
+            "id": item.get("id", ""),
+            "name": str(item.get("name") or "未命名知识库"),
+            "routing_score": item.get("routing_score"),
+            "matched_terms": item.get("matched_terms", []),
+        } for item in selected],
+        "routing": {
+            "confidence": route_plan.get("confidence"),
+            "reason": route_plan.get("reason"),
+            "score_ratio": route_plan.get("score_ratio"),
         },
     }
 
@@ -1021,7 +1316,7 @@ _has_openapi = bool(_cid and _key)
 
 _COOKIE_ONLY_TOOLS = {
     "research_ima": {
-        "description": "IMA 自动研究入口。先按知识库目录选库，再进行全文问答。每次只传一个范围明确的检索问题；不要把 Word/PDF/PPT 生成、长文撰写或其他交付步骤放进 question。论文/文献类问题会要求 IMA 列出本次实际使用的完整文献名称及作者。",
+        "description": "IMA 自动研究入口。工具内部会读取目录、计算路由置信度，自动选择 1—2 个相关知识库并进行全文问答；调用前不要再调用 list_available_knowledge_bases。每次只传一个范围明确的检索问题；不要把 Word/PDF/PPT 生成、长文撰写或其他交付步骤放进 question。论文/文献类问题会要求 IMA 列出本次实际使用的完整文献名称及作者。",
         "input_schema": {"type": "object", "properties": {
             "question": {"type": "string", "description": "单个、范围明确的知识库检索问题；保留主题限定，但排除写作、文件生成和交付指令"},
             "knowledge_base_id": {"type": "string", "description": "可选；用户明确指定知识库时传入，否则自动选库"},
@@ -1039,7 +1334,7 @@ _COOKIE_ONLY_TOOLS = {
         "handler": handle_search_ima_catalog,
     },
     "list_available_knowledge_bases": {
-        "description": "使用 Cookie 接口动态列出当前 IMA 账号可用的个人库和共享库，无需 OpenAPI；接口失败时回退到登录时 /wikis 捕获的快照。先用它取得 knowledge_base_id，再调用 ask",
+        "description": "使用 Cookie 接口动态列出当前 IMA 账号可用的个人库和共享库，无需 OpenAPI；仅用于用户要求查看库列表、手动选库或路由调试。不要在 research_ima 前调用，因为 research_ima 已内置目录读取与选库。",
         "input_schema": {"type": "object", "properties": {
             "timeout": {"type": "number", "description": "超时秒数"},
         }, "required": []},
@@ -1084,12 +1379,14 @@ _OPENAPI_TOOLS = {
         }, "required": ["knowledge_base_id"]}, "handler": handle_get_knowledge_list,
     },
     "search_knowledge": {
-        "description": "在指定知识库中搜索内容。不传 knowledge_base_id 时自动搜索所有知识库并合并结果（显示每个结果的来源 kb_id）",
+        "description": "在指定知识库中搜索内容。不传 knowledge_base_id 时使用目录置信度自动搜索最相关的 1—2 个库；仅当用户明确要求全库搜索时传 search_all=true",
         "input_schema": {"type": "object", "properties": {
-            "knowledge_base_id": {"type": "string", "description": "知识库 ID（可选，不传则搜所有知识库）"},
+            "knowledge_base_id": {"type": "string", "description": "知识库 ID（可选，不传则自动路由到最相关的 1—2 个库）"},
             "query": {"type": "string", "description": "搜索关键词"},
             "cursor": {"type": "string", "description": "翻页游标"},
             "limit": {"type": "number", "description": "每库返回数量"},
+            "search_all": {"type": "boolean", "description": "仅当用户明确要求全库搜索时设为 true"},
+            "timeout": {"type": "number", "description": "目录路由超时秒数"},
         }, "required": ["query"]}, "handler": handle_search_knowledge,
     },
     "get_knowledge_base": {
@@ -1148,6 +1445,10 @@ def main():
         if method == "initialize":
             respond(req_id, {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}, "resources": {}},
                             "serverInfo": {"name": "ima-knowledge-base", "version": "1.0.0"}})
+            # 后台预取一次知识库列表写入缓存文件，供 runtime 在 turn 开始时
+            # 注入给 agent（agent 因此一开始就知道 IMA 有哪些库）。不阻塞
+            # MCP 主循环，失败静默。
+            _spawn_background_kb_cache()
             continue
         if method == "notifications/initialized":
             continue

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -93,6 +93,26 @@ describe('bundled Office runtime packaging contract', () => {
 
     rmSync(join(sitePackages, 'openpyxl'), { recursive: true, force: true })
     expect(() => afterPack._internals.validateBundledOfficeRuntime(context)).toThrow(/openpyxl/)
+  })
+
+  it('rejects absolute or broken Office runtime symlinks before signing', () => {
+    const root = tempRoot()
+    const runtime = join(root, 'office-runtime', 'python')
+    const bin = join(runtime, 'bin')
+    const versionedPython = join(bin, 'python3.11')
+    const python = join(bin, 'python3')
+    ensurePath(versionedPython)
+
+    symlinkSync('python3.11', python)
+    expect(() => afterPack._internals.validateRelocatableSymlinks(runtime)).not.toThrow()
+
+    unlinkSync(python)
+    symlinkSync('/temporary/build/python3.11', python)
+    expect(() => afterPack._internals.validateRelocatableSymlinks(runtime)).toThrow(/non-relocatable symlink/)
+
+    unlinkSync(python)
+    symlinkSync('missing-python3.11', python)
+    expect(() => afterPack._internals.validateRelocatableSymlinks(runtime)).toThrow(/broken symlink/)
   })
 
   it('rejects a package that is missing the application-owned PDF font', () => {

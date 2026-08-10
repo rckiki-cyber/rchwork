@@ -58,6 +58,54 @@ export function recoverDsmlToolCall(
   return { ...first, visibleText: recovered.visibleText }
 }
 
+// DeepSeek 的 DSML 序列化在流式/转义过程中可能混入全角字符：
+// 半角 `<`（U+003C）、`>`（U+003E）通常保持 ASCII，但竖线 `|`（U+007C）
+// 常被转成全角 `｜`（U+FF5C），tag 名（tool_calls、invoke、parameter、"/"）
+// 仍为 ASCII。实测泄漏文本有两种变体：
+//  - `<｜｜DSML｜｜ tool_calls>`（单竖线 + DSML + 双竖线）
+//  - `<||DSML||tool_calls>`（双竖线 + DSML + 双竖线）
+// 为稳健匹配，先把全角竖线归一化为半角，再用兼容两种前缀的正则匹配
+// `<...DSML...tool_calls>` 的完整块。归一化只作用于分隔符竖线，不影响正文。
+const DSML_DELIM = '(?:\\|\\||\\|)?'
+// 匹配 `<|DSML||tool_calls>`、`<||DSML||tool_calls>` 及对应闭合标签的整块。
+const DSML_TOOL_CALLS_BLOCK =
+  new RegExp(
+    `<${DSML_DELIM}DSML${DSML_DELIM}\\s*tool_calls\\s*>[\\s\\S]*?` +
+    `<\\/${DSML_DELIM}DSML${DSML_DELIM}\\s*tool_calls\\s*>`,
+    'gi'
+  )
+
+function normalizeDsmlVerticalBars(text: string): string {
+  // U+FF5C（｜ 全角竖线）→ U+007C（| 半角竖线）
+  return text.replace(/｜/g, '|')
+}
+
+/**
+ * Whether the text contains a raw DSML tool-calls block. When recovery failed
+ * (e.g. the requested tool is no longer advertised — cost-budget wrap-up or a
+ * scoping change can strip the tool list mid-turn), this tells callers the
+ * model serialized a tool invocation as visible text, which must never reach
+ * the user as a final reply.
+ */
+export function looksLikeDsmlToolCalls(text: string): boolean {
+  const normalized = normalizeDsmlVerticalBars(text)
+  if (!normalized.includes('DSML') && !normalized.includes('<invoke')) return false
+  DSML_TOOL_CALLS_BLOCK.lastIndex = 0
+  return DSML_TOOL_CALLS_BLOCK.test(normalized)
+}
+
+/**
+ * Strip every DSML tool-calls block from the text, returning what remains for
+ * the user. Callers use this as a last-resort guard after recovery failed: a
+ * reply that is *only* DSML becomes an empty string and is dropped instead of
+ * leaking raw XML into the summary or stage announcements.
+ */
+export function stripDsmlToolCalls(text: string): string {
+  const normalized = normalizeDsmlVerticalBars(text)
+  if (!normalized.includes('DSML') && !normalized.includes('<invoke')) return text
+  return normalized.replace(DSML_TOOL_CALLS_BLOCK, '').trim()
+}
+
 function parseJsonValue(value: string): unknown {
   try {
     return JSON.parse(value)

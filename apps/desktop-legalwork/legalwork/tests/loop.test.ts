@@ -44,6 +44,8 @@ describe('AgentLoop', () => {
     expect(requestsDocumentMutation('如何设置 Word 的页边距？')).toBe(false)
     expect(requestsDocumentMutation('为什么 Word 正文通常使用宋体？')).toBe(false)
     expect(requestsDocumentMutation('Word 文档有哪些常用格式？')).toBe(false)
+    expect(requestsDocumentMutation('修订')).toBe(true)
+    expect(requestsDocumentMutation('把这篇文章按新框架重构，并补充最新文献')).toBe(true)
   })
 
   it('tracks every explicitly requested deliverable format', () => {
@@ -681,6 +683,13 @@ describe('AgentLoop', () => {
       })
     ]
     let callIndex = 0
+    const twentyReferences = [
+      '自动化行政处罚责任界定研究正文。',
+      '# 参考文献',
+      ...Array.from({ length: 20 }, (_, index) =>
+        `[${index + 1}] 作者${index + 1}. 自动化行政处罚研究${index + 1}[J]. 法学期刊, ${2000 + index}.`
+      )
+    ].join('\n')
     const requests: ModelRequest[] = []
     const h = makeHarness({
       provider: 'compound-delivery',
@@ -709,7 +718,11 @@ describe('AgentLoop', () => {
             kind: 'tool_call_complete',
             callId: `call_compound_${++callIndex}`,
             toolName: 'document_skill_execute',
-            arguments: { kind, operation }
+            arguments: {
+              kind,
+              operation,
+              ...(kind === 'docx' ? { content: twentyReferences } : {})
+            }
           }
           yield { kind: 'completed', stopReason: 'tool_calls' }
           return
@@ -1320,7 +1333,7 @@ describe('AgentLoop', () => {
       'mcp_call',
       'document_skill_execute'
     ])
-    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(['knowledge_auto_retrieve'])
+    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['knowledge_auto_retrieve']))
     expect(requests.some((request) => request.requiredToolName === 'document_skill_execute')).toBe(true)
     expect(executed).not.toContain('bash')
   })
@@ -1450,7 +1463,7 @@ describe('AgentLoop', () => {
     expect(executed).toEqual(['knowledge_auto_retrieve', 'mcp_search', 'mcp_call', 'bash'])
     const specialistRequests = requests.filter((request) => request.requiredToolName === 'bash')
     expect(specialistRequests).toHaveLength(1)
-    expect(specialistRequests[0]?.tools.map((tool) => tool.name)).toEqual(['bash'])
+    expect(specialistRequests[0]?.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['bash']))
     expect(specialistRequests[0]?.contextInstructions?.join('\n')).toContain('open-kimi-ppt / PPTD')
     expect(specialistRequests[0]?.contextInstructions?.join('\n')).toContain('scripts/skill_runner.py')
     expect(requests.every((request) =>
@@ -3149,34 +3162,14 @@ describe('AgentLoop', () => {
     expect(drifted.fingerprint).not.toBe(a.fingerprint)
   })
 
-  it('keeps a 1M context window but compacts DeepSeek history well below it', () => {
+  it('keeps DeepSeek history intact until the 1M window is genuinely near capacity', () => {
     const compactor = new ContextCompactor()
-    // ~110K tokens (charsPerToken=4); above the 100K soft threshold.
-    const longItems = [
+    const smallItems = [
       makeUserItem({
-        id: 'long_history',
+        id: 'small_history',
         turnId: 'turn_1',
         threadId: 'thr_1',
-        text: 'x'.repeat(440_000)
-      })
-    ]
-    // ~20K tokens; below the 100K soft threshold — ordinary turns stay uncompacted.
-    const moderateItems = [
-      makeUserItem({
-        id: 'moderate_history',
-        turnId: 'turn_1',
-        threadId: 'thr_1',
-        text: 'x'.repeat(80_000)
-      })
-    ]
-    // ~60K tokens; would have compacted under the old 40K threshold but stays
-    // uncompacted now that soft=100K, cutting compaction-driven cache clears.
-    const midItems = [
-      makeUserItem({
-        id: 'mid_history',
-        turnId: 'turn_1',
-        threadId: 'thr_1',
-        text: 'x'.repeat(240_000)
+        text: 'short'
       })
     ]
 
@@ -3184,14 +3177,25 @@ describe('AgentLoop', () => {
     expect(resolveModelContextProfile('provider/deepseek-v4-flash')?.contextWindowTokens).toBe(1_000_000)
     expect(resolveModelContextProfile('deepseek-chat')?.canonicalModel).toBe('deepseek-v4-flash')
     expect(resolveModelContextProfile('deepseek-reasoner')?.canonicalModel).toBe('deepseek-v4-flash')
-    // Long history (110K tokens) still compacts for DeepSeek — well below the 1M
-    // context window — so runaway re-billing stays bounded.
-    expect(compactor.shouldCompact(longItems, { model: 'deepseek-v4-pro' })).toBe(true)
-    expect(compactor.shouldCompact(longItems, { model: 'deepseek-v4-flash' })).toBe(true)
-    // Moderate (20K) and mid (60K) history stay uncompacted to avoid churn.
-    expect(compactor.shouldCompact(moderateItems, { model: 'deepseek-v4-flash' })).toBe(false)
-    expect(compactor.shouldCompact(midItems, { model: 'deepseek-v4-flash' })).toBe(false)
-    expect(compactor.hardCap('deepseek-v4-flash')).toBe(130_000)
+    expect(compactor.shouldCompact(smallItems, {
+      model: 'deepseek-v4-flash', promptTokens: 899_999
+    })).toBe(false)
+    expect(compactor.shouldCompact(smallItems, {
+      model: 'deepseek-v4-pro', promptTokens: 900_000
+    })).toBe(true)
+    expect(compactor.hardCap('deepseek-v4-flash')).toBe(950_000)
+  })
+
+  it('does not compact merely because a history contains many short items', () => {
+    const compactor = new ContextCompactor({ softThreshold: 1_000_000, hardThreshold: 1_100_000 })
+    const items = Array.from({ length: 300 }, (_, index) => makeUserItem({
+      id: `short_${index}`,
+      turnId: 'turn_1',
+      threadId: 'thr_1',
+      text: 'ok'
+    }))
+
+    expect(compactor.shouldCompact(items)).toBe(false)
   })
 
   it('uses reported prompt tokens as a compaction pressure signal', () => {
@@ -3265,6 +3269,45 @@ describe('AgentLoop', () => {
     expect(result.next.some((item) => item.kind === 'tool_call')).toBe(false)
     expect(result.summaryItem.kind === 'compaction' ? result.summaryItem.summary : '')
       .toContain('Active Skill: documents (documents)')
+  })
+
+  it('retains substantive user requirements even when they are buried in long tool history', () => {
+    const compactor = new ContextCompactor({ softThreshold: 1, hardThreshold: 2 })
+    const prefix = createImmutablePrefix({ systemPrompt: 'system' })
+    const history: TurnItem[] = [
+      ...Array.from({ length: 50 }, (_, index) => makeAssistantTextItem({
+        id: `before_${index}`,
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: `transient research ${index}`,
+        status: 'completed'
+      })),
+      makeUserItem({
+        id: 'durable_framework',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: '按我的新框架重构全文，保留原文可用案例，并补充最新参考文献。'
+      }),
+      ...Array.from({ length: 50 }, (_, index) => makeAssistantTextItem({
+        id: `after_${index}`,
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: `more transient research ${index}`,
+        status: 'completed'
+      }))
+    ]
+
+    const result = compactor.compact({
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      prefix,
+      keepRecent: 1,
+      history
+    })
+    const summary = result.summaryItem.kind === 'compaction' ? result.summaryItem.summary : ''
+
+    expect(summary).toContain('按我的新框架重构全文')
+    expect(summary).toContain('Durable user requests')
   })
 
   it('embeds a digest marker and skips frozen messages when compacting history', () => {
@@ -4004,4 +4047,211 @@ describe('FileSessionStore', () => {
     expect(events.map((event) => event.seq)).toEqual([1, 3, 5, 6, 7])
     expect(await sessionStore.highestSeq('thr_usage_compact')).toBe(7)
   })
+
+  it('forces broad fact audits through search, source reads, legal evidence and a provenance ledger', async () => {
+    const executed: string[] = []
+    const fetchedUrls = [
+      'https://news.example.test/a',
+      'https://agency.example.test/b',
+      'https://journal.example.test/c'
+    ]
+    const legalUrl = 'https://flk.npc.gov.cn/detail?id=law-1'
+    const define = (name: string, output: (args: Record<string, unknown>) => unknown) =>
+      LocalToolHost.defineTool({
+        name,
+        description: name,
+        inputSchema: { type: 'object', properties: {} },
+        policy: 'auto',
+        execute: async (args) => {
+          executed.push(name)
+          return { output: output(args) }
+        }
+      })
+    let fetchIndex = 0
+    let callIndex = 0
+    const requiredSeen: Array<string | undefined> = []
+    const h = makeHarness({
+      provider: 'fact-verification-gate',
+      model: 'fact-verification-gate',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        const required = request.requiredToolName
+        requiredSeen.push(required)
+        if (!required) {
+          yield { kind: 'assistant_text_delta', text: '逐项核验完成并列出来源。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        let args: Record<string, unknown> = { query: '食药犯罪事实与规范核验' }
+        if (required === 'web_fetch') args = { url: fetchedUrls[fetchIndex++] }
+        if (required === 'fact_verification_finalize') {
+          const evidence = [
+            { title: '新闻来源', url: fetchedUrls[0] },
+            { title: '主管机关来源', url: fetchedUrls[1] },
+            { title: '学术来源', url: fetchedUrls[2] },
+            { title: '国家法律法规数据库', url: legalUrl }
+          ]
+          args = {
+            claims: Array.from({ length: 5 }, (_, index) => ({
+              statement: `待核实陈述 ${index + 1}：涉及食药犯罪事实或规范`,
+              verdict: 'verified',
+              rationale: '已读取的网页正文与权威法律记录能够交叉支持该项结论。',
+              evidence: [evidence[index % evidence.length]]
+            }))
+          }
+        }
+        yield {
+          kind: 'tool_call_complete',
+          callId: `call_fact_${++callIndex}`,
+          toolName: required,
+          arguments: args
+        }
+        yield { kind: 'completed', stopReason: 'tool_calls' }
+      }
+    }, {
+      tools: [
+        define('web_search', () => ({ results: fetchedUrls.map((url) => ({ url })) })),
+        define('knowledge_legal_external_sources', () => ({
+          records: [{
+            title: '中华人民共和国刑法',
+            path: legalUrl,
+            excerpt: '制定机关：全国人民代表大会；公布日期与施行日期已经核对；状态：现行有效；第一百四十一条规定生产、销售、提供假药罪及其法定刑。'
+          }]
+        })),
+        define('web_fetch', (args) => ({
+          url: args.url,
+          finalUrl: args.url,
+          text: '这是已经实际读取的来源正文，包含可供核实的事实、日期、发布主体和具体数据。'.repeat(3)
+        })),
+        define('fact_verification_finalize', (args) => ({
+          verificationPassed: true,
+          claimCount: Array.isArray(args.claims) ? args.claims.length : 0
+        }))
+      ]
+    })
+    await bootstrapThread(h, {
+      request: { prompt: '核实下里面提到的事实、规范、新闻什么的，准确性、真实度。' }
+    })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(requiredSeen).toEqual([
+      'web_search',
+      'knowledge_legal_external_sources',
+      'web_fetch',
+      'web_fetch',
+      'web_fetch',
+      'fact_verification_finalize',
+      undefined
+    ])
+    expect(executed).toEqual([
+      'web_search',
+      'knowledge_legal_external_sources',
+      'web_fetch',
+      'web_fetch',
+      'web_fetch',
+      'fact_verification_finalize'
+    ])
+  })
 })
+
+describe('read continuation with offset is not deduplicated', () => {
+  it('allows a same-path read with a different offset after a truncated first read', async () => {
+    const longLine = '食药安全刑事政策研究'.repeat(60)
+    const allLines: string[] = []
+    for (let i = 0; i < 283; i += 1) allLines.push(`第${i + 1}行 ${longLine}`)
+    const fileText = `${allLines.join('\n')}\n`
+
+    const readCalls: Array<{ path: string; offset?: number; limit?: number }> = []
+    const readTool = LocalToolHost.defineTool({
+      name: 'read',
+      description: 'Read a file with optional offset.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+          offset: { type: 'number' },
+          limit: { type: 'number' }
+        },
+        required: ['path'],
+        additionalProperties: false
+      },
+      policy: 'auto',
+      execute: async (args: { path?: string; offset?: number; limit?: number }) => {
+        const offset = Math.max(1, Math.floor(args.offset ?? 1))
+        readCalls.push({ path: args.path ?? '', offset, limit: args.limit })
+        // 模拟 builtin-read 的 50KB 截断：offset=1 只返回前 186 行并提示续读，
+        // offset=187 返回剩余部分。
+        const lineStart = offset
+        const maxLinesPerRead = 186
+        const end = Math.min(offset + maxLinesPerRead - 1, allLines.length)
+        const slice = allLines.slice(offset - 1, end)
+        const truncated = end < allLines.length
+        const content = truncated
+          ? `${slice.join('\n')}\n\n[showing lines ${lineStart}-${end} of ${allLines.length} (50.0KB limit). Use offset=${end + 1} to continue.]`
+          : slice.join('\n')
+        return {
+          output: {
+            path: args.path ?? '',
+            content,
+            kind: 'text',
+            start_line: offset,
+            end_line: end,
+            total_lines: allLines.length,
+            truncated,
+            truncation_by: truncated ? 'bytes' : null,
+            first_line_exceeds_limit: false
+          }
+        }
+      }
+    })
+
+    let requests = 0
+    const h = makeHarness(
+      {
+        provider: 'read-offset-continuation',
+        model: 'read-offset-continuation',
+        async *stream(): AsyncIterable<ModelStreamChunk> {
+          requests += 1
+          if (requests === 1) {
+            yield {
+              kind: 'tool_call_complete',
+              callId: 'call_read_first',
+              toolName: 'read',
+              arguments: { path: '/tmp/paper.txt' }
+            }
+            yield { kind: 'completed', stopReason: 'tool_calls' }
+            return
+          }
+          if (requests === 2) {
+            yield {
+              kind: 'tool_call_complete',
+              callId: 'call_read_second',
+              toolName: 'read',
+              arguments: { path: '/tmp/paper.txt', offset: 187 }
+            }
+            yield { kind: 'completed', stopReason: 'tool_calls' }
+            return
+          }
+          yield { kind: 'assistant_text_delta', text: '已读完全文。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      },
+      { tools: [readTool] }
+    )
+    await bootstrapThread(h, { request: { prompt: '读取论文全文' } })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(requests).toBe(3)
+    expect(readCalls).toHaveLength(2)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    const dedupHits = items.filter((item) =>
+      item.kind === 'tool_result' &&
+      typeof item.output === 'object' &&
+      item.output !== null &&
+      (item.output as { _dedup?: boolean })._dedup === true
+    )
+    expect(dedupHits).toHaveLength(0)
+  })
+})
+

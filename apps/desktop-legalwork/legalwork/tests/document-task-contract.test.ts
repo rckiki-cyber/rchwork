@@ -132,4 +132,59 @@ describe('document task contract', () => {
 
     expect(successfullyVerifiedDraft(items, 'turn_1')).toBeUndefined()
   })
+
+  it('hard-gates a framework-based literature refresh on structure, source coverage and recency', () => {
+    const currentYear = new Date().getUTCFullYear()
+    const cutoff = currentYear - 5
+    const revisionPrompt = [
+      '这个文章文献参考不够，而且参考文献偏老，我知识库和 IMA 知识库都有很多文献，需要补充修正。',
+      '请把 Word 能用的论述、案例、规范、文献保留下来，按照这个框架重组论文并生成 Word：',
+      '## 一、宽严相济刑事政策的贯彻依据',
+      '### （一）宽严相济刑事政策的基本定位',
+      '## 二、食药领域犯罪的危害性特征',
+      '## 三、食药领域犯罪中宽严相济刑事政策的具体贯彻'
+    ].join('\n')
+    const contract = documentTaskContract(revisionPrompt)
+
+    expect(contract).toMatchObject({
+      requiredHeadings: [
+        '一、宽严相济刑事政策的贯彻依据',
+        '（一）宽严相济刑事政策的基本定位',
+        '二、食药领域犯罪的危害性特征',
+        '三、食药领域犯罪中宽严相济刑事政策的具体贯彻'
+      ],
+      minimumCaseCount: 1,
+      minimumReferenceCount: 20,
+      recentReferenceCutoffYear: cutoff,
+      minimumRecentReferenceCount: 5,
+      minimumKnowledgeSourceCount: 5,
+      minimumImaReferenceCount: 3,
+      requiresLegalNormContent: true
+    })
+
+    const incomplete = '# 一、宽严相济刑事政策的贯彻依据\n\n只有泛泛论述。\n# 参考文献'
+    expect(validateDocumentContent(incomplete, contract)).toEqual(expect.arrayContaining([
+      expect.stringContaining('二、食药领域犯罪的危害性特征'),
+      expect.stringContaining('案例'),
+      expect.stringContaining('参考文献仅检出 0 条'),
+      expect.stringContaining(`${cutoff} 年以来`),
+      expect.stringContaining('具体法律规范')
+    ]))
+
+    const references = Array.from({ length: 20 }, (_, index) => {
+      const year = index < 5 ? currentYear - index : 2010 + (index % 10)
+      return `[${index + 1}] 作者${index + 1}. 食药犯罪研究文献${index + 1}[J]. 法学期刊, ${year}.`
+    })
+    const complete = [
+      '# 一、宽严相济刑事政策的贯彻依据',
+      '## （一）宽严相济刑事政策的基本定位',
+      '# 二、食药领域犯罪的危害性特征',
+      '# 三、食药领域犯罪中宽严相济刑事政策的具体贯彻',
+      '本文结合《中华人民共和国刑法》第一百四十一条分析规范依据。',
+      '典型案例为（2023）京01刑终123号。',
+      '# 参考文献',
+      ...references
+    ].join('\n')
+    expect(validateDocumentContent(complete, contract)).toEqual([])
+  })
 })

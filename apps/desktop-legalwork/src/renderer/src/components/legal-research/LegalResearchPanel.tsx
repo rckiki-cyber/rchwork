@@ -358,10 +358,10 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     [activeRecord, hasActiveReport]
   )
   const researchPlanItems = useMemo(
-    () => activeRecord?.reasoning
-      ? extractResearchPlanItems(activeRecord.reasoning)
+    () => (activeRecord?.reasoning || activeRecord?.planning)
+      ? extractResearchPlanItems(activeRecord.planning || activeRecord.reasoning || '')
       : [],
-    [activeRecord?.reasoning]
+    [activeRecord?.reasoning, activeRecord?.planning]
   )
   const researchUpdates = activeRecord?.updates ?? []
   const visibleResearchUpdates = activeRecord?.status === 'running'
@@ -369,6 +369,17 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     : researchUpdates.slice(0, -1)
   const showResearchPlan = activeRecord?.status === 'running' || Boolean(activeRecord?.reasoning)
   const isResearchPlanStreaming = activeRecord?.status === 'running' && visibleResearchUpdates.length === 0
+  // 当前正在执行的关键工具（例如阻塞较久的 IMA 知识库检索），让用户在等待期
+  // 知道 agent 在做什么，而不是只看到“等待下一条结果”的转圈。
+  const currentTool = useMemo(() => {
+    if (activeRecord?.status !== 'running') return ''
+    const steps = activeRecord.steps ?? []
+    for (let index = steps.length - 1; index >= 0; index -= 1) {
+      const step = steps[index]
+      if (step.status !== 'done' && step.status !== 'error' && step.tool) return step.tool
+    }
+    return ''
+  }, [activeRecord])
 
   return (
     <div className="legal-research-stage ds-subfeature-controls flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--ds-main)]">
@@ -550,9 +561,16 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                     <span className="ds-shiny-text">{t('legalResearchLiveStatus')}</span>
                   </span>
                   <span>{t('legalResearchLastUpdate', { time: formatDuration(runningSince) })}</span>
-                  <span className="min-w-0 truncate text-[var(--ds-faint)]">
-                    {t('legalResearchWaitingForUpdate')}
-                  </span>
+                  {currentTool ? (
+                    <span className="inline-flex min-w-0 items-center gap-1.5 truncate rounded-full border border-[var(--ds-accent)]/20 bg-[var(--ds-accent-soft)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--ds-accent)]">
+                      <span aria-hidden className="legal-research-stream-caret" />
+                      <span className="truncate">{t('legalResearchCurrentTool', { tool: currentTool })}</span>
+                    </span>
+                  ) : (
+                    <span className="min-w-0 truncate text-[var(--ds-faint)]">
+                      {t('legalResearchWaitingForUpdate')}
+                    </span>
+                  )}
                 </div>
               </div>
             ) : null}

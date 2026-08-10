@@ -259,6 +259,36 @@ describe('resolveLegalworkDataDir', () => {
 })
 
 describe('syncGuiManagedLegalworkConfig', () => {
+  it('migrates premature persisted DeepSeek compaction thresholds', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const configPath = join(tempRoot, 'config.json')
+    writeFileSync(configPath, JSON.stringify({
+      models: {
+        profiles: {
+          'deepseek-v4-pro': {
+            contextCompaction: { softThreshold: 40_000, hardThreshold: 60_000 }
+          },
+          'deepseek-v4-flash': {
+            contextCompaction: { softThreshold: 100_000, hardThreshold: 130_000 }
+          }
+        }
+      }
+    }), 'utf8')
+    const module = await import('./legalwork-process')
+
+    await module.syncGuiManagedLegalworkConfig(tempRoot, defaultLegalworkRuntimeSettings())
+
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
+    expect(parsed.models.profiles['deepseek-v4-pro'].contextCompaction).toMatchObject({
+      softThreshold: 900_000,
+      hardThreshold: 950_000
+    })
+    expect(parsed.models.profiles['deepseek-v4-flash'].contextCompaction).toMatchObject({
+      softThreshold: 900_000,
+      hardThreshold: 950_000
+    })
+  })
+
   it('creates GUI-managed config with attachments enabled for image paste/upload', async () => {
     if (!tempRoot) throw new Error('temp root not initialized')
     const configPath = join(tempRoot, 'config.json')
@@ -290,16 +320,16 @@ describe('syncGuiManagedLegalworkConfig', () => {
     expect(parsed.models.profiles['deepseek-v4-pro']).toMatchObject({
       contextWindowTokens: 1_000_000,
       contextCompaction: {
-        softThreshold: 40_000,
-        hardThreshold: 60_000
+        softThreshold: 900_000,
+        hardThreshold: 950_000
       }
     })
     expect(parsed.models.profiles['deepseek-v4-flash']).toMatchObject({
       aliases: ['deepseek-chat', 'deepseek-reasoner'],
       contextWindowTokens: 1_000_000,
       contextCompaction: {
-        softThreshold: 40_000,
-        hardThreshold: 60_000
+        softThreshold: 900_000,
+        hardThreshold: 950_000
       }
     })
     expect(parsed.runtime.toolStorm).toMatchObject({ enabled: true, windowSize: 8, threshold: 3 })
@@ -669,7 +699,7 @@ describe('syncGuiManagedLegalworkConfig', () => {
       contextCompaction: {
         // User explicitly overrides softThreshold; hard is clamped to >= soft
         // (970000+1) so the profile stays valid even though the new default
-        // hard (60K) is below the user's soft value.
+        // hard (950K) is below the user's soft value.
         softThreshold: 970_000,
         hardThreshold: 970_001
       }
@@ -677,8 +707,9 @@ describe('syncGuiManagedLegalworkConfig', () => {
     expect(parsed.models.profiles['deepseek-v4-flash']).toMatchObject({
       contextWindowTokens: 1_000_000,
       contextCompaction: {
-        softThreshold: 40_000,
-        hardThreshold: 60_000
+        // A deliberate near-window override remains untouched.
+        softThreshold: 980_000,
+        hardThreshold: 990_000
       }
     })
     expect(parsed.runtime.toolStorm).toMatchObject({

@@ -166,12 +166,12 @@ describe('runtime SSE IPC lifecycle', () => {
       streamId: 'stream_backlog'
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 55))
+    await new Promise((resolve) => setTimeout(resolve, 22))
     let eventCalls = sender.send.mock.calls.filter(([channel]) => channel === 'runtime:sse-event')
     expect(eventCalls).toHaveLength(1)
     expect((eventCalls[0]?.[1] as { data: unknown[] }).data).toHaveLength(60)
 
-    await new Promise((resolve) => setTimeout(resolve, 90))
+    await new Promise((resolve) => setTimeout(resolve, 45))
     eventCalls = sender.send.mock.calls.filter(([channel]) => channel === 'runtime:sse-event')
     expect(eventCalls).toHaveLength(3)
     expect((eventCalls[2]?.[1] as { data: unknown[] }).data).toHaveLength(10)

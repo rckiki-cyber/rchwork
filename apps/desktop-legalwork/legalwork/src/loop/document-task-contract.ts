@@ -5,6 +5,12 @@ export type DocumentTaskContract = {
   requiredHeadings: string[]
   requiredTopicTerms: string[]
   minimumCaseCount?: number
+  minimumReferenceCount?: number
+  recentReferenceCutoffYear?: number
+  minimumRecentReferenceCount?: number
+  minimumKnowledgeSourceCount?: number
+  minimumImaReferenceCount?: number
+  requiresLegalNormContent?: boolean
   requiredFilenameFragment?: string
   requiredArtifactFilenameFragments?: Partial<Record<'docx' | 'pdf' | 'pptx' | 'xlsx', string>>
   forbidPlaceholders: boolean
@@ -76,7 +82,14 @@ export function documentTaskContract(prompt: string): DocumentTaskContract {
   let currentSection = ''
   for (const line of prompt.split(/\r?\n/)) {
     const sectionMatch = line.match(/^\s*#{1,6}\s+(.+?)\s*$/)
-    if (sectionMatch?.[1]) currentSection = sectionMatch[1]
+    if (sectionMatch?.[1]) {
+      currentSection = sectionMatch[1]
+      const frameworkHeading = sectionMatch[1].trim()
+      if (
+        /^(?:[一二三四五六七八九十百]+、|[（(][一二三四五六七八九十百]+[）)])/.test(frameworkHeading) &&
+        !requiredHeadings.includes(frameworkHeading)
+      ) requiredHeadings.push(frameworkHeading)
+    }
     // A multi-artifact request often lists Word/report chapters and then PPT
     // slide titles with the same Chinese ordinal syntax. Only report chapters
     // belong in the Word content contract.
@@ -88,9 +101,14 @@ export function documentTaskContract(prompt: string): DocumentTaskContract {
   }
 
   const caseMatch = prompt.match(/(?:分析|研究|梳理|检索)\s*(\d+)\s*(?:[-–—~至到]\s*\d+)?\s*个\s*(?:典型|相关)?\s*案例/)
+  const preserveCaseRequested = /(?:保留|沿用|复用).{0,20}案例|案例.{0,20}(?:保留|沿用|复用)/s.test(prompt)
   const minimumCaseCount = caseMatch?.[1]
     ? Math.min(Math.max(Number.parseInt(caseMatch[1], 10), 1), 20)
-    : undefined
+    : preserveCaseRequested
+      ? 1
+      : undefined
+  const requiresLegalNormContent =
+    /(?:保留|沿用|复用).{0,20}(?:规范|法条|法律依据)|(?:规范|法条|法律依据).{0,20}(?:保留|沿用|复用)/s.test(prompt)
   const filenameMatch = prompt.match(/文件名(?:中)?(?:需|必须)?\s*含\s*[「“"]([^」”"]+)[」”"]/) ??
     prompt.match(/文件名.{0,8}[「“"]([^」”"]+)[」”"]/)
   const requiredArtifactFilenameFragments: Partial<Record<'docx' | 'pdf' | 'pptx' | 'xlsx', string>> = {}
@@ -114,12 +132,66 @@ export function documentTaskContract(prompt: string): DocumentTaskContract {
   const requestedPdfReads = /(?:OCR|光学字符识别)/i.test(prompt) && /PDF/i.test(prompt)
     ? Number.parseInt(prompt.match(/(?:至少|不少于)\s*(\d+)\s*篇/)?.[1] ?? '1', 10)
     : 0
+  const compact = prompt.replace(/\s+/g, '')
+  const referenceQualityRequested =
+    /(?:文献|参考文献|引用).{0,24}(?:不够|不足|偏少|太少|补充|增加|扩充|完善|更新|偏老|陈旧|过时|最新|近年|新近)/s.test(compact) ||
+    /(?:补充|增加|扩充|完善|更新).{0,16}(?:文献|参考文献|引用)/s.test(compact)
+  const explicitReferenceCount = Number.parseInt(
+    compact.match(/(?:参考文献|文献|引用).{0,16}(?:不少于|至少|不低于)(\d+)(?:篇|条|项)?/)?.[1] ??
+      compact.match(/(?:不少于|至少|不低于)(\d+)(?:篇|条|项)(?:参考文献|文献|引用)/)?.[1] ??
+      '0',
+    10
+  )
+  const minimumReferenceCount = explicitReferenceCount > 0
+    ? Math.min(Math.max(explicitReferenceCount, 1), 200)
+    : referenceQualityRequested
+      ? 20
+      : undefined
+  const explicitCutoffYear = Number.parseInt(
+    compact.match(/((?:19|20)\d{2})年(?:以来|以后|之后|起)/)?.[1] ?? '0',
+    10
+  )
+  const relativeYears = Number.parseInt(compact.match(/近(\d+)年/)?.[1] ?? '0', 10)
+  const recencyRequested =
+    referenceQualityRequested && /(?:偏老|陈旧|过时|更新|最新|近年|新近|近年来|\d{4}年(?:以来|以后|之后|起)|近\d+年)/.test(compact)
+  const currentYear = new Date().getUTCFullYear()
+  const recentReferenceCutoffYear = explicitCutoffYear >= 1900
+    ? Math.min(explicitCutoffYear, currentYear + 1)
+    : relativeYears > 0
+      ? Math.max(1900, currentYear - Math.min(relativeYears, 50) + 1)
+      : recencyRequested
+        ? currentYear - 5
+        : undefined
+  const explicitRecentCount = Number.parseInt(
+    compact.match(/(?:近(?:\d+年|年)|新近|最新|\d{4}年(?:以来|以后|之后|起)).{0,16}(?:不少于|至少|不低于)(\d+)(?:篇|条|项)?/)?.[1] ??
+      compact.match(/(?:不少于|至少|不低于)(\d+)(?:篇|条|项).{0,16}(?:近(?:\d+年|年)|新近|最新|\d{4}年(?:以来|以后|之后|起))/)?.[1] ??
+      '0',
+    10
+  )
+  const minimumRecentReferenceCount = recentReferenceCutoffYear
+    ? Math.min(
+        Math.max(explicitRecentCount || Math.min(8, Math.max(5, Math.ceil((minimumReferenceCount ?? 20) / 4))), 1),
+        minimumReferenceCount ?? 200
+      )
+    : undefined
+  const minimumKnowledgeSourceCount = referenceQualityRequested && /(?:知识库|本地知识库)/.test(compact)
+    ? 5
+    : undefined
+  const minimumImaReferenceCount = referenceQualityRequested && /IMA/i.test(compact)
+    ? 3
+    : undefined
 
   return {
     ...(minimumContentCharacters ? { minimumContentCharacters } : {}),
     requiredHeadings,
     requiredTopicTerms: requiredTopicTerms(prompt),
     ...(minimumCaseCount ? { minimumCaseCount } : {}),
+    ...(minimumReferenceCount ? { minimumReferenceCount } : {}),
+    ...(recentReferenceCutoffYear ? { recentReferenceCutoffYear } : {}),
+    ...(minimumRecentReferenceCount ? { minimumRecentReferenceCount } : {}),
+    ...(minimumKnowledgeSourceCount ? { minimumKnowledgeSourceCount } : {}),
+    ...(minimumImaReferenceCount ? { minimumImaReferenceCount } : {}),
+    ...(requiresLegalNormContent ? { requiresLegalNormContent: true } : {}),
     ...(filenameMatch?.[1]?.trim() ? { requiredFilenameFragment: filenameMatch[1].trim() } : {}),
     ...(Object.keys(requiredArtifactFilenameFragments).length
       ? { requiredArtifactFilenameFragments }
@@ -146,6 +218,29 @@ function caseNumbersIn(value: string): Set<string> {
   return new Set([...matches].map((match) => match[0].replace(/\s+/g, '')))
 }
 
+function referenceEntriesIn(value: string): string[] {
+  const referenceHeading = /(?:^|\n)\s{0,3}(?:#{1,6}\s*)?(?:参考文献|References)\s*[：:]?\s*(?:\n|$)/i
+  const match = referenceHeading.exec(value)
+  if (!match) return []
+  const section = value.slice(match.index + match[0].length)
+  const lines = section.split(/\r?\n/)
+  const entries: string[] = []
+  let current = ''
+  for (const line of lines) {
+    if (/^\s{0,3}#{1,6}\s+/.test(line) && entries.length > 0) break
+    const numbered = line.match(/^\s*(?:[-*+]\s*)?(?:\[(\d{1,3})\]|(\d{1,3})[.、)])\s*(.+)$/)
+    if (numbered?.[3]) {
+      if (current) entries.push(current)
+      current = numbered[3].trim()
+      continue
+    }
+    if (current && line.trim()) current += ` ${line.trim()}`
+  }
+  if (current) entries.push(current)
+  return [...new Set(entries.map((entry) => entry.normalize('NFKC').replace(/\s+/g, ' ').trim()))]
+    .filter((entry) => entry.length >= 8)
+}
+
 export function validateDocumentContent(
   content: string,
   contract: DocumentTaskContract
@@ -170,6 +265,31 @@ export function validateDocumentContent(
     if (caseCount < contract.minimumCaseCount) {
       issues.push(`仅检出 ${caseCount} 个不同案号，用户要求至少 ${contract.minimumCaseCount} 个典型案例`)
     }
+  }
+  if (contract.minimumReferenceCount) {
+    const references = referenceEntriesIn(content)
+    if (references.length < contract.minimumReferenceCount) {
+      issues.push(`参考文献仅检出 ${references.length} 条，要求至少 ${contract.minimumReferenceCount} 条不同文献`)
+    }
+    if (contract.recentReferenceCutoffYear && contract.minimumRecentReferenceCount) {
+      const recentCount = references.filter((entry) =>
+        [...entry.matchAll(/\b(?:19|20)\d{2}\b/g)].some((match) =>
+          Number.parseInt(match[0], 10) >= contract.recentReferenceCutoffYear!
+        )
+      ).length
+      if (recentCount < contract.minimumRecentReferenceCount) {
+        issues.push(
+          `${contract.recentReferenceCutoffYear} 年以来的参考文献仅 ${recentCount} 条，` +
+          `要求至少 ${contract.minimumRecentReferenceCount} 条`
+        )
+      }
+    }
+  }
+  if (
+    contract.requiresLegalNormContent &&
+    !/(?:《[^》]{2,40}(?:法|条例|规定|解释|办法|意见)》|刑法第[一二三四五六七八九十百千万\d]+条|刑事诉讼法第[一二三四五六七八九十百千万\d]+条)/.test(content)
+  ) {
+    issues.push('终稿未检出用户要求保留并纳入新框架的具体法律规范或法条')
   }
   if (
     contract.forbidPlaceholders &&
@@ -273,6 +393,24 @@ export function taskContractInstruction(input: {
   }
   if (input.contract.minimumCaseCount) {
     requirements.push(`至少 ${input.contract.minimumCaseCount} 个不同、可核验的案号`)
+  }
+  if (input.contract.minimumReferenceCount) {
+    requirements.push(`终稿参考文献至少 ${input.contract.minimumReferenceCount} 条不同文献`)
+  }
+  if (input.contract.recentReferenceCutoffYear && input.contract.minimumRecentReferenceCount) {
+    requirements.push(
+      `${input.contract.recentReferenceCutoffYear} 年以来的参考文献至少 ` +
+      `${input.contract.minimumRecentReferenceCount} 条，并在正文中形成对应论证`
+    )
+  }
+  if (input.contract.minimumKnowledgeSourceCount) {
+    requirements.push(`本地知识库必须返回至少 ${input.contract.minimumKnowledgeSourceCount} 个不同、含正文证据的来源`)
+  }
+  if (input.contract.minimumImaReferenceCount) {
+    requirements.push(`IMA 研究结果必须给出至少 ${input.contract.minimumImaReferenceCount} 条可识别的文献/来源记录`)
+  }
+  if (input.contract.requiresLegalNormContent) {
+    requirements.push('终稿必须在新框架中保留并准确使用具体规范名称或法条')
   }
   if (input.contract.requiredFilenameFragment) {
     requirements.push(`文件名必须包含“${input.contract.requiredFilenameFragment}”`)

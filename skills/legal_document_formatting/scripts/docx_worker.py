@@ -693,6 +693,166 @@ def is_markdown_table_separator(line: str) -> bool:
     return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells)
 
 
+def collect_footnotes(md_text: str) -> dict[int, str]:
+    """从 markdown 原文收集 GFM 脚注定义 `[^N]: 内容`。
+
+    返回 {id: 脚注文本}，仅保留正文实际引用到且定义了的内容。
+    """
+    definitions: dict[int, str] = {}
+    for line in md_text.split("\n"):
+        match = re.match(r"^\s*\[\^(\d+)\]\s*[:：]\s*(.+)$", line)
+        if match:
+            definitions[int(match.group(1))] = match.group(2).strip()
+    referenced = set()
+    for line in md_text.split("\n"):
+        for m in re.finditer(r"\[\^(\d+)\]", line):
+            referenced.add(int(m.group(1)))
+    return {key: definitions[key] for key in sorted(referenced) if key in definitions}
+
+
+def _inject_footnote_refs(doc_bytes: bytes, footnotes: dict[int, str]) -> bytes:
+    """把 document.xml 里 `[^N]` 文本替换为合法的 Word 脚注引用。
+
+    必须用 XML 解析而非裸字符串替换：直接把 `<w:footnoteReference/>` run 插进
+    `<w:t>` 内部会产生非法嵌套，Word 会丢弃/损坏该段及后续内容（实测 4 千字
+    正文只剩 1 千）。正确做法是把含 `[^N]` 的 `<w:t>` 拆成
+    `<w:t>前文</w:t><w:r>脚注引用</w:r><w:t>后文</w:t>`。
+    """
+    try:
+        from lxml import etree
+    except Exception:
+        return doc_bytes  # lxml 不可用时保持原样，不冒险破坏
+    W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    W = f"{{{W_NS}}}"
+    try:
+        root = etree.fromstring(doc_bytes)
+    except Exception:
+        return doc_bytes
+    changed = False
+    for t in root.iter(f"{W}t"):
+        if t.text is None or "[^" not in t.text:
+            continue
+        parts: list[str] = []
+        cursor = 0
+        for match in re.finditer(r"\[\^(\d+)\]", t.text):
+            fid = int(match.group(1))
+            if fid not in footnotes:
+                continue
+            if match.start() > cursor:
+                parts.append(t.text[cursor:match.start()])
+            parts.append(f"\x00FN{fid}\x00")
+            cursor = match.end()
+            changed = True
+        if not changed:
+            continue
+        if cursor < len(t.text):
+            parts.append(t.text[cursor:])
+        parent = t.getparent()
+        if parent is None:
+            continue
+        # 拆分：文本片段 → w:t；脚注标记 → 独立 w:r（footnoteReference）。
+        for part in parts:
+            if part.startswith("\x00FN") and part.endswith("\x00"):
+                fid = int(part[3:-1])
+                run = etree.SubElement(parent, f"{W}r")
+                rpr = etree.SubElement(run, f"{W}rPr")
+                rstyle = etree.SubElement(rpr, f"{W}rStyle")
+                rstyle.set(f"{W}val", "FootnoteReference")
+                va = etree.SubElement(rpr, f"{W}vertAlign")
+                va.set(f"{W}val", "superscript")
+                ref = etree.SubElement(run, f"{W}footnoteReference")
+                ref.set(f"{W}id", str(fid))
+            else:
+                if not part:
+                    continue
+                new_t = etree.SubElement(parent, f"{W}t")
+                new_t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                new_t.text = part
+        # 移除原 w:t
+        parent.remove(t)
+    if not changed:
+        return doc_bytes
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def inject_footnotes(path: Path, footnotes: dict[int, str]) -> None:
+    """把 GFM 脚注注入 docx：document.xml 中 `[^N]` → 上标 footnoteReference，
+    并写入 word/footnotes.xml、word/_rels/document.xml.rels、[Content_Types].xml。
+    用 zipfile 重打包（与 ensure_generated_font_table 一致），失败静默返回。
+    """
+    if not footnotes:
+        return
+    staged = path.with_name(f".{path.name}.footnotes-{uuid.uuid4().hex}")
+    try:
+        with zipfile.ZipFile(path) as source, zipfile.ZipFile(staged, "w") as target:
+            names = {info.filename for info in source.infolist()}
+            for info in source.infolist():
+                payload = source.read(info.filename)
+                name = info.filename
+                if name == "word/document.xml":
+                    payload = _inject_footnote_refs(payload, footnotes)
+                elif name == "word/settings.xml":
+                    s = payload.decode("utf-8")
+                    # 明确脚注位置在页面底部，避免 WPS/Word 因缺少声明而把脚注
+                    # 回退显示到文档末尾。
+                    if "<w:footnotePr>" not in s:
+                        s = s.replace(
+                            "<w:zoom",
+                            '<w:footnotePr><w:pos w:val="pageBottom"/></w:footnotePr><w:zoom',
+                            1,
+                        )
+                    payload = s.encode("utf-8")
+                elif name == "word/_rels/document.xml.rels":
+                    rels = payload.decode("utf-8")
+                    if "footnotes" not in rels:
+                        rels = rels.replace(
+                            "</Relationships>",
+                            '<Relationship Id="rIdFootnotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/></Relationships>',
+                        )
+                    payload = rels.encode("utf-8")
+                elif name == "[Content_Types].xml":
+                    ct = payload.decode("utf-8")
+                    if "footnotes.xml" not in ct:
+                        ct = ct.replace(
+                            "</Types>",
+                            '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/></Types>',
+                        )
+                    payload = ct.encode("utf-8")
+                target.writestr(info, payload)
+
+            if "word/footnotes.xml" not in names:
+                items = "".join(
+                    '<w:footnote w:id="{fid}"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr>'
+                    '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/><w:vertAlign w:val="superscript"/></w:rPr>'
+                    '<w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> {text}</w:t></w:r></w:p></w:footnote>'.format(
+                        fid=fid, text=_escape_xml(text)
+                    )
+                    for fid, text in footnotes.items()
+                )
+                fn_xml = (
+                    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                    '<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                    '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
+                    '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>'
+                    f"{items}</w:footnotes>"
+                )
+                target.writestr("word/footnotes.xml", fn_xml.encode("utf-8"))
+        staged.replace(path)
+    except Exception:
+        # 脚注注入是 best-effort，任何失败不阻塞主流程。
+        if staged.exists():
+            staged.unlink()
+
+
+def _escape_xml(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
 def plain_inline_markdown(text: str) -> str:
     def replacement(match: re.Match[str]) -> str:
         if match.group(1) is not None:
@@ -770,7 +930,19 @@ def parse_markdown_blocks(text: str) -> list[dict[str, Any]]:
             flush(); i += 1; continue
         heading = re.match(r"^(#{1,6})\s+(.+)$", stripped)
         if heading:
-            flush(); blocks.append({"type": "heading", "level": len(heading.group(1)), "text": heading.group(2).strip()}); i += 1; continue
+            heading_text = heading.group(2).strip()
+            # 论文引注采用当页页下脚注，文末"参考文献"清单是多余的（agent 常
+            # 同时写脚注定义和文末列表）。遇到参考文献标题就跳过其后的所有
+            # 内容直到下一个标题或文件结束，只保留页下脚注。
+            if re.match(r"^(?:参考)?文献(?:清单|列表)?$", heading_text):
+                flush()
+                i += 1
+                while i < len(lines):
+                    if re.match(r"^#{1,6}\s+", lines[i].strip()):
+                        break
+                    i += 1
+                continue
+            flush(); blocks.append({"type": "heading", "level": len(heading.group(1)), "text": heading_text}); i += 1; continue
         if re.match(r"^[-*+]\s+", stripped):
             flush(); blocks.append({"type": "bullet", "text": re.sub(r"^[-*+]\s+", "", stripped)}); i += 1; continue
         if re.match(r"^\d+[.)、]\s*", stripped):
@@ -842,6 +1014,8 @@ def cmd_from_markdown(args: argparse.Namespace) -> None:
                 add_markdown_runs(doc.add_paragraph(style="Normal"), block["text"])
         apply_profile(doc, args.profile, {"body", "headings"})
         doc.save(str(out))
+        # 注入 GFM 页下脚注（[^1]: 定义），把正文 [^N] 渲染为真 Word 脚注。
+        inject_footnotes(out, collect_footnotes(md.read_text(encoding="utf-8")))
         ensure_generated_font_table(out)
         reloaded = Document(str(out))
         emit({

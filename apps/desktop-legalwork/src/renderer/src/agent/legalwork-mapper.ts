@@ -113,6 +113,27 @@ function outputText(value: unknown): string {
   }
 }
 
+/**
+ * Build the user-visible detail for a tool result. For command executions
+ * (bash) the raw output object carries technical plumbing (cwd, shell,
+ * exit_code, session_id, pid, started_at…) that end users should not see.
+ * Extract just the command text and its stdout/stderr output. Other tool
+ * results keep their structured text.
+ */
+function readableToolOutput(output: unknown): string {
+  if (output == null) return ''
+  if (typeof output !== 'object' || Array.isArray(output)) return outputText(output)
+  const record = output as Record<string, unknown>
+  // Command execution results wrap the real stdout/stderr in `output`.
+  if (typeof record.output === 'string' && 'exit_code' in record) {
+    const body = record.output.trim()
+    return body || (typeof record.error === 'string' && record.error.trim() ? record.error.trim() : '')
+  }
+  // Error-shaped results surface the message, not the raw envelope.
+  if (typeof record.error === 'string' && record.error.trim()) return record.error.trim()
+  return outputText(output)
+}
+
 function toolBlockId(item: CoreTurnItemJson): string {
   return item.callId?.trim() ? `tool_${item.callId}` : item.id
 }
@@ -351,7 +372,7 @@ function extractPlanMetadata(item: CoreTurnItemJson): Record<string, unknown> | 
 }
 
 function toolBlockFromItem(item: CoreTurnItemJson, child?: CoreChildRuntimeMetadataJson): ToolBlock {
-  const detail = item.kind === 'tool_result' ? outputText(item.output) : outputText(item.arguments)
+  const detail = item.kind === 'tool_result' ? readableToolOutput(item.output) : outputText(item.arguments)
   const isPlan = isPlanItem(item)
   const summary =
     item.summary?.trim() ||

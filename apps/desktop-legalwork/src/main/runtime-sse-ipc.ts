@@ -24,7 +24,9 @@ const SSE_RECONNECT_MAX_MS = 5_000
 const SSE_START_TIMEOUT_MS = 15_000
 // 重连次数上限：防止 runtime 反复崩溃时无限重连空转。60 次 × ≤5s 退避 ≈ 数分钟。
 const SSE_MAX_RECONNECTS = 60
-const SSE_BATCH_FLUSH_MS = 40
+// Match a 60 Hz display instead of holding live text in 40 ms (25 fps)
+// chunks. Backlog protection still comes from the bounded batch size below.
+const SSE_BATCH_FLUSH_MS = 16
 const SSE_BATCH_MAX_EVENTS = 60
 
 

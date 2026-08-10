@@ -558,16 +558,16 @@ describe('cli', () => {
     expect(legacy?.hardThreshold).toBe(56_000)
   })
 
-  it('uses a 1M context window with aggressive compaction thresholds for DeepSeek v4', () => {
+  it('uses the 1M context window before safety compaction for DeepSeek v4', () => {
     const profile = modelContextProfilesFromConfig()
       .find((candidate) => candidate.canonicalModel === 'deepseek-v4-pro')
 
     // Context window stays 1M; compaction thresholds are deliberately far below
     // it (100K/130K) so history is folded before it grows into runaway re-billing
-    // while avoiding too-frequent compaction that clears the prompt cache.
+    // while retaining a reserve for completion and tool-call output.
     expect(profile?.contextWindowTokens).toBe(1_000_000)
-    expect(profile?.softThreshold).toBe(100_000)
-    expect(profile?.hardThreshold).toBe(130_000)
+    expect(profile?.softThreshold).toBe(900_000)
+    expect(profile?.hardThreshold).toBe(950_000)
   })
 
   it('keeps built-in DeepSeek v4 models text-only', () => {

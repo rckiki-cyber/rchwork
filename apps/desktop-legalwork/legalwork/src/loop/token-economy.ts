@@ -1,6 +1,7 @@
 import type { TurnItem } from '../contracts/items.js'
 import type { ModelRequest, ModelToolSpec } from '../ports/model-client.js'
 import type { RequestHistoryHygieneOptions } from './request-history-hygiene.js'
+import { modelCapabilitiesForModel } from './model-context-profile.js'
 
 export type TokenEconomyConfig = {
   enabled?: boolean
@@ -90,6 +91,16 @@ export function applyTokenEconomyToRequest(
 ): ModelRequest {
   const economy = normalizeTokenEconomyConfig(config)
   if (!economy.enabled) return request
+  const preserveDurableEvidence =
+    (modelCapabilitiesForModel(request.model).contextWindowTokens ?? 0) >= 512_000
+  const durableEvidenceCallIds = new Set<string>()
+  if (preserveDurableEvidence) {
+    for (const item of request.history) {
+      if (item.kind === 'tool_call' && isDurableEvidenceToolCall(item)) {
+        durableEvidenceCallIds.add(item.callId)
+      }
+    }
+  }
   return {
     ...request,
     contextInstructions: economy.conciseResponses
@@ -99,7 +110,10 @@ export function applyTokenEconomyToRequest(
       ? request.tools.map(compactToolSpec)
       : request.tools,
     history: economy.compressToolResults
-      ? request.history.map(compactHistoryItem)
+      ? request.history.map((item) => compactHistoryItem(item, {
+          preserveDurableEvidence:
+            item.kind === 'tool_result' && durableEvidenceCallIds.has(item.callId)
+        }))
       : request.history
   }
 }
@@ -112,13 +126,22 @@ export function compactToolSpec(tool: ModelToolSpec): ModelToolSpec {
   }
 }
 
-export function compactHistoryItem(item: TurnItem): TurnItem {
+export function compactHistoryItem(
+  item: TurnItem,
+  options: { preserveDurableEvidence?: boolean } = {}
+): TurnItem {
   switch (item.kind) {
     case 'tool_call': {
       const summary = item.summary ? compressProse(item.summary) : item.summary
       return summary === item.summary ? item : { ...item, summary }
     }
     case 'tool_result':
+      if (options.preserveDurableEvidence) {
+        return {
+          ...item,
+          output: omitBase64Payloads(item.output)
+        }
+      }
       return {
         ...item,
         output: compactToolOutput(item.toolName, item.output)
@@ -138,6 +161,30 @@ export function compactHistoryItem(item: TurnItem): TurnItem {
     default:
       return item
   }
+}
+
+function isDurableEvidenceToolCall(item: Extract<TurnItem, { kind: 'tool_call' }>): boolean {
+  if (['read', 'knowledge_read_file', 'knowledge_auto_retrieve', 'knowledge_search'].includes(item.toolName)) {
+    return true
+  }
+  if (item.toolName !== 'mcp_call') return false
+  const toolId = typeof item.arguments.toolId === 'string' ? item.arguments.toolId : ''
+  return /(?:ima-knowledge-base|knowledge|document|attachment)/i.test(toolId)
+}
+
+function omitBase64Payloads(value: unknown, key = ''): unknown {
+  if (typeof value === 'string') {
+    return key === 'data_base64' || /(?:^|_)(?:data_)?base64$/i.test(key)
+      ? `[base64 data omitted by token economy: ${value.length} chars]`
+      : value
+  }
+  if (Array.isArray(value)) return value.map((item) => omitBase64Payloads(item))
+  if (!isRecord(value)) return value
+  const out: JsonRecord = {}
+  for (const [childKey, childValue] of Object.entries(value)) {
+    out[childKey] = omitBase64Payloads(childValue, childKey)
+  }
+  return out
 }
 
 export function compressProse(text: string): string {

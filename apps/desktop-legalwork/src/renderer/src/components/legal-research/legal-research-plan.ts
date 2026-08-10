@@ -141,7 +141,7 @@ export function isResearchPlanMessage(text: string): boolean {
   const normalized = text.replace(/\r/g, '').trim()
   if (!normalized) return false
 
-  const headingMatch = /(?:^|\n)\s*(?:#{1,6}\s*)?调研规划\s*(?:[：:]\s*)?(?:\n|$)/.exec(normalized)
+  const headingMatch = /(?:^|\n)\s*(?:#{1,6}\s*)?\*{0,3}\s*调研规划\s*\*{0,3}\s*(?:[：:]\s*)?(?:\n|$)/.exec(normalized)
   if (!headingMatch || (headingMatch.index ?? 0) > 240) return false
   if (/(?:第[一二三四五六七八九十\d]+阶段|阶段\s*[一二三四五六七八九十\d]+).{0,8}(?:完成|结果)/.test(normalized)) {
     return false

@@ -29,7 +29,7 @@ const {
   writeFileSync
 } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { basename, delimiter, dirname, join, resolve } = require('node:path')
+const { basename, delimiter, dirname, isAbsolute, join, resolve } = require('node:path')
 
 const DESKTOP_ROOT = resolve(__dirname, '..')
 const REPO_ROOT = resolve(DESKTOP_ROOT, '..', '..')
@@ -390,48 +390,54 @@ function pipPlatform(target) {
 }
 
 /**
- * python-build-standalone ships bin/{python3,python,idle3,2to3,...} as absolute
- * symlinks pointing at the build-time path. cpSync(dereference) does not resolve
- * them here, so after the temp dir is removed the vendored python is unusable.
- * Rebuild those links as relative links to the real `*-3.11` binaries in the
- * same bin dir.
+ * python-build-standalone ships links in bin/, lib/pkgconfig/, share/man/, and
+ * potentially other directories as absolute paths into its extraction root.
+ * Once that temporary root is removed those links break and macOS codesign
+ * rejects the whole app bundle. Every link currently targets a peer in the
+ * same directory, so replace absolute build-time paths with peer-relative links
+ * throughout the complete Python tree.
  */
 function repairBundledSymlinks(runtimeRoot) {
-  const binDir = join(runtimeRoot, 'python', 'bin')
-  if (!existsSync(binDir)) return
+  const pythonRoot = join(runtimeRoot, 'python')
+  if (!existsSync(pythonRoot)) return
   let repaired = 0
-  for (const name of readdirSync(binDir)) {
-    const linkPath = join(binDir, name)
-    let stat
+  const stack = [pythonRoot]
+  while (stack.length > 0) {
+    const currentDir = stack.pop()
+    let entries
     try {
-      stat = lstatSync(linkPath)
+      entries = readdirSync(currentDir, { withFileTypes: true })
     } catch {
       continue
     }
-    if (!stat.isSymbolicLink()) continue
-    // Derive the versioned target (python3 -> python3.11, 2to3 -> 2to3-3.11,
-    // idle3 -> idle3.11, python3-config -> python3.11-config). Derive from
-    // PYTHON_LINE so a future Python bump cannot silently break these links.
-    let target = null
-    if (name === '2to3' || name === 'idle3' || name === 'pydoc3') {
-      target = `${name}-${PYTHON_LINE}`
-    } else if (name === 'python3-config') {
-      target = `python${PYTHON_LINE}-config`
-    } else if (name === 'python3' || name === 'python') {
-      target = `python${PYTHON_LINE}`
-    }
-    if (!target || !existsSync(join(binDir, target))) continue
-    try {
-      const current = readlinkSync(linkPath)
-      if (current === target) continue
-      unlinkSync(linkPath)
-      symlinkSync(target, linkPath)
-      repaired += 1
-    } catch {
-      // Leave the link as-is if rebuilding fails.
+    for (const entry of entries) {
+      const path = join(currentDir, entry.name)
+      let stat
+      try {
+        stat = lstatSync(path)
+      } catch {
+        continue
+      }
+      if (stat.isDirectory()) {
+        stack.push(path)
+        continue
+      }
+      if (!stat.isSymbolicLink()) continue
+      try {
+        const currentTarget = readlinkSync(path)
+        if (!isAbsolute(currentTarget)) continue
+        const relativeTarget = basename(currentTarget)
+        if (!existsSync(join(currentDir, relativeTarget))) continue
+        unlinkSync(path)
+        symlinkSync(relativeTarget, path)
+        repaired += 1
+      } catch {
+        // Leave the link as-is; after-pack validation will reject the bundle
+        // instead of publishing a runtime whose relocation is unsafe.
+      }
     }
   }
-  if (repaired > 0) info(`Repaired ${repaired} office-runtime python symlinks in ${binDir}`)
+  if (repaired > 0) info(`Repaired ${repaired} office-runtime Python symlinks in ${pythonRoot}`)
 }
 
 function targetPythonEnv(runtimeRoot) {
@@ -490,6 +496,11 @@ function verifyRuntime(runtimeRoot, platform, target) {
 async function prepareTarget(target, force, requirementsSha) {
   const platform = platformFromTarget(target)
   const runtimeRoot = join(VENDOR_ROOT, target)
+  // A prepared runtime can outlive the temporary extraction directory that
+  // originally supplied it. Repair legacy absolute links before accepting the
+  // cache, otherwise every later release keeps repackaging the same broken
+  // links even after the repair logic itself has shipped.
+  if (!force) repairBundledSymlinks(runtimeRoot)
   if (!force && runtimeAlreadyValid(runtimeRoot, target, requirementsSha)) {
     info(`${target} Office runtime is already prepared.`)
     return

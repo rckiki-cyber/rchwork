@@ -1614,5 +1614,6 @@
   "mermaidViewSource": "查看 Mermaid 源码",
   "mermaidFullscreenLabel": "全屏流程图",
   "mermaidExitFullscreen": "退出全屏",
-  "legalResearchNoToolsHint": "本次调研仅生成了规划，未执行任何检索（模型未调用工具）。请重试。"
+  "legalResearchNoToolsHint": "本次调研仅生成了规划，未执行任何检索（模型未调用工具）。请重试。",
+  "legalResearchCurrentTool": "正在执行：{{tool}}"
 }

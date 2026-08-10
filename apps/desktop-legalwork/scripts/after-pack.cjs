@@ -1,7 +1,7 @@
 const { execFileSync } = require('node:child_process')
 const { createHash } = require('node:crypto')
-const { chmodSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs')
-const { join } = require('node:path')
+const { chmodSync, cpSync, existsSync, lstatSync, readFileSync, readlinkSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs')
+const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 
 const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
   'legalwork/dist/cli/serve-entry.js',
@@ -214,6 +214,31 @@ function officeRuntimeSitePackagesPath(context) {
     : join(root, 'lib', `python${OFFICE_RUNTIME_PYTHON_LINE}`, 'site-packages')
 }
 
+function validateRelocatableSymlinks(root) {
+  if (!existsSync(root)) return
+  const stack = [root]
+  while (stack.length > 0) {
+    const current = stack.pop()
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const path = join(current, entry.name)
+      const stat = lstatSync(path)
+      if (stat.isSymbolicLink()) {
+        const target = readlinkSync(path)
+        const resolvedTarget = resolve(dirname(path), target)
+        const fromRoot = relative(root, resolvedTarget)
+        if (isAbsolute(target) || fromRoot === '..' || fromRoot.startsWith(`..${sep}`)) {
+          throw new Error(`[after-pack] Office runtime contains a non-relocatable symlink: ${path} -> ${target}`)
+        }
+        if (!existsSync(resolvedTarget)) {
+          throw new Error(`[after-pack] Office runtime contains a broken symlink: ${path} -> ${target}`)
+        }
+        continue
+      }
+      if (stat.isDirectory()) stack.push(path)
+    }
+  }
+}
+
 function validateBundledOfficeRuntime(context) {
   const root = join(packedResourcesDir(context), 'office-runtime')
   const python = officeRuntimePythonPath(context)
@@ -225,6 +250,7 @@ function validateBundledOfficeRuntime(context) {
     assertExists(join(sitePackages, moduleName), `Office Python module ${moduleName}`)
   }
   if (normalizePlatform(context.electronPlatformName) !== 'win32') {
+    validateRelocatableSymlinks(join(root, 'python'))
     chmodSync(python, 0o755)
   }
   let manifest
@@ -419,6 +445,7 @@ exports._internals = {
   macInfoPlistPaths,
   officeRuntimePythonPath,
   officeRuntimeSitePackagesPath,
+  validateRelocatableSymlinks,
   prunePackedLegalworkDependencies,
   restoreBundledOfficeCli,
   validateBundledLegalworkRuntime,

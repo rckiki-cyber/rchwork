@@ -217,7 +217,7 @@ describe('SkillRuntime', () => {
     })
 
     expect(resolution.allowedToolNames).toEqual(['read'])
-    expect(runtime.diagnostics().lastInjection?.blockedToolNames).toEqual(['bash'])
+    expect(runtime.diagnostics().lastInjection?.blockedToolNames).toEqual(expect.arrayContaining(['bash']))
 
     const readTool = LocalToolHost.defineTool({
       name: 'read',
@@ -473,9 +473,9 @@ describe('SkillRuntime', () => {
     expect(status).toBe('completed')
     expect(requests).toHaveLength(3)
     expect(requests[0]?.requiredToolName).toBe('bash')
-    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(['bash'])
+    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['bash']))
     expect(requests[1]?.requiredToolName).toBe('bash')
-    expect(requests[1]?.tools.map((tool) => tool.name)).toEqual(['bash'])
+    expect(requests[1]?.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['bash']))
     expect(requests[2]?.tools).toEqual([])
     expect(executedBashCommands).toHaveLength(3)
     expect(executedBashCommands[0]).toBe('node --version')

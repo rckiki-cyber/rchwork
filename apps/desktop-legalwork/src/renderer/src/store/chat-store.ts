@@ -12,6 +12,7 @@ import {
   shouldAutoTitleThread
 } from '../lib/thread-title'
 import { filterThreadsForSidebar } from '../lib/thread-sidebar-visibility'
+import { readSidebarThreadCache } from '../lib/sidebar-thread-cache'
 import {
   enrichThreadsWithForkInfo,
   forgetThreadFork,
@@ -113,7 +114,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   workspaceLabel: i18n.t('common:workingDirectory'),
   runtimeConnection: 'idle',
   codeWorkspaceRoots: [],
-  threads: [],
+  // Restore only sidebar-safe summaries synchronously so the user's recent
+  // conversations are visible while the runtime connection warms up. The
+  // authoritative list replaces this snapshot after refreshThreads succeeds.
+  threads: readSidebarThreadCache(),
   threadSearch: '',
   showArchivedThreads: false,
   activeThreadId: null,

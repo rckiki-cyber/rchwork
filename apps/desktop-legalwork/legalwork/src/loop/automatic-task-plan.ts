@@ -17,6 +17,11 @@ export type AutomaticTaskPlanSignals = {
   desensitizationSatisfied: boolean
   citationVerificationRequested: boolean
   citationVerificationSatisfied: boolean
+  factVerificationRequested?: boolean
+  factWebEvidenceSatisfied?: boolean
+  factLegalEvidenceRequired?: boolean
+  factLegalEvidenceSatisfied?: boolean
+  factLedgerSatisfied?: boolean
   evidenceBarrierActive: boolean
 }
 
@@ -125,6 +130,25 @@ export function buildAutomaticTaskPlan(input: {
       key: 'ima-evidence',
       content: '完成 IMA 知识库补充研究并保留来源证据',
       completed: signals.imaKnowledgeSatisfied
+    })
+  }
+  if (signals.factVerificationRequested) {
+    stages.push({
+      key: 'fact-web-evidence',
+      content: '检索并实际读取不同网页来源，核实事实、新闻与数据陈述',
+      completed: signals.factWebEvidenceSatisfied === true
+    })
+    if (signals.factLegalEvidenceRequired) {
+      stages.push({
+        key: 'fact-legal-evidence',
+        content: '核对规范名称、条文、发布机关、日期和现行效力',
+        completed: signals.factLegalEvidenceSatisfied === true
+      })
+    }
+    stages.push({
+      key: 'fact-ledger',
+      content: '完成逐项结论、理由与来源可追溯的事实核验账本',
+      completed: signals.factLedgerSatisfied === true
     })
   }
   if (signals.caseResearchRequested) {

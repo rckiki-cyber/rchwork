@@ -12,12 +12,17 @@ type RecentToolCall = {
   name: string
   args: string
   readOnly: boolean
+  recoverableAfterCompaction: boolean
 }
 
 const DEFAULT_WINDOW_SIZE = 8
 const DEFAULT_THRESHOLD = 3
 const MUTATING_TOOL_NAMES = new Set(['write', 'edit', 'edit_diff', 'apply_patch', 'delete', 'move'])
 const STORM_EXEMPT_TOOL_NAMES = new Set(['request_user_input', 'user_input'])
+const RECOVERABLE_CONTEXT_TOOL_NAMES = new Set([
+  'read', 'grep', 'find', 'ls',
+  'knowledge_auto_retrieve', 'knowledge_search', 'knowledge_read_file', 'knowledge_list_tree'
+])
 const FAILED_DUPLICATE_TOOL_NAMES = new Set(['mcp_officecli_officecli'])
 const READ_ONLY_OFFICECLI_VERBS = new Set(['get', 'query', 'view', 'validate', 'help'])
 const DEFAULT_RESEARCH_LIMITS: Record<ResearchToolCategory, number> = {
@@ -43,6 +48,7 @@ export class ToolStormBreaker {
   private readonly failedResearchCalls = new Set<string>()
   private readonly researchCounts = new Map<ResearchToolCategory, number>()
   private lastSuccessfulCallKey = ''
+  private lastSuccessfulCallRecoverable = false
 
   constructor(options: ToolStormBreakerOptions = {}) {
     this.windowSize = Math.max(1, Math.floor(options.windowSize ?? DEFAULT_WINDOW_SIZE))
@@ -106,6 +112,7 @@ export class ToolStormBreaker {
     // performs a different semantic action, an identical later check may be
     // legitimate because that action could have changed the underlying state.
     this.lastSuccessfulCallKey = ''
+    this.lastSuccessfulCallRecoverable = false
 
     if (FAILED_DUPLICATE_TOOL_NAMES.has(name) && this.failedCalls.has(callKey)) {
       return {
@@ -133,7 +140,12 @@ export class ToolStormBreaker {
       }
     }
 
-    this.recent.push({ name, args, readOnly })
+    this.recent.push({
+      name,
+      args,
+      readOnly,
+      recoverableAfterCompaction: isRecoverableContextCall(call)
+    })
     while (this.recent.length > this.windowSize) this.recent.shift()
     if (researchCategory) {
       this.activeResearchCalls.add(callKey)
@@ -150,6 +162,23 @@ export class ToolStormBreaker {
     this.failedResearchCalls.clear()
     this.researchCounts.clear()
     this.lastSuccessfulCallKey = ''
+    this.lastSuccessfulCallRecoverable = false
+  }
+
+  /**
+   * Compaction can discard the only full copy of a read/search result. Allow
+   * those read-only calls to be recovered, while keeping mutation failures,
+   * attempt counts, and write-loop protection intact.
+   */
+  onCompaction(): void {
+    for (let index = this.recent.length - 1; index >= 0; index -= 1) {
+      if (this.recent[index]?.recoverableAfterCompaction) this.recent.splice(index, 1)
+    }
+    this.successfulResearchCalls.clear()
+    if (this.lastSuccessfulCallRecoverable) {
+      this.lastSuccessfulCallKey = ''
+      this.lastSuccessfulCallRecoverable = false
+    }
   }
 
   observeResult(call: ToolCallLike, isError: boolean): void {
@@ -160,6 +189,7 @@ export class ToolStormBreaker {
       else this.successfulResearchCalls.add(callKey)
     }
     this.lastSuccessfulCallKey = isError ? '' : callKey
+    this.lastSuccessfulCallRecoverable = !isError && isRecoverableContextCall(call)
     if (FAILED_DUPLICATE_TOOL_NAMES.has(call.toolName)) {
       if (isError) this.failedCalls.add(callKey)
       else this.failedCalls.delete(callKey)
@@ -197,6 +227,10 @@ function isMutatingToolCall(call: ToolCallLike): boolean {
     return verb !== '' && !READ_ONLY_OFFICECLI_VERBS.has(verb)
   }
   return MUTATING_TOOL_NAMES.has(call.toolName)
+}
+
+function isRecoverableContextCall(call: ToolCallLike): boolean {
+  return RECOVERABLE_CONTEXT_TOOL_NAMES.has(call.toolName) || Boolean(researchToolCategory(call))
 }
 
 function officeCliVerb(command: unknown): string {

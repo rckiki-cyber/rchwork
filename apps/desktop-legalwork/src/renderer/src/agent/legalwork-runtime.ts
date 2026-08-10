@@ -77,7 +77,10 @@ function createSseStreamId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `sse-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-const SSE_DELTA_FLUSH_MS = 32
+// Keep renderer-side coalescing within one 60 Hz frame. The main-process
+// bridge already bounds large replays, so a longer delay only makes live
+// answers arrive in visibly discrete chunks.
+const SSE_DELTA_FLUSH_MS = 16
 
 function readRuntimeError(body: string, fallback: string): RuntimeError {
   return parseRuntimeErrorBody(body, fallback)

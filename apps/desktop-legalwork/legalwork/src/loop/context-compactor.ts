@@ -26,13 +26,6 @@ export type CompactionPlan = {
 }
 
 /**
- * 触发 compaction 的历史消息条数阈值。与 client 层历史窗口（默认 240 条）
- * 对齐，保证 compaction 在窗口裁剪前先折叠早期内容，从而让折叠后的历史
- * 前缀稳定（[compaction 摘要] + [最近若干条]），避免滑动窗口每步改变前缀。
- */
-export const DEFAULT_COMPACTION_MSG_THRESHOLD = 240
-
-/**
  * ContextCompactor folds long histories into a single compaction item
  * while preserving pinned user, project, and skill constraints from
  * the immutable prefix. Compaction is triggered by either an explicit
@@ -82,19 +75,11 @@ export class ContextCompactor {
     const estimatedTokens = this.estimate(compactableItems)
     const promptTokens = typeof options?.promptTokens === 'number' ? options.promptTokens : undefined
     const tokens = Math.max(estimatedTokens, promptTokens ?? 0)
-    if (tokens < thresholds.softThreshold) {
-      // 消息条数维度：即便单次请求未触及 token 阈值，历史条数过多时也折叠早期
-      // 内容，避免 client 层的滑动窗口裁剪每步改变前缀、击穿 DeepSeek 自动缓存。
-      // 折叠后的历史 = [compaction 摘要] + [最近 keepRecent 条]，前缀从摘要点起稳定。
-      if (compactableItems.length > DEFAULT_COMPACTION_MSG_THRESHOLD) {
-        return {
-          mode: 'normal',
-          keepRecent: 4,
-          reason: `history message count ${compactableItems.length} exceeded ${DEFAULT_COMPACTION_MSG_THRESHOLD} items`
-        }
-      }
-      return null
-    }
+    // Message count is not context pressure. Hundreds of short messages can
+    // fit comfortably in a long-context model, while one large tool result can
+    // exceed a small model's limit. Compact only from estimated/reported token
+    // pressure so a model profile's context window remains authoritative.
+    if (tokens < thresholds.softThreshold) return null
     const aggressiveThreshold = aggressiveCompactionThreshold(thresholds)
     const mode: CompactionMode =
       tokens >= thresholds.hardThreshold
@@ -261,13 +246,24 @@ function buildCompactionSummary(input: {
     }
     lines.push('')
   }
+  const durableUserRequests = input.head
+    .filter((item): item is Extract<TurnItem, { kind: 'user_message' }> => item.kind === 'user_message')
+    .slice(-6)
+    .reverse()
+  if (durableUserRequests.length > 0) {
+    lines.push('Durable user requests (newest first; preserve as authoritative):')
+    for (const item of durableUserRequests) {
+      lines.push(`- ${clipText(item.text, 6_000)}`)
+    }
+    lines.push('')
+  }
   lines.push('')
   lines.push(
     `Summarized ${input.history.length} item(s); ${input.tail.length} recent item(s) are also kept verbatim for the current request.`
   )
   lines.push('Conversation and work summary:')
   const summaryLines = fitLinesToBudget(
-    selectSummaryLines(input.history.map(summarizeItem).filter((line) => line.length > 0)),
+    selectSummaryLines(input.history),
     contentBudget
   )
   if (summaryLines.length === 0) {
@@ -294,8 +290,8 @@ function extractSkillPins(history: TurnItem[]): string[] {
 }
 
 function summaryCharBudget(budgetTokens: number | undefined): number {
-  if (budgetTokens === undefined) return 4_000
-  return Math.max(1_200, Math.min(12_000, budgetTokens * 4))
+  if (budgetTokens === undefined) return 32_000
+  return Math.max(8_000, Math.min(64_000, budgetTokens * 4))
 }
 
 function summarizeItem(item: TurnItem): string {
@@ -325,14 +321,32 @@ function summarizeItem(item: TurnItem): string {
   }
 }
 
-function selectSummaryLines(lines: string[]): string[] {
-  if (lines.length <= 20) return lines
-  const start = lines.slice(0, 4)
-  const end = lines.slice(-14)
+function selectSummaryLines(items: TurnItem[]): string[] {
+  const summarized = items.map(summarizeItem)
+  const populated = summarized.filter((line) => line.length > 0)
+  if (populated.length <= 80) return populated
+  const selectedIndexes = new Set<number>()
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index]
+    if (
+      item?.kind === 'user_message' || item?.kind === 'error' ||
+      item?.kind === 'approval' || item?.kind === 'user_input' ||
+      item?.kind === 'review' || item?.kind === 'compaction'
+    ) {
+      selectedIndexes.add(index)
+    }
+  }
+  for (let index = 0; index < Math.min(12, items.length); index += 1) selectedIndexes.add(index)
+  for (let index = Math.max(0, items.length - 56); index < items.length; index += 1) {
+    selectedIndexes.add(index)
+  }
+  const selected = [...selectedIndexes]
+    .sort((left, right) => left - right)
+    .map((index) => summarized[index] ?? '')
+    .filter((line) => line.length > 0)
   return [
-    ...start,
-    `- ${lines.length - start.length - end.length} middle item(s) omitted from this compact summary.`,
-    ...end
+    ...selected,
+    `- ${Math.max(0, populated.length - selected.length)} low-priority middle item(s) omitted from this compact summary; all user requests and errors were retained above.`
   ]
 }
 

@@ -1034,26 +1034,33 @@ function ToolEntry({ block, nested = false }: { block: ToolBlock; nested?: boole
                 {t('inspectorStatusRunning')}
               </span>
             ) : null}
-            {typeof exitCode === 'number' ? (
-              <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-mono ${
-                  exitCode === 0
-                    ? 'bg-ds-success-soft text-ds-success'
-                    : 'bg-ds-danger-soft text-ds-danger'
-                }`}
-              >
-                exit {exitCode}
-              </span>
-            ) : null}
-            {sessionId ? (
-              <span className="rounded-full bg-ds-card px-2 py-0.5 text-[11px] font-mono text-ds-muted" title={sessionId}>
-                {sessionStatus === 'running' ? t('inspectorStatusRunning') : sessionStatus || 'session'} {sessionId.slice(0, 12)}
-              </span>
-            ) : null}
-            {typeof durationMs === 'number' ? (
-              <span className="rounded-full bg-ds-card px-2 py-0.5 text-[11px] font-mono text-ds-muted">
-                {formatDuration(durationMs)}
-              </span>
+            {/* Technical metadata (exit code, session id, duration) is only
+                surfaced when the user expands the tool card. It is noise for
+                end users and would otherwise clutter every command result. */}
+            {effectiveOpen ? (
+              <>
+                {typeof exitCode === 'number' ? (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-mono ${
+                      exitCode === 0
+                        ? 'bg-ds-success-soft text-ds-success'
+                        : 'bg-ds-danger-soft text-ds-danger'
+                    }`}
+                  >
+                    exit {exitCode}
+                  </span>
+                ) : null}
+                {sessionId ? (
+                  <span className="rounded-full bg-ds-card px-2 py-0.5 text-[11px] font-mono text-ds-muted" title={sessionId}>
+                    {sessionStatus === 'running' ? t('inspectorStatusRunning') : sessionStatus || 'session'} {sessionId.slice(0, 12)}
+                  </span>
+                ) : null}
+                {typeof durationMs === 'number' ? (
+                  <span className="rounded-full bg-ds-card px-2 py-0.5 text-[11px] font-mono text-ds-muted">
+                    {formatDuration(durationMs)}
+                  </span>
+                ) : null}
+              </>
             ) : null}
           </div>
           <div className="mt-0.5 break-words">

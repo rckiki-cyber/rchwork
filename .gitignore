@@ -90,3 +90,9 @@ skills/legalwork-learning-iteration/
 
 # Backup files (temporary working backups, not part of app)
 *.bak-*
+
+# Agent trajectory exports and scratch prompts
+traj_*.jsonl
+prompts_*.txt
+/agent-loop.js
+/dsml-tool-call-recovery.js

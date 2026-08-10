@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { applyRequestHistoryHygiene } from '../src/loop/request-history-hygiene.js'
+import {
+  applyRequestHistoryHygiene,
+  contextAwareRequestHistoryHygieneOptions
+} from '../src/loop/request-history-hygiene.js'
 import { makeToolCallItem, makeToolResultItem } from '../src/domain/item.js'
 
 describe('request history hygiene', () => {
+  it('scales legacy tool-result limits for a 1M context model', () => {
+    expect(contextAwareRequestHistoryHygieneOptions({
+      maxToolResultLines: 320,
+      maxToolResultBytes: 32 * 1024,
+      maxToolResultTokens: 8_000
+    }, 1_000_000)).toMatchObject({
+      maxToolResultLines: 6_000,
+      maxToolResultBytes: 512 * 1024,
+      maxToolResultTokens: 128_000
+    })
+  })
+
   it('shrinks oversized tool results while preserving head, signal lines, and tail', () => {
     const longOutput = Array.from({ length: 500 }, (_, index) => {
       if (index === 240) return 'ERROR failed to compile auth middleware'

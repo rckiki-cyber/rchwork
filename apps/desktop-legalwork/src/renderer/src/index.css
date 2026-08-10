@@ -21,9 +21,37 @@
   will-change: transform;
 }
 
+/* Live answer fragments stay cheap plain text while streaming, but each new
+   fragment crosses several compositor frames instead of popping in on one
+   paint. Only the short tail is segmented; older text is folded into a single
+   stable text node by AssistantMarkdown. */
+@keyframes ds-streaming-reveal {
+  0% {
+    filter: blur(0.6px);
+    opacity: 0.08;
+  }
+  52% {
+    filter: blur(0.12px);
+    opacity: 0.76;
+  }
+  100% {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+.ds-streaming-reveal-segment {
+  animation: ds-streaming-reveal 140ms cubic-bezier(0.16, 0.72, 0.24, 1) both;
+  will-change: filter, opacity;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ds-progress-spinner {
     animation-duration: 1.8s;
+  }
+
+  .ds-streaming-reveal-segment {
+    animation: none;
   }
 }
 

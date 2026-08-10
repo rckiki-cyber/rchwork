@@ -15,12 +15,7 @@
       ".docx"
     ]
   },
-  "allowedTools": [
-    "read",
-    "write",
-    "edit",
-    "bash"
-  ],
+  "allowedTools": [],
   "assets": [],
   "priority": 0
 }

@@ -11,6 +11,7 @@ import {
   shouldAutoTitleThread
 } from '../lib/thread-title'
 import { filterThreadsForSidebar } from '../lib/thread-sidebar-visibility'
+import { saveSidebarThreadCache } from '../lib/sidebar-thread-cache'
 import {
   enrichThreadsWithForkInfo,
   forgetThreadFork,
@@ -520,6 +521,7 @@ export function createNavigationActions(
           ...(shouldClearSelection ? clearedThreadSelection() : {})
         }
       })
+      saveSidebarThreadCache(displayThreads)
       syncTurnCompletionPoll(set, get)
       if (activeThreadIsManagedInCodeRoute) {
         await get().openCode()

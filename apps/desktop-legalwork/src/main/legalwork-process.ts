@@ -81,8 +81,8 @@ const DEFAULT_LEGALWORK_MODEL_PROFILES: Record<string, Record<string, unknown>> 
   'deepseek-v4-pro': {
     contextWindowTokens: 1_000_000,
     contextCompaction: {
-      softThreshold: 40_000,
-      hardThreshold: 60_000
+      softThreshold: 900_000,
+      hardThreshold: 950_000
     },
     inputModalities: ['text'],
     outputModalities: ['text'],
@@ -93,8 +93,8 @@ const DEFAULT_LEGALWORK_MODEL_PROFILES: Record<string, Record<string, unknown>> 
     aliases: ['deepseek-chat', 'deepseek-reasoner'],
     contextWindowTokens: 1_000_000,
     contextCompaction: {
-      softThreshold: 40_000,
-      hardThreshold: 60_000
+      softThreshold: 900_000,
+      hardThreshold: 950_000
     },
     inputModalities: ['text'],
     outputModalities: ['text'],
@@ -848,15 +848,17 @@ function modelConfigForRuntime(existing: Record<string, unknown>): Record<string
       ...objectValue(defaultProfile.contextCompaction),
       ...existingCompaction
     }
-    // Early million-token DeepSeek profiles shipped with 980K/990K
-    // thresholds. Keeping those persisted values disables practical
-    // compaction and makes every tool step replay an enormous transcript.
-    // Migrate only that exact legacy pair; deliberate custom thresholds stay
-    // untouched.
+    // Migrate the premature DeepSeek thresholds written by earlier desktop
+    // builds. They caused compaction after only 4-13% of a 1M window. Preserve
+    // all other pairs as deliberate user overrides.
+    const existingSoft = positiveIntegerValue(existingCompaction.softThreshold)
+    const existingHard = positiveIntegerValue(existingCompaction.hardThreshold)
+    const isPrematureDeepseekPair =
+      (existingSoft === 40_000 && existingHard === 60_000) ||
+      (existingSoft === 100_000 && existingHard === 130_000)
     if (
       (modelId === 'deepseek-v4-pro' || modelId === 'deepseek-v4-flash') &&
-      positiveIntegerValue(existingCompaction.softThreshold) === 980_000 &&
-      positiveIntegerValue(existingCompaction.hardThreshold) === 990_000
+      isPrematureDeepseekPair
     ) {
       Object.assign(mergedCompaction, objectValue(defaultProfile.contextCompaction))
     }

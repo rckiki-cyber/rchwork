@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { modelCapabilitiesForModel, contextThresholdsForModel } from './model-context-profile.js'
 
 describe('model context profiles', () => {
+  it('uses nearly the full advertised DeepSeek 1M window before compacting', () => {
+    expect(modelCapabilitiesForModel('deepseek-v4-flash')).toMatchObject({
+      contextWindowTokens: 1_000_000
+    })
+    expect(contextThresholdsForModel('provider/deepseek-v4-flash')).toEqual({
+      softThreshold: 900_000,
+      hardThreshold: 950_000
+    })
+  })
+
   it('declares Kimi Code capabilities from the official coding endpoint profile', () => {
     expect(modelCapabilitiesForModel('kimi-for-coding')).toMatchObject({
       id: 'kimi-for-coding',

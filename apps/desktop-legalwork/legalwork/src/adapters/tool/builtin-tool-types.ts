@@ -114,6 +114,7 @@ export type BuiltinToolName =
   | 'request_document_preferences'
   | 'resolve_legal_document_template'
   | 'request_office_fallback'
+  | 'fact_verification_finalize'
   | 'compress_context'
 export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'read',
@@ -132,6 +133,7 @@ export const allBuiltinToolNames: Set<BuiltinToolName> = new Set([
   'request_document_preferences',
   'resolve_legal_document_template',
   'request_office_fallback',
+  'fact_verification_finalize',
   'compress_context'
 ])
 export type ToolName = BuiltinToolName

@@ -33,6 +33,36 @@ type CompactResult<T> = {
 }
 
 /**
+ * Scale the send-time history limits for genuinely long-context models.
+ * Persisted desktop settings contain the legacy 32KB/8K defaults, so merely
+ * increasing the model profile is not enough: without this normalization a
+ * 1M model still receives the same truncated tool history as a 24K model.
+ * Explicit values above the legacy defaults are always preserved.
+ */
+export function contextAwareRequestHistoryHygieneOptions(
+  options: RequestHistoryHygieneOptions,
+  contextWindowTokens: number | undefined
+): RequestHistoryHygieneOptions {
+  if (!contextWindowTokens || contextWindowTokens < 512_000) return options
+  const scale = Math.min(1, contextWindowTokens / 1_000_000)
+  return {
+    ...options,
+    maxToolResultLines: Math.max(options.maxToolResultLines ?? 0, Math.floor(6_000 * scale)),
+    maxToolResultBytes: Math.max(options.maxToolResultBytes ?? 0, Math.floor(512 * 1024 * scale)),
+    maxToolResultTokens: Math.max(options.maxToolResultTokens ?? 0, Math.floor(128_000 * scale)),
+    maxToolArgumentStringBytes: Math.max(
+      options.maxToolArgumentStringBytes ?? 0,
+      Math.floor(256 * 1024 * scale)
+    ),
+    maxToolArgumentStringTokens: Math.max(
+      options.maxToolArgumentStringTokens ?? 0,
+      Math.floor(64_000 * scale)
+    ),
+    maxArrayItems: Math.max(options.maxArrayItems ?? 0, Math.floor(400 * scale))
+  }
+}
+
+/**
  * Applies Reasonix-style send-time history hygiene without mutating the
  * persisted session log. This keeps dynamic tool history bounded so the
  * warmed immutable prefix accounts for a larger share of each request.

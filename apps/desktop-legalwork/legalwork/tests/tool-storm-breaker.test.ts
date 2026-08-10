@@ -117,6 +117,26 @@ describe('ToolStormBreaker', () => {
     expect(breaker.inspect(call({ path: 'report.docx' })).suppress).toBe(false)
   })
 
+  it('allows lost read evidence to be recovered after compaction without clearing other guards', () => {
+    const breaker = new ToolStormBreaker()
+    const readCall = call({ path: '论文/全文.txt' })
+    breaker.inspect(readCall)
+    breaker.observeResult(readCall, false)
+    breaker.onCompaction()
+
+    expect(breaker.inspect(call({ path: '论文/全文.txt' })).suppress).toBe(false)
+
+    const echoCall: ToolCallLike = {
+      callId: 'echo-1',
+      toolName: 'echo',
+      arguments: { text: 'same' }
+    }
+    breaker.inspect(echoCall)
+    breaker.observeResult(echoCall, false)
+    breaker.onCompaction()
+    expect(breaker.inspect({ ...echoCall, callId: 'echo-2' }).suppress).toBe(true)
+  })
+
   it('deduplicates concurrent and completed legal-database queries for the whole turn', () => {
     const breaker = new ToolStormBreaker()
     const first = mcpCall('yuandian-case/yuandian_rh_qwal_search', {

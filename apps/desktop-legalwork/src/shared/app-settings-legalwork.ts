@@ -163,8 +163,8 @@ export function defaultLegalworkContextCompactionSettings(): LegalworkContextCom
     defaultHardThreshold: 24_000,
     summaryMode: 'heuristic',
     summaryTimeoutMs: 15_000,
-    summaryMaxTokens: 1_200,
-    summaryInputMaxBytes: 96 * 1024
+    summaryMaxTokens: 8_000,
+    summaryInputMaxBytes: 512 * 1024
   }
 }
 
@@ -371,6 +371,12 @@ function normalizeLegalworkContextCompactionSettings(
   const defaults = defaultLegalworkContextCompactionSettings()
   const defaultSoftThreshold = boundedPositiveInt(input?.defaultSoftThreshold, defaults.defaultSoftThreshold)
   const requestedHardThreshold = boundedPositiveInt(input?.defaultHardThreshold, defaults.defaultHardThreshold)
+  const legacySummaryBudget = input?.summaryMaxTokens === 1_200
+    ? defaults.summaryMaxTokens
+    : input?.summaryMaxTokens
+  const legacySummaryInputBudget = input?.summaryInputMaxBytes === 96 * 1024
+    ? defaults.summaryInputMaxBytes
+    : input?.summaryInputMaxBytes
   return {
     defaultSoftThreshold,
     defaultHardThreshold: Math.max(defaultSoftThreshold, requestedHardThreshold),
@@ -378,8 +384,8 @@ function normalizeLegalworkContextCompactionSettings(
       ? input.summaryMode
       : defaults.summaryMode,
     summaryTimeoutMs: boundedPositiveInt(input?.summaryTimeoutMs, defaults.summaryTimeoutMs, 120_000),
-    summaryMaxTokens: boundedPositiveInt(input?.summaryMaxTokens, defaults.summaryMaxTokens, 16_000),
-    summaryInputMaxBytes: boundedPositiveInt(input?.summaryInputMaxBytes, defaults.summaryInputMaxBytes, 8 * 1024 * 1024)
+    summaryMaxTokens: boundedPositiveInt(legacySummaryBudget, defaults.summaryMaxTokens, 16_000),
+    summaryInputMaxBytes: boundedPositiveInt(legacySummaryInputBudget, defaults.summaryInputMaxBytes, 8 * 1024 * 1024)
   }
 }
 

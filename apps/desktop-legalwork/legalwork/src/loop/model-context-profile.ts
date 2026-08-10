@@ -80,18 +80,12 @@ const DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS = 1_000_000
 // and as a fallback when a profile does not specify thresholds.
 const DEFAULT_SOFT_THRESHOLD_RATIO = 0.98
 const DEFAULT_HARD_THRESHOLD_RATIO = 0.99
-// DeepSeek compaction thresholds sit far below the 1M context window. Folding
-// at ~98% would let history grow almost without bound before the loop ever
-// compacts. These values keep ordinary turns uncompacted while folding longer
-// agent / knowledge-base sessions before they get expensive.
-//
-// NOTE (2026-08): soft/hard were 40k/60k. Each compaction rewrites history and
-// clears the provider prompt cache for the whole prefix, so frequent compaction
-// both re-bills the full history at cache-miss prices and spends an extra model
-// call to write the summary. Raising to 100k/130k keeps the stable prefix
-// cached across more steps and cuts compaction-frequency-driven cache misses.
-const DEEPSEEK_V4_SOFT_THRESHOLD = 100_000
-const DEEPSEEK_V4_HARD_THRESHOLD = 130_000
+// Keep a deliberate output/tool-call reserve, but use the advertised 1M
+// context as an actual long-context window. The old 100k/130k thresholds made
+// DeepSeek discard working state after using only 10-13% of its context and
+// caused repeated read -> compact -> forget -> re-read loops.
+const DEEPSEEK_V4_SOFT_THRESHOLD = 900_000
+const DEEPSEEK_V4_HARD_THRESHOLD = 950_000
 const DEFAULT_MODEL_INPUT_MODALITIES: readonly ModelInputModality[] = ['text']
 const DEFAULT_MODEL_OUTPUT_MODALITIES: readonly ModelInputModality[] = ['text']
 const DEFAULT_MODEL_MESSAGE_PARTS: readonly ModelMessagePartSupport[] = ['text']

@@ -96,6 +96,35 @@ describe('token economy', () => {
     expect(applyTokenEconomyToRequest(original, { enabled: false })).toBe(original)
   })
 
+  it('preserves durable read evidence on a 1M model even when economy mode is enabled', () => {
+    const original = request()
+    original.model = 'deepseek-v4-flash'
+    original.history = [
+      makeToolCallItem({
+        id: 'read_call',
+        threadId: 'thr_1',
+        turnId: 'turn_1',
+        callId: 'call_read',
+        toolName: 'read',
+        arguments: { path: '/tmp/paper.txt' }
+      }),
+      makeToolResultItem({
+        id: 'read_result',
+        threadId: 'thr_1',
+        turnId: 'turn_1',
+        callId: 'call_read',
+        toolName: 'read',
+        output: { content: '正文'.repeat(40_000) }
+      })
+    ]
+
+    const compacted = applyTokenEconomyToRequest(original, { enabled: true })
+    const result = compacted.history[1]
+    expect(result?.kind === 'tool_result'
+      ? String((result.output as { content?: string }).content).length
+      : 0).toBe(80_000)
+  })
+
   it('keeps request history hygiene limits with the token economy config', () => {
     const normalized = normalizeTokenEconomyConfig({
       historyHygiene: {

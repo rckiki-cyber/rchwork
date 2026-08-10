@@ -1614,5 +1614,6 @@
   "mermaidViewSource": "View Mermaid source",
   "mermaidFullscreenLabel": "Fullscreen diagram",
   "mermaidExitFullscreen": "Exit fullscreen",
-  "legalResearchNoToolsHint": "The research produced a plan but executed no search (no tools were called). Please retry."
+  "legalResearchNoToolsHint": "The research produced a plan but executed no search (no tools were called). Please retry.",
+  "legalResearchCurrentTool": "Running: {{tool}}"
 }

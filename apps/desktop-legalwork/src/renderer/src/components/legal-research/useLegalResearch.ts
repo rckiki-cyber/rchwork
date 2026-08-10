@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { getProvider } from '../../agent/registry'
 import type { ChatBlock, ThreadDeltaEvent, ThreadEventSink, ToolEventPayload } from '../../agent/types'
 import { applyLegalResearchSummaryEdit } from './legal-research-records'
-import { isResearchPlanMessage } from './legal-research-plan'
+import { extractResearchPlanItems, isResearchPlanMessage } from './legal-research-plan'
 
 type ResearchStepStatus = 'pending' | 'running' | 'done' | 'error'
 
@@ -38,6 +38,7 @@ export interface ResearchRecord {
   editedSummary?: string
   reportRevision?: number
   reasoning: string
+  planning?: string
   threadId: string
   turnId?: string
   error?: string
@@ -186,6 +187,10 @@ export function useLegalResearch() {
         const assistantSegmentOrder: string[] = []
         let reasoningText = ''
         let capturePlanningReasoning = true
+        // 调研规划可能以正文播报形式输出（“收到，开始多源调研。以下是调研规划：
+        // 1. …2. …”），而 flushUpdates 会把这些规划消息从阶段播报里过滤掉，导致
+        // 规划卡片永远空白。单独累积规划播报文本，供规划卡片从中提取编号列表。
+        let planningText = ''
         const toolSteps = new Map<string, ResearchStep>()
         const blockMap = new Map<string, ChatBlock>()
 
@@ -265,12 +270,23 @@ export function useLegalResearch() {
                   completeAssistantUpdates()
                   assistantSegmentOrder.push(segmentId)
                 }
+                const segmentText = `${existing?.text ?? ''}${delta.text}`
                 assistantSegments.set(segmentId, {
                   id: segmentId,
-                  text: `${existing?.text ?? ''}${delta.text}`,
+                  text: segmentText,
                   createdAt: existing?.createdAt ?? new Date().toISOString(),
                   completed: false
                 })
+                // 规划播报在流式过程中可能先不满足完整匹配，累积到完整后再判断。
+                // 除了标准“调研规划”标题外，模型也可能直接输出带编号的可执行规划列表
+                // 而无标题，此时依据提取到的规划项数量兜底识别，避免规划卡片空白。
+                const trimmed = segmentText.trim()
+                if (
+                  isResearchPlanMessage(trimmed) ||
+                  (/规划/.test(trimmed) && extractResearchPlanItems(trimmed).length >= 2)
+                ) {
+                  planningText = trimmed
+                }
                 upsertBlock({
                   kind: 'assistant',
                   id: segmentId,
@@ -293,6 +309,7 @@ export function useLegalResearch() {
             scheduleRecordUpdate({
               updates: flushUpdates(),
               summary: latestAssistantText(),
+              planning: planningText,
               ...(planningReasoningChanged ? { reasoning: reasoningText.trim() } : {})
             })
           },
@@ -378,6 +395,7 @@ export function useLegalResearch() {
               status: 'done',
               updates: flushUpdates(),
               summary: latestText || t('legalResearchNoSummary'),
+              planning: planningText,
               error: undefined // 清除之前的错误
             })
             setIsResearching(false)
@@ -396,7 +414,8 @@ export function useLegalResearch() {
                 ? `${t('legalResearchTurnFailed')}${surfacedError}`
                 : t('legalResearchTurnFailed'),
               updates: flushUpdates(),
-              summary: latestAssistantText() || t('legalResearchNoSummary')
+              summary: latestAssistantText() || t('legalResearchNoSummary'),
+              planning: planningText
             })
             setIsResearching(false)
           }
@@ -416,13 +435,18 @@ export function useLegalResearch() {
             const detail = await provider.getThreadDetail(threadId)
             if (detail?.latestTurnId && detail.threadStatus !== 'running') {
               const recovered: ResearchUpdate[] = []
+              let recoveredPlanning = ''
               for (const block of detail.blocks ?? []) {
                 if (
                   block.kind === 'assistant' &&
                   typeof block.text === 'string' &&
-                  block.text.trim() &&
-                  !isResearchPlanMessage(block.text)
+                  block.text.trim()
                 ) {
+                  if (isResearchPlanMessage(block.text)) {
+                    // 规划播报在重放时同样收集，避免规划卡片在恢复场景下空白。
+                    recoveredPlanning = block.text.trim()
+                    continue
+                  }
                   recovered.push({
                     id: block.id,
                     text: block.text.trim(),
@@ -455,6 +479,7 @@ export function useLegalResearch() {
                   status: 'done',
                   updates: flushUpdates(),
                   summary: recoveredSummary,
+                  planning: recoveredPlanning || planningText,
                   ...(recoveredReasoning ? { reasoning: recoveredReasoning } : {}),
                   error: undefined
                 })

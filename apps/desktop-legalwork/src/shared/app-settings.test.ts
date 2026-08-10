@@ -131,8 +131,8 @@ describe('legalwork defaults', () => {
         defaultHardThreshold: 24000,
         summaryMode: 'heuristic',
         summaryTimeoutMs: 15000,
-        summaryMaxTokens: 1200,
-        summaryInputMaxBytes: 98304
+        summaryMaxTokens: 8000,
+        summaryInputMaxBytes: 524288
       },
       runtimeTuning: {
         toolStorm: {
@@ -372,6 +372,18 @@ describe('mergeLegalworkRuntimeSettings', () => {
     expect(next.runtimeTuning.toolStorm.windowSize).toBe(current.runtimeTuning.toolStorm.windowSize)
     expect(next.runtimeTuning.toolStorm.threshold).toBe(5)
     expect(next.runtimeTuning.toolArgumentRepair).toEqual(current.runtimeTuning.toolArgumentRepair)
+  })
+
+  it('migrates the lossy legacy compaction summary budget', () => {
+    const next = mergeLegalworkRuntimeSettings(defaultLegalworkRuntimeSettings(), {
+      contextCompaction: {
+        summaryMaxTokens: 1_200,
+        summaryInputMaxBytes: 96 * 1024
+      }
+    })
+
+    expect(next.contextCompaction.summaryMaxTokens).toBe(8_000)
+    expect(next.contextCompaction.summaryInputMaxBytes).toBe(512 * 1024)
   })
 })
 

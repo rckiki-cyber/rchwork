@@ -15,6 +15,7 @@ import { createRequestDocumentPreferencesTool } from './builtin-document-prefere
 import { createResolveLegalDocumentTemplateTool } from './builtin-legal-document-template-tool.js'
 import { createDocumentSkillExecuteTool } from './builtin-document-skill-tool.js'
 import { createRequestOfficeFallbackTool } from './builtin-office-fallback-tool.js'
+import { createFactVerificationFinalizeTool } from './builtin-fact-verification-tool.js'
 import {
   createRefreshSkillsTool,
   createInstallSkillTool,
@@ -68,6 +69,8 @@ export function createBuiltinLocalTool(
       return createResolveLegalDocumentTemplateTool()
     case 'request_office_fallback':
       return createRequestOfficeFallbackTool()
+    case 'fact_verification_finalize':
+      return createFactVerificationFinalizeTool()
     case 'compress_context':
       return createCompressContextLocalTool(options.compressContext)
   }
@@ -107,6 +110,7 @@ export function buildBuiltinLocalTools(options: BuiltinLocalToolsOptions = {}): 
   tools.push(createRequestDocumentPreferencesTool())
   tools.push(createResolveLegalDocumentTemplateTool())
   tools.push(createRequestOfficeFallbackTool())
+  tools.push(createFactVerificationFinalizeTool())
   return tools
 }
 
@@ -160,6 +164,7 @@ export function buildBuiltinLocalToolRecord(
     request_document_preferences: createRequestDocumentPreferencesTool(),
     resolve_legal_document_template: createResolveLegalDocumentTemplateTool(),
     request_office_fallback: createRequestOfficeFallbackTool(),
+    fact_verification_finalize: createFactVerificationFinalizeTool(),
     compress_context: createCompressContextLocalTool(options.compressContext)
   }
 }
