@@ -1,6 +1,6 @@
 const { execFileSync } = require('node:child_process')
 const { createHash } = require('node:crypto')
-const { chmodSync, cpSync, existsSync, lstatSync, readFileSync, readlinkSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs')
+const { chmodSync, cpSync, existsSync, lstatSync, readFileSync, readlinkSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } = require('node:fs')
 const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 
 const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
@@ -227,6 +227,21 @@ function validateRelocatableSymlinks(root) {
         const resolvedTarget = resolve(dirname(path), target)
         const fromRoot = relative(root, resolvedTarget)
         if (isAbsolute(target) || fromRoot === '..' || fromRoot.startsWith(`..${sep}`)) {
+          // Some bundled Python builds embed an absolute build-time symlink
+          // (e.g. share/terminfo/z/z19 -> /tmp/<build>/share/terminfo/h/h19).
+          // When the absolute target still resolves to a real file inside the
+          // same tree, rewrite it as a relocatable relative link instead of
+          // failing the whole release (seen intermittently on Linux CI where
+          // the temporary build dir name changes between runs).
+          const absTarget = isAbsolute(target) ? target : resolve(dirname(path), target)
+          const absFromRoot = relative(root, absTarget)
+          if (!absFromRoot.startsWith('..') && existsSync(absTarget)) {
+            const relTarget = relative(dirname(path), absTarget)
+            // Rewrite the symlink in place to a relative target.
+            rmSync(path, { force: true })
+            symlinkSync(relTarget, path)
+            continue
+          }
           throw new Error(`[after-pack] Office runtime contains a non-relocatable symlink: ${path} -> ${target}`)
         }
         if (!existsSync(resolvedTarget)) {
