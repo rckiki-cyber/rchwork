@@ -62,7 +62,10 @@ describe('AgentLoop', () => {
   it('tracks every explicitly requested deliverable format', () => {
     const request = '请完成研究并交付 Word、PDF、PPT 三份完整文件'
     expect(requestedDocumentArtifacts(request)).toEqual(['docx', 'pdf', 'pptx'])
-    expect(requestedDocumentArtifacts('请生成一份研究报告')).toEqual(['docx'])
+    expect(requestedDocumentArtifacts('请生成一份研究报告')).toEqual([])
+    expect(requestedDocumentArtifacts(
+      '<inline_document_response>请撰写意见书，模板原来用于 DOCX。</inline_document_response>'
+    )).toEqual([])
     expect(requestsLocalKnowledgeRetrieval('先检索本地知识库，再生成报告')).toBe(true)
     expect(requestsLocalKnowledgeRetrieval(
       '查一下食药犯罪中的宽严相济案例。后续要求：撰写这篇论文。当前追问：文献应该尽可能参考多的'
@@ -297,6 +300,39 @@ describe('AgentLoop', () => {
       .toBe(MAX_AGENT_LOOP_STEPS_ENV_CAP)
   })
 
+  it('finishes with a visible fallback instead of failing at the loop step limit', async () => {
+    const previous = process.env[MAX_AGENT_LOOP_STEPS_ENV]
+    process.env[MAX_AGENT_LOOP_STEPS_ENV] = '2'
+    try {
+      let calls = 0
+      const h = makeHarness({
+        provider: 'step-limit-fallback',
+        model: 'step-limit-fallback',
+        async *stream(): AsyncIterable<ModelStreamChunk> {
+          calls += 1
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_step_limit_${calls}`,
+            toolName: 'ls',
+            arguments: { path: '.' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+        }
+      }, { tools: buildDefaultLocalTools(), toolStorm: { enabled: false } })
+      await bootstrapThread(h)
+
+      expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+      const items = await h.sessionStore.loadItems(h.threadId)
+      expect(items.some((item) =>
+        item.kind === 'assistant_text' && item.text.includes('避免无限循环')
+      )).toBe(true)
+      expect(items.some((item) => item.kind === 'error' && item.code === 'agent_loop_step_limit')).toBe(false)
+    } finally {
+      if (previous === undefined) delete process.env[MAX_AGENT_LOOP_STEPS_ENV]
+      else process.env[MAX_AGENT_LOOP_STEPS_ENV] = previous
+    }
+  })
+
   it('finishes a silent model run as completed', async () => {
     const h = makeHarness(makeSilentModel())
     await bootstrapThread(h)
@@ -436,6 +472,24 @@ describe('AgentLoop', () => {
       event.code === 'http_400'
     )).toBe(true)
     expect(events.some((event) => event.kind === 'turn_failed')).toBe(true)
+  })
+
+  it('preserves partial model text when the stream ends with an error chunk', async () => {
+    const h = makeHarness({
+      provider: 'partial-error-chunk',
+      model: 'partial-error-chunk',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        yield { kind: 'assistant_text_delta', text: '这是已经生成的可交付正文。' }
+        yield { kind: 'error', message: 'connection reset after response', code: 'stream_reset' }
+      }
+    })
+    await bootstrapThread(h)
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    const items = await h.sessionStore.loadItems(h.threadId)
+    expect(items.some((item) =>
+      item.kind === 'assistant_text' && item.text === '这是已经生成的可交付正文。'
+    )).toBe(true)
   })
 
   it('emits named pipeline lifecycle stages for a model request', async () => {
@@ -634,6 +688,24 @@ describe('AgentLoop', () => {
     expect(items.some((item) => item.kind === 'tool_result' && item.toolName === 'echo')).toBe(true)
   })
 
+  it('limits repeated work announcements to one focused recovery request', async () => {
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'repeated-unfinished-announcement',
+      model: 'repeated-unfinished-announcement',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        yield { kind: 'assistant_text_delta', text: '接下来我会调用工具并完成正文。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h)
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(requests).toHaveLength(2)
+    expect(requests[1]?.contextInstructions?.join('\n')).toContain('不要再预告步骤')
+  })
+
   it('removes research tools after the cumulative turn input budget is exhausted', async () => {
     const requests: ModelRequest[] = []
     const h = makeHarness({
@@ -681,7 +753,7 @@ describe('AgentLoop', () => {
     expect(requests[1]?.contextInstructions?.join('\n')).toContain('成本预算提醒')
   })
 
-  it('enforces IMA research for knowledge-heavy legal work when the model skips the tool', async () => {
+  it('keeps IMA research advisory for knowledge-heavy legal work when the model skips the tool', async () => {
     const requests: ModelRequest[] = []
     let executions = 0
     const imaResearchTool = LocalToolHost.defineTool({
@@ -717,21 +789,21 @@ describe('AgentLoop', () => {
     const items = await h.sessionStore.loadItems(h.threadId)
 
     expect(status).toBe('completed')
-    expect(executions).toBe(1)
+    expect(executions).toBe(0)
     expect(requests).toHaveLength(1)
     expect(requests[0]?.requiredToolName).toBeUndefined()
     expect(requests[0]?.contextInstructions?.join('\n') ?? '').not.toContain('<ima_auto_route>')
     expect(requests[0]?.history.some((item) =>
       item.kind === 'tool_result' && item.toolName === 'mcp_ima_knowledge_base_research_ima'
-    )).toBe(true)
+    )).toBe(false)
     expect(items.some((item) =>
       item.kind === 'tool_result' &&
       item.toolName === 'mcp_ima_knowledge_base_research_ima' &&
       item.isError !== true
-    )).toBe(true)
+    )).toBe(false)
   })
 
-  it('enforces IMA discovery and call in progressive MCP mode', async () => {
+  it('does not force IMA discovery and calls in progressive MCP mode', async () => {
     const executed: Array<{ name: string; args: Record<string, unknown> }> = []
     const mcpSearch = LocalToolHost.defineTool({
       name: 'mcp_search',
@@ -783,15 +855,10 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(requests).toBe(1)
-    expect(executed.map((entry) => entry.name)).toEqual(['mcp_search', 'mcp_call'])
-    expect(executed[0]?.args).toMatchObject({ serverId: 'ima-knowledge-base' })
-    expect(executed[1]?.args).toEqual({
-      toolId: 'ima-knowledge-base/research_ima',
-      arguments: { question, timeout: 210 }
-    })
+    expect(executed).toEqual([])
   })
 
-  it('returns control to the model after a progressive IMA call fails', async () => {
+  it('lets the model answer without a forced progressive IMA call', async () => {
     const executed: string[] = []
     const mcpSearch = LocalToolHost.defineTool({
       name: 'mcp_search',
@@ -840,16 +907,16 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(executed).toEqual(['mcp_search', 'mcp_call'])
+    expect(executed).toEqual([])
     expect(requests).toHaveLength(1)
     expect(requests[0]?.history.some((item) =>
       item.kind === 'tool_result' &&
       item.toolName === 'mcp_call' &&
       item.isError === true
-    )).toBe(true)
+    )).toBe(false)
   })
 
-  it('retrieves local knowledge before IMA and completes every requested file format', async () => {
+  it('completes every requested file format without forced research gates', async () => {
     const executed: Array<{ name: string; args: Record<string, unknown> }> = []
     const define = (
       name: string,
@@ -1002,9 +1069,6 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(executed.map((entry) => entry.name)).toEqual([
-      'knowledge_auto_retrieve',
-      'mcp_search',
-      'mcp_call',
       'document_skill_execute',
       'document_skill_execute',
       'bash'
@@ -1013,7 +1077,46 @@ describe('AgentLoop', () => {
     expect(requests.at(-1)?.requiredToolName).toBeUndefined()
   })
 
-  it('falls back to local search and blocks generation when local KB has no evidence', async () => {
+  it('answers renderer-grounded knowledge QA without forcing a second retrieval tool', async () => {
+    const requests: ModelRequest[] = []
+    const knowledgeTool = LocalToolHost.defineTool({
+      name: 'knowledge_auto_retrieve',
+      description: 'retrieve local knowledge',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => ({ output: { sources: [], contextText: '' } })
+    })
+    const h = makeHarness({
+      provider: 'knowledge-direct-answer',
+      model: 'knowledge-direct-answer',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        yield { kind: 'assistant_text_delta', text: '知识库中共有十二个文件。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [knowledgeTool] })
+    await h.threadStore.upsert(createThreadRecord({
+      id: h.threadId,
+      title: '知识库全局对话 · 有什么文件',
+      workspace: '/tmp',
+      model: 'fake'
+    }))
+    const { turnId } = await h.turns.startTurn({
+      threadId: h.threadId,
+      request: {
+        prompt: '请基于以下从知识库中检索到的相关内容回答：知识库有什么文件？\n\nRAG 检索上下文：共十二个文件。'
+      }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, turnId)
+
+    expect(status).toBe('completed')
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.tools).toEqual([])
+    expect(requests[0]?.requiredToolName).toBeUndefined()
+  })
+
+  it('does not force local retrieval or block the model response when evidence is unavailable', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -1071,12 +1174,11 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(executed).toEqual(['knowledge_auto_retrieve', 'knowledge_search'])
-    expect(requests.at(-1)?.tools).toEqual([])
-    expect(requests.at(-1)?.contextInstructions?.join('\n')).toContain('本地知识库未返回')
+    expect(executed).toEqual([])
+    expect(requests.at(-1)?.contextInstructions?.join('\n') ?? '').not.toContain('知识库证据门禁未通过')
   })
 
-  it('requires successful citation verification before generating a KB-grounded literature review', async () => {
+  it('generates an explicitly requested Word file without forcing research or citation verification', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -1145,15 +1247,10 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(executed).toEqual([
-      'knowledge_auto_retrieve',
-      'mcp_ima_knowledge_base_research_ima',
-      'knowledge_citation_verify',
-      'document_skill_execute'
-    ])
+    expect(executed).toEqual(['document_skill_execute'])
   })
 
-  it('caps forced retrieval batches to one search and the remaining distinct PDF count', async () => {
+  it('does not inject forced retrieval batches when the model answers directly', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -1223,12 +1320,7 @@ describe('AgentLoop', () => {
     })
 
     expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
-    expect(executed).toEqual([
-      'auto:主检索',
-      'read:论文1.pdf',
-      'read:论文2.pdf',
-      'read:论文3.pdf'
-    ])
+    expect(executed).toEqual([])
   })
 
   it('enforces a complex report contract before citation verification and Word/PDF delivery', async () => {
@@ -1415,36 +1507,28 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(executed).toEqual([
-      'knowledge_auto_retrieve',
-      'knowledge_read_file:论文一.pdf',
-      'knowledge_read_file:论文二.pdf',
-      'knowledge_read_file:论文三.pdf',
-      'knowledge_auto_retrieve',
       'data_compliance',
-      'knowledge_citation_verify',
       'document_skill_execute:docx',
       'document_skill_execute:pdf'
     ])
-    expect(citationAttempts).toBe(2)
-    expect(modelDocxRequests).toBe(0)
+    expect(citationAttempts).toBe(0)
+    expect(modelDocxRequests).toBe(1)
     expect(documentInputs[0]).toMatchObject({
       kind: 'docx',
       operation: 'from-markdown',
       content: fullDraft,
-      outputPath: '数字行政法体系建构研究报告.docx',
-      profile: 'academic'
+      outputPath: '数字行政法体系建构研究报告.docx'
     })
     expect(finishedThread?.todos?.items.length).toBeGreaterThan(3)
     expect(finishedThread?.todos?.items.every((item) => item.status === 'completed')).toBe(true)
     expect(items.some((item) =>
       item.kind === 'tool_result' &&
-      item.toolName === 'knowledge_citation_verify' &&
       item.isError === true &&
       JSON.stringify(item.output).includes('explicit_task_contract_failed')
-    )).toBe(true)
+    )).toBe(false)
   })
 
-  it('unlocks the full contract-review pipeline when the active Skill has a legacy restrictive allowlist', async () => {
+  it('delivers contract-review output without forcing the legacy research pipeline', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -1563,18 +1647,12 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(executed).toEqual([
-      'knowledge_auto_retrieve',
-      'mcp_search',
-      'mcp_call',
-      'document_skill_execute'
-    ])
-    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['knowledge_auto_retrieve']))
+    expect(executed).toEqual(['document_skill_execute'])
     expect(requests.some((request) => request.requiredToolName === 'document_skill_execute')).toBe(true)
     expect(executed).not.toContain('bash')
   })
 
-  it('retrieves local and IMA evidence before handing an exact PPT task to the specialist workflow', async () => {
+  it('hands an exact PPT task to the specialist workflow without forced research gates', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -1696,7 +1774,7 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(executed).toEqual(['knowledge_auto_retrieve', 'mcp_search', 'mcp_call', 'bash'])
+    expect(executed).toEqual(['bash'])
     const specialistRequests = requests.filter((request) => request.requiredToolName === 'bash')
     expect(specialistRequests).toHaveLength(1)
     expect(specialistRequests[0]?.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['bash']))
@@ -1879,7 +1957,7 @@ describe('AgentLoop', () => {
     expect(visibleText).not.toContain('DSML')
   })
 
-  it('does not render a false success message before a required tool gate passes', async () => {
+  it('does not discard a visible response when an optional delivery tool is skipped', async () => {
     let requests = 0
     const documentTool = LocalToolHost.defineTool({
       name: 'document_skill_execute',
@@ -1904,20 +1982,20 @@ describe('AgentLoop', () => {
     const items = await h.sessionStore.loadItems(h.threadId)
     const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
 
-    expect(status).toBe('failed')
-    expect(requests).toBe(3)
+    expect(status).toBe('completed')
+    expect(requests).toBeGreaterThanOrEqual(1)
     expect(items.some((item) =>
       item.kind === 'assistant_text' && item.text.includes('交付成功')
-    )).toBe(false)
+    )).toBe(true)
     expect(events.some((event) =>
       event.kind === 'assistant_text_delta' || event.kind === 'assistant_reasoning_delta'
     )).toBe(false)
     expect(items.some((item) =>
       item.kind === 'error' && item.code === 'required_tool_missing'
-    )).toBe(true)
+    )).toBe(false)
   })
 
-  it('fails a document turn after three consecutive worker errors instead of looping', async () => {
+  it('returns a fallback after bounded document worker errors instead of failing or looping', async () => {
     let executions = 0
     const documentTool = LocalToolHost.defineTool({
       name: 'document_skill_execute',
@@ -1953,14 +2031,14 @@ describe('AgentLoop', () => {
 
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
-    expect(status).toBe('failed')
+    expect(status).toBe('completed')
     // The repeat-loop guard suppresses the third identical dispatch; the
     // document state machine then treats that suppression as the third failure.
     expect(executions).toBe(2)
     expect(calls).toBe(3)
   })
 
-  it('fails the presentation delivery lane after its bounded export budget', async () => {
+  it('returns a fallback after the bounded presentation export budget', async () => {
     let executions = 0
     const bashTool = LocalToolHost.defineTool({
       name: 'bash',
@@ -2003,12 +2081,12 @@ describe('AgentLoop', () => {
 
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
-    expect(status).toBe('failed')
+    expect(status).toBe('completed')
     expect(executions).toBe(2)
     expect(calls).toBe(3)
   })
 
-  it('blocks document delivery when explicit IMA retrieval exhausts timeout recovery', async () => {
+  it('does not block document delivery on an explicit IMA request', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -2077,11 +2155,10 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    // One initial model pass plus the evidence lane's two bounded recovery passes.
-    expect(recoveryRequests).toBe(3)
-    expect(executed).toEqual(['mcp_search', 'mcp_call'])
-    expect(requests.at(-1)?.tools).toEqual([])
-    expect(requests.at(-1)?.contextInstructions?.join('\n')).toContain('知识库证据门禁未通过')
+    expect(recoveryRequests).toBe(0)
+    expect(executed).toEqual(['document_skill_execute'])
+    expect(requests.at(-1)?.requiredToolName).toBe('document_skill_execute')
+    expect(requests.at(-1)?.contextInstructions?.join('\n') ?? '').not.toContain('知识库证据门禁未通过')
   })
 
   it('keeps running past the legacy eight-step ceiling until the model stops', async () => {
@@ -2235,7 +2312,7 @@ describe('AgentLoop', () => {
 	    expect(seenInstructions[1]?.some((text) => text.includes('Tool catalog changed'))).toBe(true)
 	  })
 
-	  it('stops the turn when an existing tool schema mutates in-place', async () => {
+	  it('records an in-place tool schema mutation and continues delivery', async () => {
 	    let modelCalls = 0
 	    const inputSchema: Record<string, unknown> = {
 	      type: 'object',
@@ -2261,6 +2338,11 @@ describe('AgentLoop', () => {
 	        model: 'catalog-breaking-drift',
 	        async *stream(): AsyncIterable<ModelStreamChunk> {
 	          modelCalls += 1
+	          if (modelCalls > 1) {
+	            yield { kind: 'assistant_text_delta', text: '工具目录已刷新，继续完成回答。' }
+	            yield { kind: 'completed', stopReason: 'stop' }
+	            return
+	          }
 	          yield {
 	            kind: 'tool_call_complete',
 	            callId: 'call_echo',
@@ -2279,7 +2361,7 @@ describe('AgentLoop', () => {
 	    const items = await h.sessionStore.loadItems(h.threadId)
 
 	    expect(status).toBe('completed')
-	    expect(modelCalls).toBe(1)
+	    expect(modelCalls).toBe(2)
 	    expect(events.find((event) => event.kind === 'tool_catalog_changed')).toMatchObject({
 	      kind: 'tool_catalog_changed',
 	      changeKind: 'breaking'
@@ -2287,8 +2369,11 @@ describe('AgentLoop', () => {
 	    expect(items.find((item) => item.kind === 'error' && item.code === 'tool_catalog_changed'))
 	      .toMatchObject({
 	        kind: 'error',
-	        message: expect.stringContaining('Legalwork stopped this turn')
+	        message: expect.stringContaining('will continue with the refreshed tool list')
 	      })
+	    expect(items.some((item) =>
+	      item.kind === 'assistant_text' && item.text.includes('继续完成回答')
+	    )).toBe(true)
 	  })
 
 	  it('runs consecutive built-in read-only tool calls in a deterministic parallel batch', async () => {
@@ -4398,7 +4483,33 @@ describe('FileSessionStore', () => {
     expect(await sessionStore.highestSeq('thr_usage_compact')).toBe(7)
   })
 
-  it('forces broad fact audits through search, source reads, legal evidence and a provenance ledger', async () => {
+  it('retries once when a model stops after reasoning without a visible answer', async () => {
+    let requests = 0
+    const h = makeHarness({
+      provider: 'reasoning-only-recovery',
+      model: 'reasoning-only-recovery',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        requests += 1
+        if (requests === 1) {
+          yield { kind: 'assistant_reasoning_delta', text: '我需要先继续规划。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '# 最终正文\n\n已基于现有材料完成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h, { request: { prompt: '请直接输出文书正文。' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(requests).toBe(2)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    expect(items.some((item) =>
+      item.kind === 'assistant_text' && item.text.includes('最终正文')
+    )).toBe(true)
+  })
+
+  it('keeps broad fact-audit tools advisory instead of blocking the final answer', async () => {
     const executed: string[] = []
     const fetchedUrls = [
       'https://news.example.test/a',
@@ -4483,23 +4594,8 @@ describe('FileSessionStore', () => {
     })
 
     expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
-    expect(requiredSeen).toEqual([
-      'web_search',
-      'knowledge_legal_external_sources',
-      'web_fetch',
-      'web_fetch',
-      'web_fetch',
-      'fact_verification_finalize',
-      undefined
-    ])
-    expect(executed).toEqual([
-      'web_search',
-      'knowledge_legal_external_sources',
-      'web_fetch',
-      'web_fetch',
-      'web_fetch',
-      'fact_verification_finalize'
-    ])
+    expect(requiredSeen).toEqual([undefined])
+    expect(executed).toEqual([])
   })
 })
 

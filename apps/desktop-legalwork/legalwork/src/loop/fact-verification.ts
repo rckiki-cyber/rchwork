@@ -1,4 +1,5 @@
 import type { TurnItem } from '../contracts/items.js'
+import { isLegalResearchWorkflowPrompt } from './legal-research-workflow.js'
 
 export const FACT_VERIFICATION_FINALIZE_TOOL_NAME = 'fact_verification_finalize'
 
@@ -24,6 +25,18 @@ export type FactVerificationProgress = {
 }
 
 export function factVerificationContract(prompt: string): FactVerificationContract {
+  if (
+    prompt.includes('<inline_document_response>') ||
+    isLegalResearchWorkflowPrompt(prompt)
+  ) {
+    return {
+      required: false,
+      requiresWebEvidence: false,
+      requiresLegalEvidence: false,
+      minimumFetchedSources: 0,
+      minimumClaims: 1
+    }
+  }
   const compact = prompt.replace(/\s+/g, '')
   const required = /(?:核实|核验|查证|验证|辨别|判断).{0,20}(?:事实|真实性|准确性|真伪|真假|来源|新闻|规范|政策|数据)|(?:真实性|准确性|真伪|真假).{0,20}(?:核实|核验|查证|验证|判断)/s.test(compact)
   const requiresLegalEvidence = required && /(?:规范|法律|法规|规章|司法解释|政策|条文|效力|现行有效)/.test(compact)
@@ -50,15 +63,16 @@ export function factVerificationInstruction(
 ): string | undefined {
   if (!contract.required) return undefined
   return [
-    '<fact_verification_contract>',
-    `本任务是事实核验任务。网页正文要求：${contract.minimumFetchedSources} 个不同来源；法律规范权威来源：${contract.requiresLegalEvidence ? '必需' : '非必需'}。`,
+    '<fact_verification_advisory>',
+    `本任务包含事实核验需求。建议读取 ${contract.minimumFetchedSources} 个不同网页来源；法律规范权威来源：${contract.requiresLegalEvidence ? '优先取得' : '按需取得'}。`,
     `当前已读取网页来源 ${progress.fetchedSourceUrls.size} 个，法律来源${progress.legalEvidenceSatisfied ? '已取得' : '未取得'}，核验账本${progress.finalized ? '已通过' : '未通过'}。`,
-    '- 必须先识别原文中的具体可核实陈述，再逐项给出 verified / contradicted / mixed / unverified 结论。',
+    '- 尽可能先识别原文中的具体可核实陈述，再逐项给出 verified / contradicted / mixed / unverified 结论。',
     '- 搜索结果摘要不能直接作为最终证据；网页类来源必须实际调用 web_fetch 读取正文。',
     '- 规范、政策和法律文本必须核对名称、条文、发布机关、发布日期及效力状态。',
-    `- 研究完成后必须调用 ${FACT_VERIFICATION_FINALIZE_TOOL_NAME}；其中 URL 只能来自本轮实际读取的来源。`,
+    `- 如来源足够，可调用 ${FACT_VERIFICATION_FINALIZE_TOOL_NAME} 整理核验账本；其中 URL 只能来自本轮实际读取的来源。`,
     '- 最终回答按“原陈述—结论—核验理由—来源—未决事项”展示，不得把未核实内容写成已确认事实。',
-    '</fact_verification_contract>'
+    '- 工具不可用、来源不足或账本未完成时，明确标注局限并继续输出可交付结果，不得仅输出阻塞说明。',
+    '</fact_verification_advisory>'
   ].join('\n')
 }
 

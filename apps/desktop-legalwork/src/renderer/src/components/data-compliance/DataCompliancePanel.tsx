@@ -2360,7 +2360,7 @@ export function DataCompliancePanel({
                 ))}
               </select>
               <p className="mt-1.5 text-[11.5px] text-ds-faint">
-                所有材料先统一提取文字或 OCR，再按法律文档规范重新排版输出。
+                Word 文档保留原格式原位脱敏；仅扫描型 PDF/图片通过 OCR 提取后重排版。
               </p>
             </label>
             <label className="block">

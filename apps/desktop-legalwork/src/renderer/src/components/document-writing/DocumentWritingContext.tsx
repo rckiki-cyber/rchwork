@@ -22,6 +22,7 @@ import {
   completeDocumentWritingStages,
   createDocumentWritingStages,
   documentWritingStageForTool,
+  resolveDocumentWritingContent,
   updateDocumentWritingStages,
   type DocumentWritingStage,
   type DocumentWritingStageStatus
@@ -396,6 +397,20 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
         }))
         setError(message)
       }
+      const finishWithAvailableContent = (): boolean => {
+        if (completed || workflowRunRef.current !== runId) return false
+        const content = resolveDocumentWritingContent(assistantText, reasoning)
+        if (!content) return false
+        completed = true
+        setGeneratedContent(content)
+        void saveCurrentToHistory(content)
+        updateWorkflow((current) => ({
+          ...current,
+          status: 'done',
+          stages: completeDocumentWritingStages(current.stages)
+        }))
+        return true
+      }
 
       const sink: ThreadEventSink = {
         onSeq: () => {},
@@ -438,26 +453,18 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
         onGoal: () => {},
         onTurnComplete: () => {
           if (workflowRunRef.current !== runId) return
-          const content = assistantText.trim()
-          if (!content) {
+          if (!finishWithAvailableContent()) {
             fail('文书 Agent 已结束，但未返回文书正文。')
-            return
           }
-          completed = true
-          setGeneratedContent(content)
-          void saveCurrentToHistory(content)
-          updateWorkflow((current) => ({
-            ...current,
-            status: 'done',
-            stages: completeDocumentWritingStages(current.stages)
-          }))
         },
-        onError: (event) => fail(`文书生成连接中断：${event.message}`)
+        onError: (event) => {
+          if (!finishWithAvailableContent()) fail(`文书生成连接中断：${event.message}`)
+        }
       }
 
       await provider.subscribeThreadEvents(thread.id, 0, sink, abortController.signal)
       if (!abortController.signal.aborted && !completed) {
-        fail('文书生成连接已结束，但未收到完成事件。')
+        if (!finishWithAvailableContent()) fail('文书生成连接已结束，但未收到完成事件。')
       }
       void sent
     } catch (err) {

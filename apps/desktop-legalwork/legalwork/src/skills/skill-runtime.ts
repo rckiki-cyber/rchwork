@@ -358,6 +358,12 @@ export class SkillRuntime {
         matches.push({ skill, skillId: skill.id, reason: explicit, score: 1_000 + skill.priority })
         continue
       }
+      if (
+        prompt.includes('<inline_document_response>') &&
+        skill.id === 'legal-document-formatting'
+      ) {
+        continue
+      }
       const command = skill.triggers.commands.find((candidate) => lowerPrompt.startsWith(candidate.toLowerCase()))
       if (command) {
         matches.push({ skill, skillId: skill.id, reason: `command:${command}`, score: 900 + skill.priority })

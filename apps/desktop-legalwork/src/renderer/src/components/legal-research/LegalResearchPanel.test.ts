@@ -24,7 +24,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('../chat/AssistantMarkdown', () => ({
-  AssistantMarkdown: ({ text }: { text: string }) => text
+  AssistantMarkdown: ({ text }: { text: string }) => `markdown-rendered:${text}`
 }))
 
 describe('LegalResearchPanel section order', () => {
@@ -76,7 +76,7 @@ describe('LegalResearchPanel section order', () => {
         { id: 'report', text: '最终报告', createdAt: '2026-08-01T10:01:00Z', completed: true }
       ],
       summary: '调研总结正文',
-      reasoning: '1. 核验主体与国籍\n2. 检索跨境收养程序',
+      reasoning: '1. **核验主体与国籍**：比对适用法\n2. 检索跨境收养程序',
       threadId: 'thread-1'
     }
     const legalResearch = {
@@ -102,6 +102,7 @@ describe('LegalResearchPanel section order', () => {
     expect(updatesIndex).toBeLessThan(summaryIndex)
     expect(html).toContain('>01<')
     expect(html).toContain('>02<')
+    expect(html).toContain('markdown-rendered:**核验主体与国籍**：比对适用法')
     expect(html).not.toContain('legalResearchExpand')
   })
 })

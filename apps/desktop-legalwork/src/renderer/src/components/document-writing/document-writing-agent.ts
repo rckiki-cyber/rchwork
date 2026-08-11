@@ -95,6 +95,14 @@ export function documentWritingStageForTool(summary: string, toolName?: string):
 }
 
 /**
+ * Prefer the model's visible answer, but never throw away a substantial draft
+ * just because a compatible provider emitted it on the reasoning channel.
+ */
+export function resolveDocumentWritingContent(assistantText: string, reasoning: string): string {
+  return assistantText.trim() || reasoning.trim()
+}
+
+/**
  * Escape content embedded inside a ```text code fence so a stray ``` in the
  * pasted text or material cannot break out of the fence and inject raw
  * markdown/instructions into the prompt.
@@ -138,10 +146,10 @@ export function buildDocumentWritingAgentPrompt(request: TemplateGenerateWithMat
     request.template.id?.startsWith('custom-')
   const templatePriorityInstruction = hasUserTemplate
     ? '本任务已提供用户上传模板，属于最高优先级。必须以该模板为主，不得调用或改用隐藏内置模板；最终正文的段落、标题、表格单元格及签署区顺序应与模板逐项对应，避免随意增删结构，以便原位写回原 DOCX。'
-    : '本任务没有用户上传模板。起草民事起诉状或民事答辩状时，必须先调用 resolve_legal_document_template；匹配成功则以内置模板为主，未匹配时才根据材料自主组织结构。'
+    : '本任务没有用户上传模板。起草民事起诉状或民事答辩状时，可优先调用 resolve_legal_document_template；工具不可用、未匹配或调用失败时，直接根据材料自主组织结构并继续输出正文。'
 
   const materialFactInstruction = hasMaterials || hasPastedText
-    ? `用户已提供事实来源（上传材料${hasPastedText ? '或粘贴的案情文字' : ''}）。必须先完成“事实台账”，再开始写文书：
+    ? `用户已提供事实来源（上传材料${hasPastedText ? '或粘贴的案情文字' : ''}）。在内部整理“事实台账”并直接推进文书，不要等待全部核验结束后才开始写正文：
 - 材料或粘贴文字中明确载明的姓名/名称、身份、法定代表人、地址、案号、法院、案由、诉讼请求、裁判结果和日期，均属于可以直接写入文书的事实；无需等待用户再次填写，也不得仅因尚未二次核验而拒绝填写。必要时可表述为“据材料载明”。
 - 对每个界面空字段，必须逐一在全部事实来源中检索同义信息；字段为空只表示用户未手工填写，不表示材料没有该事实。
 - 只要事实来源中存在明确答案，就直接写入正文。严禁输出“待核实：请填写”“请补充材料”等把分析工作退回用户的提示。
@@ -149,14 +157,15 @@ export function buildDocumentWritingAgentPrompt(request: TemplateGenerateWithMat
 - 事实来源间存在实质冲突时，列明具体冲突内容并标注待核实；不得把单一来源中已明确记载的信息误判为冲突。`
     : '用户未提供任何事实来源（无上传材料、无粘贴文字）。仅对现有字段也未提供且文书确有必要的信息使用【待核实：具体缺失事项】，不要输出泛泛的“请填写”。'
 
-  return `你正在执行 LegalWork 文书写作任务。界面已收集用户的文书类型、字段和写作要求；不要再次要求用户填写偏好。
+  return `<inline_document_response>
+你正在执行 LegalWork 文书写作任务。这是界面内联文本产出，不是 Word、DOCX、PDF 或其他文件交付任务。界面已收集用户的文书类型、字段和写作要求；不要再次要求用户填写偏好。
 
 0. 确认立场：用户指定本次文书代表的主体为“${documentSubject || '（未指定）'}”。若用户已填写，以该主体作为判断委托人、我方当事人、诉讼立场和行文视角的最高优先级依据；若用户未指定但提供了上传材料或粘贴文字，则从其中明确记载的当事人中识别本次文书所代表的一方，并以“据材料载明”表述；两者都无法确定时，才使用【待核实：我方主体】。
 1. 落实用户要求：将“用户补充要求/粘贴文字”作为确定诉讼目标、表达倾向、论证重点和行文取舍的高优先级依据，不得写出与用户明确倾向相反的立场；但不得据此篡改事实、法律或材料原意。
 2. 理解材料：先阅读全部材料，提取当事人、事实、时间线、证据、已知诉求与真正缺失的信息；区分裁判文书记载事实、当事人主张和确实无法确认的信息。
 3. 归纳争议：列出文书必须回应的争议焦点、证明责任和需要补充的事实。
 4. 选择模板：${templatePriorityInstruction}
-5. 法律调研：由 Agent 根据文书与材料自主选择工具和检索路径，不要求机械调用全部来源。默认以可用的北大法宝（PKULaw）作为法规与案例主来源，并按需使用其引证核验、链接增强工具；IMA 与本地知识库作为团队先例、学术观点、写作参考和内部材料的补充来源。国家法律法规数据库仅在用户明确指定、商业库不可用/无结果或存在重大效力冲突时按需核验，不得为获取国家库链接反复重试或调用用户浏览器。
+5. 法律调研：由 Agent 根据文书与材料自主选择工具和检索路径，不要求机械调用任何来源。默认以可用的北大法宝（PKULaw）作为法规与案例主来源，并按需使用其他来源；工具不可用、来源不足或核验未完成时，立即基于现有材料继续起草，在正文中标注真正需要核实的依据，不得只返回调研过程或阻塞说明。
 6. 研究论证：核验法律效力状态、条文、案例要旨和适用关系。保留工具返回的完整来源 URL，绝不编造法规、案例、案号、链接或事实。
 7. 撰写文书：严格遵循最高优先级模板结构。信息优先级为“用户填写字段 > 材料明确记载 > 可由材料唯一确定的事实 > 真正缺失的信息”。不得把界面空字段直接转换成待核实占位语。文书中的法律依据应尽可能带可核验链接；没有真实链接时明确标注“无可核验链接”。
 
@@ -190,5 +199,6 @@ ${pastedTextForPrompt(request)}
 ${request.template.content.slice(0, 3_000)}
 
 ## 用户补充要求（立场、倾向、目标与重点；必须优先落实）
-${request.instructions?.trim() || '（无）'}`
+${request.instructions?.trim() || '（无）'}
+</inline_document_response>`
 }

@@ -25,6 +25,19 @@ describe('shouldAnimateStreamingText', () => {
     expect(shouldAnimateStreamingText('Use `npm test` next.')).toBe(false)
   })
 
+  it('renders emphasis while structured Markdown is still streaming', () => {
+    const html = renderToStaticMarkup(
+      createElement(StreamdownAssistant, {
+        text: '**核验规范依据**：检索相关法条。',
+        streaming: true
+      })
+    )
+
+    expect(html).toContain('data-streamdown="strong"')
+    expect(html).toContain('核验规范依据')
+    expect(html).not.toContain('**核验规范依据**')
+  })
+
   it('recognizes only browser-safe Markdown links as external targets', () => {
     expect(isExternalMarkdownHref('https://www.pkulaw.com/')).toBe(true)
     expect(isExternalMarkdownHref('http://example.com/law')).toBe(true)

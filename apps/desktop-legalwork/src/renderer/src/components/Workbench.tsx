@@ -53,7 +53,10 @@ import {
   resolveAttachmentUploadName,
   uploadAttachmentWithMemoryFallback
 } from '../lib/image-attachment-upload'
-import { isChatAttachmentUploadEnabled } from '../lib/attachment-upload-availability'
+import {
+  isChatAttachmentUploadEnabled,
+  resolveChatAttachmentCapabilities
+} from '../lib/attachment-upload-availability'
 import { normalizeWorkspaceRoot } from '../lib/workspace-path'
 import { useKeyboardShortcutSettings } from '../lib/keyboard-shortcut-settings'
 import { workspaceLabelFromPath } from '../lib/workspace-label'
@@ -721,6 +724,31 @@ export function Workbench(): ReactElement {
     }
   }, [activeSkillWorkspace, runtimeConnection])
 
+  useEffect(() => {
+    if (runtimeConnection !== 'ready' || runtimeInfo) return
+    const provider = getProvider()
+    if (!provider.getRuntimeInfo) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let attempt = 0
+    const refreshRuntimeInfo = async (): Promise<void> => {
+      try {
+        const info = await provider.getRuntimeInfo?.()
+        if (!cancelled && info) setRuntimeInfo(info)
+      } catch {
+        attempt += 1
+        if (!cancelled && attempt < 4) {
+          timer = setTimeout(() => void refreshRuntimeInfo(), 500 * (2 ** (attempt - 1)))
+        }
+      }
+    }
+    timer = setTimeout(() => void refreshRuntimeInfo(), 500)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [runtimeConnection, runtimeInfo])
+
   const attachmentUploadEnabled = isChatAttachmentUploadEnabled({
     runtimeConnection,
     route,
@@ -778,11 +806,20 @@ export function Workbench(): ReactElement {
     setAttachmentUploadError(null)
     try {
       const workspace = threads.find((thread) => thread.id === activeThreadId)?.workspace || workspaceRoot || undefined
-      const attachmentCapabilities = runtimeInfo?.capabilities.attachments
-      if (!attachmentCapabilities) {
+      const resolvedCapabilities = await resolveChatAttachmentCapabilities({
+        cached: runtimeInfo?.capabilities.attachments,
+        loadRuntimeInfo: provider.getRuntimeInfo
+          ? () => provider.getRuntimeInfo!()
+          : undefined
+      })
+      if (!resolvedCapabilities) {
         setAttachmentUploadError(t('composerAttachmentUnavailable'))
         return
       }
+      if (resolvedCapabilities.runtimeInfo) {
+        setRuntimeInfo(resolvedCapabilities.runtimeInfo)
+      }
+      const attachmentCapabilities = resolvedCapabilities.capabilities
       const uploaded: AttachmentReference[] = []
       for (const file of files) {
         const mimeType = resolveAttachmentMimeType(file)

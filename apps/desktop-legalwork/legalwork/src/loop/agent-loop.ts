@@ -86,6 +86,18 @@ import {
 import { LEGALWORK_SYSTEM_PROMPT } from '../prompt/legalwork-system-prompt.js'
 import { resolveImaRouteAction, shouldAutoRouteToIma } from './ima-knowledge-router.js'
 import {
+  hasDiscoveredPrimaryLegalDatabaseTool,
+  hasCompleteLegalResearchReport,
+  hasPublishedLegalResearchPlan,
+  hasUsablePrimaryLegalCaseEvidence,
+  hasUsablePrimaryLegalDatabaseEvidence,
+  isCompleteLegalResearchReport,
+  isLegalResearchWorkflowPrompt,
+  isPublishedLegalResearchPlan,
+  isRedundantLegalSourceEnrichmentCall,
+  legalResearchStageInstruction
+} from './legal-research-workflow.js'
+import {
   isPotentialDsmlToolCallStream,
   looksLikeDsmlToolCalls,
   recoverDsmlToolCalls,
@@ -122,17 +134,13 @@ import {
   successfulKnowledgePdfReadPaths,
   successfullyVerifiedDraft,
   taskContractInstruction,
-  validateDocumentContent,
   type DocumentTaskContract
 } from './document-task-contract.js'
 import {
   FACT_VERIFICATION_FINALIZE_TOOL_NAME,
   factVerificationContract,
   factVerificationInstruction,
-  factVerificationProgress,
-  normalizedEvidenceUrls,
-  validateFactVerificationLedger,
-  type FactVerificationContract
+  factVerificationProgress
 } from './fact-verification.js'
 import {
   automaticTaskPlanInstruction,
@@ -180,8 +188,14 @@ export function resolveTurnTokenBudget(env: NodeJS.ProcessEnv = process.env): nu
  */
 const TURN_BUDGET_WRAPUP_INSTRUCTION =
   '【成本预算提醒】本轮已累计消耗大量输入 token，请立即停止继续检索、搜索、抓取或读取新资料。' +
-  '基于当前已经获取的全部材料完成撰写，但不得跳过用户明确要求的 OCR/逐篇阅读、脱敏、引用核验和文件交付门禁。' +
-  '如强制门禁确实无法完成，只能明确报告未完成项，不得声称任务或文件已经完成。'
+  '立即基于已获取的材料完成正文或交付物；若 OCR、来源、引用、脱敏或文件生成存在不足，在结果中简洁说明局限，不得因此吞掉已能交付的正文。'
+
+/**
+ * Quality checks are advisory. They may guide tool choice and user-visible
+ * caveats, but they must never suppress an otherwise useful answer or file.
+ * Security, approval and destructive-action guards remain enforced elsewhere.
+ */
+export const DELIVERY_QUALITY_GATES_ENABLED = false
 /**
  * Hitting the research-cost budget must stop *new research*, not revoke the
  * tools needed to finish or repair the requested artifact.  The previous
@@ -699,98 +713,6 @@ function presentationScenarioFor(prompt: string): string {
   return 'analysis-decision'
 }
 
-function taskContractToolCallError(input: {
-  call: ToolCallLike
-  contract: DocumentTaskContract
-  verifiedDraft?: string
-  completedArtifacts: ReadonlySet<DocumentArtifactKind>
-}): string | undefined {
-  const { call, contract } = input
-  const hasContentRequirements = Boolean(
-    contract.minimumContentCharacters ||
-    contract.requiredHeadings.length ||
-    contract.requiredTopicTerms.length ||
-    contract.minimumCaseCount ||
-    contract.minimumReferenceCount ||
-    contract.minimumRecentReferenceCount ||
-    contract.requiresLegalNormContent ||
-    contract.forbidPlaceholders ||
-    contract.requiresDesensitization
-  )
-  if (call.toolName === 'knowledge_citation_verify') {
-    if (!hasContentRequirements) return undefined
-    const draft = typeof call.arguments.draft === 'string' ? call.arguments.draft : ''
-    const issues = draft ? validateDocumentContent(draft, contract) : ['引用核验缺少完整 draft']
-    return issues.length
-      ? `引用核验前的终稿验收未通过：${issues.join('；')}。请先补全终稿，再重新核验。`
-      : undefined
-  }
-  if (call.toolName !== DOCUMENT_SKILL_EXECUTE_TOOL_NAME) return undefined
-  const kind = typeof call.arguments.kind === 'string' ? call.arguments.kind.toLowerCase() : ''
-  const operation = typeof call.arguments.operation === 'string'
-    ? call.arguments.operation.toLowerCase()
-    : ''
-  const outputPath = typeof call.arguments.outputPath === 'string'
-    ? call.arguments.outputPath
-    : Array.isArray(call.arguments.args)
-      ? (() => {
-          const args = call.arguments.args.filter((value): value is string => typeof value === 'string')
-          const outputIndex = args.findIndex((value) => value === '--output' || value === '-o')
-          return outputIndex >= 0 ? args[outputIndex + 1] ?? '' : ''
-        })()
-      : ''
-  const artifactFilenameFragment = input.contract.requiredArtifactFilenameFragments?.[kind as DocumentArtifactKind] ??
-    (kind === 'docx' ? input.contract.requiredFilenameFragment : undefined)
-  if (
-    artifactFilenameFragment &&
-    operation !== 'inspect' && operation !== 'profiles' &&
-    !outputPath.includes(artifactFilenameFragment)
-  ) {
-    return `${kind.toUpperCase()} 生成前的文件名验收未通过：文件名必须包含“${artifactFilenameFragment}”。`
-  }
-  if (kind === 'pdf' && operation === 'from-docx' && !input.completedArtifacts.has('docx')) {
-    return 'PDF 生成被拒绝：必须先成功生成并验收完整 DOCX，再从该 DOCX 转换 PDF。'
-  }
-  if (kind !== 'docx' || operation !== 'from-markdown') return undefined
-  const content = typeof call.arguments.content === 'string' ? call.arguments.content : ''
-  const issues = hasContentRequirements
-    ? content
-      ? validateDocumentContent(content, contract)
-      : ['Word 生成缺少完整 content']
-    : []
-  if (
-    contract.requiredFilenameFragment &&
-    !outputPath.includes(contract.requiredFilenameFragment)
-  ) {
-    issues.push(`文件名必须包含“${contract.requiredFilenameFragment}”`)
-  }
-  if (
-    input.verifiedDraft !== undefined &&
-    normalizedFinalDraft(content) !== normalizedFinalDraft(input.verifiedDraft)
-  ) {
-    issues.push('Word content 与已经通过知识库引用核验的终稿不一致')
-  }
-  return issues.length
-    ? `Word 生成前的终稿验收未通过：${issues.join('；')}。不得用脚本或其他工具绕过。`
-    : undefined
-}
-
-function factVerificationToolCallError(input: {
-  call: ToolCallLike
-  contract: FactVerificationContract
-  allowedSourceUrls: ReadonlySet<string>
-}): string | undefined {
-  if (input.call.toolName !== FACT_VERIFICATION_FINALIZE_TOOL_NAME) return undefined
-  const minimumSources = input.contract.minimumFetchedSources +
-    (input.contract.requiresLegalEvidence ? 1 : 0)
-  const validated = validateFactVerificationLedger(input.call.arguments, {
-    minimumClaims: input.contract.minimumClaims,
-    minimumSources,
-    allowedSourceUrls: input.allowedSourceUrls
-  })
-  return validated.ok ? undefined : validated.error
-}
-
 export function knowledgeShellBypassError(call: ToolCallLike): string | undefined {
   if (call.toolName !== 'bash') return undefined
   const command = JSON.stringify(call.arguments)
@@ -805,10 +727,11 @@ export function knowledgeShellBypassError(call: ToolCallLike): string | undefine
 }
 
 export function requestedDocumentArtifacts(prompt: string): DocumentArtifactKind[] {
+  if (prompt.includes('<inline_document_response>')) return []
   if (!requestsDocumentMutation(prompt)) return []
   const compact = prompt.replace(/\s+/g, '')
   const requested = new Set<DocumentArtifactKind>()
-  const outputIntent = '(?:生成|创建|新建|制作|导出|转换(?:为|成)?|交付|提供|给我|发我)'
+  const outputIntent = '(?:写|撰写|编写|起草|编辑|修改|修订|排版|格式化|套用|生成|创建|新建|制作|导出|转换(?:为|成)?|交付|提供|给我|发我)'
   const addWhenRequested = (kind: DocumentArtifactKind, target: string) => {
     const before = new RegExp(`${outputIntent}.{0,24}${target}`, 'i')
     const after = new RegExp(`${target}.{0,24}(?:文件|文档|版本|格式)?.{0,12}${outputIntent}`, 'i')
@@ -819,9 +742,8 @@ export function requestedDocumentArtifacts(prompt: string): DocumentArtifactKind
   addWhenRequested('pptx', '(?:PPTX?|\\.pptx|演示文稿|幻灯片)')
   addWhenRequested('xlsx', '(?:Excel|XLSX|\\.xlsx|工作簿|表格文件)')
 
-  // A request to create a report/document without an explicit extension has
-  // historically meant a Word deliverable in LegalWork.
-  if (requested.size === 0) requested.add('docx')
+  // Plain drafting requests are inline responses. Only an explicit file-format
+  // request should enter the deterministic Office delivery workflow.
   return [...requested]
 }
 
@@ -1135,6 +1057,12 @@ function consecutiveDocumentFailures(items: readonly TurnItem[], turnId: string)
   return failures
 }
 
+function toolCallAttemptCount(items: readonly TurnItem[], turnId: string, toolName: string): number {
+  return items.filter((item) =>
+    item.turnId === turnId && item.kind === 'tool_call' && item.toolName === toolName
+  ).length
+}
+
 function hasCompletedToolAttempt(
   items: readonly TurnItem[],
   turnId: string,
@@ -1436,11 +1364,11 @@ function imaRecoveryInstruction(): string {
 
 function evidenceBarrierInstruction(reasons: readonly string[]): string {
   return [
-    '<knowledge_evidence_barrier>',
-    '知识库证据门禁未通过，因此禁止撰写或生成 Word、PDF、PPT 等交付物，也禁止用模型记忆、公开常识或未经检索核验的文献补写。',
+    '<knowledge_evidence_advisory>',
+    '当前证据或校验存在不足，请优先使用可用工具补足；如工具不可用或尝试失败，仍应基于现有材料继续交付。',
     ...reasons.map((reason) => `- ${reason}`),
-    '请简洁、明确地向用户报告当前失败来源及缺失证据；不得声称任务或文件已经完成。',
-    '</knowledge_evidence_barrier>'
+    '在最终结果中区分已确认内容与待核实内容，但不要仅输出阻塞报告。',
+    '</knowledge_evidence_advisory>'
   ].join('\n')
 }
 
@@ -1458,23 +1386,23 @@ function documentArtifactProgressInstruction(input: {
   const pdfSourceInstruction = missing.includes('pdf')
     ? input.completed.has('docx')
       ? 'PDF 所需的 DOCX 源文件已经生成，直接执行 pdf/from-docx。'
-      : '生成 PDF 前必须先用 docx/from-markdown 创建完整 DOCX 源文件；DOCX 可作为中间文件，即使用户只要求 PDF。下一步再执行 pdf/from-docx。'
+      : '生成 PDF 时优先先用 docx/from-markdown 创建完整 DOCX 源文件，再执行 pdf/from-docx；转换不可用时保留正文并说明未生成 PDF。'
     : ''
   const pptSourceInstruction = missing.includes('pptx')
     ? input.specializedPresentationPending
       ? [
-          'PPTX 必须遵循已激活的统一 open-kimi-ppt / PPTD 工作流，交付可编辑 PPTD 项目目录和导出的 PPTX；禁止调用通用 document_skill_execute、python-pptx、OfficeMCP 或底层 export_pptx.py 新建演示文稿。',
-          `风格规范与生成程序已经合并：只使用 Skill root 下 scripts/skill_runner.py。本任务必须使用 --scenario ${input.presentationScenario ?? 'analysis-decision'}；runner 会统一加载对应 Kimi 场景规范、验证集中式 theme、页面边界和占位符，再直接执行本地导出，不打开 Kimi 网页。`,
-          '只有 skill_runner.py export 成功返回 engine=open-kimi-ppt、exporter=local-python-pptx、styleValidated=true、scenario、slides、bytes、output 后才算交付。环境检查、目录搜索、单独创建 PPTD 或仅声称完成均不算 PPTX 已生成。'
+          'PPTX 优先遵循已激活的统一 open-kimi-ppt / PPTD 工作流；不要改用未经验证的生成路径。',
+          `风格规范与生成程序已经合并：优先使用 Skill root 下 scripts/skill_runner.py，并采用 --scenario ${input.presentationScenario ?? 'analysis-decision'}。`,
+          '导出失败或 runner 不可用时，立即停止重试并交付可用大纲与逐页内容，同时说明 PPTX 未生成。'
         ].join('')
-      : 'PPTX 只能由 open-kimi-ppt 生成；若该 Skill 不可用，明确报告运行时配置错误，不得改用通用文档模板。'
+      : 'PPTX 优先由 open-kimi-ppt 生成；若该 Skill 不可用，交付可用大纲与逐页内容并说明文件未生成。'
     : ''
   return [
     '<document_artifact_progress>',
     `用户明确要求的文件格式：${input.requested.map(display).join('、')}。`,
     `已经成功生成：${completed.length ? completed.map(display).join('、') : '无'}。`,
     `本步仍需生成：${missing.map(display).join('、')}。`,
-    '每一种格式都必须有对应的成功工具结果；不得把一个 Word 文件视为全部格式均已完成，也不得在缺少成功结果时声称已经交付。',
+    '尽力生成每一种格式；不得把一个 Word 文件视为全部格式均已完成，也不得在缺少成功结果时声称已经交付。未生成的格式要说明，但不要吞掉正文或其他成功文件。',
     'PDF 应优先用 document_skill_execute 的 pdf/from-docx 从已生成 DOCX 转换。',
     pptSourceInstruction,
     pdfSourceInstruction,
@@ -1633,6 +1561,10 @@ export class AgentLoop {
   private readonly imaRecoveryPasses = new Map<string, number>()
   /** Bounded retries when a provider ignores a forced tool choice. */
   private readonly requiredToolMisses = new Map<string, number>()
+  /** One focused retry when a provider emits reasoning but no visible answer. */
+  private readonly reasoningOnlyContinuations = new Map<string, number>()
+  /** One focused retry when the model announces work without performing it. */
+  private readonly pendingWorkContinuations = new Map<string, number>()
   /** Extract uploaded documents once; reuse the canonical text on every model step. */
   private readonly attachmentDocumentTextCache = new Map<string, AttachmentDocumentText>()
 
@@ -1684,6 +1616,8 @@ export class AgentLoop {
       for (const key of this.requiredToolMisses.keys()) {
         if (key.startsWith(`${turnId}:`)) this.requiredToolMisses.delete(key)
       }
+      this.reasoningOnlyContinuations.delete(turnId)
+      this.pendingWorkContinuations.delete(turnId)
     }
   }
 
@@ -1807,25 +1741,37 @@ export class AgentLoop {
         }
       }
     }
-    const message = `Stopped turn after ${maxSteps} model/tool steps to avoid an infinite agent loop.`
+    const message = `Stopped additional work after ${maxSteps} model/tool steps to avoid an infinite agent loop.`
     await this.opts.events.record({
-      kind: 'error',
+      kind: 'pipeline_stage',
       threadId,
       turnId,
-      message,
-      code: 'agent_loop_step_limit'
+      stage: 'response_received',
+      label: 'Agent Loop Limit Reached',
+      details: { message, maxSteps }
     })
-    await this.opts.turns.applyItem(
-      threadId,
-      makeErrorItem({
-        id: this.opts.ids.next('item_error'),
-        turnId,
-        threadId,
-        message,
-        code: 'agent_loop_step_limit'
-      })
+    const items = await this.opts.sessionStore.loadItems(threadId)
+    const hasVisibleText = items.some((item) =>
+      item.turnId === turnId && item.kind === 'assistant_text' && item.text.trim()
     )
-    throw new Error(message)
+    if (!hasVisibleText) {
+      const reasoningDraft = [...items].reverse().find((item) =>
+        item.turnId === turnId && item.kind === 'assistant_reasoning' && item.text.trim()
+      )
+      await this.opts.turns.applyItem(
+        threadId,
+        makeAssistantTextItem({
+          id: this.opts.ids.next('item_text'),
+          turnId,
+          threadId,
+          text: reasoningDraft?.kind === 'assistant_reasoning'
+            ? reasoningDraft.text
+            : '已停止继续调用工具，以避免无限循环；当前没有更多可交付正文。',
+          status: 'completed'
+        })
+      )
+    }
+    return 'completed'
   }
 
   private async modelStep(
@@ -1923,6 +1869,12 @@ export class AgentLoop {
       modelCapabilities
     })
     const routedSkillPrompt = skillRoutingPrompt(turn?.prompt ?? '', healed.items, turnId)
+    const legalResearchWorkflow = isLegalResearchWorkflowPrompt(routedSkillPrompt)
+    const legalResearchPlanPublished = legalResearchWorkflow &&
+      hasPublishedLegalResearchPlan(healed.items, turnId)
+    const legalResearchPlanPending = legalResearchWorkflow && !legalResearchPlanPublished
+    const legalResearchReportComplete = legalResearchWorkflow &&
+      hasCompleteLegalResearchReport(healed.items, turnId)
     // Only a true retry/continue prompt may reuse artifacts completed by the
     // preceding request. Referential follow-ups such as "把本文引注整理到 Word"
     // inherit the source attachment and Skill context, but they are a *new*
@@ -2011,7 +1963,6 @@ export class AgentLoop {
         toolCatalogDrift: toolCatalogDrift.kind !== 'none'
       })
     }
-    if (toolCatalogDrift.kind === 'breaking') return 'stop'
     const toolKinds = new Map(toolSpecs.map((tool) => [tool.name, tool.toolKind]))
     const createPlanSatisfied = planTurnActive
       ? hasSuccessfulCreatePlanResult(healed.items, turnId)
@@ -2072,35 +2023,17 @@ export class AgentLoop {
       missingArtifacts.length === 1 &&
       missingArtifacts[0] === 'pptx'
     const presentationFailureCount = consecutivePresentationExportFailures(healed.items, turnId)
-    if (
-      missingArtifacts.length === 1 &&
-      missingArtifacts[0] === 'pptx' &&
-      !skillResolution.activeSkillIds.includes('open-kimi-ppt')
-    ) {
-      throw new Error(
-        'PPTX generation requires the unified open-kimi-ppt Skill, but that Skill was not activated. Generic document PPT generation is disabled.'
-      )
-    }
     const documentFailureCount = consecutiveDocumentFailures(healed.items, turnId)
-    if (
-      documentMutationRequested &&
-      !documentMutationSatisfied &&
-      documentFailureCount >= workflowAttemptLimit('document-delivery')
-    ) {
-      throw new Error(
-        `Document generation stopped after ${documentFailureCount} consecutive failures; ` +
-        `missing required artifacts: ${missingArtifacts.join(', ')}.`
-      )
-    }
-    if (
-      specializedPresentationPending &&
-      presentationFailureCount >= workflowAttemptLimit('presentation-delivery')
-    ) {
-      throw new Error(
-        `Presentation generation stopped after ${presentationFailureCount} failed exports; ` +
-        'the required PPTX was not produced or did not pass the unified style and delivery checks.'
-      )
-    }
+    const documentAttemptCount = toolCallAttemptCount(
+      healed.items,
+      turnId,
+      DOCUMENT_SKILL_EXECUTE_TOOL_NAME
+    )
+    const presentationAttemptCount = toolCallAttemptCount(healed.items, turnId, 'bash')
+    const documentDeliveryAttempts = Math.max(documentAttemptCount, documentFailureCount)
+    const presentationDeliveryAttempts = Math.max(presentationAttemptCount, presentationFailureCount)
+    // Delivery failures are reported as limitations and never terminate the
+    // turn before the model can return the usable content it already produced.
     // Keep the full verified draft in runtime memory. Request-history hygiene
     // may abbreviate its old tool arguments before the next model request, so
     // the model must never be responsible for reconstructing those bytes.
@@ -2116,6 +2049,10 @@ export class AgentLoop {
     const desensitizationAttemptCount = healed.items.filter((item) =>
       item.turnId === turnId && item.kind === 'tool_result' && item.toolName === 'data_compliance'
     ).length
+    // Knowledge-base UI threads already carry a renderer-produced RAG bundle
+    // in their prompt. They must not enter the generic forced local-retrieval
+    // gate, especially because their model tool catalog is intentionally empty.
+    const isKnowledgeQaThread = isKnowledgeQaThreadTitle(thread?.title) && !planTurnActive
     const localKnowledgeRequested = requestsLocalKnowledgeRetrieval(routedSkillPrompt)
     const localKnowledgeSatisfied = localKnowledgeRequested &&
       hasUsableLocalKnowledgeEvidence(
@@ -2142,7 +2079,10 @@ export class AgentLoop {
       'knowledge_search'
     )
     const localKnowledgeRequiredToolName =
+      DELIVERY_QUALITY_GATES_ENABLED &&
       !planTurnActive &&
+      !legalResearchPlanPending &&
+      !isKnowledgeQaThread &&
       localKnowledgeRequested &&
       !localKnowledgeSatisfied
         ? toolSpecs.some((tool) => tool.name === 'knowledge_auto_retrieve') && !localAutoRetrieveAttempted
@@ -2158,8 +2098,23 @@ export class AgentLoop {
       !localKnowledgeRequiredToolName
     const factContract = factVerificationContract(routedSkillPrompt)
     const factProgress = factVerificationProgress(healed.items, turnId, factContract)
+    const primaryLegalDatabaseEvidenceReady = legalResearchWorkflow &&
+      hasUsablePrimaryLegalDatabaseEvidence(healed.items, turnId)
+    const legalResearchSynthesisReady = primaryLegalDatabaseEvidenceReady &&
+      hasUsablePrimaryLegalCaseEvidence(healed.items, turnId)
+    const legalResearchMcpCallRequiredToolName =
+      DELIVERY_QUALITY_GATES_ENABLED &&
+      legalResearchWorkflow &&
+      legalResearchPlanPublished &&
+      !legalResearchSynthesisReady &&
+      hasDiscoveredPrimaryLegalDatabaseTool(healed.items, turnId) &&
+      toolSpecs.some((tool) => tool.name === 'mcp_call')
+        ? 'mcp_call'
+        : undefined
     const factWebSearchRequiredToolName =
+      DELIVERY_QUALITY_GATES_ENABLED &&
       !planTurnActive &&
+      !legalResearchPlanPending &&
       factContract.requiresWebEvidence &&
       !factProgress.webSearchSatisfied &&
       factProgress.webSearchAttempts < workflowAttemptLimit('evidence') &&
@@ -2167,7 +2122,9 @@ export class AgentLoop {
         ? 'web_search'
         : undefined
     const factLegalSearchRequiredToolName =
+      DELIVERY_QUALITY_GATES_ENABLED &&
       !planTurnActive &&
+      !legalResearchPlanPending &&
       factContract.requiresLegalEvidence &&
       !factProgress.legalEvidenceSatisfied &&
       factProgress.legalSearchAttempts < workflowAttemptLimit('evidence') &&
@@ -2176,7 +2133,9 @@ export class AgentLoop {
         ? 'knowledge_legal_external_sources'
         : undefined
     const factWebFetchRequiredToolName =
+      DELIVERY_QUALITY_GATES_ENABLED &&
       !planTurnActive &&
+      !legalResearchPlanPending &&
       factContract.requiresWebEvidence &&
       factProgress.webSearchSatisfied &&
       factProgress.fetchedSourceUrls.size < factContract.minimumFetchedSources &&
@@ -2190,6 +2149,7 @@ export class AgentLoop {
         factProgress.fetchedSourceUrls.size >= factContract.minimumFetchedSources) &&
       (!factContract.requiresLegalEvidence || factProgress.legalEvidenceSatisfied)
     const factFinalizeRequiredToolName =
+      DELIVERY_QUALITY_GATES_ENABLED &&
       !planTurnActive &&
       factContract.required &&
       factEvidenceReady &&
@@ -2207,6 +2167,7 @@ export class AgentLoop {
       !factWebFetchRequiredToolName &&
       !factFinalizeRequiredToolName
     const knowledgePdfReadRequiredToolName =
+      DELIVERY_QUALITY_GATES_ENABLED &&
       !planTurnActive &&
       localKnowledgeSatisfied &&
       !knowledgePdfReadsSatisfied &&
@@ -2229,6 +2190,7 @@ export class AgentLoop {
       )
     const imaRecoveryPassCount = this.imaRecoveryPasses.get(turnId) ?? 0
     const deferDocumentForImaRecovery =
+      DELIVERY_QUALITY_GATES_ENABLED &&
       !planTurnActive &&
       !localKnowledgeRequiredToolName &&
       hasCompletedImaResearchAttempt(healed.items, turnId) &&
@@ -2247,7 +2209,6 @@ export class AgentLoop {
     const turnBudgetWrapUp = this.armTurnBudgetWrapUp(turnId)
     // Knowledge-base UI threads already contain renderer-produced RAG
     // evidence. Treat them as direct QA: no second knowledge/IMA/tool pass.
-    const isKnowledgeQaThread = isKnowledgeQaThreadTitle(thread?.title) && !planTurnActive
     const scopedToolSpecs = knowledgeQaToolSpecs(toolSpecs, {
       title: thread?.title,
       planTurnActive
@@ -2258,7 +2219,9 @@ export class AgentLoop {
       items: healed.items,
       turnId,
       enabled:
+        DELIVERY_QUALITY_GATES_ENABLED &&
         !planTurnActive &&
+        !legalResearchPlanPending &&
         !isKnowledgeQaThread &&
         !turnBudgetWrapUp &&
         !bareResearchTopic &&
@@ -2302,6 +2265,7 @@ export class AgentLoop {
       (!imaKnowledgeRequested || imaKnowledgeSatisfied) &&
       (!factContract.required || factProgress.finalized)
     const caseResearchRequiredToolName =
+      DELIVERY_QUALITY_GATES_ENABLED &&
       !planTurnActive &&
       caseResearchRequested &&
       evidenceSourcesReady &&
@@ -2324,9 +2288,6 @@ export class AgentLoop {
     const caseResearchSatisfied = !caseResearchRequested || caseProgress.satisfied
     const desensitizationRequiredToolName =
       !planTurnActive &&
-      evidenceSourcesReady &&
-      knowledgePdfReadsSatisfied &&
-      caseResearchSatisfied &&
       !desensitizationSatisfied &&
       desensitizationAttemptCount < workflowAttemptLimit('compliance') &&
       toolSpecs.some((tool) => tool.name === 'data_compliance')
@@ -2334,14 +2295,12 @@ export class AgentLoop {
         : undefined
     const desensitizationBlocked =
       !planTurnActive &&
-      evidenceSourcesReady &&
-      knowledgePdfReadsSatisfied &&
-      caseResearchSatisfied &&
       !desensitizationSatisfied &&
       !desensitizationRequiredToolName
     const workflowPrerequisitesReady =
       evidenceSourcesReady && knowledgePdfReadsSatisfied && caseResearchSatisfied && desensitizationSatisfied
     const citationVerificationRequiredToolName =
+      DELIVERY_QUALITY_GATES_ENABLED &&
       !planTurnActive &&
       academicCitationVerificationRequested &&
       workflowPrerequisitesReady &&
@@ -2445,7 +2404,12 @@ export class AgentLoop {
       completedKeys: workflowCompletedKeys,
       blockerReasons: evidenceBarrierReasons
     })
-    const evidenceBarrierActive = workflowAcceptance.blockerReasons.length > 0
+    const evidenceBarrierActive = DELIVERY_QUALITY_GATES_ENABLED &&
+      workflowAcceptance.blockerReasons.length > 0
+    // Actual desensitization remains a privacy safeguard. If explicitly
+    // requested and unavailable, return a textual limitation instead of
+    // silently generating an unredacted file.
+    const privacyDeliveryBlocked = desensitizationBlocked
     const documentRequiredToolName =
       !planTurnActive &&
       documentMutationRequested &&
@@ -2453,7 +2417,8 @@ export class AgentLoop {
       !specializedPresentationPending &&
       !deferDocumentForImaRecovery &&
       !evidenceBarrierActive &&
-      (!factContract.required || factProgress.finalized) &&
+      !privacyDeliveryBlocked &&
+      documentDeliveryAttempts < workflowAttemptLimit('document-delivery') &&
       !knowledgePdfReadRequiredToolName &&
       !caseResearchRequiredToolName &&
       !desensitizationRequiredToolName &&
@@ -2464,23 +2429,21 @@ export class AgentLoop {
     const presentationRequiredToolName =
       !planTurnActive &&
       specializedPresentationPending &&
-      presentationFailureCount < workflowAttemptLimit('presentation-delivery') &&
+      presentationDeliveryAttempts < workflowAttemptLimit('presentation-delivery') &&
       !deferDocumentForImaRecovery &&
       !evidenceBarrierActive &&
+      !privacyDeliveryBlocked &&
       toolSpecs.some((tool) => tool.name === 'bash')
         ? 'bash'
         : undefined
-    if (
-      !planTurnActive &&
-      specializedPresentationPending &&
-      !deferDocumentForImaRecovery &&
-      !evidenceBarrierActive &&
-      !presentationRequiredToolName
-    ) {
-      throw new Error(
-        'PPTX generation requires the bash tool to run the active open-kimi-ppt / PPTD workflow, but bash is unavailable.'
-      )
-    }
+    // A missing presentation runner is advisory; the model must still return
+    // the prepared outline/content and explain that the file was not created.
+    const deliveryAttemptsExhausted =
+      (documentMutationRequested &&
+        !documentMutationSatisfied &&
+        documentDeliveryAttempts >= workflowAttemptLimit('document-delivery')) ||
+      (specializedPresentationPending &&
+        presentationDeliveryAttempts >= workflowAttemptLimit('presentation-delivery'))
     const automaticPlan = !planTurnActive
       ? buildAutomaticTaskPlan({
           prompt: routedSkillPrompt,
@@ -2791,15 +2754,23 @@ export class AgentLoop {
         reason: '通过统一 PPT Skill 生成并验收演示文稿'
       }
     ])
-    const requiredToolName = workflowAction?.toolName
+    const requiredToolName = legalResearchMcpCallRequiredToolName ?? workflowAction?.toolName
     const presentationScopedToolSpecs = specializedPresentationPending
       ? scopedToolSpecs.filter((tool) => tool.name !== DOCUMENT_SKILL_EXECUTE_TOOL_NAME)
       : scopedToolSpecs
-    const visibleScopedToolSpecs = automaticPlan
-      ? presentationScopedToolSpecs.filter(
-          (tool) => tool.name !== TODO_LIST_TOOL_NAME && tool.name !== TODO_WRITE_TOOL_NAME
+    const legalResearchScopedToolSpecs = primaryLegalDatabaseEvidenceReady
+      ? presentationScopedToolSpecs.filter((tool) =>
+          !isRedundantLegalSourceEnrichmentCall({
+            toolName: tool.name,
+            arguments: {}
+          })
         )
       : presentationScopedToolSpecs
+    const visibleScopedToolSpecs = automaticPlan
+      ? legalResearchScopedToolSpecs.filter(
+          (tool) => tool.name !== TODO_LIST_TOOL_NAME && tool.name !== TODO_WRITE_TOOL_NAME
+        )
+      : legalResearchScopedToolSpecs
     // workflow governance 的 evidence gate 会强制单个检索工具（如
     // knowledge_auto_retrieve）并收窄工具列表。read 是读用户附件原文的核心
     // 基础工具，不应被 evidence gate 排除（否则 agent 读不到用户原文、只能凭
@@ -2818,13 +2789,15 @@ export class AgentLoop {
         ? ['read', 'bash']
         : ['read']
     )
-    const requestToolSpecs = requiredToolName
+    const requestToolSpecs = legalResearchSynthesisReady
+      ? []
+      : requiredToolName
       ? visibleScopedToolSpecs.filter(
           (tool) => tool.name === requiredToolName || BASE_WORK_TOOL_NAMES.has(tool.name)
         )
       : turnBudgetWrapUp
         ? turnBudgetCompletionToolSpecs(visibleScopedToolSpecs)
-        : bareResearchTopic || documentMutationSatisfied || evidenceBarrierActive
+        : bareResearchTopic || documentMutationSatisfied || deliveryAttemptsExhausted
           ? []
           : visibleScopedToolSpecs
     const officeWorkflowInstruction = specializedPresentationPending
@@ -2859,6 +2832,21 @@ export class AgentLoop {
       : undefined
     const knowledgeEvidenceBarrierInstruction = evidenceBarrierActive
       ? evidenceBarrierInstruction(evidenceBarrierReasons)
+      : undefined
+    const researchStageInstruction = legalResearchWorkflow
+      ? legalResearchStageInstruction({
+          planPublished: legalResearchPlanPublished,
+          reportComplete: legalResearchReportComplete
+        })
+      : undefined
+    const reasoningOnlyRecoveryInstruction = (this.reasoningOnlyContinuations.get(turnId) ?? 0) > 0
+      ? '上一次模型请求只产生了内部推理，没有可见答案。现在停止规划和新增检索，直接基于已有材料输出完整最终结果。'
+      : undefined
+    const pendingWorkRecoveryInstruction = (this.pendingWorkContinuations.get(turnId) ?? 0) > 0
+      ? '上一次回复只说明了准备做什么。现在不要再预告步骤或新增检索，直接输出已经能够完成的最终正文或结果。'
+      : undefined
+    const deliveryFailureInstruction = deliveryAttemptsExhausted
+      ? '文件生成工具已达到有界重试次数。立即停止重试，输出可用正文或大纲，并简洁说明未能生成请求的文件。'
       : undefined
     // Final step of a plan turn that still owes a plan. Offer ONLY create_plan
     // (this DeepSeek-compatible provider ignores a forced tool_choice, so we
@@ -2899,6 +2887,10 @@ export class AgentLoop {
       ...(requiredToolRecoveryInstruction ? [requiredToolRecoveryInstruction] : []),
       ...(recoveryInstruction ? [recoveryInstruction] : []),
       ...(knowledgeEvidenceBarrierInstruction ? [knowledgeEvidenceBarrierInstruction] : []),
+      ...(researchStageInstruction ? [researchStageInstruction] : []),
+      ...(reasoningOnlyRecoveryInstruction ? [reasoningOnlyRecoveryInstruction] : []),
+      ...(pendingWorkRecoveryInstruction ? [pendingWorkRecoveryInstruction] : []),
+      ...(deliveryFailureInstruction ? [deliveryFailureInstruction] : []),
       ...(requestToolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
       ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : []),
       ...(turnBudgetWrapUp ? [TURN_BUDGET_WRAPUP_INSTRUCTION] : [])
@@ -2921,7 +2913,11 @@ export class AgentLoop {
       ...(attachments.textFallbacks.length ? { attachmentTextFallbacks: attachments.textFallbacks } : {}),
       tools: requestToolSpecs,
       ...(requiredToolName ? { requiredToolName } : {}),
-      ...(modelRoute.reasoningEffort ? { reasoningEffort: modelRoute.reasoningEffort } : {}),
+      ...(legalResearchSynthesisReady
+        ? { reasoningEffort: 'off' }
+        : modelRoute.reasoningEffort
+          ? { reasoningEffort: modelRoute.reasoningEffort }
+          : {}),
       abortSignal: signal
     }
     const rawInputTokens = tokenEconomy.enabled
@@ -2962,6 +2958,7 @@ export class AgentLoop {
           ? 1
           : Number.POSITIVE_INFINITY
     let stopReason: 'stop' | 'tool_calls' | 'length' | 'error' = 'stop'
+    let streamErrorMessage = ''
     await this.recordPipelineStage(threadId, turnId, 'pre_send', {
       model: request.model,
       historyItems: request.history.length,
@@ -3143,10 +3140,9 @@ export class AgentLoop {
             message: chunk.message,
             code: chunk.code
           })
-          // 抛出真实错误信息而不是只置 stopReason，让 runTurn 的 catch
-          // 通过 failTurn(message) 把具体原因透传到 turn_failed 事件，
-          // 否则前端只能显示兜底的 "Legalwork turn failed"。
-          throw new Error(chunk.message)
+          streamErrorMessage = chunk.message
+          stopReason = 'error'
+          break
       }
     }
     if (stepPromptTokens > 0) {
@@ -3236,7 +3232,7 @@ export class AgentLoop {
     if (looksLikeDsmlToolCalls(textAccumulator.value)) {
       textAccumulator.value = stripDsmlToolCalls(textAccumulator.value)
     }
-    if (reasoningAccumulator.value && !request.requiredToolName) {
+    if (reasoningAccumulator.value) {
       const itemId = reasoningItemId || this.opts.ids.next('item_reasoning')
       await this.opts.turns.applyItem(
         threadId,
@@ -3249,7 +3245,7 @@ export class AgentLoop {
         })
       )
     }
-    if (textAccumulator.value && !request.requiredToolName) {
+    if (textAccumulator.value) {
       const itemId = textItemId || this.opts.ids.next('item_text')
       await this.opts.turns.applyItem(
         threadId,
@@ -3263,7 +3259,27 @@ export class AgentLoop {
       )
     }
     if (stopReason === 'error') {
-      throw new Error('Model returned stop_reason "error".')
+      const partial = textAccumulator.value.trim() || reasoningAccumulator.value.trim()
+      if (!partial) {
+        throw new Error(streamErrorMessage || 'Model returned stop_reason "error".')
+      }
+      if (!textAccumulator.value.trim() && reasoningAccumulator.value.trim()) {
+        await this.opts.turns.applyItem(
+          threadId,
+          makeAssistantTextItem({
+            id: this.opts.ids.next('item_text'),
+            turnId,
+            threadId,
+            text: reasoningAccumulator.value.trim(),
+            status: 'completed'
+          })
+        )
+      }
+      await this.recordPipelineStage(threadId, turnId, 'response_received', {
+        label: 'Partial Response Preserved',
+        message: streamErrorMessage || 'Model stream ended with an error after producing content.'
+      })
+      return 'stop'
     }
     if (completedToolCalls.length === 0) {
       if (request.requiredToolName) {
@@ -3349,41 +3365,73 @@ export class AgentLoop {
           // prose remains buffered and invisible to the user.
           return 'continue'
         }
-        const message = `Model did not call the required \`${request.requiredToolName}\` tool for this turn.`
-        await this.opts.events.record({
-          kind: 'error',
-          threadId,
-          turnId,
-          message,
-          code: 'required_tool_missing'
-        })
-        await this.opts.turns.applyItem(
-          threadId,
-          makeErrorItem({
-            id: this.opts.ids.next('item_error'),
-            turnId,
+        const message = `Model did not call the requested \`${request.requiredToolName}\` tool; returning the best available response instead.`
+        if (request.requiredToolName === CREATE_PLAN_TOOL_NAME) {
+          await this.opts.events.record({
+            kind: 'error',
             threadId,
+            turnId,
             message,
             code: 'required_tool_missing'
           })
-        )
-        throw new Error(message)
+          await this.opts.turns.applyItem(
+            threadId,
+            makeErrorItem({
+              id: this.opts.ids.next('item_error'),
+              turnId,
+              threadId,
+              message,
+              code: 'required_tool_missing'
+            })
+          )
+          throw new Error(message)
+        }
+        await this.opts.events.record({
+          kind: 'pipeline_stage',
+          threadId,
+          turnId,
+          stage: 'response_received',
+          label: 'Requested Tool Skipped',
+          details: { message, toolName: request.requiredToolName }
+        })
+        return 'stop'
       }
       if (deferDocumentForImaRecovery && documentMutationRequested && !documentMutationSatisfied) {
+        return 'continue'
+      }
+      if (
+        stopReason === 'stop' &&
+        !textAccumulator.value.trim() &&
+        reasoningAccumulator.value.trim() &&
+        (this.reasoningOnlyContinuations.get(turnId) ?? 0) < 1
+      ) {
+        this.reasoningOnlyContinuations.set(turnId, 1)
         return 'continue'
       }
       if (stopReason === 'stop' && activeGoalInstruction && stepIndex < MAX_GOAL_NO_TOOL_CONTINUATIONS) {
         return 'continue'
       }
+      if (DELIVERY_QUALITY_GATES_ENABLED && legalResearchWorkflow && stopReason === 'stop') {
+        // The workflow state above was computed before this model response was
+        // persisted. Re-evaluate the just-produced text here: a planning reply
+        // or a stage update is progress, never the terminal research report.
+        const planPublishedNow = legalResearchPlanPublished ||
+          isPublishedLegalResearchPlan(textAccumulator.value)
+        const reportCompleteNow = legalResearchReportComplete ||
+          isCompleteLegalResearchReport(textAccumulator.value)
+        if (!planPublishedNow || !reportCompleteNow) return 'continue'
+      }
       const announcedWork = textAccumulator.value.trim() || reasoningAccumulator.value.trim()
       if (
         stopReason === 'stop' &&
         request.tools.length > 0 &&
-        assistantAnnouncesPendingToolWork(announcedWork)
+        assistantAnnouncesPendingToolWork(announcedWork) &&
+        (this.pendingWorkContinuations.get(turnId) ?? 0) < 1
       ) {
         // A response that says "I will/next/first do X" is not a completed
         // task. Keep the turn alive so the following model step can issue the
         // tool call it just announced.
+        this.pendingWorkContinuations.set(turnId, 1)
         return 'continue'
       }
       if (
@@ -3422,16 +3470,36 @@ export class AgentLoop {
       approvalPolicy,
       signal,
       taskContract: explicitTaskContract,
+      suppressRedundantLegalSourceEnrichment: primaryLegalDatabaseEvidenceReady,
       ...(verifiedDraft !== undefined ? { verifiedDraft } : {}),
       completedArtifacts,
-      factVerification: factContract.required
-        ? {
-            contract: factContract,
-            allowedSourceUrls: normalizedEvidenceUrls(factProgress)
-          }
-        : undefined
     })
     if (dispatched === 'aborted') return 'aborted'
+    const deliveryFailureLimitReached = completedToolCalls.some((call) =>
+      (call.toolName === DOCUMENT_SKILL_EXECUTE_TOOL_NAME &&
+        documentFailureCount > 0 &&
+        documentDeliveryAttempts + 1 >= workflowAttemptLimit('document-delivery')) ||
+      (call.toolName === 'bash' &&
+        specializedPresentationPending &&
+        presentationFailureCount > 0 &&
+        presentationDeliveryAttempts + 1 >= workflowAttemptLimit('presentation-delivery'))
+    )
+    if (deliveryFailureLimitReached) {
+      const draft = completedToolCalls
+        .map((call) => typeof call.arguments.content === 'string' ? call.arguments.content.trim() : '')
+        .find(Boolean)
+      await this.opts.turns.applyItem(
+        threadId,
+        makeAssistantTextItem({
+          id: this.opts.ids.next('item_text'),
+          turnId,
+          threadId,
+          text: draft || '文件生成工具连续失败，已停止重试。本轮未能生成请求的文件。',
+          status: 'completed'
+        })
+      )
+      return 'stop'
+    }
     return 'continue'
   }
 
@@ -3450,12 +3518,9 @@ export class AgentLoop {
     approvalPolicy: ToolHostContext['approvalPolicy']
     signal: AbortSignal
     taskContract?: DocumentTaskContract
+    suppressRedundantLegalSourceEnrichment?: boolean
     verifiedDraft?: string
     completedArtifacts?: ReadonlySet<DocumentArtifactKind>
-    factVerification?: {
-      contract: FactVerificationContract
-      allowedSourceUrls: ReadonlySet<string>
-    }
   }): Promise<'continue' | 'aborted'> {
     const context = this.createToolContext(input)
     let index = 0
@@ -3466,18 +3531,36 @@ export class AgentLoop {
       const call = input.calls[index]
       if (!call) break
 
+      if (
+        input.suppressRedundantLegalSourceEnrichment &&
+        isRedundantLegalSourceEnrichmentCall(call)
+      ) {
+        const result: ToolHostResult = {
+          item: makeToolResultItem({
+            id: `item_${call.callId}_legal_enrichment_skipped`,
+            turnId: input.turnId,
+            threadId: input.threadId,
+            callId: call.callId,
+            toolName: call.toolName,
+            toolKind: call.toolKind ?? 'tool_call',
+            output: {
+              skipped: true,
+              reason: '北大法宝或元典已经返回可用主要法律证据；跳过重复的链接增强、引证核验或网页补强，请直接综合并输出最终报告。'
+            }
+          }),
+          approved: true
+        }
+        await this.persistToolCallResult(input.threadId, input.turnId, call, result)
+        index += 1
+        continue
+      }
+
       const knowledgeBypassError = knowledgeShellBypassError(call)
-      const factContractError = input.factVerification
-        ? factVerificationToolCallError({ call, ...input.factVerification })
-        : undefined
-      const contractError = knowledgeBypassError ?? factContractError ?? (input.taskContract
-        ? taskContractToolCallError({
-            call,
-            contract: input.taskContract,
-            ...(input.verifiedDraft !== undefined ? { verifiedDraft: input.verifiedDraft } : {}),
-            completedArtifacts: input.completedArtifacts ?? new Set<DocumentArtifactKind>()
-          })
-        : undefined)
+      // Content completeness, source counts, citation checks and filename
+      // preferences are advisory and never reject a tool call. Keep only the
+      // safety guard that prevents bulk shell traversal of the private
+      // knowledge store.
+      const contractError = knowledgeBypassError
       if (contractError) {
         const result: ToolHostResult = {
           item: makeToolResultItem({
@@ -3489,11 +3572,7 @@ export class AgentLoop {
             toolKind: call.toolKind ?? 'tool_call',
             output: {
               error: contractError,
-              code: knowledgeBypassError
-                ? 'knowledge_tool_bypass_blocked'
-                : factContractError
-                  ? 'fact_verification_contract_failed'
-                : 'explicit_task_contract_failed'
+              code: 'knowledge_tool_bypass_blocked'
             },
             isError: true
           }),
@@ -4563,7 +4642,17 @@ function buildTextAttachmentFallback(
   if (fallback) {
     const fallbackBase64Bytes = Buffer.byteLength(fallback.dataBase64, 'utf8')
     if (fallbackBase64Bytes > maxBase64Bytes) {
-      throw new Error(`attachment ${attachment.id} text fallback exceeds ${maxBase64Bytes} base64 byte limit`)
+      return {
+        id: attachment.id,
+        name: attachment.name,
+        mimeType: fallback.mimeType,
+        dataBase64: '',
+        byteSize: fallback.byteSize,
+        ...(fallback.width ? { width: fallback.width } : {}),
+        ...(fallback.height ? { height: fallback.height } : {}),
+        ...(fallback.wasCompressed !== undefined ? { wasCompressed: fallback.wasCompressed } : {}),
+        ...(attachment.localFilePath ? { localFilePath: attachment.localFilePath } : {})
+      }
     }
     return {
       id: attachment.id,
@@ -4764,7 +4853,7 @@ function buildToolCatalogDriftMessage(toolCatalog: {
   const suffix = toolCatalog.toolNames.length > 12 ? `, +${toolCatalog.toolNames.length - 12} more` : ''
   const policy = changeKind === 'additive'
     ? 'Only additive tool changes are allowed in-place; Legalwork will continue with the refreshed tool list.'
-    : 'Non-additive tool changes can invalidate prompt-cache assumptions; Legalwork stopped this turn. Start a new thread after editing, removing, or reordering tool schemas.'
+    : 'Non-additive tool changes can invalidate prompt-cache assumptions; Legalwork recorded the change and will continue with the refreshed tool list.'
   return [
     `Tool catalog changed for this thread (${toolCatalog.toolCount} tools, fingerprint ${toolCatalog.fingerprint}).`,
     policy,

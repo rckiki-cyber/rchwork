@@ -150,7 +150,7 @@ const BLOCK_MARKDOWN_REGEX =
   /(^|\n)\s{0,3}(#{1,6}\s|[-+*]\s|\d+\.\s|>\s|```|~~~)|(^|\n)\|.+\|/m
 
 const INLINE_STRUCTURED_MARKDOWN_REGEX =
-  /`[^`\n]+`|!\[[^\]]*]\([^)\n]+\)|\[[^\]]+]\([^)\n]+\)/
+  /\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|`[^`\n]+`|!\[[^\]]*]\([^)\n]+\)|\[[^\]]+]\([^)\n]+\)/
 const MULTILINE_TEXT_REGEX = /\r?\n/
 const MAX_ANIMATED_STREAMING_CHARS = 600
 

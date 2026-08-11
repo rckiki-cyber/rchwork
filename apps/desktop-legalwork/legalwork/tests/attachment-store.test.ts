@@ -391,6 +391,48 @@ describe('Attachment store and multimodal input', () => {
     })
   })
 
+  it('downgrades an oversized supplied OCR fallback instead of failing the turn', async () => {
+    const store = createStore({ textFallbackMaxBase64Bytes: 8 })
+    const attachment = await store.create({
+      name: 'scan.png',
+      data: png(1, 1),
+      textFallback: {
+        dataBase64: 'abcdefghijkl',
+        mimeType: 'image/png',
+        byteSize: 9,
+        width: 1,
+        height: 1
+      },
+      threadId: 'thr_1',
+      workspace: '/tmp/ws'
+    })
+    const seenRequests: ModelRequest[] = []
+    const model: ModelClient = {
+      provider: 'fake',
+      model: 'fake',
+      async *stream(request) {
+        seenRequests.push(request)
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }
+    const h = makeHarness(model, {
+      attachmentStore: store,
+      modelCapabilities: () => ({ ...visionCapabilities(), inputModalities: ['text'] })
+    })
+    await bootstrapThread(h, {
+      workspace: '/tmp/ws',
+      request: { prompt: 'read scan', attachmentIds: [attachment.id], model: 'text-only' }
+    })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(seenRequests.at(-1)?.attachmentTextFallbacks?.[0]).toMatchObject({
+      id: attachment.id,
+      mimeType: 'image/png',
+      dataBase64: '',
+      byteSize: 9
+    })
+  })
+
   it('maps image attachments to DeepSeek-compatible message parts', async () => {
     let body: { messages?: Array<{ role: string; content: unknown }> } | undefined
     const client = new DeepseekCompatModelClient({

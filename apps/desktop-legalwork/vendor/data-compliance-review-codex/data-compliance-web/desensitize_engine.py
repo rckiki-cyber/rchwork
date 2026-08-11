@@ -162,13 +162,13 @@ PRIVATE_ORG_SUFFIX_PATTERN = (
     r'有限责任公司|股份有限公司|集团有限公司|有限公司|律师事务所'
 )
 PRIVATE_ORG_PATTERN = re.compile(
-    rf'(?P<org>[\u4e00-\u9fa5A-Za-z0-9·\- \t]{{2,70}}'
+    rf'(?P<org>[\u4e00-\u9fa5A-Za-z0-9·\- \t]{{2,70}}?'
     rf'(?:[（(][\u4e00-\u9fa5A-Za-z0-9·\-]{{1,16}}[）)])?'
     rf'[\u4e00-\u9fa5A-Za-z0-9·\- \t]{{0,40}}?(?:{PRIVATE_ORG_SUFFIX_PATTERN})'
     r'(?:[\u4e00-\u9fa5]{1,12}(?:分公司|支公司))?)'
 )
 SHORT_ORG_PATTERN = re.compile(
-    r'(?P<org>[\u4e00-\u9fa5A-Za-z0-9·\-]{2,30}(?:分公司|支公司|公司|集团|银行|支行|分行))'
+    r'(?P<org>(?:(?![与和及])[\u4e00-\u9fa5A-Za-z0-9·\-]){2,30}(?:分公司|支公司|公司|集团|银行|支行|分行))'
 )
 PUBLIC_INSTITUTION_SUFFIXES = (
     '税务局', '人民政府', '人民法院', '人民检察院', '仲裁委员会', '公证处',
@@ -2290,55 +2290,77 @@ def process_desensitization(
     if not is_text and suffix not in supported_extensions:
         raise ValueError(f'暂不支持该文件类型：{suffix or "无扩展名"}')
 
-    raw_text, used_ocr = _extract_source_text(input_path, is_text=is_text)
-    raw_text = _normalize_pdf_character_spacing(raw_text)
-    redacted, text_findings, text_subjects = sanitize_text_and_subjects(
-        raw_text,
-        engine,
-        surface='ocr_text' if used_ocr else 'document_text',
-        locator='全文',
-    )
-    findings.extend(text_findings)
-    subject_mappings.extend(text_subjects)
-
-    if redaction_mode == 'agent_enhanced':
-        redacted, enhanced_findings, enhanced_subjects = _agent_enhance_redaction(
-            raw_text,
-            redacted,
-            subject_mappings,
-        )
-        findings.extend(enhanced_findings)
-        subject_mappings.extend(enhanced_subjects)
-    else:
-        redacted, limited_findings, limited_subjects = _standard_limited_enhancement(
-            redacted,
-            subject_mappings,
-        )
-        findings.extend(limited_findings)
-        subject_mappings.extend(limited_subjects)
-
-    # A second deterministic pass catches values exposed by OCR whitespace normalization
-    # and guarantees that one global subject map is applied across the complete document.
-    redacted, residual_findings, residual_subjects = sanitize_text_and_subjects(
-        redacted,
-        engine,
-        surface='verification',
-        locator='全文',
-    )
-    findings.extend(residual_findings)
-    subject_mappings.extend(residual_subjects)
-    subject_mappings = _dedupe_subject_mappings(subject_mappings)
-
-    canonical_markdown = _canonicalize_markdown(redacted, document_name)
-    canonical_source = work_dir / 'canonical_redacted.md'
-    canonical_source.write_text(canonical_markdown, encoding='utf-8')
-
     effective_format = output_format if output_format in {'md', 'docx', 'pdf', 'txt'} else 'docx'
     base_name = (document_name or Path(input_name).stem or '脱敏材料').rstrip('_').strip()
-    marker = '_OCR脱敏' if used_ocr else '_脱敏'
-    output_stem = _safe_output_stem(f'{base_name}{marker}')
-    output_file = work_dir / f'{output_stem}.{effective_format}'
-    _render_standard_output(canonical_markdown, output_file, effective_format)
+
+    if suffix in DOC_EXTENSIONS and effective_format == 'docx':
+        # A 方案：docx 输入 + Word 输出 → 保格式原位替换。
+        # 不再走“统一提取文字/OCR → markdown → 重建 docx”的压平流程，
+        # 避免丢失原文档结构、页脚脚注、文本框、表格与段落格式。
+        # 仅对扫描型 PDF / 图片等无文本层的材料才需要 OCR 与重排版。
+        used_ocr = False
+        output_file, doc_findings, doc_subjects = process_docx(
+            input_path, work_dir, engine, warnings, output_format=output_format,
+        )
+        findings.extend(doc_findings)
+        subject_mappings.extend(doc_subjects)
+        subject_mappings = _dedupe_subject_mappings(subject_mappings)
+
+        # 输出文件名对齐 {base_name}_脱敏.docx（process_docx 默认 desensitized_output.docx）
+        marker = '_脱敏'
+        output_stem = _safe_output_stem(f'{base_name}{marker}')
+        named_output = work_dir / f'{output_stem}.docx'
+        if named_output != output_file:
+            os.replace(str(output_file), str(named_output))
+            output_file = named_output
+    else:
+        raw_text, used_ocr = _extract_source_text(input_path, is_text=is_text)
+        raw_text = _normalize_pdf_character_spacing(raw_text)
+        redacted, text_findings, text_subjects = sanitize_text_and_subjects(
+            raw_text,
+            engine,
+            surface='ocr_text' if used_ocr else 'document_text',
+            locator='全文',
+        )
+        findings.extend(text_findings)
+        subject_mappings.extend(text_subjects)
+
+        if redaction_mode == 'agent_enhanced':
+            redacted, enhanced_findings, enhanced_subjects = _agent_enhance_redaction(
+                raw_text,
+                redacted,
+                subject_mappings,
+            )
+            findings.extend(enhanced_findings)
+            subject_mappings.extend(enhanced_subjects)
+        else:
+            redacted, limited_findings, limited_subjects = _standard_limited_enhancement(
+                redacted,
+                subject_mappings,
+            )
+            findings.extend(limited_findings)
+            subject_mappings.extend(limited_subjects)
+
+        # A second deterministic pass catches values exposed by OCR whitespace normalization
+        # and guarantees that one global subject map is applied across the complete document.
+        redacted, residual_findings, residual_subjects = sanitize_text_and_subjects(
+            redacted,
+            engine,
+            surface='verification',
+            locator='全文',
+        )
+        findings.extend(residual_findings)
+        subject_mappings.extend(residual_subjects)
+        subject_mappings = _dedupe_subject_mappings(subject_mappings)
+
+        canonical_markdown = _canonicalize_markdown(redacted, document_name)
+        canonical_source = work_dir / 'canonical_redacted.md'
+        canonical_source.write_text(canonical_markdown, encoding='utf-8')
+
+        marker = '_OCR脱敏' if used_ocr else '_脱敏'
+        output_stem = _safe_output_stem(f'{base_name}{marker}')
+        output_file = work_dir / f'{output_stem}.{effective_format}'
+        _render_standard_output(canonical_markdown, output_file, effective_format)
 
     if used_ocr:
         warnings.append('材料通过 OCR 提取文字后重新排版输出；系统已对识别结果执行全文脱敏和自动复检。')

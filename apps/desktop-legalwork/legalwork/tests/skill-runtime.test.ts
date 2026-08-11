@@ -344,7 +344,7 @@ describe('SkillRuntime', () => {
     expect(turn?.skillInjectionBytes).toBeGreaterThan(0)
   })
 
-  it('requires the document executor before completing an activated document turn', async () => {
+  it('does not fail the turn when a requested document executor is skipped', async () => {
     await writeSkill('document', {
       id: 'legal-document-formatting',
       name: 'Document',
@@ -376,9 +376,25 @@ describe('SkillRuntime', () => {
 
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
-    expect(status).toBe('failed')
+    expect(status).toBe('completed')
     expect(seenRequest?.requiredToolName).toBe('document_skill_execute')
     expect(seenRequest?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
+  })
+
+  it('does not auto-activate file formatting for inline document-writing UI prompts', async () => {
+    await writeSkill('document', {
+      id: 'legal-document-formatting',
+      name: 'Document',
+      triggers: { promptPatterns: ['撰写.*法律意见书'] }
+    }, 'Create the file with document_skill_execute.')
+    const skillRuntime = await createRuntime()
+
+    const resolution = skillRuntime.resolveTurn({
+      workspace: root,
+      prompt: '<inline_document_response>请撰写法律意见书</inline_document_response>'
+    })
+
+    expect(resolution.activeSkillIds).not.toContain('legal-document-formatting')
   })
 
   it('hands PPT-only creation to open-kimi-ppt instead of forcing the generic document executor', async () => {
@@ -550,13 +566,13 @@ describe('SkillRuntime', () => {
     })
   })
 
-  it('requires the document executor even when Skill activation is unavailable', async () => {
-    let seenRequest: ModelRequest | undefined
+  it('keeps the document executor available without failing when Skill activation is unavailable', async () => {
+    const requests: ModelRequest[] = []
     const model: ModelClient = {
       provider: 'fake',
       model: 'fake',
       async *stream(request) {
-        seenRequest = request
+        requests.push(request)
         yield { kind: 'completed', stopReason: 'stop' }
       }
     }
@@ -573,9 +589,9 @@ describe('SkillRuntime', () => {
 
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
-    expect(status).toBe('failed')
-    expect(seenRequest?.requiredToolName).toBe('document_skill_execute')
-    expect(seenRequest?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
+    expect(status).toBe('completed')
+    expect(requests[0]?.requiredToolName).toBe('document_skill_execute')
+    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
   })
 
   it('does not force document creation for an informational Word-format question', async () => {

@@ -34,6 +34,28 @@ describe('fact verification contract', () => {
     })
   })
 
+  it('does not attach a fact-verification gate to inline document drafting', () => {
+    expect(factVerificationContract(
+      '<inline_document_response>核验法律效力并撰写法律意见书</inline_document_response>'
+    )).toMatchObject({
+      required: false,
+      requiresWebEvidence: false,
+      requiresLegalEvidence: false,
+      minimumFetchedSources: 0
+    })
+  })
+
+  it('does not force general web evidence onto the dedicated legal-research workflow', () => {
+    expect(factVerificationContract(
+      '请对以下法律问题进行多源调研：「醉驾的最新入刑标准」。最终报告必须作为最后一条独立回复。'
+    )).toMatchObject({
+      required: false,
+      requiresWebEvidence: false,
+      requiresLegalEvidence: false,
+      minimumFetchedSources: 0
+    })
+  })
+
   it('does not mistake legal-database guidance without verified records for evidence', () => {
     const contract = factVerificationContract('核验文中的法律规范和现行效力')
     const noRecords = factVerificationProgress([
