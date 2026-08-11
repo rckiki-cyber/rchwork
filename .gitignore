@@ -96,3 +96,11 @@ traj_*.jsonl
 prompts_*.txt
 /agent-loop.js
 /dsml-tool-call-recovery.js
+apps/desktop-legalwork/agent-loop.js
+apps/desktop-legalwork/dsml-tool-call-recovery.js
+apps/desktop-legalwork/legalwork/src/loop/*.js
+apps/desktop-legalwork/legalwork/src/**/*.js.map
+/宽严相济论文_结构表述完善_work.docx
+/民事起诉状模板.docx
+/算法行政的法律治理研究报告_格式修正版.pdf
+/自动化行政行为程序要件重构_文献综述_格式修正版.docx

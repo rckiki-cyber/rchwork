@@ -189,6 +189,47 @@ describe('resolveCodexRuntimeProxyEnv', () => {
   })
 })
 
+describe('resolveBundledOfficePythonPath', () => {
+  it('finds the staged development Office runtime for the current target', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const python = join(
+      tempRoot,
+      'vendor',
+      'office-runtime',
+      'mac-arm64',
+      'python',
+      'bin',
+      'python3'
+    )
+    mkdirSync(join(python, '..'), { recursive: true })
+    writeFileSync(python, '')
+    const module = await import('./legalwork-process')
+
+    expect(module.resolveBundledOfficePythonPath({
+      appPath: tempRoot,
+      isPackaged: false,
+      platform: 'darwin',
+      arch: 'arm64'
+    })).toBe(python)
+  })
+
+  it('finds the packaged Office runtime beside app.asar', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const python = join(tempRoot, 'office-runtime', 'python', 'python.exe')
+    mkdirSync(join(python, '..'), { recursive: true })
+    writeFileSync(python, '')
+    const module = await import('./legalwork-process')
+
+    expect(module.resolveBundledOfficePythonPath({
+      appPath: join(tempRoot, 'app.asar.unpacked'),
+      isPackaged: true,
+      resourcesPath: tempRoot,
+      platform: 'win32',
+      arch: 'x64'
+    })).toBe(python)
+  })
+})
+
 describe('reclaimLegalworkPort', () => {
   it('reports a port as unavailable when another listener owns it', async () => {
     const server = createServer()

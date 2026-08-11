@@ -27,13 +27,68 @@ class ImaQuestionPreparationTest(unittest.TestCase):
         self.assertIn("作者信息未提供", prepared)
         self.assertIn("不得猜测或补造作者", prepared)
 
-    def test_non_academic_question_is_not_modified(self):
+    def test_non_academic_question_receives_text_only_boundary(self):
         question = "行政复议申请期限是什么？"
-        self.assertEqual(self.server._prepare_ima_question(question), question)
+        prepared = self.server._prepare_ima_question(question)
+        self.assertIn("IMA 纯文本检索边界", prepared)
+        self.assertIn(question, prepared)
 
     def test_preparation_is_idempotent(self):
         prepared = self.server._prepare_ima_question("请做一份数据法学文献综述")
         self.assertEqual(self.server._prepare_ima_question(prepared), prepared)
+
+    def test_local_attachment_and_delivery_instructions_are_removed(self):
+        prepared = self.server._prepare_ima_question(
+            "请仅从 IMA 知识库检索并总结与下列研究主题有关的资料、观点和来源线索。\n"
+            "不要生成 Word、PDF、PPT 或其他文件；文件生成由 LegalWork 本地工具完成。\n"
+            "研究主题：现有文献参考不足且偏老，需要补充修正。\n"
+            "附件文档：/Users/test/.legalwork/attachments/宽严相济刑事政策食药犯罪解释论.docx，"
+            "请读取这些文件，按我的框架重组论文，生成新的 Word 文档。"
+        )
+
+        self.assertIn("纯文本", prepared)
+        self.assertIn("现有文献参考不足且偏老", prepared)
+        self.assertIn("《宽严相济刑事政策食药犯罪解释论》", prepared)
+        self.assertNotIn("/Users/", prepared)
+        self.assertNotIn("附件文档", prepared)
+        self.assertNotIn("生成新的 Word", prepared)
+        self.assertNotIn("读取这些文件", prepared)
+
+    def test_ima_knowledge_base_document_can_still_be_read(self):
+        question = "请读取 IMA 知识库中的《数字行政法研究.pdf》并总结其主要观点"
+        prepared = self.server._prepare_ima_question(question)
+
+        self.assertIn(question, prepared)
+
+    def test_attachment_only_request_requires_a_standalone_query(self):
+        prepared = self.server._prepare_ima_question(
+            "请读取这些文件并生成 Word 文档：/Users/test/input.bin"
+        )
+
+        self.assertEqual(prepared, "")
+
+    def test_english_attachment_and_delivery_instructions_are_removed(self):
+        prepared = self.server._prepare_ima_question(
+            "Research current scholarship on food and drug crimes. "
+            "Read the attached file and create a Word document."
+        )
+
+        self.assertIn("Research current scholarship on food and drug crimes", prepared)
+        self.assertNotIn("attached file", prepared)
+        self.assertNotIn("create a Word", prepared)
+
+    def test_routing_query_excludes_fixed_boundary_and_reference_instruction(self):
+        prepared = self.server._prepare_ima_question("请检索数据法学代表性论文")
+        routing_query = self.server._ima_routing_query(prepared)
+
+        self.assertEqual(routing_query, "请检索数据法学代表性论文")
+
+    def test_attachment_only_direct_ask_is_rejected_before_authentication(self):
+        with patch.object(self.server, "_get_cookie_creds") as get_creds:
+            answer = self.server.qa_ask("请读取附件并生成 Word 文档")
+
+        self.assertTrue(answer.startswith("IMA_TEXT_QUERY_REQUIRED:"))
+        get_creds.assert_not_called()
 
 
 class ImaSseParsingTest(unittest.TestCase):
@@ -204,6 +259,39 @@ class ImaKnowledgeBaseRoutingTest(unittest.TestCase):
         )
         self.assertIn("来自知识库「刑事法学」", result["answer"])
         self.assertIn("来自知识库「立法司法资料」", result["answer"])
+
+    def test_research_ima_sanitizes_attachment_request_before_routing_and_qa(self):
+        candidates = [{
+            "id": "a",
+            "name": "刑事法学",
+            "routing_score": 5.0,
+            "matched_terms": ["食药犯罪"],
+        }]
+        raw_question = (
+            "研究危害食品药品安全犯罪的宽严相济刑事政策。"
+            "附件文档：/Users/test/食药犯罪解释论.docx，请读取附件并生成 Word 文档。"
+        )
+
+        with patch.object(
+            self.server,
+            "handle_search_ima_catalog",
+            return_value={"knowledge_bases": candidates},
+        ) as catalog, patch.object(
+            self.server,
+            "qa_ask",
+            return_value="有效研究结果",
+        ) as ask:
+            result = self.server.handle_research_ima({"question": raw_question})
+
+        routing_query = catalog.call_args.args[0]["query"]
+        outbound_question = ask.call_args.args[0]
+        self.assertNotIn("/Users/", routing_query)
+        self.assertNotIn("附件", routing_query)
+        self.assertNotIn("/Users/", outbound_question)
+        self.assertNotIn("读取附件", outbound_question)
+        self.assertNotIn("生成 Word", outbound_question)
+        self.assertIn("IMA 纯文本检索边界", outbound_question)
+        self.assertIn("有效研究结果", result["answer"])
 
     def test_top_one_no_match_falls_back_once(self):
         candidates = [

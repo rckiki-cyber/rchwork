@@ -375,6 +375,11 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
     app.getAppPath(),
     app.isPackaged
   )
+  const bundledOfficePython = resolveBundledOfficePythonPath({
+    appPath: root,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath
+  })
   // Chromium uses the OS proxy during ChatGPT login, while the Codex binary
   // only reads proxy environment variables. Mirror the same proxy into the
   // ChatGPT-authenticated runtime so login and subsequent model turns use the
@@ -401,6 +406,7 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
       LEGALWORK_MODEL: runtime.model || process.env.LEGALWORK_MODEL || '',
       ...(existsSync(ocrAgentPath) ? { LEGALWORK_OCR_AGENT_PATH: ocrAgentPath } : {}),
       ...(ocrPython ? { LEGALWORK_OCR_PYTHON: ocrPython } : {}),
+      ...(bundledOfficePython ? { LEGALWORK_OFFICE_PYTHON: bundledOfficePython } : {}),
       DEEPSEEK_API_KEY: runtime.apiKey || process.env.DEEPSEEK_API_KEY || '',
       KIMI_API_KEY: runtime.apiKey || process.env.KIMI_API_KEY || ''
     }
@@ -652,6 +658,32 @@ export function buildBundledOfficeCliPath(
     entries.push(normalized)
   }
   return entries.join(delimiter)
+}
+
+export function resolveBundledOfficePythonPath(input: {
+  appPath: string
+  isPackaged: boolean
+  resourcesPath?: string
+  platform?: NodeJS.Platform
+  arch?: string
+}): string | undefined {
+  const platform = input.platform ?? process.platform
+  const arch = input.arch ?? process.arch
+  const executable = platform === 'win32' ? 'python.exe' : join('bin', 'python3')
+  const platformName = platform === 'darwin'
+    ? 'mac'
+    : platform === 'win32'
+      ? 'win'
+      : platform === 'linux'
+        ? 'linux'
+        : ''
+  if (!platformName) return undefined
+
+  const runtimeRoot = input.isPackaged
+    ? join(input.resourcesPath || dirname(input.appPath), 'office-runtime')
+    : join(input.appPath, 'vendor', 'office-runtime', `${platformName}-${arch}`)
+  const candidate = join(runtimeRoot, 'python', executable)
+  return existsSync(candidate) ? candidate : undefined
 }
 
 function buildOfficeCliLegalworkMcpServer(

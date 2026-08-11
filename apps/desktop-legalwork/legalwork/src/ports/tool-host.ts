@@ -63,6 +63,13 @@ export type ToolHostContext = {
   guiPlan?: GuiPlanContext
   /** Active model capability metadata used by capability-aware providers. */
   model?: ModelCapabilityMetadata
+  /** Files uploaded on the current turn, materialized for deterministic tool access. */
+  attachmentFiles?: readonly {
+    id: string
+    name: string
+    mimeType: string
+    localFilePath: string
+  }[]
   /** Skill ids activated for this turn, if the Skill runtime is enabled. */
   activeSkillIds?: readonly string[]
   /** Optional memory recall/mutation policy for this turn. */

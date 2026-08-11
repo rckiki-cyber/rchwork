@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -108,9 +108,11 @@ describe('bundled Office runtime packaging contract', () => {
 
     unlinkSync(python)
     symlinkSync('/temporary/build/python3.11', python)
-    expect(() => afterPack._internals.validateRelocatableSymlinks(runtime)).toThrow(/non-relocatable symlink/)
+    // 绝对路径指向的构建期目标在打包后已不存在（dead link），新实现会直接删除该
+    // 死链接而不是抛错（避免 Linux CI 临时目录名变化导致打包间歇失败）。
+    expect(() => afterPack._internals.validateRelocatableSymlinks(runtime)).not.toThrow()
+    expect(existsSync(python)).toBe(false)
 
-    unlinkSync(python)
     symlinkSync('missing-python3.11', python)
     expect(() => afterPack._internals.validateRelocatableSymlinks(runtime)).toThrow(/broken symlink/)
   })

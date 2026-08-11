@@ -716,17 +716,132 @@ ACADEMIC_REFERENCE_INSTRUCTION = (
     "若知识库未提供作者信息，请明确标注“作者信息未提供”，不得猜测或补造作者。"
 )
 
+IMA_TEXT_ONLY_INSTRUCTION = (
+    "【IMA 纯文本检索边界】请仅检索当前 IMA 知识库，并以纯文本返回相关资料、观点和来源线索。"
+    "不要访问附件、本地文件或文件路径，也不要创建、修改、上传、下载、发送或交付任何文件。"
+)
+_DOCUMENT_EXTENSION_PATTERN = r"(?:docx?|pdf|pptx?|xlsx?|txt|md|markdown|rtf)"
+_POSIX_DOCUMENT_PATH_PATTERN = re.compile(
+    rf"(?i)(?:file://)?/(?:[^\r\n，,；;。！？]+/)+"
+    rf"(?P<name>[^/\r\n，,；;。！？]+?\.{_DOCUMENT_EXTENSION_PATTERN})"
+)
+_WINDOWS_DOCUMENT_PATH_PATTERN = re.compile(
+    rf"(?i)[A-Z]:\\(?:[^\r\n，,；;。！？]+\\)+"
+    rf"(?P<name>[^\\\r\n，,；;。！？]+?\.{_DOCUMENT_EXTENSION_PATTERN})"
+)
+_ATTACHMENT_NAME_PATTERN = re.compile(
+    rf"(?i)(?:附件(?:文档|文件)?|上传(?:的)?(?:文档|文件))\s*[：:]\s*"
+    rf"(?P<name>[^/\\\r\n，,；;。！？]+?\.{_DOCUMENT_EXTENSION_PATTERN})"
+)
+_LOCAL_FILE_INSTRUCTION_PATTERN = re.compile(
+    r"(?i)(?:(?:读取|打开|访问|解析|上传|下载|查看|处理).{0,24}"
+    r"(?:附件|本地(?:文件|路径)|这些文件|上述文件|file://|localFilePath))|"
+    r"(?:(?:附件|本地(?:文件|路径)|这些文件|上述文件|file://|localFilePath).{0,24}"
+    r"(?:读取|打开|访问|解析|上传|下载|查看|处理))|"
+    r"(?:(?:read|open|access|parse|upload|download|inspect|process).{0,32}"
+    r"(?:attachment|local file|local path|these files|above files))|"
+    r"(?:(?:attachment|local file|local path|these files|above files).{0,32}"
+    r"(?:read|open|access|parse|upload|download|inspect|process))"
+)
+_FILE_DELIVERY_INSTRUCTION_PATTERN = re.compile(
+    r"(?i)(?:生成|创建|新建|制作|导出|修改|编辑|重组|保存|发送|交付).{0,32}"
+    r"(?:Word|PDF|PPTX?|DOCX?|XLSX?|文件|文档)|"
+    r"(?:Word|PDF|PPTX?|DOCX?|XLSX?|文件|文档).{0,32}"
+    r"(?:生成|创建|新建|制作|导出|修改|编辑|重组|保存|发送|交付)|"
+    r"(?:generate|create|export|edit|rewrite|save|send|deliver).{0,32}"
+    r"(?:Word|PDF|PPTX?|DOCX?|XLSX?|file|document)|"
+    r"(?:Word|PDF|PPTX?|DOCX?|XLSX?|file|document).{0,32}"
+    r"(?:generate|create|export|edit|rewrite|save|send|deliver)"
+)
+
+def _document_title_from_path(match):
+    """把不可访问的本地路径降级为可检索的纯文本题名。"""
+    name = str(match.group("name") or "").strip().strip('"\'')
+    return re.sub(rf"(?i)\.{_DOCUMENT_EXTENSION_PATTERN}$", "", name).strip()
+
+def _sanitize_ima_question(question):
+    """移除 IMA 无法执行的附件、本地路径和文件交付指令。"""
+    text = str(question or "").replace("\x00", " ").replace("\r\n", "\n").strip()
+    if not text:
+        return ""
+    if text.startswith(IMA_TEXT_ONLY_INSTRUCTION):
+        text = text[len(IMA_TEXT_ONLY_INSTRUCTION):].lstrip()
+    if text.startswith("检索问题："):
+        text = text[len("检索问题："):].lstrip()
+    # _prepare_ima_question 会在清洗后统一补回，避免重复准备时格式漂移。
+    text = text.replace(ACADEMIC_REFERENCE_INSTRUCTION, "").strip()
+
+    document_titles = []
+    for pattern in (
+        _POSIX_DOCUMENT_PATH_PATTERN,
+        _WINDOWS_DOCUMENT_PATH_PATTERN,
+        _ATTACHMENT_NAME_PATTERN,
+    ):
+        for match in pattern.finditer(text):
+            title = _document_title_from_path(match)
+            if title and title not in document_titles:
+                document_titles.append(title)
+
+    kept_segments = []
+    for segment in re.split(r"(?<=[。！？；;])|(?<=[.!?])\s+|\n+", text):
+        value = segment.strip()
+        if not value:
+            continue
+        if (
+            _POSIX_DOCUMENT_PATH_PATTERN.search(value)
+            or _WINDOWS_DOCUMENT_PATH_PATTERN.search(value)
+            or _ATTACHMENT_NAME_PATTERN.search(value)
+            or _LOCAL_FILE_INSTRUCTION_PATTERN.search(value)
+            or _FILE_DELIVERY_INSTRUCTION_PATTERN.search(value)
+        ):
+            continue
+        kept_segments.append(value)
+
+    core = "".join(kept_segments).strip()
+    # 防止未带受支持扩展名的 file://、POSIX 或 Windows 路径漏入请求。
+    core = re.sub(r"(?i)file://[^\s，,；;。！？]+", "", core)
+    core = re.sub(r"(?i)(?<!\w)[A-Z]:\\[^\r\n，,；;。！？]+", "", core)
+    core = re.sub(
+        r"(?<!\w)/(?:Users|home|tmp|var|private|Volumes|mnt|Applications|workspace|app|data)/"
+        r"[^\r\n，,；;。！？]+",
+        "",
+        core,
+    )
+    core = re.sub(r"[ \t]+", " ", core).strip(" ，,；;。")
+
+    if document_titles:
+        title_hint = "、".join(f"《{title}》" for title in document_titles)
+        core = f"{core}。相关材料题名：{title_hint}" if core else f"相关材料题名：{title_hint}"
+    if not core:
+        return ""
+    return f"{IMA_TEXT_ONLY_INSTRUCTION}\n\n检索问题：{core}"
+
 def _prepare_ima_question(question):
-    """论文类问题统一要求 IMA 返回可核验的题名与作者。"""
-    text = str(question or "").strip()
+    """统一收窄为纯文本检索；论文类问题再要求可核验的题名与作者。"""
+    text = _sanitize_ima_question(question)
     if not text or not ACADEMIC_QUESTION_PATTERN.search(text):
         return text
     if "作者信息未提供" in text and "参考文献输出要求" in text:
         return text
     return text + ACADEMIC_REFERENCE_INSTRUCTION
 
+def _ima_routing_query(prepared_question):
+    """目录路由只使用检索核心，避免固定能力边界干扰选库打分。"""
+    text = str(prepared_question or "").strip()
+    if text.startswith(IMA_TEXT_ONLY_INSTRUCTION):
+        text = text[len(IMA_TEXT_ONLY_INSTRUCTION):].lstrip()
+    if text.startswith("检索问题："):
+        text = text[len("检索问题："):].lstrip()
+    return text.replace(ACADEMIC_REFERENCE_INSTRUCTION, "").strip()
+
 def qa_ask(question: str, kb_id: str = "", timeout: int = 60) -> str:
     """按 IMA 当前协议执行 refresh → init_session → QA。"""
+    prepared_question = _prepare_ima_question(question)
+    if not prepared_question:
+        return (
+            "IMA_TEXT_QUERY_REQUIRED: 原始请求仅包含附件、本地路径或文件交付指令。"
+            "请先由 LegalWork 本地读取材料，再提供一个独立、明确的纯文本检索问题。"
+        )
     cookie, bkn = _get_cookie_creds()
     if not cookie or not bkn:
         return "需要 IMA 登录凭证，请在插件中重新登录"
@@ -751,7 +866,6 @@ def qa_ask(question: str, kb_id: str = "", timeout: int = 60) -> str:
             return session_error
 
         guid = _parse_x_ima_cookie(cookie).get("IMA-GUID", "default_guid")
-        prepared_question = _prepare_ima_question(question)
         body = json.dumps({
             "session_id": session_id,
             "robot_type": 5,
@@ -1155,9 +1269,15 @@ def _format_routed_answers(answer_pairs):
 
 def handle_research_ima(args: dict) -> dict:
     """统一入口：置信度目录路由，然后执行有界 IMA 全文问答。"""
-    question = str(args.get("question", "")).strip()
+    question = _prepare_ima_question(args.get("question", ""))
     if not question:
-        return {"error": "需要 question"}
+        return {
+            "error": (
+                "IMA_TEXT_QUERY_REQUIRED: 请先由 LegalWork 本地读取附件，"
+                "再把材料主题改写为独立、明确的纯文本检索问题"
+            )
+        }
+    routing_query = _ima_routing_query(question)
     explicit_id = str(args.get("knowledge_base_id", "")).strip()
     route_plan = None
     if explicit_id:
@@ -1185,7 +1305,7 @@ def handle_research_ima(args: dict) -> dict:
         except (TypeError, ValueError):
             catalog_timeout = 20
         catalog_result = handle_search_ima_catalog({
-            "query": question,
+            "query": routing_query,
             "top_k": 3,
             "timeout": catalog_timeout,
         })
@@ -1194,7 +1314,7 @@ def handle_research_ima(args: dict) -> dict:
         candidates = catalog_result.get("knowledge_bases", [])
         if not candidates:
             return {"error": "IMA 当前账号没有可用于问答的知识库"}
-        route_plan = _plan_knowledge_base_route(question, candidates)
+        route_plan = _plan_knowledge_base_route(routing_query, candidates)
         if not route_plan["selected"]:
             candidate_names = "、".join(
                 str(item.get("name") or "未命名知识库") for item in candidates[:3]
@@ -1316,9 +1436,9 @@ _has_openapi = bool(_cid and _key)
 
 _COOKIE_ONLY_TOOLS = {
     "research_ima": {
-        "description": "IMA 自动研究入口。工具内部会读取目录、计算路由置信度，自动选择 1—2 个相关知识库并进行全文问答；调用前不要再调用 list_available_knowledge_bases。每次只传一个范围明确的检索问题；不要把 Word/PDF/PPT 生成、长文撰写或其他交付步骤放进 question。论文/文献类问题会要求 IMA 列出本次实际使用的完整文献名称及作者。",
+        "description": "IMA 自动研究入口。工具内部会读取目录、计算路由置信度，自动选择 1—2 个相关知识库并进行全文问答；调用前不要再调用 list_available_knowledge_bases。IMA 无法访问 LegalWork 本地附件或路径：必须先在本地读取材料，再把其中的主题改写为一个独立、范围明确的纯文本检索问题。不要把附件路径、附件读取、Word/PDF/PPT 生成、长文撰写或其他交付步骤放进 question；服务端会再次清洗。论文/文献类问题会要求 IMA 列出本次实际使用的完整文献名称及作者。",
         "input_schema": {"type": "object", "properties": {
-            "question": {"type": "string", "description": "单个、范围明确的知识库检索问题；保留主题限定，但排除写作、文件生成和交付指令"},
+            "question": {"type": "string", "description": "仅含自然语言的单个知识库检索问题；不得包含附件、本地路径、文件读取、写作、文件生成或交付指令"},
             "knowledge_base_id": {"type": "string", "description": "可选；用户明确指定知识库时传入，否则自动选库"},
             "timeout": {"type": "number", "description": "超时秒数"},
         }, "required": ["question"]},

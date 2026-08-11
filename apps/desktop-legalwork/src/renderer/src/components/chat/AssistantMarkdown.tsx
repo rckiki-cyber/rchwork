@@ -14,14 +14,16 @@ const LazyStreamdownAssistant = lazy(() =>
   import('./StreamdownAssistant').then((module) => ({ default: module.StreamdownAssistant }))
 )
 
-// Parsing the complete Markdown document for every token becomes visibly
-// expensive and makes partial Markdown reflow while it is still being typed.
-// Keep every live answer lightweight; render rich Markdown once it completes.
+// Plain prose can use the lightweight reveal surface, but structured Markdown
+// must stay on Streamdown while it is arriving. Otherwise headings, emphasis,
+// lists, tables, and fences remain visible as source text until the turn ends.
 const STREAMING_CATCH_UP_FRAMES = 4
 const MAX_ANIMATED_STREAM_SEGMENTS = 12
+const STREAMING_MARKDOWN_PATTERN =
+  /(^|\n)\s{0,3}(#{1,6}(?:\s|$)|[-+*]\s|\d+\.\s|>\s|```|~~~)|(^|\n)\s*\|.+\||\*\*|__|~~|`|!\[[^\]]*\]\(|\[[^\]]+\]\(/m
 
 export function shouldUseLightweightStreaming(text: string, streaming: boolean): boolean {
-  return streaming && text.length > 0
+  return streaming && text.length > 0 && !STREAMING_MARKDOWN_PATTERN.test(text)
 }
 
 /**

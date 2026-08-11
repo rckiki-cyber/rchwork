@@ -13,14 +13,17 @@ import {
   DEFAULT_MAX_AGENT_LOOP_STEPS,
   MAX_AGENT_LOOP_STEPS_ENV,
   MAX_AGENT_LOOP_STEPS_ENV_CAP,
+  assistantAnnouncesPendingToolWork,
   isBareResearchTopicPrompt,
+  attachmentIdsForTurn,
   knowledgeShellBypassError,
   requestedDocumentArtifacts,
   requestsLocalKnowledgeRetrieval,
   requestsDocumentMutation,
   requestsAcademicCitationVerification,
   resolveMaxAgentLoopSteps,
-  skillRoutingPrompt
+  skillRoutingPrompt,
+  turnBudgetCompletionToolSpecs
 } from '../src/loop/agent-loop.js'
 import { resolveModelContextProfile } from '../src/loop/model-context-profile.js'
 import { makeAssistantTextItem, makeToolCallItem, makeUserItem } from '../src/domain/item.js'
@@ -44,8 +47,16 @@ describe('AgentLoop', () => {
     expect(requestsDocumentMutation('如何设置 Word 的页边距？')).toBe(false)
     expect(requestsDocumentMutation('为什么 Word 正文通常使用宋体？')).toBe(false)
     expect(requestsDocumentMutation('Word 文档有哪些常用格式？')).toBe(false)
+    expect(requestsDocumentMutation('读取这个 Word，只告诉我主标题，不要生成新文件。')).toBe(false)
+    expect(requestsDocumentMutation('分析附件内容，不用导出 PDF。')).toBe(false)
+    expect(requestsDocumentMutation('修改这个 Word，但不要另外生成 PDF。')).toBe(true)
+    expect(requestsDocumentMutation(
+      '读取这个 Word，只告诉我主标题，不要生成新文件。当前追问：根据这个 Word 重新生成一份总结 Word。'
+    )).toBe(true)
     expect(requestsDocumentMutation('修订')).toBe(true)
     expect(requestsDocumentMutation('把这篇文章按新框架重构，并补充最新文献')).toBe(true)
+    expect(requestsDocumentMutation('我他妈让你扩充论文而已')).toBe(true)
+    expect(requestsDocumentMutation('把这篇稿件续写并增补案例')).toBe(true)
   })
 
   it('tracks every explicitly requested deliverable format', () => {
@@ -73,11 +84,35 @@ describe('AgentLoop', () => {
     )).toBe(true)
   })
 
+  it('does not force citation verification when expanding an existing paper', () => {
+    expect(requestsAcademicCitationVerification(
+      '请把上传的论文复制一份，生成新的word文档，在新的副本上扩充论文内容，新增引用用GFM真脚注。'
+    )).toBe(false)
+    expect(requestsAcademicCitationVerification(
+      '帮我扩充下论文内容，复制一份生成新的word，在新的基础上改'
+    )).toBe(false)
+    // 明确要求核验引用的扩充任务仍应触发
+    expect(requestsAcademicCitationVerification(
+      '请扩充这篇论文，并把新增引注逐条核验来源'
+    )).toBe(true)
+  })
+
   it('does not treat a bare academic title as authorization for paid research', () => {
     expect(isBareResearchTopicPrompt('行政程序与人工智能的媾和')).toBe(true)
     expect(isBareResearchTopicPrompt('自动化/半自动化行政行为的程序要件如何重构')).toBe(false)
     expect(isBareResearchTopicPrompt('检索知识库')).toBe(false)
     expect(isBareResearchTopicPrompt('写一篇文献综述word')).toBe(false)
+    expect(isBareResearchTopicPrompt('我他妈让你扩充论文而已')).toBe(false)
+    expect(isBareResearchTopicPrompt('你他妈倒是干活啊')).toBe(false)
+  })
+
+  it('does not treat a document-operation prompt as a bare research topic', () => {
+    // 文档生成/整理类 prompt 必须保留 document_skill_execute 工具，
+    // 不能被“裸研究话题”逻辑收窄成空工具列表（否则模型想调工具却没有工具）。
+    expect(isBareResearchTopicPrompt('把上传文档里所有引注整理到一个word文档里')).toBe(false)
+    expect(isBareResearchTopicPrompt('整理引注到word')).toBe(false)
+    expect(isBareResearchTopicPrompt('把这个文档排版一下')).toBe(false)
+    expect(isBareResearchTopicPrompt('把附件整理成docx文件')).toBe(false)
   })
 
   it('inherits the previous substantive Skill context for terse follow-ups', () => {
@@ -98,6 +133,106 @@ describe('AgentLoop', () => {
 
     expect(skillRoutingPrompt('？', items, 'turn_question')).toContain('写一篇文献综述word')
     expect(skillRoutingPrompt('重新分析合同', items, 'turn_new')).toBe('重新分析合同')
+    expect(skillRoutingPrompt('把本文所有引注都整理到word里', items, 'turn_citations'))
+      .toContain('写一篇文献综述word')
+  })
+
+  it('keeps every uploaded attachment available for every later turn in the thread', () => {
+    const items: TurnItem[] = [
+      makeUserItem({
+        id: 'u_file',
+        turnId: 'turn_file',
+        threadId: 'thr_1',
+        text: '修复这个 Word',
+        attachmentIds: ['att_word']
+      }),
+      makeUserItem({
+        id: 'u_followup',
+        turnId: 'turn_followup',
+        threadId: 'thr_1',
+        text: '出了什么问题？'
+      })
+    ]
+
+    expect(attachmentIdsForTurn({
+      prompt: '出了什么问题？',
+      turnId: 'turn_followup',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '重新分析另一个案件',
+      turnId: 'turn_new_topic',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '当前消息',
+      turnId: 'turn_current',
+      turnAttachmentIds: ['att_current', 'att_current'],
+      items
+    })).toEqual(['att_word', 'att_current'])
+    expect(attachmentIdsForTurn({
+      prompt: '扩充这篇论文并生成新的 Word',
+      turnId: 'turn_expand',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '脱敏',
+      turnId: 'turn_redact',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '审核呀',
+      turnId: 'turn_review',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '脱敏啊！',
+      turnId: 'turn_redact_particle',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '你他妈倒是干活啊',
+      turnId: 'turn_resume',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '任意后续消息',
+      turnId: 'turn_after_multiple_uploads',
+      items: [
+        ...items,
+        makeUserItem({
+          id: 'u_pdf',
+          turnId: 'turn_pdf',
+          threadId: 'thr_1',
+          text: '再补充一份材料',
+          attachmentIds: ['att_pdf']
+        })
+      ]
+    })).toEqual(['att_word', 'att_pdf'])
+  })
+
+  it('detects assistant prose that announces unfinished tool work', () => {
+    expect(assistantAnnouncesPendingToolWork('我按现有规则重新生成一份干净的脱敏版。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('开始。先读原文。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork(`${'分析。'.repeat(1_000)}开始。先读原文。`)).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('文件已生成并验证通过。')).toBe(false)
+  })
+
+  it('keeps completion tools while removing research tools at budget wrap-up', () => {
+    const tools = [
+      { name: 'web_search' },
+      { name: 'mcp_ima_research' },
+      { name: 'read' },
+      { name: 'bash' },
+      { name: 'data_compliance' },
+      { name: 'document_skill_execute' }
+    ]
+    expect(turnBudgetCompletionToolSpecs(tools).map((tool) => tool.name)).toEqual([
+      'read',
+      'bash',
+      'data_compliance',
+      'document_skill_execute'
+    ])
   })
 
   it('keeps the original legal topic across referential artifact follow-ups', () => {
@@ -122,6 +257,19 @@ describe('AgentLoop', () => {
     expect(routed).toContain('撰写这篇论文')
     expect(routed).toContain('文献应该尽可能参考多的')
     expect(routed).not.toContain('他妈的原文呢')
+  })
+
+  it('keeps a concrete task even when the user expresses it angrily', () => {
+    const items: TurnItem[] = [
+      makeUserItem({
+        id: 'u_expand',
+        turnId: 'turn_expand',
+        threadId: 'thr_angry',
+        text: '我他妈让你扩充论文而已'
+      })
+    ]
+    expect(skillRoutingPrompt('怎么不动了', items, 'turn_followup'))
+      .toContain('扩充论文')
   })
 
   it('blocks shell scripts that bulk-parse the managed knowledge PDF store', () => {
@@ -401,6 +549,91 @@ describe('AgentLoop', () => {
     expect(toolCall).toMatchObject({ kind: 'tool_call', status: 'completed' })
   })
 
+  it('finishes a Word-only delivery from the successful tool result without a second model request', async () => {
+    let modelCalls = 0
+    const documentTool = LocalToolHost.defineTool({
+      name: 'document_skill_execute',
+      description: 'Generate Word documents',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      async execute() {
+        return {
+          output: {
+            status: 'ok',
+            kind: 'docx',
+            operation: 'from-markdown',
+            output: '/tmp/律师审核意见.docx'
+          }
+        }
+      }
+    })
+    const h = makeHarness({
+      provider: 'word-delivery-fast-finish',
+      model: 'word-delivery-fast-finish',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        modelCalls += 1
+        expect(request.requiredToolName).toBe('document_skill_execute')
+        yield {
+          kind: 'tool_call_complete',
+          callId: 'call_word_delivery',
+          toolName: 'document_skill_execute',
+          arguments: { kind: 'docx', operation: 'from-markdown' }
+        }
+        yield { kind: 'completed', stopReason: 'tool_calls' }
+      }
+    }, { tools: [documentTool] })
+    await bootstrapThread(h, {
+      request: { prompt: '审核合同并在 Word 里提出修改建议' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const items = await h.sessionStore.loadItems(h.threadId)
+
+    expect(status).toBe('completed')
+    expect(modelCalls).toBe(1)
+    expect(items.at(-1)).toMatchObject({
+      kind: 'assistant_text',
+      text: 'Word 文档已生成：\n\n/tmp/律师审核意见.docx',
+      status: 'completed'
+    })
+  })
+
+  it('continues when the model announces pending work but stops before calling the tool', async () => {
+    let calls = 0
+    const h = makeHarness({
+      provider: 'unfinished-announcement',
+      model: 'unfinished-announcement',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        calls += 1
+        if (calls === 1) {
+          yield { kind: 'assistant_text_delta', text: '我现在调用工具完成处理。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        if (calls === 2) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_echo_after_announcement',
+            toolName: 'echo',
+            arguments: { text: 'done' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '处理已完成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h)
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const items = await h.sessionStore.loadItems(h.threadId)
+
+    expect(status).toBe('completed')
+    expect(calls).toBe(3)
+    expect(items.some((item) => item.kind === 'tool_result' && item.toolName === 'echo')).toBe(true)
+  })
+
   it('removes research tools after the cumulative turn input budget is exhausted', async () => {
     const requests: ModelRequest[] = []
     const h = makeHarness({
@@ -441,7 +674,10 @@ describe('AgentLoop', () => {
     expect(status).toBe('completed')
     expect(requests).toHaveLength(2)
     expect(requests[0]?.tools.map((tool) => tool.name)).toContain('echo')
-    expect(requests[1]?.tools).toEqual([])
+    // 预算耗尽后研究工具（echo）被移除，但 read 等收尾工作工具仍保留，
+    // 避免模型无工具可调只能 stop 卡死（无法完成检查/交付）。
+    expect(requests[1]?.tools.map((tool) => tool.name)).not.toContain('echo')
+    expect(requests[1]?.tools.map((tool) => tool.name)).toContain('read')
     expect(requests[1]?.contextInstructions?.join('\n')).toContain('成本预算提醒')
   })
 
@@ -1524,9 +1760,123 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(executions).toBe(1)
-    expect(requests).toBe(2)
-    expect(items.filter((item) => item.kind === 'assistant_text').map((item) => item.text).join('\n'))
-      .not.toContain('DSML')
+    expect(requests).toBe(1)
+    const visibleText = items
+      .filter((item) => item.kind === 'assistant_text')
+      .map((item) => item.text)
+      .join('\n')
+    expect(visibleText).toContain('/tmp/report.docx')
+    expect(visibleText).not.toContain('DSML')
+  })
+
+  it('executes a new Word mutation for a referential follow-up instead of reusing the previous artifact', async () => {
+    let documentExecutions = 0
+    const requiredTools: Array<string | undefined> = []
+    const documentTool = LocalToolHost.defineTool({
+      name: 'document_skill_execute',
+      description: 'create document',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async (args) => {
+        documentExecutions += 1
+        return {
+          output: {
+            status: 'ok',
+            kind: 'docx',
+            operation: 'from-markdown',
+            output: `/tmp/report-${documentExecutions}.docx`,
+            args
+          }
+        }
+      }
+    })
+    const h = makeHarness({
+      provider: 'referential-document-follow-up',
+      model: 'referential-document-follow-up',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requiredTools.push(request.requiredToolName)
+        if (request.requiredToolName === 'document_skill_execute') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_document_${requiredTools.length}`,
+            toolName: 'document_skill_execute',
+            arguments: {
+              kind: 'docx',
+              operation: 'from-markdown',
+              content: '# 文档',
+              outputPath: `report-${requiredTools.length}.docx`
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: 'Word 已生成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [documentTool] })
+    await bootstrapThread(h, { request: { prompt: '写一个word，总结这个论文' } })
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+
+    const followUp = await h.turns.startTurn({
+      threadId: h.threadId,
+      request: { prompt: '把本文所有引注都整理到word里' }
+    })
+    h.turnId = followUp.turnId
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+
+    expect(documentExecutions).toBe(2)
+    expect(requiredTools.filter((name) => name === 'document_skill_execute')).toHaveLength(2)
+  })
+
+  it('converts a chunked EOF-truncated DSML frame into a real tool call without visible leakage', async () => {
+    let bashExecutions = 0
+    let modelCalls = 0
+    const advertisedTools: string[][] = []
+    const bashTool = LocalToolHost.defineTool({
+      name: 'bash',
+      description: 'run command',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => {
+        bashExecutions += 1
+        return { output: { exit_code: 0, output: 'done' } }
+      }
+    })
+    const h = makeHarness({
+      provider: 'truncated-dsml-stream',
+      model: 'truncated-dsml-stream',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        modelCalls += 1
+        advertisedTools.push(request.tools.map((tool) => tool.name))
+        if (modelCalls === 1) {
+          for (const text of [
+            '<',
+            '｜｜DSML｜｜',
+            'tool_calls>\n',
+            '<｜｜DSML｜｜invoke name="bash">\n',
+            '<｜｜DSML｜｜parameter name="command" string="true">echo done</｜｜DSML｜｜parameter>\n',
+            '</｜｜DSML｜｜invoke>\n',
+            '</｜｜DSML｜｜tool_calls'
+          ]) yield { kind: 'assistant_text_delta', text }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '命令执行完成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [bashTool] })
+    await bootstrapThread(h, { request: { prompt: '请帮我运行命令查看当前环境并告诉我结果' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
+    const visibleText = events
+      .filter((event) => event.kind === 'assistant_text_delta')
+      .map((event) => event.kind === 'assistant_text_delta' && 'text' in event.item ? event.item.text : '')
+      .join('')
+    expect(advertisedTools[0]).toContain('bash')
+    expect(bashExecutions).toBe(1)
+    expect(visibleText).toBe('命令执行完成。')
+    expect(visibleText).not.toContain('DSML')
   })
 
   it('does not render a false success message before a required tool gate passes', async () => {
@@ -4254,4 +4604,3 @@ describe('read continuation with offset is not deduplicated', () => {
     expect(dedupHits).toHaveLength(0)
   })
 })
-

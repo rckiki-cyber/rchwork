@@ -7,16 +7,27 @@ import {
   shouldUseLightweightStreaming
 } from './AssistantMarkdown'
 
-describe('AssistantMarkdown streaming degradation', () => {
-  it('keeps every non-empty live answer in lightweight streaming mode', () => {
-    expect(shouldUseLightweightStreaming('# answer', true)).toBe(true)
+describe('AssistantMarkdown streaming rendering', () => {
+  it('keeps plain live prose on the lightweight streaming surface', () => {
+    expect(shouldUseLightweightStreaming('正在输出正文', true)).toBe(true)
+  })
+
+  it.each([
+    '# 标题',
+    '**重点**',
+    '- 列表项',
+    '| 名称 | 状态 |',
+    '```mermaid\ngraph TD',
+    '[来源](https://example.com)'
+  ])('routes live Markdown through Streamdown: %s', (text) => {
+    expect(shouldUseLightweightStreaming(text, true)).toBe(false)
   })
 
   it('does not create a streaming surface before text arrives', () => {
     expect(shouldUseLightweightStreaming('', true)).toBe(false)
   })
 
-  it('restores rich Markdown when the answer is complete', () => {
+  it('uses rich Markdown when the answer is complete', () => {
     expect(shouldUseLightweightStreaming('长'.repeat(20_000), false)).toBe(false)
   })
 

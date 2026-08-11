@@ -17,7 +17,11 @@
     ],
     "fileTypes": [".docx", ".doc", ".dotx", ".xlsx", ".xlsm", ".xls"]
   },
-  "allowedTools": [],
+  "allowedTools": [
+    "document_skill_execute",
+    "request_office_fallback",
+    "read"
+  ],
   "assets": [],
   "priority": 1000
 }

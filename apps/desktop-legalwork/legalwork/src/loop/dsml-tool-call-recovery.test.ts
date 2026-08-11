@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isPotentialDsmlToolCallStream,
   looksLikeDsmlToolCalls,
   recoverDsmlToolCall,
   recoverDsmlToolCalls,
+  recoverJsonToolCalls,
   stripDsmlToolCalls
 } from './dsml-tool-call-recovery.js'
 
@@ -110,9 +112,109 @@ describe('DSML full-width and mixed-format stripping', () => {
     expect(stripDsmlToolCalls(text)).toBe('开始生成。')
   })
 
+  it('detects, recovers, and strips whitespace-split DSML delimiters from the live provider', () => {
+    const text = [
+      '<| |DSML| | tool_calls>',
+      '<| |DSML| | invoke name="bash">',
+      '<| |DSML| | parameter name="action" string="true">poll</| |DSML| | parameter>',
+      '<| |DSML| | parameter name="session_id" string="true">bash_123</| |DSML| | parameter>',
+      '</| |DSML| | invoke>',
+      '</| |DSML| | tool_calls>'
+    ].join('\n')
+
+    expect(looksLikeDsmlToolCalls(text)).toBe(true)
+    expect(recoverDsmlToolCalls(text, new Set(['bash']))).toEqual({
+      calls: [{ toolName: 'bash', arguments: { action: 'poll', session_id: 'bash_123' } }],
+      visibleText: ''
+    })
+    expect(stripDsmlToolCalls(text)).toBe('')
+  })
+
+  it('recovers and strips the exact live frame whose final closing bracket is missing', () => {
+    const text = [
+      '<｜｜DSML｜｜tool_calls>',
+      '<｜｜DSML｜｜invoke name="document_skill_execute">',
+      '<｜｜DSML｜｜parameter name="kind" string="true">docx</｜｜DSML｜｜parameter>',
+      '<｜｜DSML｜｜parameter name="operation" string="true">from-markdown</｜｜DSML｜｜parameter>',
+      '</｜｜DSML｜｜invoke>',
+      '</｜｜DSML｜｜tool_calls'
+    ].join('\n')
+
+    expect(looksLikeDsmlToolCalls(text)).toBe(true)
+    expect(recoverDsmlToolCalls(text, new Set(['document_skill_execute']))).toEqual({
+      calls: [{
+        toolName: 'document_skill_execute',
+        arguments: { kind: 'docx', operation: 'from-markdown' }
+      }],
+      visibleText: ''
+    })
+    expect(stripDsmlToolCalls(text)).toBe('')
+  })
+
+  it('holds token-by-token DSML prefixes before a complete closing tag exists', () => {
+    const chunks = [
+      '<',
+      '<｜｜DSML｜｜',
+      '<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="bash">',
+      '<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="bash"></｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls'
+    ]
+    for (const value of chunks) expect(isPotentialDsmlToolCallStream(value)).toBe(true)
+    expect(isPotentialDsmlToolCallStream('< 5 是一个普通数学表达式')).toBe(false)
+  })
+
   it('does not strip ordinary prose that merely mentions DSML', () => {
     const text = 'DSML 是一种序列化格式。'
     expect(looksLikeDsmlToolCalls(text)).toBe(false)
     expect(stripDsmlToolCalls(text)).toBe('DSML 是一种序列化格式。')
+  })
+})
+
+describe('JSON tool-call recovery', () => {
+  it('recovers a document_skill_execute call from a fenced JSON block', () => {
+    const text = [
+      '我来从论文中提取全部引注，生成 Word 文档。',
+      '```json',
+      '{',
+      '  "kind": "docx",',
+      '  "operation": "from-markdown",',
+      '  "content": "# 引注整理：\\"宽严相济\\"视域下资格刑的价值新探",',
+      '  "outputPath": "引注整理-资格刑论文.docx",',
+      '  "profile": "academic"',
+      '}',
+      '```',
+      '已生成，文件在桌面。'
+    ].join('\n')
+
+    const recovered = recoverJsonToolCalls(text, new Set(['document_skill_execute']))
+    expect(recovered).not.toBeNull()
+    expect(recovered?.calls).toEqual([{
+      toolName: 'document_skill_execute',
+      arguments: {
+        kind: 'docx',
+        operation: 'from-markdown',
+        content: '# 引注整理："宽严相济"视域下资格刑的价值新探',
+        outputPath: '引注整理-资格刑论文.docx',
+        profile: 'academic'
+      }
+    }])
+    // 剥离 JSON 块，保留正文
+    expect(recovered?.visibleText).toContain('我来从论文中提取全部引注')
+    expect(recovered?.visibleText).toContain('已生成，文件在桌面。')
+    expect(recovered?.visibleText).not.toContain('from-markdown')
+  })
+
+  it('ignores a JSON block whose object lacks kind/operation (not a doc skill call)', () => {
+    const text = '```json\n{ "a": 1, "b": 2 }\n```'
+    expect(recoverJsonToolCalls(text, new Set(['document_skill_execute']))).toBeNull()
+  })
+
+  it('never recovers when document_skill_execute is not advertised', () => {
+    const text = '```json\n{ "kind": "docx", "operation": "from-markdown" }\n```'
+    expect(recoverJsonToolCalls(text, new Set(['bash']))).toBeNull()
+  })
+
+  it('ignores malformed JSON blocks', () => {
+    const text = '```json\n{ this is not valid json\n```'
+    expect(recoverJsonToolCalls(text, new Set(['document_skill_execute']))).toBeNull()
   })
 })

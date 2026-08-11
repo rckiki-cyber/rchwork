@@ -252,6 +252,13 @@ export class SkillRuntime {
       budgetBytes: this.options.instructionBudgetBytes,
       blockedToolNames
     }
+    if (process.env.DEBUG_SKILL_TOOLS) {
+      process.stderr.write(
+        `[SKILL-DEBUG] active=${JSON.stringify(injection.activeSkillIds)} ` +
+        `allowedToolNames=${JSON.stringify(injection.allowedToolNames ?? null)} ` +
+        `blocked=${JSON.stringify(blockedToolNames)} instructions=${injection.instructions.length}\n`
+      )
+    }
     return {
       activeSkillIds: injection.activeSkillIds,
       activations: this.lastActivations,

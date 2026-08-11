@@ -489,7 +489,7 @@ describe('SkillRuntime', () => {
     expect(requests[1]?.contextInstructions?.join('\n')).toContain('--scenario education-training')
   })
 
-  it('removes document tools after one successful artifact generation', async () => {
+  it('finishes immediately after one successful Word artifact generation', async () => {
     await writeSkill('document', {
       id: 'legal-document-formatting',
       name: 'Document',
@@ -541,9 +541,13 @@ describe('SkillRuntime', () => {
 
     expect(status).toBe('completed')
     expect(executions).toBe(1)
-    expect(requests).toHaveLength(2)
+    expect(requests).toHaveLength(1)
     expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
-    expect(requests[1]?.tools).toEqual([])
+    const items = await h.sessionStore.loadItems(h.threadId)
+    expect(items.at(-1)).toMatchObject({
+      kind: 'assistant_text',
+      text: 'Word 文档已生成：\n\n综述.docx'
+    })
   })
 
   it('requires the document executor even when Skill activation is unavailable', async () => {

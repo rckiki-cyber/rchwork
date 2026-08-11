@@ -86,8 +86,10 @@ import {
 import { LEGALWORK_SYSTEM_PROMPT } from '../prompt/legalwork-system-prompt.js'
 import { resolveImaRouteAction, shouldAutoRouteToIma } from './ima-knowledge-router.js'
 import {
+  isPotentialDsmlToolCallStream,
   looksLikeDsmlToolCalls,
   recoverDsmlToolCalls,
+  recoverJsonToolCalls,
   stripDsmlToolCalls
 } from './dsml-tool-call-recovery.js'
 import {
@@ -160,7 +162,7 @@ export const MAX_AGENT_LOOP_STEPS_ENV_CAP = 4_096
  * you have" instruction instead of letting the model keep searching. This is a
  * cost guardrail, NOT a substitute for the independent 128-step loop ceiling.
  */
-export const DEFAULT_TURN_TOKEN_BUDGET = 80_000
+export const DEFAULT_TURN_TOKEN_BUDGET = 5_000_000
 export const TURN_TOKEN_BUDGET_ENV = 'LEGALWORK_TURN_TOKEN_BUDGET'
 export const TURN_TOKEN_BUDGET_ENV_CAP = 10_000_000
 
@@ -180,6 +182,31 @@ const TURN_BUDGET_WRAPUP_INSTRUCTION =
   '【成本预算提醒】本轮已累计消耗大量输入 token，请立即停止继续检索、搜索、抓取或读取新资料。' +
   '基于当前已经获取的全部材料完成撰写，但不得跳过用户明确要求的 OCR/逐篇阅读、脱敏、引用核验和文件交付门禁。' +
   '如强制门禁确实无法完成，只能明确报告未完成项，不得声称任务或文件已经完成。'
+/**
+ * Hitting the research-cost budget must stop *new research*, not revoke the
+ * tools needed to finish or repair the requested artifact.  The previous
+ * implementation advertised zero tools after the budget fired; models then
+ * produced prose such as "I will regenerate it now" and the turn was marked
+ * completed even though no replacement file existed.
+ */
+const TURN_BUDGET_COMPLETION_TOOL_NAMES = new Set([
+  'read',
+  'grep',
+  'find',
+  'ls',
+  'bash',
+  'write',
+  'apply_patch',
+  'data_compliance',
+  'document_skill_execute',
+  'officecli',
+  'todo_list',
+  'todo_write',
+  'get_goal',
+  'update_goal',
+  'fact_verification_finalize',
+  'citation_verification_finalize'
+])
 const MAX_GOAL_NO_TOOL_CONTINUATIONS = 2
 const DEFAULT_COMPACTION_SUMMARY_TIMEOUT_MS = 15_000
 const DEFAULT_COMPACTION_SUMMARY_MAX_TOKENS = 8_000
@@ -574,6 +601,32 @@ export function skillRoutingPrompt(
   return `${context.join('\n\n后续要求：')}\n\n当前追问：${current}`
 }
 
+/**
+ * Resolve the persistent attachment context for this conversation.
+ *
+ * An uploaded file belongs to the thread, not only to the single message that
+ * carried it. Every later turn therefore receives every user attachment seen
+ * in the thread. This is deliberately independent of prompt wording: "?",
+ * "审核呀", a new topic, or a follow-up many turns later must not make an already
+ * uploaded file disappear. Direct turn metadata is merged last because older
+ * persisted turns can store ids only on the user item.
+ */
+export function attachmentIdsForTurn(input: {
+  prompt: string
+  turnId: string
+  turnAttachmentIds?: readonly string[]
+  items: readonly TurnItem[]
+}): string[] {
+  const persisted = input.items.flatMap((item) =>
+    item.kind === 'user_message' ? item.attachmentIds ?? [] : []
+  )
+  return uniqueAttachmentIds([...persisted, ...(input.turnAttachmentIds ?? [])])
+}
+
+function uniqueAttachmentIds(values: readonly string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))]
+}
+
 function isContextDependentPrompt(prompt: string): boolean {
   if (isContinuationOnlyPrompt(prompt)) return true
   const compact = prompt.replace(/\s+/g, '')
@@ -581,16 +634,17 @@ function isContextDependentPrompt(prompt: string): boolean {
   if (/^(?:请)?(?:修订|修改|修正|改写|重写|重构|补充|完善|更新|按这个改|照这个改)(?:一下)?[?？!！。]*$/.test(compact)) {
     return true
   }
-  return /(?:这篇|这份|这个|这些|这几个|上述|前述|前面|刚才|该领域|该案|该文|原文|全文)/.test(compact) ||
+  return /(?:这篇|这份|这个|这些|这几个|上述|前述|前面|刚才|该领域|该案|该文|本文|本文件|本附件|原文|全文)/.test(compact) ||
     /^(?:文献|引用|案例|格式|字数|标题|内容)(?:还|也|应该|需要|必须|尽可能)/.test(compact) ||
     /(?:核心|重点|原文呢|全文呢)[?？!！。]*$/.test(compact)
 }
 
 function isLowSignalComplaint(prompt: string): boolean {
   const compact = prompt.replace(/\s+/g, '')
-  if (/(?:他妈|妈的|傻逼|搞什么鬼)/.test(compact) && compact.length <= 40) return true
+  const hasTaskSignal = /(?:原文|全文|Word|DOCX|PDF|Excel|论文|报告|案例|文献|合同|脚注|引注|扩充|扩展|增补|续写|修改|修订|完善|生成|制作|核查|审查)/i.test(compact)
+  if (/(?:他妈|妈的|傻逼|搞什么鬼)/.test(compact) && compact.length <= 40 && !hasTaskSignal) return true
   return /(?:在干嘛|干什么|怎么还|怎么又|还没|卡住|卡顿|快点|搞什么)/.test(compact) &&
-    !/(?:原文|全文|Word|PDF|Excel|论文|报告|案例|文献)/i.test(compact)
+    !hasTaskSignal
 }
 
 function isContinuationOnlyPrompt(prompt: string): boolean {
@@ -599,25 +653,34 @@ function isContinuationOnlyPrompt(prompt: string): boolean {
   if (/^[?？!！。.，,…]+$/.test(compact)) return true
   if (compact.length > 80) return false
   return /^(?:请)?(?:继续|接着|往下|快点|然后呢|做完了吗|弄好了吗)/.test(compact) ||
-    /(?:怎么还|怎么又|在干嘛|为什么还|还没|没给我|不给我|卡住|卡顿)/.test(compact)
+    /(?:怎么还|怎么又|怎么不动|为什么不动|不动了|在干嘛|为什么还|还没|没给我|不给我|卡住|卡顿|倒是干活|干活啊|倒是做|他妈的?倒是)/.test(compact)
 }
 
 export function requestsDocumentMutation(prompt: string): boolean {
   const compact = prompt.replace(/\s+/g, '')
   if (!compact) return false
-  if (/^(?:请)?(?:修订|修改|修正|改写|重写|重构|补充|完善|更新)(?:一下)?[?？!！。]*$/.test(compact)) {
+  // A read/inspect request often names both the document and the forbidden
+  // mutation ("读取这个 Word，不要生成新文件"). Matching the bare words
+  // `生成` + `文件` turns that negated instruction into a forced document
+  // workflow. Respect an explicit no-create clause unless another independent
+  // positive mutation clause is present before it.
+  const mutationPrompt = compact.replace(
+    /(?:不要|无需|不用|不必|勿|禁止)(?:再|重新)?(?:生成|创建|新建|制作|导出|转换|保存|交付)(?:新的?)?(?:Word|DOCX|PDF|Excel|XLSX|PPTX?|文档|文件|表格|工作簿|演示文稿)/gi,
+    ''
+  )
+  if (/^(?:请)?(?:修订|修改|修正|改写|重写|重构|补充|完善|更新)(?:一下)?[?？!！。]*$/.test(mutationPrompt)) {
     return true
   }
-  const explicitRequest = /(?:请你|帮我|替我|给我|直接|现在就|立即)/.test(compact)
+  const explicitRequest = /(?:请你|帮我|替我|给我|直接|现在就|立即)/.test(mutationPrompt)
   if (
     !explicitRequest &&
-    /^(?:请问)?(?:如何|怎样|为什么|怎么(?:设置|使用|操作|实现)|.+(?:是什么|有哪些|有何|区别))/.test(compact)
+    /^(?:请问)?(?:如何|怎样|为什么|怎么(?:设置|使用|操作|实现)|.+(?:是什么|有哪些|有何|区别))/.test(mutationPrompt)
   ) {
     return false
   }
   const documentTarget = /(?:Word|DOCX|\.docx|\.doc\b|Excel|XLSX|\.xlsx|PPTX?|\.pptx|文档|文件|表格|工作簿|演示文稿|论文|文章|稿件|原稿|文献综述|报告|起诉状|答辩状|意见书)/i
-  const mutationIntent = /(?:写|撰写|编写|生成|创建|新建|起草|制作|编辑|修改|修订|修正|改写|重写|重构|调整|补充|完善|更新|排版|格式化|套用|导出|转换|合并|修复|保存|交付|给我|发我|提供)/
-  return documentTarget.test(compact) && mutationIntent.test(compact)
+  const mutationIntent = /(?:写|撰写|编写|生成|创建|新建|起草|制作|编辑|修改|修订|修正|改写|重写|重构|扩充|扩展|增补|续写|调整|补充|完善|更新|排版|格式化|套用|导出|转换|合并|修复|保存|交付|给我|发我|提供)/
+  return documentTarget.test(mutationPrompt) && mutationIntent.test(mutationPrompt)
 }
 
 type DocumentArtifactKind = 'docx' | 'pdf' | 'pptx' | 'xlsx'
@@ -794,10 +857,15 @@ export function imaMandatedByPrompt(prompt: string): boolean {
 
 export function requestsAcademicCitationVerification(prompt: string): boolean {
   if (!requestsDocumentMutation(prompt)) return false
+  // 明确的核验意图才强制核验门禁。
   const explicitVerification = /(?:引用|引文|参考文献|来源).{0,16}(?:核验|校验|验证|查证|逐条核对)|(?:核验|校验|验证|查证|逐条核对).{0,16}(?:引用|引文|参考文献|来源)/s.test(prompt)
+  // 撰写/文献综述类任务且要求引用标注 → 需要核验。
   const academicWritingWithCitations = /(?:文献综述|学术论文|研究论文|论文写作)|(?:撰写|写作|写一篇|生成).{0,20}论文|论文.{0,20}(?:撰写|写作|生成)/s.test(prompt) &&
     /(?:参考文献|引文|引用|标注出处|真实来源)|文献.{0,16}(?:参考|尽可能多)/s.test(prompt)
-  return explicitVerification || academicWritingWithCitations
+  // 扩充/修改/完善已有论文不算"撰写并要求核验"：已有稿件的引用核验失败时
+  // 应允许继续并标【待补引文位】，而不是强制核验门禁把任务卡死。
+  const modifyingExistingPaper = /(?:扩充|扩写|修改|改写|完善|润色|优化).{0,12}(?:论文|文章|文稿|原稿)|(?:这篇|该|此).{0,8}(?:论文|文章|文稿).{0,12}(?:扩充|扩写|修改|完善)/s.test(prompt)
+  return explicitVerification || (academicWritingWithCitations && !modifyingExistingPaper)
 }
 
 export function requestsFactVerification(prompt: string): boolean {
@@ -815,7 +883,38 @@ export function isBareResearchTopicPrompt(prompt: string): boolean {
   if (value.length < 4 || value.length > 48) return false
   if (!/\p{Script=Han}/u.test(value)) return false
   if (/[?？!！。；;：:]|\n/.test(value)) return false
-  return !/(请|帮我|如何|为什么|为何|是否|是什么|检索|搜索|查询|查找|调研|研究一下|分析|解释|回答|撰写|写一|写份|生成|制作|起草|总结|综述|列出|对比|修改|审查|翻译|打开|读取)/i.test(value)
+  // A complaint/continuation is conversational control, never a new research
+  // topic. Misclassifying "你倒是干活啊" as a topic removed every tool
+  // precisely when the user was asking the agent to resume unfinished work.
+  if (isContinuationOnlyPrompt(value) || isLowSignalComplaint(value)) return false
+  // 排除词同时覆盖两类信号：命令式动作（请/帮我/检索…）和文档操作词
+  // （word/docx/文档/整理/排版…）。后者不能当作“裸研究话题”，否则“把引注
+  // 整理到word”这类文档生成任务会被错误地收窄掉 document_skill_execute，
+  // 导致模型想调工具却没有工具可调、只输出一段正文（用户看不到生成的文档）。
+  return !/(请|帮我|如何|为什么|为何|是否|是什么|检索|搜索|查询|查找|调研|研究一下|分析|解释|回答|撰写|写一|写份|生成|制作|起草|总结|综述|列出|对比|修改|修订|扩充|扩展|增补|续写|完善|审查|翻译|打开|读取|word|docx|文档|文件|整理|排版|格式|模板)/i.test(value)
+}
+
+/** Keep only local completion/validation tools after the research budget fires. */
+export function turnBudgetCompletionToolSpecs<T extends { name: string }>(tools: readonly T[]): T[] {
+  return tools.filter((tool) => TURN_BUDGET_COMPLETION_TOOL_NAMES.has(tool.name))
+}
+
+/**
+ * Detect a model response that announces work it has not actually performed.
+ * This is intentionally narrow: it targets future/next-step language tied to
+ * concrete tool actions, not ordinary final-answer suggestions to the user.
+ */
+export function assistantAnnouncesPendingToolWork(text: string): boolean {
+  const normalized = text.replace(/\s+/g, '')
+  if (!normalized) return false
+  // Long reasoning often contains the decisive announcement only at the end
+  // (the reproduced failure ended with "开始。先读原文。"). Inspect a
+  // bounded tail instead of rejecting long responses outright.
+  const compact = normalized.slice(-2_000)
+  const action = '(?:读取|打开|检查|核对|处理|脱敏|生成|重新生成|创建|修改|修复|重写|替换|保存|导出|验证|执行|调用|运行|写入|制作)'
+  const announced = new RegExp(`(?:我(?:将|会|现在|马上|直接|先)|接下来|下一步|开始|现在开始|先).{0,60}${action}`)
+  const retry = new RegExp(`(?:我)?(?:按|依|照)?.{0,40}(?:重新|继续|直接)${action}`)
+  return announced.test(compact) || retry.test(compact) || /(?:开始。?)?先(?:读|打开|处理|生成|执行)[^?？!！]{0,30}[。.]?$/.test(compact)
 }
 
 function successfulDocumentArtifacts(
@@ -870,6 +969,50 @@ function successfulDocumentArtifacts(
     else if (lowerOutputPath.endsWith('.xlsx') && (!requiredFilenameFragments.xlsx || outputPath.includes(requiredFilenameFragments.xlsx))) completed.add('xlsx')
   }
   return completed
+}
+
+/**
+ * Finish a Word-only delivery directly from the verified tool result.
+ *
+ * The old loop always performed one more model request after a successful
+ * document_skill_execute call just to obtain a prose acknowledgement. For
+ * uploaded DOCX files that request repeated the entire extracted document and
+ * could exceed 300k input tokens, leaving the GUI on "waiting for model" long
+ * after the Word file already existed. The tool result is authoritative, so a
+ * second model round-trip adds no correctness value.
+ */
+export function completedWordDeliveryMessage(
+  items: readonly TurnItem[],
+  turnId: string,
+  routedPrompt: string
+): string | undefined {
+  const requestedArtifacts = requestedDocumentArtifacts(routedPrompt)
+  if (requestedArtifacts.length !== 1 || requestedArtifacts[0] !== 'docx') return undefined
+
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (
+      item?.turnId !== turnId ||
+      item.kind !== 'tool_result' ||
+      item.toolName !== DOCUMENT_SKILL_EXECUTE_TOOL_NAME ||
+      item.status !== 'completed' ||
+      item.isError === true ||
+      !item.output ||
+      typeof item.output !== 'object'
+    ) {
+      continue
+    }
+    const output = item.output as Record<string, unknown>
+    const operation = typeof output.operation === 'string' ? output.operation : ''
+    const kind = typeof output.kind === 'string' ? output.kind.toLowerCase() : ''
+    const outputPath = typeof output.output === 'string' ? output.output.trim() : ''
+    const isDocx = kind === 'docx' || outputPath.toLowerCase().endsWith('.docx')
+    if (output.status !== 'ok' || operation === 'inspect' || operation === 'profiles' || !isDocx || !outputPath) {
+      continue
+    }
+    return `Word 文档已生成：\n\n${outputPath}`
+  }
+  return undefined
 }
 
 function hasSuccessfulSpecializedPresentationExport(
@@ -1729,6 +1872,21 @@ export class AgentLoop {
         status: 'waiting',
         toolResultCount
       })
+      const routedPrompt = skillRoutingPrompt(turn?.prompt ?? '', healed.items, turnId)
+      const completedDelivery = completedWordDeliveryMessage(healed.items, turnId, routedPrompt)
+      if (completedDelivery) {
+        await this.opts.turns.applyItem(
+          threadId,
+          makeAssistantTextItem({
+            id: this.opts.ids.next('item_text'),
+            turnId,
+            threadId,
+            text: completedDelivery,
+            status: 'completed'
+          })
+        )
+        return 'stop'
+      }
     }
     const items = repairModelHistoryItems(
       effectiveHistoryAfterLatestCompaction(healed.items)
@@ -1752,14 +1910,26 @@ export class AgentLoop {
     })
     const model = modelRoute.model
     const modelCapabilities = this.opts.modelCapabilities?.(model) ?? modelCapabilitiesForModel(model)
+    const effectiveAttachmentIds = attachmentIdsForTurn({
+      prompt: turn?.prompt ?? '',
+      turnId,
+      turnAttachmentIds: turn?.attachmentIds,
+      items: healed.items
+    })
     const attachments = await this.resolveAttachments({
-      attachmentIds: turn?.attachmentIds ?? [],
+      attachmentIds: effectiveAttachmentIds,
       threadId,
       workspace: thread?.workspace ?? '',
       modelCapabilities
     })
     const routedSkillPrompt = skillRoutingPrompt(turn?.prompt ?? '', healed.items, turnId)
-    const continuationPrompt = isContextDependentPrompt(turn?.prompt?.trim() ?? '')
+    // Only a true retry/continue prompt may reuse artifacts completed by the
+    // preceding request. Referential follow-ups such as "把本文引注整理到 Word"
+    // inherit the source attachment and Skill context, but they are a *new*
+    // document mutation and therefore must produce a new artifact. v0.3.17
+    // accidentally widened this to isContextDependentPrompt(), causing an old
+    // DOCX to satisfy the new request and stripping every tool from the model.
+    const continuationPrompt = isContinuationOnlyPrompt(turn?.prompt?.trim() ?? '')
     const skillResolution = this.opts.skillRuntime?.resolveTurn({
       prompt: routedSkillPrompt,
       workspace: thread?.workspace ?? ''
@@ -2633,16 +2803,30 @@ export class AgentLoop {
     // workflow governance 的 evidence gate 会强制单个检索工具（如
     // knowledge_auto_retrieve）并收窄工具列表。read 是读用户附件原文的核心
     // 基础工具，不应被 evidence gate 排除（否则 agent 读不到用户原文、只能凭
-    // 检索写精简版，造成原文大量丢失）。但这里只保留 read，不放宽 bash 等
+    // 检索写精简版，造成原文大量丢失）。这里只保留 read，不放宽 bash 等
     // 工具——避免模型用 bash 绕过 forced document step 等流程约束。
-    const BASE_WORK_TOOL_NAMES = new Set(['read'])
+    //
+    // 例外：当强制工具是 document_skill_execute 且用户上传了附件 docx 时，
+    // 允许 bash 一并保留。修改/完善已有带脚注的 DOCX 必须读取
+    // word/footnotes.xml 等内部部件（read 只能提取正文，读不到脚注），
+    // 这只能靠 bash + office-runtime Python 解包 docx 完成；若此时排除 bash，
+    // 模型将无法保留原真脚注，也无法运行 skill 的真脚注脚本，任务必然失败。
+    // 无附件时（新生成文档）仍保持只读 read，维持原有防绕过约束。
+    const hasAttachedDocument = effectiveAttachmentIds.length > 0
+    const BASE_WORK_TOOL_NAMES = new Set(
+      requiredToolName === DOCUMENT_SKILL_EXECUTE_TOOL_NAME && hasAttachedDocument
+        ? ['read', 'bash']
+        : ['read']
+    )
     const requestToolSpecs = requiredToolName
       ? visibleScopedToolSpecs.filter(
           (tool) => tool.name === requiredToolName || BASE_WORK_TOOL_NAMES.has(tool.name)
         )
-      : turnBudgetWrapUp || bareResearchTopic || documentMutationSatisfied || evidenceBarrierActive
-        ? []
-        : visibleScopedToolSpecs
+      : turnBudgetWrapUp
+        ? turnBudgetCompletionToolSpecs(visibleScopedToolSpecs)
+        : bareResearchTopic || documentMutationSatisfied || evidenceBarrierActive
+          ? []
+          : visibleScopedToolSpecs
     const officeWorkflowInstruction = specializedPresentationPending
       ? undefined
       : officeDocumentWorkflowInstruction({
@@ -2764,6 +2948,7 @@ export class AgentLoop {
       })
     }
     const textAccumulator: { value: string } = { value: '' }
+    let emittedVisibleTextLength = 0
     const reasoningAccumulator: { value: string } = { value: '' }
     let textItemId = ''
     let reasoningItemId = ''
@@ -2783,7 +2968,7 @@ export class AgentLoop {
       toolCount: request.tools.length,
       ...(request.requiredToolName ? { requiredToolName: request.requiredToolName } : {}),
       ...attachmentRequestPipelineDetails({
-        attachmentIds: turn?.attachmentIds ?? [],
+        attachmentIds: effectiveAttachmentIds,
         imageAttachments: attachments.imageAttachments,
         textFallbacks: attachments.textFallbacks,
         ocrResults: attachments.ocrResults,
@@ -2802,24 +2987,22 @@ export class AgentLoop {
       switch (chunk.kind) {
         case 'assistant_text_delta':
           textAccumulator.value += chunk.text
-          // DSML 序列化在流式传输中可能混入全角竖线 `｜`。仅在非强制工具步
-          // （普通文本回复）下做流式剥离：此时 DSML 是模型误输出为正文，
-          // 应剔除后推给前端；强制工具步（requiredToolName）的 DSML 由后续
-          // 的恢复逻辑处理，不能在这里剥离。
-          if (!request.requiredToolName && looksLikeDsmlToolCalls(textAccumulator.value)) {
-            const stripped = stripDsmlToolCalls(textAccumulator.value)
-            // 取剥离后文本中本次新出现的那一段作为 delta（无新增则为空串）。
-            const prev = textAccumulator.value.slice(0, -chunk.text.length)
-            const strippedPrev = stripDsmlToolCalls(prev)
-            chunk.text = stripped.slice(strippedPrev.length)
-            textAccumulator.value = stripped
-            if (!chunk.text) break
-          }
           // Forced-tool steps are internal workflow transitions. Buffer any
           // provider chatter instead of rendering it as a user-visible answer;
           // otherwise a false “completed” message can appear before the
           // required tool gate rejects the step.
           if (!request.requiredToolName) {
+            // DeepSeek may serialize a structured call into text one token at
+            // a time: first "<", then "｜｜DSML｜｜", then the tag body. A
+            // completed-block check is too late because the opening tokens have
+            // already reached the UI. Hold only a syntactically possible DSML
+            // frame; if it later proves to be ordinary text, release everything
+            // held since emittedVisibleTextLength. The complete frame is parsed
+            // into real tool calls after the provider stream finishes below.
+            if (isPotentialDsmlToolCallStream(textAccumulator.value)) break
+            const visibleDelta = textAccumulator.value.slice(emittedVisibleTextLength)
+            if (!visibleDelta) break
+            emittedVisibleTextLength = textAccumulator.value.length
             textItemId ||= this.opts.ids.next('item_text')
             await this.opts.events.record({
               kind: 'assistant_text_delta',
@@ -2830,7 +3013,7 @@ export class AgentLoop {
                 id: textItemId,
                 turnId,
                 threadId,
-                text: chunk.text,
+                text: visibleDelta,
                 status: 'running'
               })
             })
@@ -2984,6 +3167,12 @@ export class AgentLoop {
           textAccumulator.value,
           DSML_RECOVERY_DISPATCH_TOOL_NAMES
         )
+      }
+      // DeepSeek 在参数较大时可能把工具调用序列化为 ```json { kind, operation } ```
+      // 代码块而不是结构化 tool_calls。XML 恢复器认不出这个形态，这里补一个
+      // JSON 恢复器，把它还原成 document_skill_execute 调用，避免工具从未执行。
+      if (!recovered) {
+        recovered = recoverJsonToolCalls(textAccumulator.value, advertisedToolNames)
       }
       if (recovered) {
         textAccumulator.value = recovered.visibleText
@@ -3186,6 +3375,17 @@ export class AgentLoop {
       if (stopReason === 'stop' && activeGoalInstruction && stepIndex < MAX_GOAL_NO_TOOL_CONTINUATIONS) {
         return 'continue'
       }
+      const announcedWork = textAccumulator.value.trim() || reasoningAccumulator.value.trim()
+      if (
+        stopReason === 'stop' &&
+        request.tools.length > 0 &&
+        assistantAnnouncesPendingToolWork(announcedWork)
+      ) {
+        // A response that says "I will/next/first do X" is not a completed
+        // task. Keep the turn alive so the following model step can issue the
+        // tool call it just announced.
+        return 'continue'
+      }
       if (
         automaticPlan?.genericTextCompletion &&
         !evidenceBarrierActive &&
@@ -3211,6 +3411,7 @@ export class AgentLoop {
       activePlanContext,
       modelCapabilities,
       activeSkillIds: skillResolution.activeSkillIds,
+      attachmentFiles: attachments.fileReferences,
       // Enforce the exact tool catalog advertised for this model request, not
       // merely the broader Skill allowlist. DeepSeek-compatible providers can
       // occasionally emit a native call to bash even when this step forcibly
@@ -3243,6 +3444,7 @@ export class AgentLoop {
     activePlanContext?: GuiPlanContext
     modelCapabilities: ModelCapabilityMetadata
     activeSkillIds: readonly string[]
+    attachmentFiles?: readonly AttachmentFileReference[]
     allowedToolNames?: readonly string[]
     toolProviderKinds: ReadonlyMap<string, ToolProviderKind | undefined>
     approvalPolicy: ToolHostContext['approvalPolicy']
@@ -3405,6 +3607,7 @@ export class AgentLoop {
     activePlanContext?: GuiPlanContext
     modelCapabilities: ModelCapabilityMetadata
     activeSkillIds: readonly string[]
+    attachmentFiles?: readonly AttachmentFileReference[]
     allowedToolNames?: readonly string[]
     approvalPolicy: ToolHostContext['approvalPolicy']
     signal: AbortSignal
@@ -3417,6 +3620,7 @@ export class AgentLoop {
       ...(input.activePlanContext ? { guiPlan: input.activePlanContext } : {}),
       model: input.modelCapabilities,
       activeSkillIds: input.activeSkillIds,
+      ...(input.attachmentFiles?.length ? { attachmentFiles: input.attachmentFiles } : {}),
       memoryPolicy: { enabled: Boolean(this.opts.memoryStore) },
       delegationPolicy: { enabled: false },
       ...(input.allowedToolNames ? { allowedToolNames: input.allowedToolNames } : {}),

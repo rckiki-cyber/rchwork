@@ -1,11 +1,12 @@
-import { mkdtemp, readFile, rm, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createDocumentSkillExecuteTool,
   deterministicPdfPayloadError,
-  prepareDocumentWorkerArgs
+  prepareDocumentWorkerArgs,
+  resolveAttachedDocumentInputArgs
 } from '../src/adapters/tool/builtin-document-skill-tool.js'
 import type { ToolHostContext } from '../src/ports/tool-host.js'
 
@@ -201,6 +202,44 @@ describe('document_skill_execute', () => {
       outputPath: '../escaped.docx',
       workspace
     })).rejects.toThrow(/inside the thread workspace/)
+  })
+
+  it('resolves a guessed Word path to the current uploaded attachment', async () => {
+    const attachmentPath = join(root, 'attachments', 'files', 'att_test', '宽严相济刑事政策对惩治食药领域犯罪的具体贯彻_终稿_(1).docx')
+    await mkdir(join(attachmentPath, '..'), { recursive: true })
+    await writeFile(attachmentPath, 'uploaded Word bytes')
+
+    expect(resolveAttachedDocumentInputArgs({
+      args: [
+        '--input',
+        '/Users/example/Desktop/宽严相济刑事政策对惩治食药领域犯罪的具体贯彻（终稿）（1）.docx'
+      ],
+      workspace,
+      attachmentFiles: [{
+        id: 'att_test',
+        name: '宽严相济刑事政策对惩治食药领域犯罪的具体贯彻（终稿）(1).docx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        localFilePath: attachmentPath
+      }]
+    })).toEqual(['--input', attachmentPath])
+  })
+
+  it('does not replace an existing user-selected input file with an attachment', async () => {
+    const selectedPath = join(workspace, 'selected.docx')
+    const attachmentPath = join(root, 'attachment.docx')
+    await writeFile(selectedPath, 'selected')
+    await writeFile(attachmentPath, 'attachment')
+
+    expect(resolveAttachedDocumentInputArgs({
+      args: ['--input', selectedPath],
+      workspace,
+      attachmentFiles: [{
+        id: 'att_test',
+        name: 'selected.docx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        localFilePath: attachmentPath
+      }]
+    })).toEqual(['--input', selectedPath])
   })
 
   function context(): ToolHostContext {

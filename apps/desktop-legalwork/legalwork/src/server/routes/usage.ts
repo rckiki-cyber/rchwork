@@ -44,7 +44,13 @@ export async function usageJsonResponse(
   const query = queryRecord(request)
   const groupBy = stringParam(query, 'group_by') ?? 'runtime'
   if (groupBy === 'thread') {
-    return jsonResponse(buildThreadUsageResponse(await usageRecords(runtime)))
+    // The GUI polls this endpoint while a turn is running. Re-reading and
+    // sorting every persisted event from every thread here made one request
+    // take several seconds on real profiles, so the renderer's shorter probe
+    // timeout fired continuously. UsageService is seeded from persisted events
+    // at runtime startup and updated for every live usage event; use that
+    // cumulative in-memory snapshot for this latency-sensitive grouping.
+    return jsonResponse(buildThreadUsageResponse(await liveThreadUsageRecords(runtime)))
   }
   if (groupBy === 'day') {
     try {
@@ -74,6 +80,20 @@ export async function usageJsonResponse(
     return jsonResponse({ code: 'validation_error', message: `unsupported usage grouping: ${groupBy}` }, 400)
   }
   return jsonResponse(await buildUsageResponse(runtime))
+}
+
+async function liveThreadUsageRecords(runtime: ServerRuntime): Promise<ThreadUsageRecord[]> {
+  const threadSummaries = await runtime.threadService.list()
+  return threadSummaries.flatMap((thread) => {
+    const usage = runtime.usageService.forThread(thread.id)
+    if (!hasUsage(usage)) return []
+    return [{
+      threadId: thread.id,
+      model: thread.model || 'unknown',
+      completedAt: thread.updatedAt || runtime.nowIso(),
+      usage
+    }]
+  })
 }
 
 function queryRecord(request: Request): Record<string, string> {

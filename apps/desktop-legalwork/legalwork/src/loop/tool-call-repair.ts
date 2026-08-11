@@ -96,6 +96,14 @@ function repairBashCommandArgument(current: Record<string, unknown>): {
   changed: boolean
   note: string
 } {
+  // Session-control actions deliberately do not carry a command. Requiring
+  // one here rewrites a valid `{ action: "poll", session_id: "..." }` call
+  // into the invalid-command stub before it reaches builtin-bash-tool, which
+  // strands the live process and sends the model into a retry loop.
+  const action = typeof current.action === 'string' ? current.action.trim().toLowerCase() : ''
+  if (action === 'poll' || action === 'write' || action === 'stop') {
+    return { arguments: current, changed: false, note: '' }
+  }
   const commandValue = current.command
   if (typeof commandValue === 'string') {
     const trimmed = commandValue.trim()
