@@ -381,7 +381,7 @@ export type ThreadEventSink = {
   onRuntimeError?(ev: RuntimeErrorEventPayload): void
   onGoal(ev: { threadId: string; goal: ThreadGoal | null; cleared?: boolean; createdAt?: string }): void
   onTodos?(ev: { threadId: string; todos: ThreadTodoList | null; cleared?: boolean; createdAt?: string }): void
-  onTurnComplete(): void
+  onTurnComplete(status: 'completed' | 'aborted'): void
   onError(err: Error): void
   /** Optional: cumulative usage update for the thread. */
   onUsage?(usage: ThreadUsageSnapshot): void

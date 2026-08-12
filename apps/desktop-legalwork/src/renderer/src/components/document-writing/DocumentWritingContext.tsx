@@ -14,10 +14,9 @@ import {
 } from '../../../../shared/user-templates'
 import { getProvider } from '../../agent/registry'
 import type { ThreadDeltaEvent, ThreadEventSink, ToolEventPayload } from '../../agent/types'
-import { rendererRuntimeClient } from '../../agent/runtime-client'
-import { normalizeWorkspaceRoot } from '../../lib/workspace-path'
 import {
   advanceDocumentWritingStage,
+  assessDocumentWritingContent,
   buildDocumentWritingAgentPrompt,
   completeDocumentWritingStages,
   createDocumentWritingStages,
@@ -40,7 +39,7 @@ export type UploadedMaterial = {
 }
 
 export type DocumentWritingWorkflow = {
-  status: 'idle' | 'running' | 'done' | 'error'
+  status: 'idle' | 'running' | 'done' | 'partial' | 'error'
   stages: DocumentWritingStage[]
   toolCount: number
   reasoning: string
@@ -249,7 +248,11 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
     void loadUserTemplates()
   }, [loadUserTemplates])
 
-  useEffect(() => () => workflowAbortRef.current?.abort(), [])
+  useEffect(() => () => {
+    workflowAbortRef.current?.abort()
+    const run = activeRunRef.current
+    if (run) void getProvider().interruptTurn(run.threadId, run.turnId).catch(() => undefined)
+  }, [])
 
   const allTemplates = useMemo(() => {
     if (activeCategory === 'custom') return userTemplates
@@ -332,6 +335,11 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
     }
 
     workflowAbortRef.current?.abort()
+    const previousRun = activeRunRef.current
+    if (previousRun) {
+      void getProvider().interruptTurn(previousRun.threadId, previousRun.turnId).catch(() => undefined)
+      activeRunRef.current = null
+    }
     const abortController = new AbortController()
     workflowAbortRef.current = abortController
     const runId = ++workflowRunRef.current
@@ -362,10 +370,12 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
 
     try {
       const provider = getProvider()
-      const settings = await rendererRuntimeClient.getSettings()
-      const workspace = normalizeWorkspaceRoot(settings.workspaceRoot) || '~'
+      // Document-writing runs in a dedicated internal workspace so its scratch
+      // threads never surface in the home conversation (same pattern as legal
+      // research's research-workspace). The generated document is delivered
+      // inline through the writing panel, not through the main chat.
       const thread = await provider.createThread({
-        workspace,
+        workspace: '~/.legalwork/document-workspace',
         title: `文书写作：${activeTemplate.name}`,
         mode: 'agent'
       })
@@ -376,6 +386,7 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
       let assistantText = ''
       let reasoning = ''
       let completed = false
+      let terminalSettling = false
 
       const updateWorkflow = (updater: (current: DocumentWritingWorkflow) => DocumentWritingWorkflow): void => {
         if (workflowRunRef.current !== runId) return
@@ -397,19 +408,53 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
         }))
         setError(message)
       }
-      const finishWithAvailableContent = (): boolean => {
+      const finishWithAvailableContent = (
+        candidates: readonly string[],
+        forcePartial = false
+      ): boolean => {
         if (completed || workflowRunRef.current !== runId) return false
-        const content = resolveDocumentWritingContent(assistantText, reasoning)
-        if (!content) return false
+        const assessment = [...candidates]
+          .reverse()
+          .map((candidate) => assessDocumentWritingContent(candidate))
+          .find((candidate) => candidate !== null)
+        if (!assessment) return false
         completed = true
-        setGeneratedContent(content)
-        void saveCurrentToHistory(content)
+        setGeneratedContent(assessment.content)
+        void saveCurrentToHistory(assessment.content)
         updateWorkflow((current) => ({
           ...current,
-          status: 'done',
+          status: forcePartial || assessment.completeness === 'partial' ? 'partial' : 'done',
+          error: forcePartial || assessment.completeness === 'partial'
+            ? '已保留当前可用文书草稿，可继续编辑或重新生成。'
+            : undefined,
           stages: completeDocumentWritingStages(current.stages)
         }))
         return true
+      }
+      const settleFromPersistence = async (
+        outcome: 'completed' | 'aborted' | 'failed',
+        failureMessage?: string
+      ): Promise<void> => {
+        if (completed || terminalSettling || workflowRunRef.current !== runId) return
+        terminalSettling = true
+        const candidates = [assistantText]
+        try {
+          const detail = await provider.getThreadDetail(thread.id)
+          for (const block of detail.blocks ?? []) {
+            if (block.kind === 'assistant' && typeof block.text === 'string' && block.text.trim()) {
+              candidates.push(block.text)
+            }
+          }
+        } catch {
+          // The stream accumulator remains a valid fallback when persistence is unavailable.
+        }
+        const delivered = finishWithAvailableContent(candidates, outcome !== 'completed')
+        if (!delivered) {
+          fail(outcome === 'aborted'
+            ? '文书生成已中止，未产生可用文书正文。'
+            : failureMessage || '文书 Agent 已结束，但未返回可用文书正文。')
+        }
+        abortController.abort()
       }
 
       const sink: ThreadEventSink = {
@@ -451,20 +496,18 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
         onUserInput: () => {},
         onUserInputStatus: () => {},
         onGoal: () => {},
-        onTurnComplete: () => {
+        onTurnComplete: (status) => {
           if (workflowRunRef.current !== runId) return
-          if (!finishWithAvailableContent()) {
-            fail('文书 Agent 已结束，但未返回文书正文。')
-          }
+          void settleFromPersistence(status)
         },
         onError: (event) => {
-          if (!finishWithAvailableContent()) fail(`文书生成连接中断：${event.message}`)
+          void settleFromPersistence('failed', `文书生成失败：${event.message}`)
         }
       }
 
       await provider.subscribeThreadEvents(thread.id, 0, sink, abortController.signal)
       if (!abortController.signal.aborted && !completed) {
-        if (!finishWithAvailableContent()) fail('文书生成连接已结束，但未收到完成事件。')
+        await settleFromPersistence('failed', '文书生成连接已结束，但未收到完成事件。')
       }
       void sent
     } catch (err) {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { chatBlockFromItem, dispatchLegalworkRuntimeEvent, errorSeverity, mergeChatBlocks } from './legalwork-mapper'
 import type { CoreRuntimeEventJson, CoreTurnItemJson } from './legalwork-contract'
 import type { ThreadEventSink } from './types'
@@ -21,6 +21,15 @@ function makeSink(): ThreadEventSink {
 }
 
 describe('assistant stream mapping', () => {
+  it('keeps completed and aborted terminal events distinct', async () => {
+    const terminal = vi.fn()
+    const sink = { ...makeSink(), onTurnComplete: terminal }
+    await dispatchLegalworkRuntimeEvent({ kind: 'turn_completed', seq: 1 }, sink, async () => undefined)
+    await dispatchLegalworkRuntimeEvent({ kind: 'turn_aborted', seq: 2 }, sink, async () => undefined)
+    expect(terminal).toHaveBeenNthCalledWith(1, 'completed')
+    expect(terminal).toHaveBeenNthCalledWith(2, 'aborted')
+  })
+
   it('does not append completed assistant snapshots after streaming deltas', async () => {
     const deltas: unknown[] = []
     const sink: ThreadEventSink = {
@@ -620,6 +629,38 @@ describe('streaming runtime status events', () => {
 	      createdAt: '2026-06-03T10:00:01.000Z',
 	      message: 'Tool catalog changed'
 	    })
+	  })
+
+	  it('does not fail a running turn for an informational tool_catalog_changed item', async () => {
+	    let captured: string | null = null
+	    const sink: ThreadEventSink = {
+	      ...makeSink(),
+	      onError: (error) => {
+	        captured = error.message
+	      }
+	    }
+
+	    await dispatchLegalworkRuntimeEvent(
+	      {
+	        kind: 'item_created',
+	        seq: 23,
+	        timestamp: '2026-06-03T10:00:02.000Z',
+	        threadId: 'thr_1',
+	        turnId: 'turn_1',
+	        item: {
+	          id: 'item_catalog_1',
+	          turnId: 'turn_1',
+	          threadId: 'thr_1',
+	          kind: 'error',
+	          code: 'tool_catalog_changed',
+	          message: 'Tool catalog changed for this thread.'
+	        } as CoreTurnItemJson
+	      },
+	      sink,
+	      async () => undefined
+	    )
+
+	    expect(captured).toBeNull()
 	  })
 
 	  it('surfaces storm suppression as a runtime status event', async () => {

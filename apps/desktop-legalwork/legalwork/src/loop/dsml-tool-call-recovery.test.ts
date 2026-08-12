@@ -167,6 +167,12 @@ describe('DSML full-width and mixed-format stripping', () => {
     expect(looksLikeDsmlToolCalls(text)).toBe(false)
     expect(stripDsmlToolCalls(text)).toBe('DSML 是一种序列化格式。')
   })
+
+  it('strips an EOF-truncated DSML frame instead of leaking it', () => {
+    const text = '可见正文\n<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="bash">'
+    expect(looksLikeDsmlToolCalls(text)).toBe(true)
+    expect(stripDsmlToolCalls(text)).toBe('可见正文')
+  })
 })
 
 describe('JSON tool-call recovery', () => {

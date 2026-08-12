@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactElement } from 'react'
-import { Check, ChevronDown, ChevronUp, Circle, SearchCheck, Send, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Circle, CircleAlert, SearchCheck, Send, X } from 'lucide-react'
 import { ThinkingOrbStatus } from '../chat/ThinkingOrbStatus'
 import { orbStateForToolName } from '../chat/orb-state'
 import { extractToolName } from '../chat/tool-summary'
@@ -74,8 +74,8 @@ export function DocumentWritingWorkflowPanel(): ReactElement | null {
         className="ds-no-drag fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full border border-ds-border bg-ds-card/95 px-3 py-2 text-[12px] font-semibold text-ds-ink shadow-[0_14px_34px_rgba(15,23,42,0.16)] backdrop-blur-xl"
         title="展开文书工作流"
       >
-        {workflow.status === 'running' ? <ThinkingOrbStatus state={runningWorkflowOrbState(workflow.reasoning, workflow.lastTool)} size={20} /> : <SearchCheck className="h-3.5 w-3.5 text-emerald-500" />}
-        {workflow.status === 'running' ? '文书研究进行中' : '文书研究已完成'}
+        {workflow.status === 'running' ? <ThinkingOrbStatus state={runningWorkflowOrbState(workflow.reasoning, workflow.lastTool)} size={20} /> : workflow.status === 'partial' ? <CircleAlert className="h-3.5 w-3.5 text-amber-500" /> : <SearchCheck className="h-3.5 w-3.5 text-emerald-500" />}
+        {workflow.status === 'running' ? '文书研究进行中' : workflow.status === 'partial' ? '已保留文书草稿' : '文书研究已完成'}
         <ChevronUp className="h-3.5 w-3.5 text-ds-faint" />
       </button>
     )
@@ -95,6 +95,8 @@ export function DocumentWritingWorkflowPanel(): ReactElement | null {
               ? activeStage?.detail || '正在准备文书'
               : workflow.status === 'error'
                 ? workflow.error || '本次生成未完成'
+                : workflow.status === 'partial'
+                  ? workflow.error || '已保留当前可用文书草稿'
                 : '材料、调研与文书已完成'}
           </div>
         </div>

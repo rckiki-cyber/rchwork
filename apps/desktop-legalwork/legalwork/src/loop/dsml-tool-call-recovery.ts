@@ -126,6 +126,8 @@ const DSML_TOOL_CALLS_BLOCK =
     `<\\/${DSML_DELIM}DSML${DSML_DELIM}\\s*tool_calls\\s*(?:>|$)`,
     'gi'
   )
+const DSML_TOOL_CALLS_UNCLOSED =
+  new RegExp(`<${DSML_DELIM}DSML${DSML_DELIM}\\s*tool_calls\\s*>[\\s\\S]*$`, 'gi')
 
 function normalizeDsmlVerticalBars(text: string): string {
   // U+FF5C（｜ 全角竖线）→ U+007C（| 半角竖线）
@@ -173,7 +175,9 @@ export function looksLikeDsmlToolCalls(text: string): boolean {
   const normalized = normalizeDsmlVerticalBars(text)
   if (!normalized.includes('DSML') && !normalized.includes('<invoke')) return false
   DSML_TOOL_CALLS_BLOCK.lastIndex = 0
-  return DSML_TOOL_CALLS_BLOCK.test(normalized)
+  if (DSML_TOOL_CALLS_BLOCK.test(normalized)) return true
+  DSML_TOOL_CALLS_UNCLOSED.lastIndex = 0
+  return DSML_TOOL_CALLS_UNCLOSED.test(normalized)
 }
 
 /**
@@ -185,7 +189,9 @@ export function looksLikeDsmlToolCalls(text: string): boolean {
 export function stripDsmlToolCalls(text: string): string {
   const normalized = normalizeDsmlVerticalBars(text)
   if (!normalized.includes('DSML') && !normalized.includes('<invoke')) return text
-  return normalized.replace(DSML_TOOL_CALLS_BLOCK, '').trim()
+  const withoutCompleteFrames = normalized.replace(DSML_TOOL_CALLS_BLOCK, '')
+  DSML_TOOL_CALLS_UNCLOSED.lastIndex = 0
+  return withoutCompleteFrames.replace(DSML_TOOL_CALLS_UNCLOSED, '').trim()
 }
 
 function parseJsonValue(value: string): unknown {

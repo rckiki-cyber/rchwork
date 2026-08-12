@@ -529,6 +529,7 @@ export type CoreRuntimeEventJson = {
   todos?: CoreThreadTodoListJson | null
   cleared?: boolean
   message?: string
+  text?: string
   code?: string
   severity?: 'info' | 'warning' | 'error'
   child?: CoreChildRuntimeMetadataJson

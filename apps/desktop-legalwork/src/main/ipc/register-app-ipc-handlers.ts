@@ -146,7 +146,10 @@ import {
   setHistoryBaseDir
 } from '../services/document-history-service'
 import { copyWriteDocumentAsRichText, exportWriteDocument } from '../services/write-export-service'
-import { legalDocumentMarkdownToDocx } from '../services/legal-document-export-service'
+import {
+  legalDocumentMarkdownToDocx,
+  normalizeLegalDocxBuffer
+} from '../services/legal-document-export-service'
 import { fillDocxTemplateWithMarkdown } from '../services/template-docx-export-service'
 import { exportMarkdownDocument } from '../services/markdown-export-service'
 import { importGuiSkillFromPath, listGuiSkills, readGuiSkillFile } from '../services/skill-service'
@@ -1889,7 +1892,9 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
           keywords: ['legal research', '法律调研'],
           description: `法律调研报告：${defaultName}`,
           font: 'SimSun',
-          fontSize: 24
+          fontSize: 24,
+          pageSize: { width: 11906, height: 16838 },
+          margins: { top: 1440, right: 1800, bottom: 1440, left: 1800, header: 851, footer: 992, gutter: 0 }
         })
         if (Buffer.isBuffer(docx)) {
           buffer = docx
@@ -1898,6 +1903,7 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         } else {
           buffer = Buffer.from(await (docx as Blob).arrayBuffer())
         }
+        buffer = await normalizeLegalDocxBuffer(buffer)
       }
       await writeFile(targetPath, buffer)
       return { ok: true, path: targetPath, formatPreserved, warning }

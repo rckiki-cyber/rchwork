@@ -81,6 +81,16 @@ export function repairDispatchToolArguments(
     }
   }
 
+  if (options.toolName === 'resolve_legal_document_template') {
+    const caseCause = typeof current.caseCause === 'string' ? current.caseCause.trim() : ''
+    const query = typeof current.query === 'string' ? current.query.trim() : ''
+    if (!query && caseCause) {
+      current = { ...current, query: caseCause }
+      delete current.caseCause
+      notes.push('mapped legacy caseCause to query')
+    }
+  }
+
   return { arguments: current, notes }
 }
 

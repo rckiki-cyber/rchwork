@@ -78,6 +78,11 @@ export function hasUsablePrimaryLegalDatabaseEvidence(
 ): boolean {
   return items.some((item) => {
     if (item.turnId !== turnId || item.kind !== 'tool_result' || item.isError === true) return false
+    // mcp_search only discovers tool catalog entries. Its result text mentions
+    // 元典/北大法宝 tool names, but carries no law or case body — counting it
+    // as evidence strips the tool catalog on the next step and stalls the
+    // research right after planning.
+    if (item.toolName === 'mcp_search') return false
     const payload = `${item.toolName}\n${serialized(item.output)}`
     if (!PRIMARY_LEGAL_DATABASE.test(payload) || LEGAL_LINK_ENRICHMENT.test(payload)) return false
     if (nestedToolFailed(item.output)) return false
@@ -92,6 +97,7 @@ export function hasUsablePrimaryLegalCaseEvidence(
 ): boolean {
   return items.some((item) => {
     if (item.turnId !== turnId || item.kind !== 'tool_result' || item.isError === true) return false
+    if (item.toolName === 'mcp_search') return false
     const payload = `${item.toolName}\n${serialized(item.output)}`
     if (!/(?:yuandian-case|pkulaw[^\s"/]*(?:case|al)|北大法宝.{0,12}案例|元典.{0,12}案例)/i.test(payload)) {
       return false

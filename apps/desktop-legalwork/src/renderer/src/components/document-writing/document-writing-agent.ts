@@ -2,6 +2,7 @@ import {
   DOCUMENT_SUBJECT_FIELD_ID,
   type TemplateGenerateWithMaterialsRequest
 } from '../../../../shared/user-templates'
+import { stripModelProtocolContent } from '../../lib/model-protocol-content'
 
 export type DocumentWritingStageId =
   | 'materials'
@@ -94,12 +95,36 @@ export function documentWritingStageForTool(summary: string, toolName?: string):
   return 'analysis'
 }
 
+export type DocumentWritingContentAssessment = {
+  content: string
+  completeness: 'complete' | 'partial'
+}
+
+const DOCUMENT_TITLE = /^(?:#{1,6}\s*)?(?:民事|刑事|行政)?(?:起诉状|答辩状|上诉状|申诉状|反诉状|申请书)|^(?:#{1,6}\s*)?(?:法律意见书|律师函|授权委托书|代理词|合同|协议书|答辩意见)/m
+const DOCUMENT_MARKER = /(?:^|\n)\s*(?:[一二三四五六七八九十]+[、.)．]|诉讼请求|请求事项|事实与理由|答辩意见|法律依据|法律分析|风险提示|委托事项|此致|具状人|委托人|代理人|致：)/g
+const PROCESS_ONLY_TEXT = /^(?:好的|收到|我将|我会|接下来|正在|已调用|首先|下面开始|需要调用|让我)(?:.|\n){0,160}(?:分析|检索|调研|工具|模板|撰写|处理)/
+
+/** 文书撰写专用判定；不与法律调研的报告判定共用。 */
+export function assessDocumentWritingContent(assistantText: string): DocumentWritingContentAssessment | null {
+  const content = stripModelProtocolContent(assistantText)
+  if (!content || PROCESS_ONLY_TEXT.test(content)) return null
+  const markerCount = content.match(DOCUMENT_MARKER)?.length ?? 0
+  const hasTitle = DOCUMENT_TITLE.test(content)
+  if ((hasTitle && (content.length >= 100 || markerCount >= 1)) || (content.length >= 220 && markerCount >= 2)) {
+    return { content, completeness: 'complete' }
+  }
+  if (hasTitle || (content.length >= 120 && markerCount >= 1)) {
+    return { content, completeness: 'partial' }
+  }
+  return null
+}
+
 /**
- * Prefer the model's visible answer, but never throw away a substantial draft
- * just because a compatible provider emitted it on the reasoning channel.
+ * Only the visible assistant channel can become a deliverable. Reasoning is
+ * retained for workflow diagnostics but can never be promoted into a document.
  */
-export function resolveDocumentWritingContent(assistantText: string, reasoning: string): string {
-  return assistantText.trim() || reasoning.trim()
+export function resolveDocumentWritingContent(assistantText: string, _reasoning = ''): string {
+  return assessDocumentWritingContent(assistantText)?.content ?? ''
 }
 
 /**
@@ -109,6 +134,28 @@ export function resolveDocumentWritingContent(assistantText: string, reasoning: 
  */
 function escapeFencedText(value: string): string {
   return value.replace(/```/g, '\\`\\`\\`')
+}
+
+const MAX_MATERIAL_CONTEXT_CHARS = 240_000
+const MAX_PASTED_CONTEXT_CHARS = 80_000
+
+/** Preserve the beginning, middle and end and make every omission explicit. */
+export function excerptSourceText(value: string, budget: number): string {
+  if (value.length <= budget) return value
+  const headLength = Math.floor(budget * 0.45)
+  const middleLength = Math.floor(budget * 0.3)
+  const tailLength = budget - headLength - middleLength
+  const middleStart = Math.max(headLength, Math.floor((value.length - middleLength) / 2))
+  const omittedBeforeMiddle = Math.max(0, middleStart - headLength)
+  const tailStart = value.length - tailLength
+  const omittedBeforeTail = Math.max(0, tailStart - (middleStart + middleLength))
+  return [
+    value.slice(0, headLength),
+    `\n[材料压缩：此处省略 ${omittedBeforeMiddle} 个字符；已保留中段供交叉核对]\n`,
+    value.slice(middleStart, middleStart + middleLength),
+    `\n[材料压缩：此处省略 ${omittedBeforeTail} 个字符；已保留结尾与签署信息]\n`,
+    value.slice(tailStart)
+  ].join('')
 }
 
 function fieldsForPrompt(request: TemplateGenerateWithMaterialsRequest): string {
@@ -124,14 +171,18 @@ function materialsForPrompt(request: TemplateGenerateWithMaterialsRequest): stri
   if (!request.materials?.length) {
     return '（用户未上传案件材料；若下方提供了粘贴文字，请同样将其视为事实来源，仅基于已填写信息与粘贴文字并明确标注待核实内容。）'
   }
+  const perMaterialBudget = Math.max(
+    12_000,
+    Math.floor(MAX_MATERIAL_CONTEXT_CHARS / request.materials.length)
+  )
   return request.materials
-    .map((material) => `### ${material.fileName}\n\`\`\`text\n${escapeFencedText(material.content.slice(0, 20_000))}\n\`\`\``)
+    .map((material) => `### ${material.fileName}\n\`\`\`text\n${escapeFencedText(excerptSourceText(material.content, perMaterialBudget))}\n\`\`\``)
     .join('\n\n')
 }
 
 function pastedTextForPrompt(request: TemplateGenerateWithMaterialsRequest): string | null {
   const text = request.instructions?.trim()
-  return text ? escapeFencedText(text.slice(0, 20_000)) : null
+  return text ? escapeFencedText(excerptSourceText(text, MAX_PASTED_CONTEXT_CHARS)) : null
 }
 
 export function buildDocumentWritingAgentPrompt(request: TemplateGenerateWithMaterialsRequest): string {
@@ -165,7 +216,7 @@ export function buildDocumentWritingAgentPrompt(request: TemplateGenerateWithMat
 2. 理解材料：先阅读全部材料，提取当事人、事实、时间线、证据、已知诉求与真正缺失的信息；区分裁判文书记载事实、当事人主张和确实无法确认的信息。
 3. 归纳争议：列出文书必须回应的争议焦点、证明责任和需要补充的事实。
 4. 选择模板：${templatePriorityInstruction}
-5. 法律调研：由 Agent 根据文书与材料自主选择工具和检索路径，不要求机械调用任何来源。默认以可用的北大法宝（PKULaw）作为法规与案例主来源，并按需使用其他来源；工具不可用、来源不足或核验未完成时，立即基于现有材料继续起草，在正文中标注真正需要核实的依据，不得只返回调研过程或阻塞说明。
+5. 法律调研：按需进行，不机械调用任何来源。当本案需要核验现行法规、裁判案例或法律效力状态时，可通过 mcp_search 定位元典（Yuandian）/北大法宝（PKULaw）工具并用 mcp_call 实际检索；若材料与预设法律依据已足以支撑文书、且没有必须核验的争点，则无需调用 MCP，直接起草。工具不可用或检索失败时，基于现有材料继续起草，不得只返回调研过程或阻塞说明；来源不足或核验未完成时，在正文中如实标注待核实依据后输出完整文书。
 6. 研究论证：核验法律效力状态、条文、案例要旨和适用关系。保留工具返回的完整来源 URL，绝不编造法规、案例、案号、链接或事实。
 7. 撰写文书：严格遵循最高优先级模板结构。信息优先级为“用户填写字段 > 材料明确记载 > 可由材料唯一确定的事实 > 真正缺失的信息”。不得把界面空字段直接转换成待核实占位语。文书中的法律依据应尽可能带可核验链接；没有真实链接时明确标注“无可核验链接”。
 

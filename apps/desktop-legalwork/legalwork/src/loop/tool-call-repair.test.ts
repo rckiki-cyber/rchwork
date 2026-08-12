@@ -21,3 +21,18 @@ describe('repairDispatchToolArguments bash session actions', () => {
     expect(result.notes).toHaveLength(1)
   })
 })
+
+describe('repairDispatchToolArguments legal template aliases', () => {
+  it('maps the DeepSeek caseCause alias to the tool schema query field', () => {
+    expect(repairDispatchToolArguments({
+      documentType: '民事起诉状',
+      caseCause: '买卖合同纠纷'
+    }, { toolName: 'resolve_legal_document_template' })).toEqual({
+      arguments: {
+        documentType: '民事起诉状',
+        query: '买卖合同纠纷'
+      },
+      notes: ['mapped legacy caseCause to query']
+    })
+  })
+})

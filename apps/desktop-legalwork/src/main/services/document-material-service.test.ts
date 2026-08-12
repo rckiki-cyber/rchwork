@@ -19,7 +19,7 @@ vi.mock('pdf-parse', () => ({
   }
 }))
 
-import { extractDocumentMaterial } from './document-material-service'
+import { extractDocumentMaterial, hasUsablePdfTextLayer } from './document-material-service'
 
 describe('extractDocumentMaterial PDF routing', () => {
   beforeEach(() => {
@@ -51,5 +51,16 @@ describe('extractDocumentMaterial PDF routing', () => {
 
     expect(result).toEqual({ ok: false, message: 'PDF 文本解析失败：broken parser' })
     expect(pdfState.destroy).toHaveBeenCalledOnce()
+  })
+})
+
+describe('hasUsablePdfTextLayer', () => {
+  it('does not let page numbers or scanner watermarks suppress OCR', () => {
+    expect(hasUsablePdfTextLayer('1\n2\n3\n扫描全能王')).toBe(false)
+    expect(hasUsablePdfTextLayer('Page 1 of 8\nPage 2 of 8')).toBe(false)
+  })
+
+  it('accepts a substantive text layer', () => {
+    expect(hasUsablePdfTextLayer('原告张某诉被告李某买卖合同纠纷一案')).toBe(true)
   })
 })

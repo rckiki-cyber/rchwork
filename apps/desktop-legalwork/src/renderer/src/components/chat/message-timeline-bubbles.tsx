@@ -10,6 +10,7 @@ import { FileTypeIcon, fileTypeLabel } from '../../lib/file-type-icon'
 import { useChatStore } from '../../store/chat-store'
 import { getProvider } from '../../agent/registry'
 import { parseClawUserPromptForDisplay, type ClawUserPromptDisplay } from '@shared/app-settings'
+import { stripModelProtocolContent } from '../../lib/model-protocol-content'
 import { DiffView } from '../DiffView'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { ModelMetaTag } from './message-timeline-cards'
@@ -854,13 +855,14 @@ export function MessageBubble({ block, nested = false }: { block: ChatBlock; nes
   }
   if (block.kind === 'assistant') {
     const streaming = block.id === 'live-assistant'
+    const displayText = stripModelProtocolContent(block.text)
     const createdAtLabel = block.createdAt
       ? formatMessageDateTime(block.createdAt, i18n.language)
       : null
     return (
       <div className="group/message flex min-w-0 max-w-full flex-col">
         <div className="ds-markdown ds-chat-answer min-w-0 max-w-full text-ds-ink">
-          <AssistantMarkdown text={block.text} streaming={streaming} />
+          <AssistantMarkdown text={displayText} streaming={streaming} />
         </div>
         {!streaming ? (
           <div className="mt-1 flex min-h-5 min-w-0 items-center justify-between gap-3 text-[11.5px] text-ds-faint opacity-0 transition duration-150 group-hover/message:opacity-100">

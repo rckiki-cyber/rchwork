@@ -7,12 +7,14 @@ import {
   clearWatchedCompletionNotifications,
   clearPendingClawFeishuMirrors,
   completionNotificationDedupeKeyForWatchedThread,
+  isCodeThread,
   MAX_PENDING_CLAW_FEISHU_MIRRORS,
   MAX_WATCHED_COMPLETION_NOTIFICATIONS,
   rememberPendingClawFeishuMirror,
   takePendingClawFeishuMirror,
   watchTurnCompletionNotification
 } from './chat-store-runtime'
+import type { NormalizedThread } from '../agent/types'
 import type { ChatState, ChatStoreSet } from './chat-store-types'
 
 function makeSinkHarness(overrides: Partial<ChatState> = {}): {
@@ -82,7 +84,7 @@ describe('thread event sink binding', () => {
 
     controller.abort()
     sink.onDeltas([{ kind: 'agent_reasoning', text: 'late old reasoning', seq: 8 }])
-    sink.onTurnComplete()
+    sink.onTurnComplete('completed')
 
     expect(getState().liveReasoning).toBe('current reasoning')
     expect(getState().blocks).toEqual([])
@@ -493,5 +495,32 @@ describe('thread event sink delta dedupe (duplicate-text fix)', () => {
     expect(getState().appliedSeq).toBe(5)
     // lastSeq 保持订阅水位，不被 delta 推进（由 onSeq 管理）
     expect(getState().lastSeq).toBe(10)
+  })
+
+  it('never surfaces document-writing scratch threads in the home conversation', () => {
+    const baseThread = (overrides: Partial<NormalizedThread>): NormalizedThread => ({
+      id: 'thr_doc',
+      title: '普通对话',
+      updatedAt: '',
+      model: '',
+      mode: 'agent',
+      workspace: '/Users/test/Downloads',
+      status: 'idle',
+      archived: false,
+      relation: 'primary',
+      parentThreadId: '',
+      forkedFromThreadId: '',
+      forkedFromTitle: '',
+      forkedAt: '',
+      forkedFromMessageCount: 0,
+      ...overrides
+    })
+    expect(isCodeThread(baseThread({}))).toBe(true)
+    expect(isCodeThread(baseThread({
+      title: '文书写作：民事上诉状'
+    }))).toBe(false)
+    expect(isCodeThread(baseThread({
+      workspace: '~/.legalwork/document-workspace'
+    }))).toBe(false)
   })
 })

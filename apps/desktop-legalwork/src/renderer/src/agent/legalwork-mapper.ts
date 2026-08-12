@@ -887,6 +887,10 @@ function emitItem(
       sink.onReview?.(reviewFromItem(item))
       return
     case 'error':
+      // Informational self-correctable notices (tool catalog settling mid-turn,
+      // tool storm suppression) must not fail a running turn. The matching
+      // runtime event already surfaces them as a status update.
+      if (item.code === 'tool_catalog_changed' || item.code === 'tool_storm_suppressed') return
       sink.onError(new Error(item.message ?? 'Legalwork item failed'))
       return
   }
@@ -1089,8 +1093,10 @@ export async function dispatchLegalworkRuntimeEvent(
       if (event.usage) sink.onUsage?.(usageFromCore(event.usage))
       return
     case 'turn_completed':
+      sink.onTurnComplete('completed')
+      return
     case 'turn_aborted':
-      sink.onTurnComplete()
+      sink.onTurnComplete('aborted')
       return
     case 'turn_failed':
     case 'error':

@@ -16,6 +16,7 @@ import {
   assistantAnnouncesPendingToolWork,
   isBareResearchTopicPrompt,
   attachmentIdsForTurn,
+  isContextWindowExceededError,
   knowledgeShellBypassError,
   requestedDocumentArtifacts,
   requestsLocalKnowledgeRetrieval,
@@ -300,7 +301,7 @@ describe('AgentLoop', () => {
       .toBe(MAX_AGENT_LOOP_STEPS_ENV_CAP)
   })
 
-  it('finishes with a visible fallback instead of failing at the loop step limit', async () => {
+  it('falls back to a bounded visible notice at the loop step limit', async () => {
     const previous = process.env[MAX_AGENT_LOOP_STEPS_ENV]
     process.env[MAX_AGENT_LOOP_STEPS_ENV] = '2'
     try {
@@ -323,10 +324,11 @@ describe('AgentLoop', () => {
 
       expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
       const items = await h.sessionStore.loadItems(h.threadId)
-      expect(items.some((item) =>
-        item.kind === 'assistant_text' && item.text.includes('避免无限循环')
-      )).toBe(true)
-      expect(items.some((item) => item.kind === 'error' && item.code === 'agent_loop_step_limit')).toBe(false)
+      const visibleText = items
+        .filter((item) => item.kind === 'assistant_text')
+        .map((item) => item.text)
+        .join('\n')
+      expect(visibleText).toContain('已停止继续调用工具')
     } finally {
       if (previous === undefined) delete process.env[MAX_AGENT_LOOP_STEPS_ENV]
       else process.env[MAX_AGENT_LOOP_STEPS_ENV] = previous
@@ -400,6 +402,74 @@ describe('AgentLoop', () => {
     if (!request) throw new Error('expected model request')
     const instructions = request.contextInstructions?.join('\n') ?? ''
     expect(instructions).not.toContain('首要来源')
+  })
+
+  it('does not force knowledge retrieval on learning-iteration threads', async () => {
+    const executed: string[] = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('knowledge_auto_retrieve', async () => {
+        executed.push('knowledge_auto_retrieve')
+        return { output: { sources: [], contextText: '' } }
+      }),
+      define('knowledge_search', async () => {
+        executed.push('knowledge_search')
+        return { output: { sources: [] } }
+      })
+    ]
+    const corpus = [
+      '# 用户交互语料',
+      '用户提到了知识库检索和来源核验，并研究多源法律依据。',
+      '材料来源：thread:xxx，包含引用与文献。'
+    ].join('\n')
+    const prompt = [
+      'Use $legalwork-learning-iteration to analyze the bounded corpus below.',
+      'Do not call any tools — analyze the corpus purely in text.',
+      'Return exactly one JSON object between the marker lines.',
+      'BEGIN_LEARNING_RESULT',
+      '{}',
+      'END_LEARNING_RESULT',
+      corpus
+    ].join('\n')
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'learning-iteration',
+      model: 'learning-iteration',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        yield {
+          kind: 'assistant_text_delta',
+          text: '本轮学习检查已完成。这次完成了学习检查，但没有发现足够稳定的新规律。'
+        }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools })
+    await bootstrapThread(h, { request: { prompt } })
+    await h.threadStore.upsert(
+      createThreadRecord({
+        id: h.threadId,
+        title: '[Learning iteration] 2026-08-12-0002-test',
+        workspace: '/tmp',
+        model: 'fake'
+      })
+    )
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed).toEqual([])
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.requiredToolName).toBeUndefined()
+    expect(requests[0]?.tools ?? []).toHaveLength(0)
   })
 
   it('records elapsed seconds for active goals after a turn finishes', async () => {
@@ -1847,6 +1917,61 @@ describe('AgentLoop', () => {
     expect(visibleText).not.toContain('DSML')
   })
 
+  it('does not execute a tool call emitted only on the reasoning channel', async () => {
+    let executions = 0
+    let modelCalls = 0
+    const templateTool = LocalToolHost.defineTool({
+      name: 'resolve_legal_document_template',
+      description: 'resolve template',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async (args) => {
+        executions += 1
+        expect(args).toMatchObject({
+          documentType: '民事起诉状',
+          query: '买卖合同纠纷'
+        })
+        expect(args).not.toHaveProperty('caseCause')
+        return { output: { matched: true, args, template: '# 民事起诉状' } }
+      }
+    })
+    const h = makeHarness({
+      provider: 'reasoning-dsml-recovery',
+      model: 'reasoning-dsml-recovery',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        modelCalls += 1
+        if (modelCalls === 1) {
+          for (const text of [
+            '<',
+            '| |DSML| | tool_calls>\n',
+            '<| |DSML| | invoke name="resolve_legal_document_template">\n',
+            '<| |DSML| | parameter name="documentType" string="true">民事起诉状</| |DSML| | parameter>\n',
+            '<| |DSML| | parameter name="caseCause" string="true">买卖合同纠纷</| |DSML| | parameter>\n',
+            '</| |DSML| | invoke>\n',
+            '</| |DSML| | tool_calls>'
+          ]) yield { kind: 'assistant_reasoning_delta', text }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '# 民事起诉状\n\n原告：甲公司\n\n诉讼请求：判令被告支付货款。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [templateTool] })
+    await bootstrapThread(h, { request: { prompt: '写一份买卖合同纠纷民事起诉状' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    // Reasoning-channel DSML is not recovered into tool executions (GitHub behavior).
+    expect(executions).toBe(0)
+    expect(modelCalls).toBe(2)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    const visible = items
+      .filter((item) => item.kind === 'assistant_text')
+      .map((item) => item.text)
+      .join('\n')
+    expect(visible).toContain('# 民事起诉状')
+    expect(visible).not.toContain('DSML')
+  })
+
   it('executes a new Word mutation for a referential follow-up instead of reusing the previous artifact', async () => {
     let documentExecutions = 0
     const requiredTools: Array<string | undefined> = []
@@ -2161,6 +2286,314 @@ describe('AgentLoop', () => {
     expect(requests.at(-1)?.contextInstructions?.join('\n') ?? '').not.toContain('知识库证据门禁未通过')
   })
 
+  it('keeps the tool catalog after MCP discovery in legal research turns', async () => {
+    const executed: Array<{ name: string; args: Record<string, unknown> }> = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('mcp_search', async (args) => {
+        executed.push({ name: 'mcp_search', args })
+        return {
+          output: {
+            results: [{
+              toolId: 'yuandian-law/yuandian_law_vector_search',
+              serverId: 'yuandian-law',
+              title: '法律法规语义检索接口',
+              description: '元典：按自然语言查询法条级语义检索，返回 fatiao 法条内容。'
+            }, {
+              toolId: 'pkulaw-case-number-recognition/anhao_recognition',
+              serverId: 'pkulaw-case-number-recognition',
+              title: '案号识别与标准化',
+              description: '北大法宝：识别并标准化案号，返回案例标题与链接。'
+            }]
+          }
+        }
+      }),
+      define('mcp_call', async (args) => {
+        executed.push({ name: 'mcp_call', args })
+        const toolName = String(args.toolName ?? '')
+        if (toolName.includes('case') || toolName.includes('qwal')) {
+          return {
+            output: {
+              serverId: 'yuandian-case',
+              toolName,
+              result: { content: [{ type: 'text', text: '（2022）京02刑终376号裁判要旨及基本案情。'.repeat(10) }] }
+            }
+          }
+        }
+        return {
+          output: {
+            serverId: 'yuandian-law',
+            toolName,
+            result: { content: [{ type: 'text', text: '《中华人民共和国民法典》第一千一百六十五条现行条文及人工智能侵权责任相关规范。'.repeat(10) }] }
+          }
+        }
+      }),
+      define('knowledge_auto_retrieve', async (args) => {
+        executed.push({ name: 'knowledge_auto_retrieve', args })
+        return {
+          output: {
+            contextText: '本地知识库论文摘要：生成式人工智能侵权责任规则研究。',
+            sources: [{ path: '论文/人工智能侵权责任研究.pdf' }]
+          }
+        }
+      })
+    ]
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'legal-research-discovery',
+      model: 'legal-research-discovery',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        const searchCount = executed.filter((item) => item.name === 'mcp_search').length
+        const legalCallCount = executed.filter((item) => item.name === 'mcp_call').length
+        if (searchCount === 0) {
+          yield { kind: 'tool_call_complete', callId: 'call_discover_1', toolName: 'mcp_search', arguments: { query: '元典 法律法规 案例 检索' } }
+          yield { kind: 'tool_call_complete', callId: 'call_discover_2', toolName: 'mcp_search', arguments: { query: '北大法宝 法规 案例' } }
+          yield { kind: 'tool_call_complete', callId: 'call_kb_1', toolName: 'knowledge_auto_retrieve', arguments: { query: '人工智能侵权责任' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (legalCallCount === 0) {
+          yield { kind: 'tool_call_complete', callId: 'call_law_1', toolName: 'mcp_call', arguments: { serverId: 'yuandian-law', toolName: 'yuandian_law_vector_search', query: '人工智能侵权责任' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (legalCallCount === 1) {
+          yield { kind: 'tool_call_complete', callId: 'call_case_1', toolName: 'mcp_call', arguments: { serverId: 'yuandian-case', toolName: 'yuandian_rh_qwal_search', query: '人工智能侵权责任典型案例' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: [
+          '# 人工智能侵权责任多源调研报告',
+          '## 一、结论',
+          '结论正文。'.repeat(30),
+          '## 二、法律依据',
+          '依据正文。'.repeat(20),
+          '## 三、相关案例',
+          '案例正文。'.repeat(20),
+          '## 四、分析与风险提示',
+          '分析正文。'.repeat(20),
+          '## 五、来源',
+          '来源正文。'.repeat(10)
+        ].join('\n\n') }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools, primaryLegalSource: 'yuandian' })
+    await bootstrapThread(h, {
+      request: { prompt: '请对以下法律问题进行多源调研：「人工智能的侵权责任」。最终报告必须作为最后一条独立回复。' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed.filter((item) => item.name === 'mcp_call').length).toBe(2)
+    // The second model step must still see the research tools. Treating the
+    // mcp_search discovery listing as primary evidence used to strip the whole
+    // catalog, so the turn ended with a plan and nothing else.
+    expect(requests.length).toBeGreaterThanOrEqual(3)
+    for (const request of requests.slice(0, 3)) {
+      expect(request.tools.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('continues a legal research turn after a stage broadcast instead of ending it', async () => {
+    const executed: Array<{ name: string; args: Record<string, unknown> }> = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('mcp_search', async (args) => {
+        executed.push({ name: 'mcp_search', args })
+        return {
+          output: {
+            results: [{
+              toolId: 'yuandian-law/yuandian_law_vector_search',
+              serverId: 'yuandian-law',
+              title: '法律法规语义检索接口',
+              description: '元典：法条级语义检索。'
+            }]
+          }
+        }
+      }),
+      define('mcp_call', async (args) => {
+        executed.push({ name: 'mcp_call', args })
+        const toolName = String(args.toolName ?? '')
+        if (toolName.includes('qwal') || toolName.includes('case')) {
+          return {
+            output: {
+              serverId: 'yuandian-case',
+              toolName,
+              result: { content: [{ type: 'text', text: '（2022）京02刑终376号裁判要旨。'.repeat(10) }] }
+            }
+          }
+        }
+        return {
+          output: {
+            serverId: 'yuandian-law',
+            toolName,
+            result: { content: [{ type: 'text', text: '《中华人民共和国民法典》第一千一百六十五条及人工智能侵权责任相关规范条文。'.repeat(10) }] }
+          }
+        }
+      }),
+      define('knowledge_auto_retrieve', async () => {
+        return { output: { contextText: '本地知识库检索结果。', sources: [{ path: '论文/人工智能侵权责任.pdf' }] } }
+      })
+    ]
+    const requests: ModelRequest[] = []
+    let broadcastSent = false
+    const h = makeHarness({
+      provider: 'legal-research-broadcast',
+      model: 'legal-research-broadcast',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        const searchCount = executed.filter((item) => item.name === 'mcp_search').length
+        const legalCallCount = executed.filter((item) => item.name === 'mcp_call').length
+        if (searchCount === 0) {
+          yield { kind: 'tool_call_complete', callId: 'call_discover_1', toolName: 'mcp_search', arguments: { query: '元典 法规 案例' } }
+          yield { kind: 'tool_call_complete', callId: 'call_kb_1', toolName: 'knowledge_auto_retrieve', arguments: { query: '人工智能侵权责任' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (legalCallCount === 0) {
+          yield { kind: 'tool_call_complete', callId: 'call_law_1', toolName: 'mcp_call', arguments: { serverId: 'yuandian-law', toolName: 'yuandian_law_vector_search', query: '人工智能侵权责任' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (legalCallCount === 1) {
+          yield { kind: 'tool_call_complete', callId: 'call_case_1', toolName: 'mcp_call', arguments: { serverId: 'yuandian-case', toolName: 'yuandian_rh_qwal_search', query: '人工智能侵权责任典型案例' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (legalCallCount === 2 && !broadcastSent) {
+          broadcastSent = true
+          yield { kind: 'assistant_text_delta', text: '已有充足材料。继续补充获取民法典关键条文与北大法宝补充。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        if (legalCallCount === 2 && broadcastSent) {
+          yield { kind: 'tool_call_complete', callId: 'call_supplement_1', toolName: 'mcp_call', arguments: { serverId: 'yuandian-law', toolName: 'yuandian_law_vector_search', query: '民法典第一千一百六十五条' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: [
+          '# 人工智能侵权责任多源调研报告',
+          '## 一、结论',
+          '结论正文。'.repeat(30),
+          '## 二、法律依据',
+          '依据正文。'.repeat(20),
+          '## 三、相关案例',
+          '案例正文。'.repeat(20),
+          '## 四、分析与风险提示',
+          '分析正文。'.repeat(20),
+          '## 五、来源',
+          '来源正文。'.repeat(10)
+        ].join('\n\n') }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools, primaryLegalSource: 'yuandian' })
+    await bootstrapThread(h, {
+      request: { prompt: '请对以下法律问题进行多源调研：「人工智能侵权责任」。最终报告必须作为最后一条独立回复。' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed.filter((item) => item.name === 'mcp_call').length).toBe(3)
+    expect(broadcastSent).toBe(true)
+    expect(requests.length).toBeGreaterThanOrEqual(4)
+    // The request following the stage broadcast must still carry the tools.
+    for (const request of requests) {
+      expect(request.tools.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps the legal template resolver in document-writing tool catalogs', async () => {
+    const executed: string[] = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('mcp_call', async () => {
+        executed.push('mcp_call')
+        return { output: { ok: true } }
+      }),
+      define('resolve_legal_document_template', async () => {
+        executed.push('resolve_legal_document_template')
+        return { output: { matched: false } }
+      }),
+      define('todo_list', async () => {
+        executed.push('todo_list')
+        return { output: { items: [] } }
+      }),
+      define('todo_write', async () => {
+        executed.push('todo_write')
+        return { output: { ok: true } }
+      })
+    ]
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'doc-writing-tools',
+      model: 'doc-writing-tools',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        yield { kind: 'assistant_text_delta', text: '# 民事上诉状\n\n正文' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, {
+      tools,
+      skillRuntime: {
+        resolveTurn: () => ({
+          activeSkillIds: ['restrictive-skill'],
+          activations: [],
+          instructions: [],
+          injectedBytes: 0,
+          allowedToolNames: ['mcp_call']
+        })
+      } as never
+    })
+    await bootstrapThread(h, {
+      request: {
+        prompt: [
+          '<inline_document_response>',
+          '你正在执行 LegalWork 文书写作任务。',
+          '起草民事起诉状或民事答辩状时，可优先调用 resolve_legal_document_template。',
+          '</inline_document_response>'
+        ].join('\n')
+      }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    const toolNames = (requests[0]?.tools ?? []).map((tool) => tool.name)
+    expect(toolNames).toContain('resolve_legal_document_template')
+    expect(toolNames).toContain('mcp_call')
+    expect(toolNames).toContain('todo_list')
+  })
+
   it('keeps running past the legacy eight-step ceiling until the model stops', async () => {
     let calls = 0
     const h = makeHarness(
@@ -2308,7 +2741,9 @@ describe('AgentLoop', () => {
 	      kind: 'tool_catalog_changed',
 	      changeKind: 'additive'
 	    })
-	    expect(items.some((item) => item.kind === 'error' && item.code === 'tool_catalog_changed')).toBe(true)
+	    // Catalog growth is informational, not a turn failure: it must not be
+	    // persisted as an error item (clients treat error items as failures).
+	    expect(items.some((item) => item.kind === 'error' && item.code === 'tool_catalog_changed')).toBe(false)
 	    expect(seenInstructions[1]?.some((text) => text.includes('Tool catalog changed'))).toBe(true)
 	  })
 
@@ -2366,11 +2801,7 @@ describe('AgentLoop', () => {
 	      kind: 'tool_catalog_changed',
 	      changeKind: 'breaking'
 	    })
-	    expect(items.find((item) => item.kind === 'error' && item.code === 'tool_catalog_changed'))
-	      .toMatchObject({
-	        kind: 'error',
-	        message: expect.stringContaining('will continue with the refreshed tool list')
-	      })
+	    expect(items.some((item) => item.kind === 'error' && item.code === 'tool_catalog_changed')).toBe(false)
 	    expect(items.some((item) =>
 	      item.kind === 'assistant_text' && item.text.includes('继续完成回答')
 	    )).toBe(true)
@@ -3648,6 +4079,28 @@ describe('AgentLoop', () => {
     expect(compactor.shouldCompact(tinyHistory, { promptTokens: 120 })).toBe(true)
   })
 
+  it('estimates Chinese history conservatively enough to trigger compaction', () => {
+    const compactor = new ContextCompactor({ softThreshold: 100, hardThreshold: 200 })
+    const chineseHistory = [
+      makeUserItem({
+        id: 'chinese_history',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: '这是需要完整保留的关键案件事实和用户要求。'.repeat(6)
+      })
+    ]
+
+    expect(compactor.estimate(chineseHistory)).toBeGreaterThanOrEqual(100)
+    expect(compactor.shouldCompact(chineseHistory)).toBe(true)
+  })
+
+  it('recognizes provider context-window errors without treating ordinary 400s as overflow', () => {
+    expect(isContextWindowExceededError(
+      "This model's maximum context length is 1048576 tokens. However, you requested 1057631 tokens."
+    )).toBe(true)
+    expect(isContextWindowExceededError('invalid API key (status 400)')).toBe(false)
+  })
+
   it('plans normal, aggressive, and force compaction levels', () => {
     const compactor = new ContextCompactor({ softThreshold: 100, hardThreshold: 200 })
     const tinyHistory = [
@@ -3669,7 +4122,7 @@ describe('AgentLoop', () => {
     })
     expect(compactor.planCompaction(tinyHistory, { promptTokens: 220 })).toMatchObject({
       mode: 'force',
-      keepRecent: 1
+      keepRecent: 0
     })
   })
 
@@ -3743,6 +4196,125 @@ describe('AgentLoop', () => {
 
     expect(summary).toContain('按我的新框架重构全文')
     expect(summary).toContain('Durable user requests')
+  })
+
+  it('keeps every uploaded file id in the durable compaction summary', () => {
+    const compactor = new ContextCompactor({ softThreshold: 1, hardThreshold: 2 })
+    const prefix = createImmutablePrefix({ systemPrompt: 'system' })
+    const history: TurnItem[] = [
+      makeUserItem({
+        id: 'attachment_request',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: '请以附件合同为准完成审查，并保留全部关键事实。',
+        attachmentIds: ['att_1234567890abcdef12345678', 'att_abcdef1234567890abcdef12']
+      }),
+      makeAssistantTextItem({
+        id: 'transient_reply',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: '正在处理。',
+        status: 'completed'
+      }),
+      makeUserItem({ id: 'recent', turnId: 'turn_1', threadId: 'thr_1', text: '继续' })
+    ]
+
+    const result = compactor.compact({
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      prefix,
+      keepRecent: 1,
+      history
+    })
+    const summary = result.summaryItem.kind === 'compaction' ? result.summaryItem.summary : ''
+
+    expect(summary).toContain('请以附件合同为准完成审查')
+    expect(summary).toContain('att_1234567890abcdef12345678')
+    expect(summary).toContain('att_abcdef1234567890abcdef12')
+    expect(summary).toContain('Uploaded file registry')
+  })
+
+  it('carries durable user facts through repeated compactions', () => {
+    const compactor = new ContextCompactor({ softThreshold: 1, hardThreshold: 2 })
+    const prefix = createImmutablePrefix({ systemPrompt: 'system' })
+    const first = compactor.compact({
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      prefix,
+      keepRecent: 0,
+      history: [
+        makeUserItem({
+          id: 'original_fact',
+          turnId: 'turn_1',
+          threadId: 'thr_1',
+          text: '关键事实：付款日期是2026年8月8日，争议金额是88万元。',
+          attachmentIds: ['att_1234567890abcdef12345678']
+        })
+      ]
+    })
+    const second = compactor.compact({
+      threadId: 'thr_1',
+      turnId: 'turn_2',
+      prefix,
+      keepRecent: 0,
+      history: [
+        first.summaryItem,
+        makeUserItem({ id: 'follow_up', turnId: 'turn_2', threadId: 'thr_1', text: '继续分析违约责任。' })
+      ]
+    })
+    const summary = second.summaryItem.kind === 'compaction' ? second.summaryItem.summary : ''
+
+    expect(summary).toContain('付款日期是2026年8月8日')
+    expect(summary).toContain('争议金额是88万元')
+    expect(summary).toContain('att_1234567890abcdef12345678')
+  })
+
+  it('automatically compacts and retries after a provider context overflow', async () => {
+    let calls = 0
+    const requests: ModelRequest[] = []
+    const h = makeHarness(
+      {
+        provider: 'overflow-test',
+        model: 'fake',
+        async *stream(request): AsyncIterable<ModelStreamChunk> {
+          calls += 1
+          requests.push(request)
+          if (calls === 1) {
+            yield {
+              kind: 'error',
+              message: "This model's maximum context length is 200 tokens. However, you requested 260 tokens.",
+              code: 'invalid_request_error'
+            }
+            yield { kind: 'completed', stopReason: 'error' }
+            return
+          }
+          yield { kind: 'assistant_text_delta', text: '压缩后已恢复。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      },
+      { compactor: new ContextCompactor({ softThreshold: 100, hardThreshold: 200 }) }
+    )
+    await bootstrapThread(h)
+    for (let index = 0; index < 8; index += 1) {
+      await h.sessionStore.appendItem(
+        h.threadId,
+        makeUserItem({
+          id: `overflow_history_${index}`,
+          turnId: h.turnId,
+          threadId: h.threadId,
+          text: `关键事实${index}：` + '案情材料'.repeat(8)
+        })
+      )
+    }
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const persisted = await h.sessionStore.loadItems(h.threadId)
+
+    expect(status).toBe('completed')
+    expect(calls).toBe(2)
+    expect(requests[1]?.history.some((item) => item.kind === 'compaction')).toBe(true)
+    expect(persisted.some((item) => item.kind === 'compaction')).toBe(true)
+    expect(persisted.some((item) => item.kind === 'error' && item.code === 'invalid_request_error')).toBe(false)
   })
 
   it('embeds a digest marker and skips frozen messages when compacting history', () => {

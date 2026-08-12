@@ -63,7 +63,13 @@ describe('legal research message classification', () => {
       '阶段更新：已取得一份材料。',
       '这是没有固定章节但仍可交付的法律分析。'
     ])).toBe('这是没有固定章节但仍可交付的法律分析。')
-    expect(bestAvailableLegalResearchText([], '推理通道中的可用调研草稿。'))
-      .toBe('推理通道中的可用调研草稿。')
+  })
+
+  it('never uses stage broadcasts or model reasoning as the research summary', () => {
+    expect(bestAvailableLegalResearchText([
+      '阶段播报1：工具已就绪。',
+      '已有充足材料。继续补充获取民法典关键条文与北大法宝补充。'
+    ])).toBe('')
+    expect(bestAvailableLegalResearchText([], '让我先搜索可用的 MCP 工具。')).toBe('')
   })
 })

@@ -72,6 +72,7 @@ import { ThreadService } from '../services/thread-service.js'
 import { TurnService } from '../services/turn-service.js'
 import { ReviewService } from '../services/review-service.js'
 import { UsageService } from '../services/usage-service.js'
+import { recoverInterruptedTurns } from '../services/interrupted-turn-recovery.js'
 import type { UsageEvent } from '../contracts/events.js'
 import { SkillRuntime } from '../skills/skill-runtime.js'
 import { FileMemoryStore } from '../memory/memory-store.js'
@@ -142,6 +143,7 @@ export async function createLegalworkServeRuntime(
   const nowIso = () => new Date().toISOString()
   const allocateSeq = (threadId: string) => eventBus.allocateSeq(threadId)
   const events = new RuntimeEventRecorder({ eventBus, sessionStore, allocateSeq, nowIso })
+  await recoverInterruptedTurns({ threadStore, sessionStore, events, nowIso })
   const prefix = createImmutablePrefix({
     systemPrompt: LEGALWORK_SYSTEM_PROMPT,
     pinnedConstraints: [

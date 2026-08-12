@@ -97,6 +97,29 @@ describe('legal research workflow', () => {
     expect(hasDiscoveredPrimaryLegalDatabaseTool([item], 'turn_1')).toBe(true)
   })
 
+  it('does not treat MCP tool discovery as primary legal evidence', () => {
+    const item = makeToolResultItem({
+      id: 'result_discovery',
+      threadId: 'thread_1',
+      turnId: 'turn_1',
+      callId: 'call_discovery',
+      toolName: 'mcp_search',
+      output: {
+        results: [{
+          toolId: 'yuandian-law/yuandian_law_vector_search',
+          serverId: 'yuandian-law',
+          title: '法律法规语义检索接口'
+        }, {
+          toolId: 'pkulaw-case-number-recognition/anhao_recognition',
+          serverId: 'pkulaw-case-number-recognition',
+          title: '案号识别与标准化'
+        }]
+      }
+    })
+    expect(hasUsablePrimaryLegalDatabaseEvidence([item], 'turn_1')).toBe(false)
+    expect(hasUsablePrimaryLegalCaseEvidence([item], 'turn_1')).toBe(false)
+  })
+
   it('marks web and database link enrichment as redundant after primary evidence', () => {
     expect(isRedundantLegalSourceEnrichmentCall({
       toolName: 'web_fetch',

@@ -135,6 +135,7 @@ module.exports = {
   ],
   files: [
     '!.dev-dist/**/*',
+    'dev-hot-entry.cjs',
     'out/**/*',
     'package.json',
     'node_modules/@openai/codex*/**/*',
@@ -142,6 +143,10 @@ module.exports = {
     'legalwork/package.json',
     'legalwork/package-lock.json',
     'legalwork/node_modules/**/*',
+    // 排除 legalwork 下 better-sqlite3 残壳（只有源码无 .node），避免遮蔽根
+    // node_modules/better-sqlite3（含编译好的原生模块），否则 serve-entry 加载
+    // 失败降级 JSONL 导致 main 探测超时连不上智能体。
+    '!legalwork/node_modules/better-sqlite3/**/*',
     'redaction/**/*',
     'document/**/*',
     'vendor/data-compliance-review-codex/data-compliance-web/**/*',
@@ -233,6 +238,7 @@ module.exports = {
   },
   extraMetadata: {
     ...(releaseAppVersion ? { version: releaseAppVersion } : {}),
+    main: './dev-hot-entry.cjs',
     updateChannel,
     buildHints: {
       macSigningEnabled: hasExplicitMacSigningIdentity,

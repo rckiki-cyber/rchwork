@@ -330,6 +330,10 @@ export function isCodeThread(
   clawChannels: ClawImChannelV1[] = []
 ): boolean {
   const workspace = normalizeWorkspaceRoot(thread.workspace)
+  // Document-writing threads are internal scratch sessions surfaced only in
+  // the writing panel. Never let them appear in the home conversation,
+  // including threads created before they moved to an internal workspace.
+  if (/^文书写作：/.test(thread.title ?? '')) return false
   return Boolean(workspace) &&
     thread.archived !== true &&
     !isInternalTemporaryWorkspace(thread.workspace) &&

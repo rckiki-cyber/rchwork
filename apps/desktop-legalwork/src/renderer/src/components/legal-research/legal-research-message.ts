@@ -1,6 +1,8 @@
 const PLAN_HEADING = /(?:^|\n)\s*#{1,6}\s*调研规划\s*(?:\n|$)/m
 const STAGE_START = /(?:^|\n)\s*(?:#{1,6}\s*)?\*{0,2}(?:(?:第\s*)?[一二三四五六七八九十\d]+\s*阶段(?:播报|进展|结果)?|检索阶段[^\n：:]*|阶段播报)\*{0,2}\s*[：:]?/m
 const REPORT_START = /(?:^|\n)\s*#\s+(?!(?:调研规划|阶段|检索阶段))(?=[^\n]*(?:报告|法律意见|研究))(?:[^\n]+)|(?:^|\n)\s*#{1,6}\s*(?:[一二三四五六七八九十\d]+[、.)．]?\s*)?(?:结论摘要|结论)(?=\s|[：:]|$)/m
+const PENDING_WORK_ANNOUNCEMENT =
+  /(?:继续|接下来|下一步|稍后|待会|之后|马上|即将|现在开始|准备).{0,40}(?:补充|获取|检索|搜索|查询|核验|分析|整理|生成|输出|调用|阅读)/i
 
 const REPORT_SECTIONS = [
   /(?:^|\n)\s*#{1,6}\s*(?:[一二三四五六七八九十\d]+[、.)．]?\s*)?(?:结论摘要|结论)(?=\s|[：:]|$)/m,
@@ -33,7 +35,7 @@ export function isCompleteLegalResearchReportText(text: string): boolean {
 
 export function bestAvailableLegalResearchText(
   messages: readonly string[],
-  reasoning = ''
+  _reasoning = ''
 ): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const report = splitLegalResearchMessage(messages[index] ?? '').report
@@ -41,9 +43,12 @@ export function bestAvailableLegalResearchText(
   }
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const text = messages[index]?.trim()
-    if (text) return text
+    // A stage broadcast or a "接下来继续补充…" announcement is progress, not
+    // a deliverable. Never surface it as the 调研总结.
+    if (text && !STAGE_START.test(text) && !PENDING_WORK_ANNOUNCEMENT.test(text)) return text
   }
-  return reasoning.trim()
+  // Model reasoning is internal thinking, never a user-facing report.
+  return ''
 }
 
 export function splitLegalResearchMessage(text: string): LegalResearchMessageParts {

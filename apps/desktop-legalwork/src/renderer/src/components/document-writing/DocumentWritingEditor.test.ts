@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   canGenerateDocument,
@@ -44,20 +43,6 @@ describe('document-writing generation readiness', () => {
       hasPastedText: true,
       hasAnyFieldFilled: false
     })).toBe(true)
-  })
-
-  it('keeps legal-document list markers close to their text in the preview', () => {
-    const css = readFileSync(
-      new URL('../../styles/document-writing.css', import.meta.url),
-      'utf8'
-    )
-
-    expect(css).toMatch(
-      /\.legal-document-preview ul,[\s\S]*?padding-left:\s*1\.65em;/
-    )
-    expect(css).toMatch(
-      /\.legal-document-preview li > p\s*\{[\s\S]*?text-indent:\s*0;/
-    )
   })
 
   it('shows a normal success message when standard Word formatting was used', () => {

@@ -24,7 +24,9 @@ const runtimeInfo = {
       id: 'fake',
       contextWindowTokens: 1_000_000,
       inputModalities: ['text' as const],
-      outputModalities: ['text' as const]
+      outputModalities: ['text' as const],
+      supportsToolCalling: true,
+      messageParts: ['text' as const]
     },
     cli: {
       serve: { status: 'available' as const, enabled: true, available: true },

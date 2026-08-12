@@ -8,8 +8,7 @@ describe('AstryxSegmentButton', () => {
     const html = renderToStaticMarkup(
       createElement(
         AstryxSegmentButton,
-        { selected: true, onClick: vi.fn() },
-        'Medium'
+        { selected: true, onClick: vi.fn(), children: 'Medium' }
       )
     )
 
@@ -23,8 +22,7 @@ describe('AstryxSegmentButton', () => {
     const html = renderToStaticMarkup(
       createElement(
         AstryxSegmentButton,
-        { selected: false, onClick: vi.fn() },
-        'Low'
+        { selected: false, onClick: vi.fn(), children: 'Low' }
       )
     )
 

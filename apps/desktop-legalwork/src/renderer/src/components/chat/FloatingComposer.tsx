@@ -106,7 +106,7 @@ type Props = {
   modelPickerMode?: 'select' | 'combobox'
   queuedMessages: QueuedComposerMessage[]
   onRemoveQueuedMessage: (id: string) => void
-  onGuideQueuedMessage: (id: string) => void
+  onGuideQueuedMessage?: (id: string) => void
   attachments?: AttachmentReference[]
   attachmentUploadEnabled?: boolean
   attachmentUploadBusy?: boolean
@@ -1386,7 +1386,7 @@ export function FloatingComposer({
       <FloatingComposerQueuedMessages
         messages={queuedMessages}
         onRemove={onRemoveQueuedMessage}
-        onGuide={onGuideQueuedMessage}
+        onGuide={onGuideQueuedMessage ?? (() => undefined)}
       />
 
       <div className="relative">
