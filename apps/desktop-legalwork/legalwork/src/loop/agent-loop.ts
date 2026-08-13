@@ -844,8 +844,8 @@ export function assistantAnnouncesPendingToolWork(text: string): boolean {
   // (the reproduced failure ended with "开始。先读原文。"). Inspect a
   // bounded tail instead of rejecting long responses outright.
   const compact = normalized.slice(-2_000)
-  const action = '(?:读取|打开|检查|核对|处理|脱敏|生成|重新生成|创建|修改|修复|重写|替换|保存|导出|验证|执行|调用|运行|写入|制作|检索|搜索|获取|补充|查询|核验|采集)'
-  const announced = new RegExp(`(?:我(?:将|会|现在|马上|直接|先)|接下来|下一步|开始|现在开始|先).{0,60}${action}`)
+  const action = '(?:读取|打开|检查|核对|确认|处理|脱敏|生成|重新生成|创建|修改|修复|重写|替换|保存|导出|验证|执行|调用|运行|写入|制作|检索|搜索|获取|补充|查询|核验|采集)'
+  const announced = new RegExp(`(?:我(?:将|会|现在|马上|直接|先|这就|这就去|来|去)|接下来|下一步|开始|现在开始|先|让我|我来|稍等(?:我|一下)?).{0,60}${action}`)
   const retry = new RegExp(`(?:我)?(?:按|依|照)?.{0,40}(?:重新|继续|直接)${action}`)
   return announced.test(compact) || retry.test(compact) || /(?:开始。?)?先(?:读|打开|处理|生成|执行)[^?？!！]{0,30}[。.]?$/.test(compact)
 }
@@ -944,6 +944,49 @@ export function completedWordDeliveryMessage(
       continue
     }
     return `Word 文档已生成：\n\n${outputPath}`
+  }
+  return undefined
+}
+
+/**
+ * Answer a follow-up "where is the Word file" question by reusing the last
+ * successfully delivered DOCX path from the whole thread history, instead of
+ * letting the agent re-verify the target folder (which produced the "我这就检查"
+ * verification loop / 罢工 symptom on Windows desktop paths).
+ */
+export function deliveredWordLocationAnswer(
+  items: readonly TurnItem[],
+  routedPrompt: string
+): string | undefined {
+  const compact = routedPrompt.replace(/\s+/g, '')
+  if (!compact || compact.length > 80) return undefined
+  // "放哪都行/随便放哪"是授权让 agent 自选位置，不是追问已交付文件在哪。
+  if (/(?:都行|随便|随意|都成|都可以|无所谓|你定|你看|看着办|看着放)/.test(compact)) return undefined
+  const locationAsk =
+    /(?:放在哪|在哪|在哪里|放哪|哪个文件夹|哪个目录|什么位置|存到哪|保存到哪|写到哪|文件呢|文件在哪|找到吗|找得到吗)/.test(compact)
+  if (!locationAsk) return undefined
+  // 扫整个线程历史，取最近一次成功交付的 docx 路径（不限当前 turnId）。
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (
+      item.kind !== 'tool_result' ||
+      item.toolName !== DOCUMENT_SKILL_EXECUTE_TOOL_NAME ||
+      item.status !== 'completed' ||
+      item.isError === true ||
+      !item.output ||
+      typeof item.output !== 'object'
+    ) {
+      continue
+    }
+    const output = item.output as Record<string, unknown>
+    const operation = typeof output.operation === 'string' ? output.operation : ''
+    const kind = typeof output.kind === 'string' ? output.kind.toLowerCase() : ''
+    const outputPath = typeof output.output === 'string' ? output.output.trim() : ''
+    const isDocx = kind === 'docx' || outputPath.toLowerCase().endsWith('.docx')
+    if (output.status !== 'ok' || operation === 'inspect' || operation === 'profiles' || !isDocx || !outputPath) {
+      continue
+    }
+    return `Word 文档已生成，路径：\n\n${outputPath}`
   }
   return undefined
 }
@@ -1851,6 +1894,22 @@ export class AgentLoop {
             turnId,
             threadId,
             text: completedDelivery,
+            status: 'completed'
+          })
+        )
+        return 'stop'
+      }
+      // "放在哪了/文件在哪"追问：直接复用线程历史里最近一次成功交付的 docx
+      // 路径，避免 agent 再次 Get-ChildItem 核对桌面目录陷入"我这就检查"循环。
+      const deliveredLocation = deliveredWordLocationAnswer(healed.items, routedPrompt)
+      if (deliveredLocation) {
+        await this.opts.turns.applyItem(
+          threadId,
+          makeAssistantTextItem({
+            id: this.opts.ids.next('item_text'),
+            turnId,
+            threadId,
+            text: deliveredLocation,
             status: 'completed'
           })
         )

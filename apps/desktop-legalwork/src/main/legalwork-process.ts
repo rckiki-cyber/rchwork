@@ -40,6 +40,7 @@ import {
   type ClawScheduleMcpLaunchConfig
 } from './claw-schedule-mcp-config'
 import { defaultLegalworkDataDir } from './runtime/legalwork-adapter'
+import { getLegalworkBaseUrl } from './legalwork-base-url'
 import { DEFAULT_PKULAW_MCP_SERVERS } from './pkulaw-default-servers'
 import { isLegalworkHealthResponseBody } from './legalwork-health'
 import { appendManagedLogLine } from './logger'
@@ -52,6 +53,10 @@ import { reportError } from './error-report'
 let child: ChildProcess | null = null
 let childLogCapture: LegalworkChildLogCapture | null = null
 let childStartupPromise: Promise<void> | null = null
+// 假死看护：runtime 进程可能因事件循环阻塞而存活但不响应 HTTP（SSE 断连
+// 60 次重连耗尽、runtime-ensure fetch_failed 风暴同源）。周期探测 /health，
+// 连续失败即 kill 假死进程，让下一次 ensureRuntime 在原端口正常重启。
+let childWatchdog: { timer: NodeJS.Timeout; port: number; failures: number } | null = null
 let lastResolvedBinary: string | null = null
 const LEGALWORK_READY_PREFIX = 'LEGALWORK_READY '
 const LEGALWORK_STARTUP_TIMEOUT_MS = 12_000
@@ -280,6 +285,90 @@ export function isLegalworkChildRunning(): boolean {
   return child !== null && child.exitCode === null && child.signalCode === null
 }
 
+const CHILD_WATCHDOG_INTERVAL_MS = 15_000
+const CHILD_WATCHDOG_MAX_FAILURES = 3
+const CHILD_WATCHDOG_HEALTH_TIMEOUT_MS = 4_000
+
+/**
+ * Pure state transition for the hang watchdog. Returns the next failure count
+ * and whether to kill the hung runtime on this tick. Healthy probes reset the
+ * count; only `maxFailures` consecutive unresponsive probes trigger a kill.
+ */
+export function childWatchdogTick(
+  healthy: boolean,
+  failures: number,
+  maxFailures = CHILD_WATCHDOG_MAX_FAILURES
+): { failures: number; kill: boolean } {
+  if (healthy) return { failures: 0, kill: false }
+  const next = failures + 1
+  return { failures: next, kill: next >= maxFailures }
+}
+
+function stopChildWatchdog(): void {
+  if (!childWatchdog) return
+  clearInterval(childWatchdog.timer)
+  childWatchdog = null
+}
+
+function startChildWatchdog(port: number): void {
+  stopChildWatchdog()
+  if (port <= 0) return
+  let failures = 0
+  const timer = setInterval(() => {
+    void (async () => {
+      if (!isLegalworkChildRunning()) {
+        // 进程已退出：等待现有重启链路处理，无需看护动作。
+        failures = 0
+        return
+      }
+      let healthy = false
+      try {
+        const res = await fetch(`${getLegalworkBaseUrl(port)}/health`, {
+          signal: AbortSignal.timeout(CHILD_WATCHDOG_HEALTH_TIMEOUT_MS)
+        })
+        healthy = res.ok && isLegalworkHealthResponseBody(await res.text())
+      } catch {
+        healthy = false
+      }
+      const decision = childWatchdogTick(healthy, failures)
+      failures = decision.failures
+      if (!decision.kill) return
+      failures = 0
+      const victim = child
+      const victimPid = victim?.pid
+      if (!victim || victim.exitCode !== null) return
+      console.warn(
+        `[legalwork] runtime on port ${port} did not respond for ${CHILD_WATCHDOG_MAX_FAILURES * CHILD_WATCHDOG_INTERVAL_MS / 1000}s; killing hung process (pid=${victimPid}) so it can restart on the same port`
+      )
+      if (childLogCapture) {
+        childLogCapture.logLifecycle(
+          `watchdog: runtime unresponsive on port ${port}; killing (pid=${victimPid}) for restart`
+        )
+      }
+      try {
+        victim.kill('SIGTERM')
+      } catch {
+        /* already gone */
+      }
+      // SIGTERM 不响应则强杀；child exit 处理器会把 child 置空，
+      // 下一次 ensureRuntime 会探测到端口空闲并在原端口重启。
+      setTimeout(() => {
+        try {
+          if (victim.exitCode === null && victim.signalCode === null && victimPid) {
+            process.kill(victimPid, 'SIGKILL')
+          }
+        } catch {
+          /* already gone */
+        }
+      }, CHILD_WATCHDOG_HEALTH_TIMEOUT_MS)
+    })().catch(() => {
+      /* 看护失败绝不影响主流程 */
+    })
+  }, CHILD_WATCHDOG_INTERVAL_MS)
+  timer.unref?.()
+  childWatchdog = { timer, port, failures }
+}
+
 export async function startLegalworkChild(settings: AppSettingsV1): Promise<void> {
   if (childStartupPromise) return childStartupPromise
   const task = startLegalworkChildOnce(settings)
@@ -432,6 +521,7 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
     )
     void startedLogCapture.close()
     if (child === startedChild) child = null
+    if (childWatchdog?.port === runtime.port) stopChildWatchdog()
   })
   child.on('error', (error) => {
     startedLogCapture.logLifecycle(
@@ -449,6 +539,8 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
     throw error
   }
   startedLogCapture.logLifecycle(`ready marker received on port ${runtime.port}`)
+  // Runtime 已就绪，启动假死看护：进程存活但不响应 /health 时 kill 以便在原端口重启。
+  startChildWatchdog(runtime.port)
 }
 
 export async function syncGuiManagedLegalworkConfig(
@@ -1068,6 +1160,8 @@ function objectValue(value: unknown): Record<string, unknown> {
 }
 
 export async function stopLegalworkChildAndWait(): Promise<void> {
+  // 主动停止：先停看护，避免在 kill 窗口期内误判假死重复触发。
+  stopChildWatchdog()
   if (!child) {
     if (childLogCapture) {
       const capture = childLogCapture

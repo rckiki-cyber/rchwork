@@ -14,6 +14,7 @@ import {
   MAX_AGENT_LOOP_STEPS_ENV,
   MAX_AGENT_LOOP_STEPS_ENV_CAP,
   assistantAnnouncesPendingToolWork,
+  deliveredWordLocationAnswer,
   isBareResearchTopicPrompt,
   attachmentIdsForTurn,
   isContextWindowExceededError,
@@ -27,7 +28,7 @@ import {
   turnBudgetCompletionToolSpecs
 } from '../src/loop/agent-loop.js'
 import { resolveModelContextProfile } from '../src/loop/model-context-profile.js'
-import { makeAssistantTextItem, makeToolCallItem, makeUserItem } from '../src/domain/item.js'
+import { makeAssistantTextItem, makeToolCallItem, makeToolResultItem, makeUserItem } from '../src/domain/item.js'
 import { createThreadRecord } from '../src/domain/thread.js'
 import { createImmutablePrefix, setSystemPrompt } from '../src/cache/immutable-prefix.js'
 import type { TurnItem } from '../src/contracts/items.js'
@@ -220,6 +221,53 @@ describe('AgentLoop', () => {
     expect(assistantAnnouncesPendingToolWork('开始。先读原文。')).toBe(true)
     expect(assistantAnnouncesPendingToolWork(`${'分析。'.repeat(1_000)}开始。先读原文。`)).toBe(true)
     expect(assistantAnnouncesPendingToolWork('文件已生成并验证通过。')).toBe(false)
+  })
+
+  it('detects common spoken Chinese verification announcements (strike-loop repro)', () => {
+    // "罢工"复现：agent 说"我这就检查"后回合被提前终止，从未发出核对工具调用。
+    expect(assistantAnnouncesPendingToolWork('我这就检查:')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('我这就确认一下:稍等，我实际检查一下文件夹内容确认结果:')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('让我检查一下这个文件夹')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('稍等，我先确认一下文件夹内容')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('我来验证一下输出文件是否存在')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('我去检查一下桌面文件夹')).toBe(true)
+    // 不误伤已经完成事实陈述的普通回答
+    expect(assistantAnnouncesPendingToolWork('文件已经生成好了，放在桌面的执行和解协议文件夹里。')).toBe(false)
+    expect(assistantAnnouncesPendingToolWork('已核对无误，文件夹内容与交付一致。')).toBe(false)
+  })
+
+  it('answers a follow-up location question by reusing the delivered DOCX path', () => {
+    const docxResult = makeToolResultItem({
+      id: 'item_tool_result_1',
+      turnId: 'turn_1',
+      threadId: 'thread_1',
+      callId: 'call_1',
+      toolName: 'document_skill_execute',
+      output: {
+        status: 'ok',
+        operation: 'from-markdown',
+        kind: 'docx',
+        output: 'C:\\Users\\lenoo\\Desktop\\执行和解协议.docx'
+      }
+    })
+    // "放在哪了"追问直接复用上一回合交付路径，不再触发目录核对
+    expect(deliveredWordLocationAnswer([docxResult], '放在哪了')).toContain('执行和解协议.docx')
+    expect(deliveredWordLocationAnswer([docxResult], '文件在哪，我找不到')).toContain('执行和解协议.docx')
+    // 非位置追问不应短路
+    expect(deliveredWordLocationAnswer([docxResult], '帮我修改一下这个文档')).toBeUndefined()
+    // "随便放哪都行"是授权自选位置，不是追问路径
+    expect(deliveredWordLocationAnswer([docxResult], '重新生成一个，随便放哪都行')).toBeUndefined()
+    // 失败/inspect 的交付不应被当作已交付
+    const failedResult = makeToolResultItem({
+      id: 'item_tool_result_2',
+      turnId: 'turn_1',
+      threadId: 'thread_1',
+      callId: 'call_2',
+      toolName: 'document_skill_execute',
+      isError: true,
+      output: { status: 'error', operation: 'from-markdown', kind: 'docx', output: '' }
+    })
+    expect(deliveredWordLocationAnswer([failedResult], '放在哪了')).toBeUndefined()
   })
 
   it('keeps completion tools while removing research tools at budget wrap-up', () => {
