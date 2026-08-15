@@ -903,8 +903,14 @@ async function callMcpToolWithReconnect(
     }
     return redactMcpPayload(result, state.connectionCandidates)
   } catch (error) {
-    state.lastError = redactMcpErrorMessage(error, state.connectionCandidates)
+    const safeMessage = redactMcpErrorMessage(error, state.connectionCandidates)
+    state.lastError = safeMessage
     if (signal?.aborted) throw error
+    // 鉴权/配额/积分不足类错误是确定性的（token 无效或额度用尽），重连不会恢复，
+    // 跳过重连直接抛出，让上层/提示词走"换源或 web_search 兜底"，避免白烧一次调用。
+    if (isMcpAuthQuotaErrorText(safeMessage)) {
+      throw redactedMcpError(error, state.connectionCandidates)
+    }
     try {
       const client = await reconnectMcpConnection(state)
       const result = await client.callTool(input, { signal, timeout })
@@ -1066,11 +1072,27 @@ type HostedMcpResult = {
 const MCP_TEXT_RESULT_MAX_CHARS = 8_000
 const MCP_TEXT_RESULT_TAIL_CHARS = 1_500
 
+/**
+ * 无损精简 MCP 工具结果：
+ * - 保留 `content` 文本（核心内容，法条/案例正文，一字不损）
+ * - 删除 `structuredContent` 冗余副本（text 里已含完整 JSON，两份重复纯费 token）
+ * - 仅对超大文本（> 9500 字符，如整篇法规/完整 HTML）做 head+tail 有损截断，
+ *   单条法条远低于该阈值，永不触发，知识获取完全无损
+ */
 export function truncateMcpTextOutput(result: unknown): unknown {
   if (!result || typeof result !== 'object') return result
-  const record = result as { content?: unknown }
-  if (!Array.isArray(record.content)) return result
-  const truncated = record.content.map((item) => {
+  const record = result as { content?: unknown; structuredContent?: unknown }
+  // 无损去冗余：`structuredContent` 与 `content` 文本是同一内容的重复副本，
+  // text 已含完整数据（元典/北大法宝的法条 JSON 等），删掉 structuredContent
+  // 不损失任何知识，但砍掉双倍注入。仅当没有 content 文本时才保留它。
+  const hasTextContent = Array.isArray(record.content) && record.content.some(
+    (item) => item && typeof item === 'object' && (item as { type?: unknown; text?: unknown }).type === 'text' && typeof (item as { text?: unknown }).text === 'string'
+  )
+  const slim: Record<string, unknown> = { ...record }
+  if (hasTextContent) delete slim.structuredContent
+
+  if (!Array.isArray(slim.content)) return slim
+  const truncated = slim.content.map((item) => {
     if (!item || typeof item !== 'object') return item
     const entry = item as { type?: unknown; text?: unknown }
     if (entry.type !== 'text' || typeof entry.text !== 'string') return item
@@ -1088,7 +1110,7 @@ export function truncateMcpTextOutput(result: unknown): unknown {
         `${head}\n\n… [输出已截断，省略约 ${omitted} 字符；如需更多内容请用更精确的命令（如 get /body/p[N]）] …\n\n${tail}`
     }
   })
-  return { ...record, content: truncated }
+  return { ...slim, content: truncated }
 }
 
 async function normalizeMcpResultForHost(

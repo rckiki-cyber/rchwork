@@ -171,9 +171,16 @@ export class FileMemoryStore implements MemoryStore {
     )
     const active = (await this.list({ workspace: input.workspace, project: input.project }))
       .filter((record) => !record.disabledAt)
+    // 排序必须以 id 收尾（确定性 tiebreaker）：updatedAt 可能在 turn 中途被
+    // 学习线程刷新，仅用 updatedAt 排序会让同一查询在不同 model step 返回
+    // 不同顺序，导致注入的 memory 指令漂移、破坏 provider 前缀缓存。
     const always = active
       .filter((record) => record.recallPolicy === 'always')
-      .sort((a, b) => b.confidence - a.confidence || b.updatedAt.localeCompare(a.updatedAt))
+      .sort((a, b) =>
+        b.confidence - a.confidence ||
+        b.updatedAt.localeCompare(a.updatedAt) ||
+        a.id.localeCompare(b.id)
+      )
       .slice(0, Math.ceil(limit * 0.6))
     const relevant = active
       .filter((record) => record.recallPolicy === 'relevant')
@@ -182,7 +189,8 @@ export class FileMemoryStore implements MemoryStore {
       .sort((a, b) =>
         b.score - a.score ||
         b.record.confidence - a.record.confidence ||
-        b.record.updatedAt.localeCompare(a.record.updatedAt)
+        b.record.updatedAt.localeCompare(a.record.updatedAt) ||
+        a.record.id.localeCompare(b.record.id)
       )
       .map((entry) => entry.record)
     return [...always, ...relevant]

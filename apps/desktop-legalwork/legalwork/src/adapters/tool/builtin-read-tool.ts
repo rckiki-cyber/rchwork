@@ -1,9 +1,17 @@
-import { extname } from 'node:path'
+import { basename, extname } from 'node:path'
 import { LocalToolHost, type LocalTool } from './local-tool-host.js'
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from './truncate.js'
+
+/**
+ * read 工具单次返回的默认字节上限（16KB ≈ 4K token）。
+ * 对标 DSH 的小块读：更小的单次读取 → 模型多次小块读 → 前缀复用率高、命中率高、成本低。
+ * （默认 50KB/8K token 的一次大读会注入大量新内容，拉低复用。）
+ */
+const READ_DEFAULT_MAX_BYTES = 16_000
 import type { ReadLocalToolOptions, TextSlice } from './builtin-tool-types.js'
 import { defaultReadLocalToolOperations } from './builtin-tool-operations.js'
 import { EXTRACTABLE_EXTENSIONS } from '../../knowledge/text-extractor.js'
+import { buildDocumentMap, renderDocumentMapText } from '../../knowledge/document-map.js'
 import {
   formatDimensionNote,
   getReadClassification,
@@ -30,7 +38,10 @@ export function createReadLocalTool(options: ReadLocalToolOptions = {}): LocalTo
       properties: {
         path: { type: 'string' },
         offset: { type: 'number' },
-        limit: { type: 'number' }
+        limit: { type: 'number' },
+        structure: { type: 'boolean' },
+        charStart: { type: 'number' },
+        charLen: { type: 'number' }
       },
       required: ['path'],
       additionalProperties: false
@@ -115,12 +126,48 @@ export function createReadLocalTool(options: ReadLocalToolOptions = {}): LocalTo
           isError: true
         }
       }
+      if (args.structure === true) {
+        const map = buildDocumentMap(text)
+        return {
+          output: {
+            path: absolutePath,
+            relative_path: relativePath,
+            content: renderDocumentMapText(map, basename(absolutePath), text.length),
+            kind: 'document_map',
+            total_lines: map.totalLines,
+            total_chars: map.totalChars,
+            content_start_line: map.contentStartLine,
+            section_count: map.sections.length,
+            no_headings: map.noHeadings
+          }
+        }
+      }
       const allLines = text.split('\n')
       const offset = Math.max(1, normalizePositiveInteger(args.offset, 1))
       const effectiveMaxLines = options.maxLines ?? DEFAULT_MAX_LINES
-      const effectiveMaxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES
+      const effectiveMaxBytes = options.maxBytes ?? READ_DEFAULT_MAX_BYTES
       const limit = normalizePositiveInteger(args.limit, effectiveMaxLines)
       const selected = allLines.slice(offset - 1, offset - 1 + limit).join('\n')
+      // 字符范围读取：对 OCR 超长行（单行数千字符）支持 charStart/charLen 小段读取，
+      // 对齐 DSH 模型用 awk substr 做字符级读取的用法，避免一次注入整行超大内容。
+      if (args.charStart !== undefined) {
+        const charStart = Math.max(1, normalizePositiveInteger(args.charStart, 1))
+        const charLen = Math.max(1, normalizePositiveInteger(args.charLen, 2_000))
+        const charContent = selected.slice(charStart - 1, charStart - 1 + charLen)
+        return {
+          output: {
+            path: absolutePath,
+            relative_path: relativePath,
+            content: charContent,
+            kind: isExtractableDocument ? 'document_text' : 'text',
+            start_line: offset,
+            end_line: Math.max(offset, offset + limit - 1),
+            char_start: charStart,
+            char_end: charStart + charContent.length - 1,
+            total_lines: allLines.length
+          }
+        }
+      }
       const truncatedResult = truncateHead(selected, {
         maxLines: effectiveMaxLines,
         maxBytes: effectiveMaxBytes

@@ -34,7 +34,7 @@ type StructuredSection = {
   articleNumber?: string
 }
 
-type HeadingMarker = {
+export type HeadingMarker = {
   level: number
   label: string
   articleNumber?: string
@@ -124,7 +124,7 @@ function splitStructuredSections(content: string): StructuredSection[] {
   return sections
 }
 
-function parseHeadingMarker(line: string): HeadingMarker | null {
+export function parseHeadingMarker(line: string): HeadingMarker | null {
   const trimmed = line.trim()
   if (!trimmed) return null
 

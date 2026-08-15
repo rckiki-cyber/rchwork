@@ -86,6 +86,7 @@ export function makeHarness(
     }
     primaryLegalSource?: 'pkulaw' | 'yuandian'
     turnTokenBudget?: number
+    systemPrompt?: string
   } = {}
 ): Harness {
   const bus = new InMemoryEventBus()
@@ -103,7 +104,7 @@ export function makeHarness(
   const allocateSeq = (threadId: string) => bus.allocateSeq(threadId)
   const events = new RuntimeEventRecorder({ eventBus: bus, sessionStore, allocateSeq, nowIso })
   const ids = new SequentialIdGenerator()
-  const prefix = createImmutablePrefix({ systemPrompt: 'be brief' })
+  const prefix = createImmutablePrefix({ systemPrompt: options.systemPrompt ?? 'be brief' })
   const turns = new TurnService({
     threadStore,
     sessionStore,

@@ -264,7 +264,7 @@ describe('Attachment store and multimodal input', () => {
     })
   })
 
-  it('routes non-image files as text fallbacks even for vision models', async () => {
+  it('keeps non-image files accessible via stable file references instead of text fallbacks', async () => {
     const store = createStore()
     const attachment = await store.create({
       name: 'notes.txt',
@@ -292,12 +292,20 @@ describe('Attachment store and multimodal input', () => {
     })
 
     expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    // 非图片附件不进 text fallbacks；其访问信息绑定在原始
+    // user_message，以便新附件只在历史尾部追加。
     expect(seenRequests.at(-1)?.attachments).toBeUndefined()
-    expect(seenRequests.at(-1)?.attachmentTextFallbacks?.[0]).toMatchObject({
-      id: attachment.id,
-      mimeType: 'text/plain',
-      dataBase64: Buffer.from('hello').toString('base64')
-    })
+    expect(seenRequests.at(-1)?.attachmentTextFallbacks ?? []).toHaveLength(0)
+    expect(seenRequests.at(-1)?.prefixInstructions?.join('\n') ?? '').not.toContain('Uploaded file access')
+    const attachmentHistory = (seenRequests.at(-1)?.history ?? [])
+      .flatMap((item) => item.kind === 'user_message'
+        ? [item.text]
+        : item.kind === 'compaction'
+          ? [item.summary]
+          : [])
+      .join('\n')
+    expect(attachmentHistory).toContain('Uploaded file access')
+    expect(attachmentHistory).toContain(attachment.id)
   })
 
   it('routes built-in DeepSeek v4 image attachments as text fallbacks', async () => {

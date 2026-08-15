@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { appendFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { InMemoryEventBus } from '../src/adapters/in-memory-event-bus.js'
@@ -14,6 +14,7 @@ import {
   MAX_AGENT_LOOP_STEPS_ENV,
   MAX_AGENT_LOOP_STEPS_ENV_CAP,
   assistantAnnouncesPendingToolWork,
+  attachResolvedAttachmentContextToHistory,
   deliveredWordLocationAnswer,
   isBareResearchTopicPrompt,
   attachmentIdsForTurn,
@@ -33,6 +34,9 @@ import { createThreadRecord } from '../src/domain/thread.js'
 import { createImmutablePrefix, setSystemPrompt } from '../src/cache/immutable-prefix.js'
 import type { TurnItem } from '../src/contracts/items.js'
 import type { ModelRequest, ModelStreamChunk } from '../src/ports/model-client.js'
+import type { AttachmentStore } from '../src/attachments/attachment-store.js'
+import type { AttachmentMetadata } from '../src/contracts/attachments.js'
+import { plainTextToDocxBuffer } from '../src/adapters/tool/plain-text-docx.js'
 import {
   bootstrapThread,
   makeFakeModel,
@@ -40,6 +44,58 @@ import {
   makeSilentModel,
   resolveNextUserInput
 } from './loop-test-harness.js'
+
+/** 最小内存 AttachmentStore：写文件返回 localFilePath，供附件文档地图路径使用 */
+function makeFakeAttachmentStore(rootDir: string): AttachmentStore {
+  const entries = new Map<string, { meta: AttachmentMetadata; data: Buffer; filePath: string }>()
+  let seq = 0
+  const now = (): string => '2026-06-03T00:00:00.000Z'
+  return {
+    async create(input) {
+      seq += 1
+      const id = `att_a1b2c3d4e5f60718293a4b${String(seq).padStart(2, '0')}`
+      const ext = input.name.includes('.') ? input.name.slice(input.name.lastIndexOf('.')) : ''
+      const filePath = join(rootDir, `att_${seq}${ext}`)
+      await writeFile(filePath, input.data)
+      const meta: AttachmentMetadata = {
+        id,
+        name: input.name,
+        mimeType: input.mimeType ?? 'application/octet-stream',
+        byteSize: input.data.length,
+        hash: `fake-hash-${seq}`,
+        threadIds: input.threadId ? [input.threadId] : [],
+        workspaces: input.workspace ? [input.workspace] : [],
+        createdAt: now(),
+        updatedAt: now()
+      }
+      entries.set(id, { meta, data: input.data, filePath })
+      return meta
+    },
+    async get(id) {
+      return entries.get(id)?.meta ?? null
+    },
+    async resolveContent(id) {
+      const entry = entries.get(id)
+      if (!entry) throw new Error(`attachment not found: ${id}`)
+      return { ...entry.meta, data: entry.data, localFilePath: entry.filePath }
+    },
+    textFallbackPolicy() {
+      return {
+        textFallbackMaxBase64Bytes: 1_000_000,
+        textFallbackMaxImageDimension: 4096,
+        textFallbackPreferredMimeType: 'image/png'
+      }
+    },
+    async diagnostics() {
+      return {
+        enabled: true,
+        rootDir,
+        count: entries.size,
+        totalBytes: [...entries.values()].reduce((acc, entry) => acc + entry.data.length, 0)
+      }
+    }
+  }
+}
 
 describe('AgentLoop', () => {
   it('distinguishes document creation requests from formatting questions', () => {
@@ -216,6 +272,43 @@ describe('AgentLoop', () => {
     })).toEqual(['att_word', 'att_pdf'])
   })
 
+  it('appends new attachment context without rewriting an earlier user-message prefix', () => {
+    const first = makeUserItem({
+      id: 'u_a',
+      turnId: 'turn_a',
+      threadId: 'thr_1',
+      text: '审查 A',
+      attachmentIds: ['att_a']
+    })
+    const second = makeUserItem({
+      id: 'u_b',
+      turnId: 'turn_b',
+      threadId: 'thr_1',
+      text: '审查 B',
+      attachmentIds: ['att_b']
+    })
+    const reference = (id: string) => ({
+      id,
+      name: `${id}.txt`,
+      mimeType: 'text/plain',
+      localFilePath: `/tmp/${id}.txt`
+    })
+    const withA = attachResolvedAttachmentContextToHistory([first], {
+      fileReferences: [reference('att_a')],
+      documentMaps: [],
+      ocrResults: []
+    })
+    const withAB = attachResolvedAttachmentContextToHistory([first, second], {
+      fileReferences: [reference('att_a'), reference('att_b')],
+      documentMaps: [],
+      ocrResults: []
+    })
+
+    expect(withAB[0]).toEqual(withA[0])
+    expect(withAB[0]?.kind === 'user_message' ? withAB[0].text : '').not.toContain('att_b')
+    expect(withAB[1]?.kind === 'user_message' ? withAB[1].text : '').toContain('att_b')
+  })
+
   it('detects assistant prose that announces unfinished tool work', () => {
     expect(assistantAnnouncesPendingToolWork('我按现有规则重新生成一份干净的脱敏版。')).toBe(true)
     expect(assistantAnnouncesPendingToolWork('开始。先读原文。')).toBe(true)
@@ -280,8 +373,6 @@ describe('AgentLoop', () => {
       { name: 'document_skill_execute' }
     ]
     expect(turnBudgetCompletionToolSpecs(tools).map((tool) => tool.name)).toEqual([
-      'read',
-      'bash',
       'data_compliance',
       'document_skill_execute'
     ])
@@ -408,8 +499,8 @@ describe('AgentLoop', () => {
     const request = observedRequest as ModelRequest | null
     if (!request) throw new Error('expected model request')
     expect(request.tools.map((tool) => tool.name)).toContain('bash')
-    expect(request.contextInstructions?.join('\n')).toContain('Shell runtime:')
-    expect(request.contextInstructions?.join('\n')).toContain('shell commands appropriate for the host platform')
+    expect(request.prefixInstructions?.join('\n')).toContain('Shell runtime:')
+    expect(request.prefixInstructions?.join('\n')).toContain('shell commands appropriate for the host platform')
   })
 
   it('injects the primary legal research source instruction when configured', async () => {
@@ -427,7 +518,7 @@ describe('AgentLoop', () => {
 
     const request = observedRequest as ModelRequest | null
     if (!request) throw new Error('expected model request')
-    const instructions = request.contextInstructions?.join('\n') ?? ''
+    const instructions = request.prefixInstructions?.join('\n') ?? ''
     expect(instructions).toContain('北大法宝(PKULaw)')
     expect(instructions).toContain('元典(Yuandian)')
     expect(instructions).toContain('优先使用')
@@ -450,6 +541,115 @@ describe('AgentLoop', () => {
     if (!request) throw new Error('expected model request')
     const instructions = request.contextInstructions?.join('\n') ?? ''
     expect(instructions).not.toContain('首要来源')
+  })
+
+  it('injects a compact document map instead of full attachment text (map default)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'legalwork-map-'))
+    try {
+      const store = makeFakeAttachmentStore(dir)
+      const judgment = [
+        '第 1 页',
+        '民 事 判 决 书',
+        '（2025）内25民终813号',
+        '上诉人（原审原告）：河南联洋建筑工程有限公司。',
+        '事实和理由：',
+        '一、关于利息，双方合同第八条明确约定付款时间。',
+        '二、关于 343, 350 元款项，该笔款项并非蓝尚宝公司收取。',
+        ...Array.from({ length: 60 }, (_, i) => `双方就第 ${i + 3} 项争议进行了充分举证质证，一审法院对此予以查明。`),
+        '本院认为：',
+        '本案争议焦点为利息计算标准。',
+        '判决如下：',
+        '一、驳回上诉，维持原判。',
+        '第 2 页'
+      ].join('\n')
+      const attachment = await store.create({
+        name: '判决书.docx',
+        data: plainTextToDocxBuffer(judgment, { title: '判决书' }),
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        threadId: 'thr_map',
+        workspace: '/tmp/ws'
+      })
+      let observedRequest: ModelRequest | null = null
+      const h = makeHarness({
+        provider: 'map-test',
+        model: 'map-test',
+        async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
+          observedRequest = request
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      }, { attachmentStore: store })
+      await bootstrapThread(h, {
+        workspace: '/tmp/ws',
+        request: { prompt: '请分析这份判决书', attachmentIds: [attachment.id], model: 'map-test' }
+      })
+      await h.loop.runTurn(h.threadId, h.turnId)
+
+      const request = observedRequest as ModelRequest | null
+      if (!request) throw new Error('expected model request')
+      const attachmentHistory = request.history
+        .flatMap((item) => item.kind === 'user_message'
+          ? [item.text]
+          : item.kind === 'compaction'
+            ? [item.summary]
+            : [])
+        .join('\n')
+      expect(request.prefixInstructions?.join('\n') ?? '').not.toContain('<uploaded_document_map>')
+      expect(attachmentHistory).toContain('<uploaded_document_map>')
+      expect(attachmentHistory).toContain('结构索引')
+      expect(attachmentHistory).not.toContain('<uploaded_document_text>')
+      expect(attachmentHistory).not.toContain('--- DOCUMENT BEGIN')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('restores full-text injection under LEGALWORK_ATTACHMENT_READ_STRATEGY=full', async () => {
+    const previous = process.env.LEGALWORK_ATTACHMENT_READ_STRATEGY
+    process.env.LEGALWORK_ATTACHMENT_READ_STRATEGY = 'full'
+    const dir = await mkdtemp(join(tmpdir(), 'legalwork-full-'))
+    try {
+      const store = makeFakeAttachmentStore(dir)
+      const judgment = '民 事 判 决 书\n（2025）内25民终813号\n上诉人（原审原告）：河南联洋建筑工程有限公司。\n判决如下：\n一、驳回上诉，维持原判。'
+      const attachment = await store.create({
+        name: '判决书.docx',
+        data: plainTextToDocxBuffer(judgment, { title: '判决书' }),
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        threadId: 'thr_full',
+        workspace: '/tmp/ws'
+      })
+      let observedRequest: ModelRequest | null = null
+      const h = makeHarness({
+        provider: 'full-test',
+        model: 'full-test',
+        async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
+          observedRequest = request
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      }, { attachmentStore: store })
+      await bootstrapThread(h, {
+        workspace: '/tmp/ws',
+        request: { prompt: '请分析这份判决书', attachmentIds: [attachment.id], model: 'full-test' }
+      })
+      await h.loop.runTurn(h.threadId, h.turnId)
+
+      const request = observedRequest as ModelRequest | null
+      if (!request) throw new Error('expected model request')
+      const attachmentHistory = request.history
+        .flatMap((item) => item.kind === 'user_message'
+          ? [item.text]
+          : item.kind === 'compaction'
+            ? [item.summary]
+            : [])
+        .join('\n')
+      expect(request.prefixInstructions?.join('\n') ?? '').not.toContain('<uploaded_document_text>')
+      expect(attachmentHistory).toContain('<uploaded_document_text>')
+      expect(attachmentHistory).toContain('--- DOCUMENT BEGIN')
+      expect(attachmentHistory).not.toContain('<uploaded_document_map>')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+      if (previous === undefined) delete process.env.LEGALWORK_ATTACHMENT_READ_STRATEGY
+      else process.env.LEGALWORK_ATTACHMENT_READ_STRATEGY = previous
+    }
   })
 
   it('does not force knowledge retrieval on learning-iteration threads', async () => {
@@ -864,10 +1064,10 @@ describe('AgentLoop', () => {
     expect(status).toBe('completed')
     expect(requests).toHaveLength(2)
     expect(requests[0]?.tools.map((tool) => tool.name)).toContain('echo')
-    // 预算耗尽后研究工具（echo）被移除，但 read 等收尾工作工具仍保留，
-    // 避免模型无工具可调只能 stop 卡死（无法完成检查/交付）。
+    // 预算耗尽后研究、读取和 shell 工具都被移除，防止模型把
+    // “收尾”解释成新一轮调查；文档交付等有界工具仍可用。
     expect(requests[1]?.tools.map((tool) => tool.name)).not.toContain('echo')
-    expect(requests[1]?.tools.map((tool) => tool.name)).toContain('read')
+    expect(requests[1]?.tools.map((tool) => tool.name)).not.toContain('read')
     expect(requests[1]?.contextInstructions?.join('\n')).toContain('成本预算提醒')
   })
 
@@ -2761,7 +2961,10 @@ describe('AgentLoop', () => {
         provider: 'catalog-drift',
         model: 'catalog-drift',
         async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
-          seenInstructions.push(request.contextInstructions ?? [])
+          seenInstructions.push([
+            ...(request.prefixInstructions ?? []),
+            ...(request.contextInstructions ?? [])
+          ])
           modelCalls += 1
           if (modelCalls === 1) {
             yield {
@@ -5318,5 +5521,65 @@ describe('read continuation with offset is not deduplicated', () => {
       (item.output as { _dedup?: boolean })._dedup === true
     )
     expect(dedupHits).toHaveLength(0)
+  })
+
+  it('allows distinct character ranges on the same OCR line', async () => {
+    const readCalls: Array<{ charStart?: number; charLen?: number }> = []
+    const readTool = LocalToolHost.defineTool({
+      name: 'read',
+      description: 'Read a character range.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+          offset: { type: 'number' },
+          charStart: { type: 'number' },
+          charLen: { type: 'number' }
+        },
+        required: ['path'],
+        additionalProperties: false
+      },
+      policy: 'auto',
+      execute: async (args: { charStart?: number; charLen?: number }) => {
+        readCalls.push(args)
+        return { output: { content: `range-${args.charStart}` } }
+      }
+    })
+    let requests = 0
+    const h = makeHarness({
+      provider: 'read-char-continuation',
+      model: 'read-char-continuation',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        requests += 1
+        if (requests <= 2) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_char_${requests}`,
+            toolName: 'read',
+            arguments: {
+              path: '/tmp/ocr.txt',
+              offset: 31,
+              charStart: requests === 1 ? 1 : 2_001,
+              charLen: 2_000
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '已读完 OCR 长行。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [readTool] })
+    await bootstrapThread(h, { request: { prompt: '读取 OCR 长行' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(readCalls).toEqual([
+      expect.objectContaining({ charStart: 1, charLen: 2_000 }),
+      expect.objectContaining({ charStart: 2_001, charLen: 2_000 })
+    ])
+    const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
+    expect(events.some((event) =>
+      event.kind === 'pipeline_stage' && event.stage === 'prefix_stability_warning'
+    )).toBe(false)
   })
 })

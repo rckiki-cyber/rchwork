@@ -36,6 +36,15 @@ export type ModelRequest = {
    * guidance. These are intentionally outside the immutable prefix.
    */
   contextInstructions?: string[]
+  /**
+   * Per-turn system instructions that are byte-stable across model steps for
+   * a given turn (attachment references, memory summaries, skill notes,
+   * primary legal source). They ride immediately after the immutable prefix —
+   * BEFORE the conversation history — so the growing tool-result tail never
+   * shifts them; a moving mid-prompt instruction would invalidate the
+   * provider prefix cache on every model step.
+   */
+  prefixInstructions?: string[]
   prefix: TurnItem[]
   history: TurnItem[]
   attachments?: ModelInputAttachment[]

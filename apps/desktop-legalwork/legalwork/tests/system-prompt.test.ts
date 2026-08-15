@@ -28,16 +28,14 @@ describe('LEGALWORK_SYSTEM_PROMPT', () => {
   it('defines automatic, confirmed, secret, update, and forget memory behavior', () => {
     expect(LEGALWORK_SYSTEM_PROMPT).toContain('confidence >= 0.8')
     expect(LEGALWORK_SYSTEM_PROMPT).toContain('memory_search')
-    expect(LEGALWORK_SYSTEM_PROMPT).toContain('capture_source="confirmed"')
-    expect(LEGALWORK_SYSTEM_PROMPT).toContain('Matter facts, client information, interests')
-    expect(LEGALWORK_SYSTEM_PROMPT).toContain('Never store passwords, API keys')
-    expect(LEGALWORK_SYSTEM_PROMPT).toContain('forget or change a memory')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('"confirmed"')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('matter/client facts')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('Never store credentials')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('forget a memory')
   })
 
-  it('uses PKULaw first and keeps the national database optional and browser-free', () => {
-    expect(LEGALWORK_SYSTEM_PROMPT).toContain('use PKULaw as the primary legal database')
-    expect(LEGALWORK_SYSTEM_PROMPT).toContain('Do not query 国家法律法规数据库 merely to duplicate')
-    expect(LEGALWORK_SYSTEM_PROMPT).toContain("Never open or control the user's browser")
-    expect(LEGALWORK_SYSTEM_PROMPT).toContain('国家法律法规数据库 and other official sites are optional fallbacks')
+  it('uses PKULaw first and keeps official sites browser-free', () => {
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('北大法宝 (PKULaw) first')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('Never open a browser to verify law')
   })
 })

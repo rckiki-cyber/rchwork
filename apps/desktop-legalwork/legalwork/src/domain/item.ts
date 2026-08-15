@@ -257,3 +257,66 @@ export function makeErrorItem(input: {
     code: input.code
   }
 }
+
+/**
+ * Extract the *stable* content of a tool result for provider-bound messages.
+ *
+ * Tools emit a payload object that carries both meaningful content and
+ * volatile metadata (bash: pid/started_at/finished_at/full_output_path).
+ * JSON.stringify-ing the whole object puts the volatile fields on the wire, so
+ * the same tool result serializes differently across steps (pid/timestamp
+ * drift) and defeats the provider's prefix cache.
+ *
+ * This prefers the stable content field (`.output`, then `.text`, then
+ * `.content`) and falls back to the whole payload only when none is present.
+ * Existing callers that relied on the full JSON for non-.output tools are
+ * unchanged; tools whose content lives in `.output` become cache-stable.
+ */
+export function stableToolResultText(output: unknown): string {
+  if (typeof output === 'string') return output
+  if (output === null || typeof output !== 'object') return String(output ?? '')
+  const record = output as Record<string, unknown>
+  for (const key of ['output', 'text', 'content'] as const) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value
+    if (value !== undefined && value !== null && typeof value !== 'string') {
+      try {
+        return JSON.stringify(value) ?? ''
+      } catch {
+        return String(value)
+      }
+    }
+  }
+  return JSON.stringify(output) ?? ''
+}
+
+export const DEFAULT_TOOL_RESULT_MAX_TOKENS = 8_000
+
+/**
+ * Deterministic token-budget truncation of a tool-result payload for the wire.
+ * Head+tail with a marker, mirroring Reasonix's truncateForModelByTokens.
+ * Idempotent: the same input always produces the same output, so the confirmed
+ * prefix never drifts between model steps. A tool result larger than the budget
+ * is capped at roughly `maxTokens` tokens (CJK ≈1 token/char, Latin ≈1 token/4
+ * chars — a conservative char-budget approximation, no full tokenize).
+ */
+export function truncateToolResultContent(content: string, maxTokens = DEFAULT_TOOL_RESULT_MAX_TOKENS): string {
+  if (maxTokens <= 0) return ''
+  if (content.length <= maxTokens) return content
+  // 没有 provider tokenizer 时按 CJK 最坏情况 1 token/字符保守截断。
+  // 之前在 content.length 刚超过 maxTokens 时却使用 maxTokens*2 的
+  // 字符预算，会同时拼入完整 head 和重复 tail，甚至产生负的 dropped
+  // 计数并把 8-16K 字符的结果越截越大。
+  const markerOverhead = 160
+  const contentBudget = Math.max(0, maxTokens - markerOverhead)
+  const tailBudget = Math.min(1024, Math.floor(contentBudget / 2))
+  const headBudget = Math.max(0, contentBudget - tailBudget)
+  const head = content.slice(0, headBudget)
+  const tail = tailBudget > 0 ? content.slice(-tailBudget) : ''
+  const dropped = content.length - head.length - tail.length
+  const truncated = `${head}\n\n[…truncated ${dropped} chars — 工具结果超过 token 预算，如需完整内容请用更窄的作用域读取（offset/limit/分段）…]\n\n${tail}`
+  // Tiny custom budgets can be smaller than the explanatory marker itself.
+  // In that case an unmarked hard prefix is still safer than expanding the
+  // payload that this function was asked to bound.
+  return truncated.length < content.length ? truncated : content.slice(0, maxTokens)
+}

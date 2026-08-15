@@ -5,6 +5,7 @@ import type { ModelCapabilityMetadata } from '../../contracts/capabilities.js'
 import { estimateDeepseekCacheSavings, estimateDeepseekCost } from './deepseek-pricing.js'
 import { estimateLegalworkMiniMaxCost } from './minimax-pricing.js'
 import { isToolResultBridgeItem, repairModelHistoryItems } from '../../domain/model-history-repair.js'
+import { stableToolResultText, truncateToolResultContent } from '../../domain/item.js'
 import { repairToolArguments } from './tool-argument-repair.js'
 import { isDeepSeekHost, probeDeepSeekReachable } from './model-error-probe.js'
 import {
@@ -475,6 +476,13 @@ export class DeepseekCompatModelClient implements ModelClient {
     if (request.modeInstruction) {
       out.push({ role: 'system', content: request.modeInstruction })
     }
+    // Byte-stable per-turn instructions (attachment refs, memory, skills) ride
+    // immediately after the immutable prefix and BEFORE the conversation
+    // history. If they trailed the history, the growing tool-result tail would
+    // shift them on every model step and invalidate the provider prefix cache.
+    for (const instruction of request.prefixInstructions ?? []) {
+      if (instruction.trim()) out.push({ role: 'system', content: instruction })
+    }
     // History compaction/capping is owned by AgentLoop. Sliding the
     // model-client window changes the beginning of the prompt on every step and
     // destroys provider prefix-cache reuse.
@@ -503,7 +511,21 @@ export class DeepseekCompatModelClient implements ModelClient {
     if (request.attachmentTextFallbacks?.length) {
       attachTextFallbacksToLatestUserMessage(out, request.attachmentTextFallbacks)
     }
-    return normalizeThinkingAssistantMessages(healToolMessagePairs(out), thinkingMode)
+    const finalMessages = normalizeThinkingAssistantMessages(healToolMessagePairs(out), thinkingMode)
+    if (process.env.LEGALWORK_DEBUG_PREFIX) {
+      const hash = (s: string): string => {
+        let h = 0
+        for (let i = 0; i < s.length; i += 1) h = ((h << 5) - h + s.charCodeAt(i)) | 0
+        return (h >>> 0).toString(16)
+      }
+      const summary = finalMessages.map((m) => {
+        const role = m.role
+        const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')
+        return `${role}:${content.length}:${hash(content)}`
+      })
+      process.stderr.write(`[prefix-debug] model=${model} messages=${finalMessages.length} full=${JSON.stringify(summary)}\n`)
+    }
+    return finalMessages
   }
 
   private itemsToMessages(items: TurnItem[], thinkingMode: boolean): ChatMessage[] {
@@ -625,7 +647,7 @@ export class DeepseekCompatModelClient implements ModelClient {
   private toolResultToMessage(item: Extract<TurnItem, { kind: 'tool_result' }>): ChatMessage {
     return {
       role: 'tool',
-      content: toolResultContent(item.output),
+      content: truncateToolResultContent(toolResultContent(item.output)),
       tool_call_id: item.callId
     }
   }
@@ -2000,8 +2022,7 @@ function reasoningContentOrSpace(text: string): string {
 }
 
 function toolResultContent(output: unknown): string {
-  if (typeof output === 'string') return output
-  return JSON.stringify(output) ?? ''
+  return stableToolResultText(output)
 }
 
 function reasoningFromMessage(message: ChatCompletionResponse['choices'][number]['message'] | undefined): string {
