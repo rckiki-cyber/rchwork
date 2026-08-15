@@ -1,7 +1,65 @@
 {
-  "generated_at": "2026-08-13T13:54:29.217Z",
+  "generated_at": "2026-08-15T18:35:06.903Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
+    {
+      "tag_name": "v0.3.23",
+      "name": "LegalWork 0.3.23",
+      "published_at": "2026-08-15T18:34:49Z",
+      "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.23",
+      "prerelease": false,
+      "summary": "本次更新包括：修复优化。",
+      "highlights": [
+        "LegalWork 0.3.23 已上线，安装后即可使用这一版的新能力与体验优化。"
+      ],
+      "categories": [
+        "修复优化"
+      ],
+      "assets": [
+        {
+          "name": "legalwork-0.3.23-mac-arm64.dmg",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.23/legalwork-0.3.23-mac-arm64.dmg",
+          "download_count": 0,
+          "size": 411012046
+        },
+        {
+          "name": "legalwork-0.3.23-mac-x64.dmg",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.23/legalwork-0.3.23-mac-x64.dmg",
+          "download_count": 0,
+          "size": 414961264
+        },
+        {
+          "name": "legalwork-0.3.23-win-x64.exe",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.23/legalwork-0.3.23-win-x64.exe",
+          "download_count": 0,
+          "size": 333167774
+        },
+        {
+          "name": "legalwork-0.3.23-mac-arm64.zip",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.23/legalwork-0.3.23-mac-arm64.zip",
+          "download_count": 0,
+          "size": 419668984
+        },
+        {
+          "name": "legalwork-0.3.23-mac-x64.zip",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.23/legalwork-0.3.23-mac-x64.zip",
+          "download_count": 0,
+          "size": 423749720
+        },
+        {
+          "name": "legalwork-0.3.23-win-ia32.exe",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.23/legalwork-0.3.23-win-ia32.exe",
+          "download_count": 0,
+          "size": 325657729
+        },
+        {
+          "name": "legalwork-0.3.23-linux-x86_64.AppImage",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.23/legalwork-0.3.23-linux-x86_64.AppImage",
+          "download_count": 0,
+          "size": 435508897
+        }
+      ]
+    },
     {
       "tag_name": "v0.3.22",
       "name": "LegalWork 0.3.22",
@@ -19,25 +77,25 @@
         {
           "name": "legalwork-0.3.22-mac-arm64.dmg",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.22/legalwork-0.3.22-mac-arm64.dmg",
-          "download_count": 0,
+          "download_count": 7,
           "size": 410976163
         },
         {
           "name": "legalwork-0.3.22-mac-x64.dmg",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.22/legalwork-0.3.22-mac-x64.dmg",
-          "download_count": 0,
+          "download_count": 1,
           "size": 414945313
         },
         {
           "name": "legalwork-0.3.22-win-x64.exe",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.22/legalwork-0.3.22-win-x64.exe",
-          "download_count": 0,
+          "download_count": 19,
           "size": 333135546
         },
         {
           "name": "legalwork-0.3.22-mac-arm64.zip",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.22/legalwork-0.3.22-mac-arm64.zip",
-          "download_count": 0,
+          "download_count": 3,
           "size": 419614145
         },
         {
@@ -55,7 +113,7 @@
         {
           "name": "legalwork-0.3.22-linux-x86_64.AppImage",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.22/legalwork-0.3.22-linux-x86_64.AppImage",
-          "download_count": 0,
+          "download_count": 1,
           "size": 435463827
         }
       ]
@@ -89,7 +147,7 @@
         {
           "name": "legalwork-0.3.21-win-x64.exe",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.21/legalwork-0.3.21-win-x64.exe",
-          "download_count": 32,
+          "download_count": 33,
           "size": 333132663
         },
         {
@@ -2574,7 +2632,7 @@
         {
           "name": "legalwork-0.1.0-mac-x64.dmg",
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.1.0/legalwork-0.1.0-mac-x64.dmg",
-          "download_count": 2,
+          "download_count": 3,
           "size": 209362393
         },
         {
