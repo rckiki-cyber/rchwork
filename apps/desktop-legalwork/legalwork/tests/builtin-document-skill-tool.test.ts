@@ -115,6 +115,38 @@ describe('document_skill_execute', () => {
     })
   })
 
+  it('rejects docx page/normalize without required worker args', async () => {
+    const tool = createDocumentSkillExecuteTool()
+    await expect(tool.execute({
+      kind: 'docx', operation: 'page', args: ['--input', 'a.docx']
+    }, context())).resolves.toMatchObject({
+      isError: true,
+      output: { error: 'docx/page requires args containing: --output' }
+    })
+    await expect(tool.execute({
+      kind: 'docx', operation: 'normalize', args: []
+    }, context())).resolves.toMatchObject({
+      isError: true,
+      output: { error: 'docx/normalize requires args containing: --input, --output' }
+    })
+  })
+
+  it('rejects docx template-fill and xlsx from-json without required args', async () => {
+    const tool = createDocumentSkillExecuteTool()
+    await expect(tool.execute({
+      kind: 'docx', operation: 'template-fill', args: ['--input', 't.docx', '--output', 'o.docx']
+    }, context())).resolves.toMatchObject({
+      isError: true,
+      output: { error: 'docx/template-fill requires args containing: --values' }
+    })
+    await expect(tool.execute({
+      kind: 'xlsx', operation: 'from-json', args: []
+    }, context())).resolves.toMatchObject({
+      isError: true,
+      output: { error: 'xlsx/from-json requires args containing: --spec, --output' }
+    })
+  })
+
   it('accepts only application-owned PDF rendering with embedded bundled fonts', () => {
     expect(deterministicPdfPayloadError({
       status: 'ok',

@@ -126,7 +126,16 @@ export const RuntimeTuningConfigSchema = z
       .object({
         enabled: z.boolean().optional(),
         windowSize: PositiveInt.optional(),
-        threshold: z.number().int().min(2).optional()
+        threshold: z.number().int().min(2).optional(),
+        researchLimits: z
+          .object({
+            discovery: PositiveInt.optional(),
+            case: PositiveInt.optional(),
+            law: PositiveInt.optional(),
+            ima: PositiveInt.optional()
+          })
+          .strict()
+          .optional()
       })
       .strict()
       .optional(),

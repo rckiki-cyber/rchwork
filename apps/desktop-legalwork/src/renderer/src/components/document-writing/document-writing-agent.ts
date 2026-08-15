@@ -3,6 +3,11 @@ import {
   type TemplateGenerateWithMaterialsRequest
 } from '../../../../shared/user-templates'
 import { stripModelProtocolContent } from '../../lib/model-protocol-content'
+import {
+  documentFactVerificationInstruction,
+  documentInvolvesLoanAmounts,
+  loanAmountLedgerInstruction
+} from '../../../../shared/money-consistency'
 
 export type DocumentWritingStageId =
   | 'materials'
@@ -208,8 +213,7 @@ export function buildDocumentWritingAgentPrompt(request: TemplateGenerateWithMat
 - 事实来源间存在实质冲突时，列明具体冲突内容并标注待核实；不得把单一来源中已明确记载的信息误判为冲突。`
     : '用户未提供任何事实来源（无上传材料、无粘贴文字）。仅对现有字段也未提供且文书确有必要的信息使用【待核实：具体缺失事项】，不要输出泛泛的“请填写”。'
 
-  return `<inline_document_response>
-你正在执行 LegalWork 文书写作任务。这是界面内联文本产出，不是 Word、DOCX、PDF 或其他文件交付任务。界面已收集用户的文书类型、字段和写作要求；不要再次要求用户填写偏好。
+  const promptBody = `你正在执行 LegalWork 文书写作任务。这是界面内联文本产出，不是 Word、DOCX、PDF 或其他文件交付任务。界面已收集用户的文书类型、字段和写作要求；不要再次要求用户填写偏好。
 
 0. 确认立场：用户指定本次文书代表的主体为“${documentSubject || '（未指定）'}”。若用户已填写，以该主体作为判断委托人、我方当事人、诉讼立场和行文视角的最高优先级依据；若用户未指定但提供了上传材料或粘贴文字，则从其中明确记载的当事人中识别本次文书所代表的一方，并以“据材料载明”表述；两者都无法确定时，才使用【待核实：我方主体】。
 1. 落实用户要求：将“用户补充要求/粘贴文字”作为确定诉讼目标、表达倾向、论证重点和行文取舍的高优先级依据，不得写出与用户明确倾向相反的立场；但不得据此篡改事实、法律或材料原意。
@@ -221,6 +225,8 @@ export function buildDocumentWritingAgentPrompt(request: TemplateGenerateWithMat
 7. 撰写文书：严格遵循最高优先级模板结构。信息优先级为“用户填写字段 > 材料明确记载 > 可由材料唯一确定的事实 > 真正缺失的信息”。不得把界面空字段直接转换成待核实占位语。文书中的法律依据应尽可能带可核验链接；没有真实链接时明确标注“无可核验链接”。
 
 ${materialFactInstruction}
+
+${documentFactVerificationInstruction()}
 
 最终回复只能输出完整的 Markdown 文书正文，不要输出过程说明、调研摘要、步骤标题或代码块。工具调用和推理会由界面单独可视化。
 
@@ -250,6 +256,12 @@ ${pastedTextForPrompt(request)}
 ${request.template.content.slice(0, 3_000)}
 
 ## 用户补充要求（立场、倾向、目标与重点；必须优先落实）
-${request.instructions?.trim() || '（无）'}
+${request.instructions?.trim() || '（无）'}`
+
+  const loanAdvisory = documentInvolvesLoanAmounts(promptBody)
+    ? `\n\n${loanAmountLedgerInstruction()}`
+    : ''
+  return `<inline_document_response>
+${promptBody}${loanAdvisory}
 </inline_document_response>`
 }

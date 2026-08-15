@@ -87,6 +87,12 @@ export type ToolHostContext = {
   allowedProviderIds?: readonly string[]
   /** Optional tool-name allow-list. When set, other tools are not advertised or executed. */
   allowedToolNames?: readonly string[]
+  /**
+   * 主对话 web-first 场景：为 true 时不注入具体 MCP server 工具（mcp_<server>_<tool>），
+   * 只保留 mcp_search/mcp_call 调度入口 + web 工具 + 基础工具，使首调工具目录骤减、
+   * 显著降低固定前缀 miss。专用工作流（法律调研/文书写作/PPT/IMA 等）保持 MCP 全量。
+   */
+  webFirstMcpScope?: boolean
   approvalPolicy: ApprovalPolicy
   abortSignal: AbortSignal
   /** Resolves a pending approval with the user's decision. */

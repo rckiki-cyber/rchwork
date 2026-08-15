@@ -52,6 +52,8 @@ export type LoadedSkill = {
   priority: number
   legacy: boolean
   keywords: string[]
+  /** 内容以英文为主且属于外国/国际法律领域的技能。默认不注入，仅当用户明确提到外国法时才触发。 */
+  foreignLawOnly?: boolean
 }
 
 export type SkillActivation = {
@@ -352,7 +354,14 @@ export class SkillRuntime {
     const lowerPrompt = prompt.toLowerCase()
     const fileTypes = fileTypesFrom(input.filePaths ?? [], prompt)
     const matches: Array<SkillActivation & { skill: LoadedSkill }> = []
+    // 外国法技能默认不注入：仅当用户明确提到外国/国际法律时才触发，避免英文法务技能
+    // 因普通中文关键词被误匹配而注入大段英文说明（省 token 与上下文）。
+    const foreignLawRequested = FOREIGN_LAW_TERMS.test(prompt) || /外国法|国际法|涉外|英美法|美国法|欧盟法|普通法/.test(prompt)
     for (const skill of this.skills) {
+      if (skill.foreignLawOnly && !foreignLawRequested) {
+        const explicitlyNamed = explicitSkillMention(skill, prompt)
+        if (!explicitlyNamed) continue
+      }
       const explicit = explicitSkillMention(skill, prompt)
       if (explicit) {
         matches.push({ skill, skillId: skill.id, reason: explicit, score: 1_000 + skill.priority })
@@ -478,6 +487,7 @@ async function loadSkillPackage(root: string, allowLegacy: boolean): Promise<Loa
       assets: manifest.assets.map((asset) => resolve(root, asset)),
       priority: manifest.priority,
       legacy: false,
+      foreignLawOnly: isForeignLawOnlySkill(entry),
       keywords: skillKeywords({
         id: manifest.id ?? manifest.name,
         name: manifest.name,
@@ -507,6 +517,7 @@ async function loadSkillPackage(root: string, allowLegacy: boolean): Promise<Loa
     assets: [],
     priority: 0,
     legacy: true,
+    foreignLawOnly: isForeignLawOnlySkill(entry),
     keywords: skillKeywords({
       id: frontmatter.id || taskId || folderName,
       name,
@@ -687,6 +698,20 @@ function scoreKeywordMatch(keywords: readonly string[], promptTerms: Set<string>
   }
   if (exactPhraseScore > 0) return exactPhraseScore + Math.min(sharedTerms, 8) * 10
   return sharedTerms >= 2 ? Math.min(sharedTerms, 8) * 10 : 0
+}
+
+/**
+ * 判断技能内容是否"以英文为主且属于外国/国际法律领域"。
+ * 这类技能默认不注入（省 token），仅当用户明确提到外国法时才触发。
+ * 判定：SKILL.md 正文中英文字符显著多于中文，且出现外国法/国际法/涉外法关键词。
+ */
+const FOREIGN_LAW_TERMS = /(?:foreign\s*(?:law|legal)|international\s*(?:law|legal)|US\s+law|English\s+law|common\s+law|civil\s+law\b|GDPR|jurisdiction|treaty|US\s+Code|Federal\s+Rules|UK\s+law|EU\s+law)/i
+
+function isForeignLawOnlySkill(entry: string): boolean {
+  const zhCount = (entry.match(/[㐀-鿿]/g) ?? []).length
+  const enCount = (entry.match(/[a-zA-Z]/g) ?? []).length
+  if (zhCount > 0 && zhCount >= enCount) return false
+  return enCount > 200 && FOREIGN_LAW_TERMS.test(entry)
 }
 
 function skillKeywords(input: {

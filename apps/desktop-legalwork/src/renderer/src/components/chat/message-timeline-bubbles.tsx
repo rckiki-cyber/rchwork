@@ -978,12 +978,12 @@ export function MessageBubble({ block, nested = false }: { block: ChatBlock; nes
 
 function ToolEntry({ block, nested = false }: { block: ToolBlock; nested?: boolean }): ReactElement {
   const { t } = useTranslation('common')
-  const [open, setOpen] = useState(() => block.status === 'error' || block.status === 'running')
+  const [open, setOpen] = useState(false)
 
+  // 工具卡运行中展开；结束后（无论成功还是小错误）自动收起，与普通工具调用一致。
+  // 小错误（超时/搜索失败等）不是软件故障，不需要默认摊开错误详情。
   useEffect(() => {
-    if (block.status === 'running') {
-      setOpen(true)
-    }
+    setOpen(block.status === 'running')
   }, [block.status, block.id])
 
   const effectiveOpen = block.status === 'running' ? true : open

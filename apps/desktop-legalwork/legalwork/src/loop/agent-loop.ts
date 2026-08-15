@@ -234,7 +234,7 @@ const TURN_BUDGET_COMPLETION_TOOL_NAMES = new Set([
   'citation_verification_finalize'
 ])
 const MAX_GOAL_NO_TOOL_CONTINUATIONS = 2
-const MAX_LEGAL_RESEARCH_REPORT_CONTINUATIONS = 3
+const MAX_LEGAL_RESEARCH_REPORT_CONTINUATIONS = 5
 const DEFAULT_COMPACTION_SUMMARY_TIMEOUT_MS = 15_000
 const DEFAULT_COMPACTION_SUMMARY_MAX_TOKENS = 8_000
 const DEFAULT_COMPACTION_SUMMARY_INPUT_MAX_BYTES = 512 * 1024
@@ -1202,9 +1202,17 @@ function hasLegalMcpAuthQuotaFailure(items: readonly TurnItem[], turnId: string)
     if (item.turnId !== turnId || item.kind !== 'tool_result' || item.toolName !== 'mcp_call') return false
     if (item.isError !== true) return false
     const text = JSON.stringify(item.output ?? '')
-    return /(?:90001|remaining\s+points|unauthori[sz]ed|forbidden)|(?:额度|余额|积分|points|credits)\s*(?:已\s*)?(?:不足|耗尽|用尽|用完)|(?:不足|耗尽|用尽|用完)\s*(?:额度|余额|积分|points|credits)/i.test(text)
+    // 只认明确配额/额度类错误（中英文），加上 401/无效 key（确定性鉴权失败）；
+    // 不匹配权限配置类 403/forbidden，避免误判绕过该源。
+    return /(?:90001|remaining\s+points)|(?:额度|余额|积分|points|credits)\s*(?:已\s*)?(?:不足|耗尽|用尽|用完)|(?:不足|耗尽|用尽|用完)\s*(?:额度|余额|积分|points|credits)|(?:quota|balance|credit|funds)\s*.{0,24}(?:exhausted|insufficient|depleted)|(?:exhausted|insufficient|depleted)\s*.{0,24}(?:quota|balance|credit|funds)|invalid\s+api\s*key|api\s*key\s*invalid|HTTP\s*401|401\s+[A-Za-z]/i.test(text)
   })
 }
+
+// 只有支持"用更窄作用域续读"或"中间段无用"的工具结果做持久化裁剪（head+tail）：
+// read/grep/bash 可凭 offset/limit/重跑补读中间段；web_fetch（上限 96KB）的中间段
+// 对模型几乎无用，裁剪防 history 膨胀。knowledge_read_file / mcp_call 等重读即同
+// 结果，中间段一旦被裁就永久不可达（法条/合同中部条文会丢失），保留完整进 history。
+const RESUMABLE_RESULT_TOOL_NAMES = new Set(['read', 'grep', 'bash', 'web_fetch'])
 
 /**
  * 深度裁剪工具结果的超长文本（对齐 DSH tool-result-pruner）。
@@ -1560,6 +1568,68 @@ function allowedToolNamesWithGuiStateTools(
     next.add('bash')
   }
   return [...next]
+}
+
+/**
+ * 普通主对话（未命中法律调研/文书写作/PPT/IMA/本地知识库等专用工作流，也无技能激活）
+ * 走 web-first：不注入具体 MCP server 工具，优先 web_search，需要法律源时用
+ * mcp_search/mcp_call 兜底。专用工作流保持 MCP 全量，业务语义不变。
+ */
+function isMainAgentWebFirstScope(input: {
+  threadTitle: string
+  routedSkillPrompt: string
+  activeSkillIds: readonly string[]
+}): boolean {
+  // 大功能 = 独立 thread（按 title 前缀识别）：法律调研 / 文书写作 / 知识库 → MCP 全量。
+  // 主对话里即便用户说"我要法律调研""帮我写文书"也不触发（title 无该前缀），主对话一律 web-first。
+  const title = (input.threadTitle || '').trim()
+  if (isSpecializedFeatureTitle(title)) return false
+  // 技能激活视为专用（如 PPT skill 等）
+  if (input.activeSkillIds.length > 0) return false
+  // 用户明确要求法律数据库检索（元典/北大法宝/查法条案例等）→ 本轮启用法律 MCP
+  if (requestsLegalMcpExplicitly(input.routedSkillPrompt)) return false
+  return true
+}
+
+/** 大功能 thread 的 title 前缀（独立功能入口创建，MCP 全量）。 */
+function isSpecializedFeatureTitle(title: string): boolean {
+  return (
+    title.startsWith('法律调研:') ||
+    title.startsWith('法律调研：') ||
+    title.startsWith('文书写作:') ||
+    title.startsWith('文书写作：') ||
+    title.startsWith('知识库全局对话') ||
+    title.startsWith('知识库：')
+  )
+}
+
+/** 用户明确要求法律数据库检索或核实 → 该轮启用法律 MCP（默认不启用）。 */
+function requestsLegalMcpExplicitly(prompt: string): boolean {
+  if (!prompt) return false
+  const compact = prompt.replace(/\s+/g, '')
+  // 明确点名法律数据库 → 本轮恢复法律 MCP
+  if (/(?:元典|北大法宝|法宝|法条库|法律法规库|案例库|裁判文书库)/.test(compact)) return true
+  // 普通资讯/产品/评价类不触发（"网上搜法律 AI 产品评价"不是要法律库）
+  if (/(?:产品|评测|评价|怎么样|排名|教程|入门|咨询师|职业|行业|资讯|新闻|公司|平台|招聘)/.test(compact)) return false
+  const action = '(?:查|检索|搜|找|核实|核对|校验|查询|验证|分析|评估|审查|解读|判断)'
+  const target = '(?:法条|法规|司法解释|案例|裁判|判例|判决|裁定|条款|合同|法条效力|现行有效)'
+  return (
+    new RegExp(`${action}.{0,14}${target}`).test(compact) ||
+    new RegExp(`${target}.{0,14}${action}`).test(compact)
+  )
+}
+
+/** 主对话 web-first 引导：网络检索一律 web_search，本对话默认未启用法律数据库检索。 */
+function webFirstToolGuidanceInstruction(): string {
+  return [
+    '<web_first_tool_guidance>',
+    '本对话的检索工具策略：**网络检索一律用 web_search**。',
+    '用户要求"网络检索/联网检索/上网查/网上搜/web 检索/搜索"时，直接调用 web_search；不得用本地知识库检索替代网络检索。',
+    '涉及"最新/现行/当前/2025/2026/最近/最新动态"等时效性法规、政策、规范、标准、案例的问题，必须先 web_search 检索核实，不得仅凭已有知识直接回答（训练知识可能过时）。',
+    '检索工具调用是完成任务所必需，不视为浪费工具调用。',
+    '本对话默认未启用法律数据库检索；如用户明确要求权威法律数据库核实（查法条原文/案例原文），可提示用户，由用户在对话中明确要求后再启用。',
+    '</web_first_tool_guidance>'
+  ].join('\n')
 }
 
 export type AgentLoopOptions = {
@@ -2081,6 +2151,11 @@ export class AgentLoop {
       memoryPolicy: { enabled: Boolean(this.opts.memoryStore) },
       delegationPolicy: { enabled: false },
       ...(allowedToolNames ? { allowedToolNames } : {}),
+      webFirstMcpScope: isMainAgentWebFirstScope({
+        threadTitle: thread?.title ?? '',
+        routedSkillPrompt,
+        activeSkillIds: skillResolution.activeSkillIds
+      }),
       approvalPolicy,
       abortSignal: signal,
       awaitApproval: async () => 'allow',
@@ -3055,9 +3130,11 @@ export class AgentLoop {
       // user switched the preferred source in the plugin); the configured
       // primaryLegalSource is the authoritative runtime decision, applied
       // globally (all thread types) and placed after memory so it wins on conflict.
-      ...(this.opts.primaryLegalSource ? [primaryLegalSourceInstruction(this.opts.primaryLegalSource)] : []),
-      ...(requestToolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : []),
-      ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : [])
+      // web-first 主对话不注入"优先用北大法宝"指令，避免与"默认未启用法律数据库"同屏矛盾。
+      ...(this.opts.primaryLegalSource && !toolContext.webFirstMcpScope
+        ? [primaryLegalSourceInstruction(this.opts.primaryLegalSource)]
+        : []),
+      ...(requestToolSpecs.some((tool) => tool.name === 'bash') ? [shellRuntimeInstruction()] : [])
     ]
     const contextInstructions = [
       ...(activeGoalInstruction ? [activeGoalInstruction] : []),
@@ -3077,6 +3154,11 @@ export class AgentLoop {
       ...(pendingWorkRecoveryInstruction ? [pendingWorkRecoveryInstruction] : []),
       ...(deliveryFailureInstruction ? [deliveryFailureInstruction] : []),
       ...(turnBudgetWrapUp ? [TURN_BUDGET_WRAPUP_INSTRUCTION] : []),
+      // 工具目录漂移提示只存在单步、下一步即消失，放易变段（history 后），
+      // 避免使已确认的稳定前缀在 step N→N+1 间字节变化击穿缓存
+      ...(toolCatalogDriftMessage ? [toolCatalogDriftMessage] : []),
+      // 主对话 web-first 工具引导（放易变段，不影响稳定前缀缓存）
+      ...(toolContext.webFirstMcpScope ? [webFirstToolGuidanceInstruction()] : []),
       // 跨 turn 会变的记忆与技能指令移到易变段（history 后）：
       // 记忆按每 turn 的 prompt 重新检索、技能解析结果随上下文变化，
       // 若留在稳定前缀里会随内容变化破坏 provider 前缀缓存（命中率下降）。
@@ -4150,9 +4232,9 @@ export class AgentLoop {
       status: result.item.kind === 'tool_result' && result.item.isError ? 'failed' : 'completed',
       finishedAt: this.opts.nowIso()
     } as Partial<TurnItem>)
-    if (result.item.kind === 'tool_result' && !result.item.isError) {
-      // 对齐 DSH tool-result-pruner：大工具结果（超 8K 字符）保留 head/middle/tail、
-      // 中间省略，避免全量进 history 造成每轮重发 miss。
+    if (result.item.kind === 'tool_result' && !result.item.isError && RESUMABLE_RESULT_TOOL_NAMES.has(call.toolName)) {
+      // 只对可续读工具（read/grep/bash）做持久化裁剪；无法续读的工具保留完整结果，
+      // 避免模型永远看不到大结果的中间段。
       result.item.output = pruneToolResultOutput(result.item.output)
     }
     await this.opts.turns.applyItem(threadId, result.item)

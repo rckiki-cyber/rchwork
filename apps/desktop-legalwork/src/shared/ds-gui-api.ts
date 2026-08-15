@@ -562,6 +562,11 @@ export type DsGuiApi = {
   imaAuthStatus: () => Promise<{ kind: string; auth?: { clientId?: string; apiKey?: string } }>
   imaLogin: () => Promise<{ ok: boolean; message?: string }>
   imaRelogin: () => Promise<{ ok: boolean; message?: string }>
+  openPkulawConsole: () => Promise<{ ok: boolean; message?: string }>
+  claimPkulawToken: () => Promise<{ ok: boolean; message?: string; alreadyClaimed?: boolean; needLogin?: boolean; pointsBefore?: string; pointsAfter?: string }>
+  getPkulawAutoClaim: () => Promise<{ enabled: boolean; lastClaimDate: string | null }>
+  setPkulawAutoClaim: (enabled: boolean) => Promise<{ enabled: boolean; lastClaimDate: string | null }>
+  openYuandianConsole: () => Promise<{ ok: boolean; message?: string }>
   imaLogout: () => Promise<void>
   imaGetConfig: () => Promise<{
     cookie: boolean

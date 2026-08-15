@@ -165,7 +165,7 @@ export type McpCapabilityConfig = z.infer<typeof McpCapabilityConfig>
 
 export const WebCapabilityConfig = CapabilityToggleConfig.extend({
   fetchEnabled: z.boolean().default(false),
-  searchEnabled: z.boolean().default(false),
+  searchEnabled: z.boolean().optional(),
   provider: z.string().min(1).optional(),
   anysearchApiKey: z.string().min(1).optional(),
   allowDomains: z.array(z.string().min(1)).default([]),
@@ -330,8 +330,10 @@ export function buildRuntimeCapabilityManifest(input: {
     input.web?.fetchAvailable === true,
     input.web?.reason ?? 'web fetch provider is unavailable'
   )
+  // 与运行时 web-tool-provider 的语义一致：searchEnabled 未配置(undefined)视为默认启用
+  // （配了 DeepSeek key 即开），仅显式 false 才禁用。
   const webSearchState = providerCapabilityState(
-    config.web.enabled && config.web.searchEnabled,
+    config.web.enabled && config.web.searchEnabled !== false,
     'web search is disabled by config',
     input.web?.searchAvailable === true,
     input.web?.reason ?? 'web search provider is unavailable'

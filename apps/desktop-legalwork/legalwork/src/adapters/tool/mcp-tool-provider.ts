@@ -1079,17 +1079,26 @@ const MCP_TEXT_RESULT_TAIL_CHARS = 1_500
  * - 仅对超大文本（> 9500 字符，如整篇法规/完整 HTML）做 head+tail 有损截断，
  *   单条法条远低于该阈值，永不触发，知识获取完全无损
  */
-export function truncateMcpTextOutput(result: unknown): unknown {
+/** 仅对 text 即完整数据源的 server（元典/北大法宝）做 structuredContent 去冗余。 */
+export function shouldDropMcpStructuredContent(serverId: string): boolean {
+  return /^(?:pkulaw|yuandian)/i.test(serverId)
+}
+
+export function truncateMcpTextOutput(
+  result: unknown,
+  opts?: { dropStructuredContent?: boolean }
+): unknown {
   if (!result || typeof result !== 'object') return result
   const record = result as { content?: unknown; structuredContent?: unknown }
-  // 无损去冗余：`structuredContent` 与 `content` 文本是同一内容的重复副本，
-  // text 已含完整数据（元典/北大法宝的法条 JSON 等），删掉 structuredContent
-  // 不损失任何知识，但砍掉双倍注入。仅当没有 content 文本时才保留它。
   const hasTextContent = Array.isArray(record.content) && record.content.some(
     (item) => item && typeof item === 'object' && (item as { type?: unknown; text?: unknown }).type === 'text' && typeof (item as { text?: unknown }).text === 'string'
   )
   const slim: Record<string, unknown> = { ...record }
-  if (hasTextContent) delete slim.structuredContent
+  // 只有调用方确认该 server 的 text 已含完整数据（元典/北大法宝，见
+  // shouldDropMcpStructuredContent）时才删除 structuredContent 冗余副本；
+  // 其它 server 的 structuredContent 可能是权威结构（表格/ID/数值字段），
+  // 无条件删除会静默丢数据。
+  if (hasTextContent && opts?.dropStructuredContent === true) delete slim.structuredContent
 
   if (!Array.isArray(slim.content)) return slim
   const truncated = slim.content.map((item) => {
@@ -1101,16 +1110,89 @@ export function truncateMcpTextOutput(result: unknown): unknown {
     // must be smaller than the input, otherwise the "truncated" result would be
     // larger than the original and report a negative omitted count.
     if (text.length <= MCP_TEXT_RESULT_MAX_CHARS + MCP_TEXT_RESULT_TAIL_CHARS) return item
-    const head = text.slice(0, MCP_TEXT_RESULT_MAX_CHARS)
-    const tail = text.slice(-MCP_TEXT_RESULT_TAIL_CHARS)
-    const omitted = Math.max(0, text.length - head.length - tail.length)
-    return {
-      ...entry,
-      text:
-        `${head}\n\n… [输出已截断，省略约 ${omitted} 字符；如需更多内容请用更精确的命令（如 get /body/p[N]）] …\n\n${tail}`
-    }
+    return { ...entry, text: pruneMcpTextStructurally(text) }
   })
   return { ...slim, content: truncated }
+}
+
+/**
+ * 结构安全地截断 MCP 大文本：优先按 JSON 数组元素边界（整篇法规/多案列表通常
+ * 是 JSON 数组），否则按行边界，避免把法条/案例从中间硬切产出非法 JSON。
+ */
+function pruneMcpTextStructurally(text: string): string {
+  const trimmed = text.trimStart()
+  if (trimmed.startsWith('[')) {
+    const pruned = pruneJsonArrayText(text)
+    if (pruned !== null) return pruned
+  }
+  return pruneLinesText(text)
+}
+
+/** 解析 JSON 数组并按字符预算丢中间元素；marker 用 JSON 字符串，结果保持可解析。 */
+function pruneJsonArrayText(text: string): string | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(parsed) || parsed.length <= 8) return null
+  const budget = MCP_TEXT_RESULT_MAX_CHARS + MCP_TEXT_RESULT_TAIL_CHARS
+  const tailCount = 3
+  // 从 head=3 起逐档增加，取第一个不超预算的档位（元素大时自动收窄 head）
+  for (let keepHead = 3; keepHead <= 8; keepHead++) {
+    const omitted = parsed.length - keepHead - tailCount
+    if (omitted <= 0) break
+    const marker = JSON.stringify(`… 输出已截断，省略 ${omitted} 个元素；如需更多内容请用更精确的检索 …`)
+    const headStr = JSON.stringify(parsed.slice(0, keepHead))
+    const tailStr = JSON.stringify(parsed.slice(-tailCount))
+    const candidate = `${headStr.slice(0, -1)},\n  ${marker},\n${tailStr.slice(1)}`
+    if (candidate.length <= budget || keepHead === 8) {
+      return candidate
+    }
+  }
+  return null
+}
+
+/** 行边界截断：超长行做字符级 head+tail，避免整行内容被整体丢弃。 */
+function pruneLinesText(text: string): string {
+  const lines = text.split('\n')
+  // 单行超长（无换行大文本）：直接字符级 head+tail
+  if (lines.length === 1 && lines[0].length > MCP_TEXT_RESULT_MAX_CHARS) {
+    return charsHeadTail(lines[0])
+  }
+  const head: string[] = []
+  let headChars = 0
+  for (const line of lines) {
+    if (line.length > MCP_TEXT_RESULT_MAX_CHARS) {
+      // 非首行超长行也不能整体丢弃：字符级 head+tail 保留其头部与尾部内容
+      head.push(charsHeadTail(line))
+      break
+    }
+    if (headChars + line.length + 1 > MCP_TEXT_RESULT_MAX_CHARS) break
+    head.push(line)
+    headChars += line.length + 1
+  }
+  const tail: string[] = []
+  let tailChars = 0
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].length > MCP_TEXT_RESULT_TAIL_CHARS) {
+      tail.unshift(charsHeadTail(lines[i]))
+      break
+    }
+    if (tailChars + lines[i].length + 1 > MCP_TEXT_RESULT_TAIL_CHARS) break
+    tail.unshift(lines[i])
+    tailChars += lines[i].length + 1
+  }
+  const omitted = lines.length - head.length - tail.length
+  if (omitted <= 0) return text
+  return `${head.join('\n')}\n\n… [输出已截断，省略 ${omitted} 行；如需更多内容请用更精确的命令] …\n\n${tail.join('\n')}`
+}
+
+/** 超长单行的字符级 head+tail。 */
+function charsHeadTail(line: string): string {
+  const omitted = Math.max(0, line.length - MCP_TEXT_RESULT_MAX_CHARS - MCP_TEXT_RESULT_TAIL_CHARS)
+  return `${line.slice(0, MCP_TEXT_RESULT_MAX_CHARS)}\n\n… [输出已截断，省略约 ${omitted} 字符；如需更多内容请用更精确的命令] …\n\n${line.slice(-MCP_TEXT_RESULT_TAIL_CHARS)}`
 }
 
 async function normalizeMcpResultForHost(
@@ -1121,7 +1203,8 @@ async function normalizeMcpResultForHost(
 ): Promise<HostedMcpResult> {
   if (!isFlintChartServer(serverId) || toolName !== 'render_chart') {
     // 通用大输出防护：所有 MCP 工具的文本结果都截断，避免大 tool_result 进 history。
-    return { result: truncateMcpTextOutput(result), artifacts: [] }
+    // structuredContent 去冗余仅对确认 text 即完整数据源的 server（元典/北大法宝）开启。
+    return { result: truncateMcpTextOutput(result, { dropStructuredContent: shouldDropMcpStructuredContent(serverId) }), artifacts: [] }
   }
   if (
     !result ||

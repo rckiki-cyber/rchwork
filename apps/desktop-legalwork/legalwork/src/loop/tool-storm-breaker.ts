@@ -27,8 +27,8 @@ const FAILED_DUPLICATE_TOOL_NAMES = new Set(['mcp_officecli_officecli'])
 const READ_ONLY_OFFICECLI_VERBS = new Set(['get', 'query', 'view', 'validate', 'help'])
 const DEFAULT_RESEARCH_LIMITS: Record<ResearchToolCategory, number> = {
   discovery: 4,
-  case: 12,
-  law: 8,
+  case: 20,
+  law: 20,
   ima: 3
 }
 

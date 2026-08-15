@@ -174,11 +174,12 @@ export async function bootstrapThread(
   h: Harness,
   options: {
     workspace?: string
+    title?: string
     request?: Parameters<TurnService['startTurn']>[0]['request']
   } = {}
 ): Promise<void> {
   await h.threadStore.upsert(
-    createThreadRecord({ id: h.threadId, title: 'demo', workspace: options.workspace ?? '/tmp', model: 'fake' })
+    createThreadRecord({ id: h.threadId, title: options.title ?? 'demo', workspace: options.workspace ?? '/tmp', model: 'fake' })
   )
   const response = await h.turns.startTurn({
     threadId: h.threadId,

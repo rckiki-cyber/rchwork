@@ -120,4 +120,68 @@ describe('document-writing agent workflow', () => {
     expect(excerpt).toContain('-TAIL')
     expect(excerpt).toContain('材料压缩')
   })
+
+  it('injects the loan-amount ledger advisory when the case involves loan money', () => {
+    const prompt = buildDocumentWritingAgentPrompt({
+      template: {
+        name: '民事起诉状',
+        description: '民间借贷纠纷起诉。',
+        content: '# 民事起诉状',
+        fields: [{ id: 'claim', label: '诉讼请求', type: 'textarea', required: true }]
+      },
+      fieldValues: {
+        claim: '请求返还借款本金及利息。',
+        [DOCUMENT_SUBJECT_FIELD_ID]: '原告张某'
+      },
+      materials: [{
+        fileName: '借条与还款记录.txt',
+        content: '借条载明借款 330,000 元，约定月利率 3%；出借人转账 330,000 元后借款人返还 30,000 元（称预付利息）；还款一处记载 200,000 元、一处记载 280,000 元。'
+      }],
+      instructions: '要求系统代表出借人生成民事起诉状。'
+    })
+
+    expect(prompt).toContain('<loan_amount_ledger_advisory>')
+    expect(prompt).toContain('同一笔款项只允许处理一次')
+    expect(prompt).toContain('不得直接“本金－还款＝剩余本金”')
+    expect(prompt).toContain('条件式二选一')
+    // The advisory must appear inside the inline document response, before the
+    // closing tag, so the model actually receives it.
+    const closingIndex = prompt.indexOf('</inline_document_response>')
+    expect(prompt.indexOf('<loan_amount_ledger_advisory>')).toBeGreaterThan(-1)
+    expect(prompt.indexOf('<loan_amount_ledger_advisory>')).toBeLessThan(closingIndex)
+  })
+
+  it('always attaches the document fact-verification mandate to legal documents', () => {
+    const prompt = buildDocumentWritingAgentPrompt({
+      template: {
+        name: '答辩状',
+        description: '买卖合同纠纷答辩。',
+        content: '# 答辩状',
+        fields: []
+      },
+      fieldValues: {},
+      materials: [{ fileName: '合同.txt', content: '双方于 2025 年签订买卖合同，约定分期付款。' }]
+    })
+    expect(prompt).toContain('<document_fact_verification>')
+    expect(prompt).toContain('事实核验台账')
+    expect(prompt).toContain('依据未核验，提交前请核实')
+    expect(prompt).toContain('不得把未经核验的规范写成确定依据')
+    expect(prompt).toContain('核验不阻塞交付')
+    const closingIndex = prompt.indexOf('</inline_document_response>')
+    expect(prompt.indexOf('<document_fact_verification>')).toBeLessThan(closingIndex)
+  })
+
+  it('does not inject the loan advisory for an unrelated document', () => {
+    const prompt = buildDocumentWritingAgentPrompt({
+      template: {
+        name: '答辩状',
+        description: '买卖合同纠纷答辩。',
+        content: '# 答辩状',
+        fields: []
+      },
+      fieldValues: {},
+      materials: [{ fileName: '合同.txt', content: '双方于 2025 年签订买卖合同，约定分期付款。' }]
+    })
+    expect(prompt).not.toContain('<loan_amount_ledger_advisory>')
+  })
 })

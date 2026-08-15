@@ -363,8 +363,13 @@ export function buildFlintChartMcpConfig(): JsonRecord {
   )
 }
 
+/** 去掉用户从站点复制时可能带入的 "Bearer " 前缀，避免拼出 "Bearer Bearer …" 双重前缀。 */
+function normalizeAuthToken(value: string): string {
+  return value.trim().replace(/^Bearer\s+/i, '').trim()
+}
+
 export function buildPkulawMcpConfig(token: string): JsonRecord {
-  const normalizedToken = token.trim()
+  const normalizedToken = normalizeAuthToken(token)
   const servers: JsonRecord = {}
   for (const { id, url } of PKULAW_MCP_ENDPOINTS) {
     servers[id] = {
@@ -384,9 +389,8 @@ function buildImaMcpConfig(_workspaceRoot: string, _apiKey: string): JsonRecord 
 }
 
 function buildAnysearchMcpConfig(apiKey: string): JsonRecord {
-  const headers: JsonRecord = apiKey.trim()
-    ? { Authorization: `Bearer ${apiKey.trim()}` }
-    : {}
+  const normalizedKey = normalizeAuthToken(apiKey)
+  const headers: JsonRecord = normalizedKey ? { Authorization: `Bearer ${normalizedKey}` } : {}
   const servers: JsonRecord = {}
   servers[ANYSEARCH_ID] = {
     enabled: true,
@@ -400,7 +404,7 @@ function buildAnysearchMcpConfig(apiKey: string): JsonRecord {
 }
 
 function buildYuandianMcpConfig(apiKey: string): JsonRecord {
-  const authorization = `Bearer ${apiKey.trim()}`
+  const authorization = `Bearer ${normalizeAuthToken(apiKey)}`
   const servers: JsonRecord = {}
   for (const { id, url } of YUANDIAN_MCP_ENDPOINTS) {
     servers[id] = {
@@ -2758,6 +2762,40 @@ function PkulawConfigPanel({
   t: (key: string, values?: Record<string, unknown>) => string
 }): ReactElement {
   const [showToken, setShowToken] = useState(false)
+  const [claiming, setClaiming] = useState(false)
+  const [claimResult, setClaimResult] = useState<string | null>(null)
+  const [autoClaim, setAutoClaim] = useState(false)
+  const [autoClaimLoaded, setAutoClaimLoaded] = useState(false)
+
+  useEffect(() => {
+    void window.dsGui
+      ?.getPkulawAutoClaim?.()
+      .then((state) => {
+        setAutoClaim(state.enabled)
+        setAutoClaimLoaded(true)
+      })
+      .catch(() => setAutoClaimLoaded(true))
+  }, [])
+
+  const handleToggleAutoClaim = (): void => {
+    if (!autoClaimLoaded) return
+    const next = !autoClaim
+    setAutoClaim(next)
+    void window.dsGui?.setPkulawAutoClaim?.(next).catch(() => setAutoClaim(!next))
+  }
+
+  const handleClaimToken = (): void => {
+    if (claiming) return
+    setClaiming(true)
+    setClaimResult(null)
+    void window.dsGui
+      ?.claimPkulawToken?.()
+      .then((result) => setClaimResult(result.message ?? (result.ok ? '领取成功' : '领取失败')))
+      .catch((error: unknown) => {
+        setClaimResult(error instanceof Error ? error.message : String(error))
+      })
+      .finally(() => setClaiming(false))
+  }
   return (
     <div className="rounded-2xl border border-ds-border bg-ds-card/95 p-4 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-start">
@@ -2785,18 +2823,45 @@ function PkulawConfigPanel({
           <p className="mt-2 text-[12px] leading-5 text-ds-faint">
             {t('pluginMcpPkulawTokenHint')}
           </p>
-          <p className="mt-1.5 text-[12px] leading-5">
-            <a
-              href="https://mcp.pkulaw.com/console/apps"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-accent underline hover:opacity-80"
+          <button
+            type="button"
+            onClick={() => void window.dsGui?.openPkulawConsole?.().catch(() => undefined)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-ds-border bg-ds-card px-2.5 py-1 text-[12px] font-medium text-ds-ink transition hover:bg-ds-hover"
+          >
+            打开北大法宝控制台（内置窗口）
+          </button>
+          <button
+            type="button"
+            onClick={handleClaimToken}
+            disabled={claiming}
+            className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg border border-accent/30 bg-accent/10 px-2.5 py-1 text-[12px] font-semibold text-accent transition hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {claiming ? '领取中…' : '每日领取 Token'}
+          </button>
+          {claimResult && (
+            <p className="mt-1.5 text-[12px] leading-4 text-ds-muted">{claimResult}</p>
+          )}
+          <label className="mt-2 flex items-center gap-2 text-[12px] font-medium text-ds-ink">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoClaim}
+              disabled={!autoClaimLoaded}
+              onClick={handleToggleAutoClaim}
+              className={`relative inline-flex h-[20px] w-[36px] shrink-0 items-center rounded-full transition disabled:opacity-50 ${
+                autoClaim ? 'bg-accent' : 'bg-ds-border'
+              }`}
             >
-              {t('pluginMcpPkulawTokenGetLink')}
-            </a>
-          </p>
+              <span
+                className={`inline-block h-[16px] w-[16px] transform rounded-full bg-white shadow transition ${
+                  autoClaim ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                }`}
+              />
+            </button>
+            每日自动领取（打开软件并连接成功后自动领取，每天一次）
+          </label>
           {isPrimary ? (
-            <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-ds-userbubble/10 px-2.5 py-1 text-[12px] font-semibold text-ds-userbubble">
+            <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-ds-userbubble/10 px-2.5 py-1 text-[12px] font-semibold text-ds-ink">
               <Check className="h-3.5 w-3.5" strokeWidth={2} />
               {t('pluginMcpPrimaryCurrent', { source: t('pluginMcpSourcePkulaw') })}
             </div>
@@ -2882,16 +2947,13 @@ function YuandianConfigPanel({
           <p className="mt-2 text-[12px] leading-5 text-ds-faint">
             {t('pluginMcpYuandianKeyHint')}
           </p>
-          <p className="mt-1.5 text-[12px] leading-5">
-            <a
-              href="https://open.chineselaw.com/user/apikey"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-accent underline hover:opacity-80"
-            >
-              {t('pluginMcpYuandianKeyGetLink')}
-            </a>
-          </p>
+          <button
+            type="button"
+            onClick={() => void window.dsGui?.openYuandianConsole?.().catch(() => undefined)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-ds-border bg-ds-card px-2.5 py-1 text-[12px] font-medium text-ds-ink transition hover:bg-ds-hover"
+          >
+            打开元典控制台（内置窗口）
+          </button>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {YUANDIAN_MCP_ENDPOINTS.map((endpoint) => (
               <span
@@ -2903,7 +2965,7 @@ function YuandianConfigPanel({
             ))}
           </div>
           {isPrimary ? (
-            <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-ds-userbubble/10 px-2.5 py-1 text-[12px] font-semibold text-ds-userbubble">
+            <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-ds-userbubble/10 px-2.5 py-1 text-[12px] font-semibold text-ds-ink">
               <Check className="h-3.5 w-3.5" strokeWidth={2} />
               {t('pluginMcpPrimaryCurrent', { source: t('pluginMcpSourceYuandian') })}
             </div>

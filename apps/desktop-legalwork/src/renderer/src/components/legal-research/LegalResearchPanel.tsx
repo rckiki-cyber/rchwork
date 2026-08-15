@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { MouseEvent, ReactElement } from 'react'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -54,6 +54,15 @@ export function shouldFollowLatestResearchContent(
 ): boolean {
   const distanceFromLatest = element.scrollHeight - element.scrollTop - element.clientHeight
   return distanceFromLatest <= threshold
+}
+
+// 外部配置链接（如北大法宝获取 Token）走系统浏览器打开，避免在内置 Electron 窗口中
+// 加载第三方站点时触发对方前端 JS 兼容性问题（如 mcp.pkulaw.com 的 Next.js 客户端异常）。
+function handleExternalOpen(event: MouseEvent<HTMLAnchorElement>): void {
+  const href = event.currentTarget.getAttribute('href')
+  if (!href || typeof window.dsGui?.openExternal !== 'function') return
+  event.preventDefault()
+  void window.dsGui.openExternal(href).catch(() => undefined)
 }
 
 export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): ReactElement {
@@ -453,6 +462,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                   href="https://mcp.pkulaw.com/console/apps"
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={handleExternalOpen}
                   className="ml-1 text-[var(--ds-accent)] underline hover:opacity-80"
                 >
                   {t('legalResearchTokenTipConfigure')}

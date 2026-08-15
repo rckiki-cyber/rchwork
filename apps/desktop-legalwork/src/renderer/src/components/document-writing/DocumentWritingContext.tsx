@@ -9,6 +9,10 @@ import {
 } from './legal-templates'
 import type { DocumentHistoryRecord } from '../../../../shared/document-history'
 import {
+  documentInvolvesLoanAmounts,
+  validateLoanAmountDraft
+} from '../../../../shared/money-consistency'
+import {
   DOCUMENT_SUBJECT_FIELD_ID,
   type UserTemplate
 } from '../../../../shared/user-templates'
@@ -379,7 +383,9 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
         title: `文书写作：${activeTemplate.name}`,
         mode: 'agent'
       })
-      const sent = await provider.sendUserMessage(thread.id, buildDocumentWritingAgentPrompt(request), {
+      const agentPrompt = buildDocumentWritingAgentPrompt(request)
+      const loanAmountScenario = documentInvolvesLoanAmounts(agentPrompt)
+      const sent = await provider.sendUserMessage(thread.id, agentPrompt, {
         mode: 'agent'
       })
       activeRunRef.current = { threadId: thread.id, turnId: sent.turnId }
@@ -418,14 +424,20 @@ export function DocumentWritingProvider({ children }: { children: ReactNode }): 
           .map((candidate) => assessDocumentWritingContent(candidate))
           .find((candidate) => candidate !== null)
         if (!assessment) return false
+        // 涉及借款金额的文书：若终稿仍带条件式二选一诉请（如"如核实…则调整
+        // 为…"），说明关键金额冲突未解决，不得标记为已完成，须进入待核对状态。
+        const moneyIssues = loanAmountScenario ? validateLoanAmountDraft(assessment.content) : []
+        const moneyForcePartial = moneyIssues.length > 0
         completed = true
         setGeneratedContent(assessment.content)
         void saveCurrentToHistory(assessment.content)
         updateWorkflow((current) => ({
           ...current,
-          status: forcePartial || assessment.completeness === 'partial' ? 'partial' : 'done',
-          error: forcePartial || assessment.completeness === 'partial'
-            ? '已保留当前可用文书草稿，可继续编辑或重新生成。'
+          status: moneyForcePartial || forcePartial || assessment.completeness === 'partial' ? 'partial' : 'done',
+          error: moneyForcePartial || forcePartial || assessment.completeness === 'partial'
+            ? moneyForcePartial
+              ? `检测到诉请金额仍需核对：${moneyIssues.join('；')} 已保留草稿，请核实事实后修正再提交。`
+              : '已保留当前可用文书草稿，可继续编辑或重新生成。'
             : undefined,
           stages: completeDocumentWritingStages(current.stages)
         }))

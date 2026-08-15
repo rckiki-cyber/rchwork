@@ -165,6 +165,17 @@ import {
   credsFilePath,
   type ImaAuthStatus
 } from '../ima-auth-manager'
+import {
+  claimPkulawDailyToken,
+  openPkulawConsoleWindow,
+  type PkulawClaimResult
+} from '../pkulaw-auth-manager'
+import { openYuandianConsoleWindow } from '../yuandian-auth-manager'
+import {
+  getPkulawAutoClaimState,
+  setPkulawAutoClaimEnabled,
+  startPkulawAutoClaimScheduler
+} from '../pkulaw-auto-claim'
 
 // ── IMA Cookie 自动刷新定时器 + 按需触发 ──
 
@@ -2015,6 +2026,44 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       }
     }
     return { kind: 'not_configured' }
+  })
+
+  ipcMain.handle('pkulaw:open-console', async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    try {
+      openPkulawConsoleWindow()
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, message }
+    }
+  })
+
+  ipcMain.handle('pkulaw:claim-token', async (): Promise<PkulawClaimResult> => {
+    return claimPkulawDailyToken()
+  })
+
+  ipcMain.handle('pkulaw:auto-claim-state', async (): Promise<{ enabled: boolean; lastClaimDate: string | null }> => {
+    return getPkulawAutoClaimState()
+  })
+
+  ipcMain.handle(
+    'pkulaw:auto-claim-set',
+    async (_: unknown, enabled: unknown): Promise<{ enabled: boolean; lastClaimDate: string | null }> => {
+      return setPkulawAutoClaimEnabled(enabled === true)
+    }
+  )
+
+  // 每日自动领取调度：应用启动后延迟触发，不抢在连接前，也不影响连接。
+  startPkulawAutoClaimScheduler()
+
+  ipcMain.handle('yuandian:open-console', async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    try {
+      openYuandianConsoleWindow()
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, message }
+    }
   })
 
   ipcMain.handle('ima:auth-login', async (): Promise<{ ok: true } | { ok: false; message: string }> => {

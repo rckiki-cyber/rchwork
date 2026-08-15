@@ -513,7 +513,7 @@ describe('AgentLoop', () => {
         yield { kind: 'completed', stopReason: 'stop' }
       }
     }, { primaryLegalSource: 'pkulaw' })
-    await bootstrapThread(h)
+    await bootstrapThread(h, { title: '法律调研:测试' })
     await h.loop.runTurn(h.threadId, h.turnId)
 
     const request = observedRequest as ModelRequest | null
@@ -2637,6 +2637,7 @@ describe('AgentLoop', () => {
       }
     }, { tools, primaryLegalSource: 'yuandian' })
     await bootstrapThread(h, {
+      title: '法律调研:测试',
       request: { prompt: '请对以下法律问题进行多源调研：「人工智能的侵权责任」。最终报告必须作为最后一条独立回复。' }
     })
 
@@ -2756,6 +2757,7 @@ describe('AgentLoop', () => {
       }
     }, { tools, primaryLegalSource: 'yuandian' })
     await bootstrapThread(h, {
+      title: '法律调研:测试',
       request: { prompt: '请对以下法律问题进行多源调研：「人工智能侵权责任」。最终报告必须作为最后一条独立回复。' }
     })
 

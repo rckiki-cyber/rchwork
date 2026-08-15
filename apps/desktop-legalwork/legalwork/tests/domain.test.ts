@@ -310,8 +310,13 @@ describe('stableToolResultText', () => {
       finished_at: '2026-08-14T00:00:01Z',
       full_output_path: '/tmp/legalwork-bash-abc123'
     })
-    expect(text).toBe('file.txt\n')
-    // 两次调用结果一致（pid/时间戳不影响）
+    expect(text).toContain('file.txt')
+    // 白名单保留 full_output_path（非动态、对模型恢复有用）；pid/时间戳不并入
+    expect(text).toContain('full_output_path: /tmp/legalwork-bash-abc123')
+    expect(text).not.toContain('pid')
+    expect(text).not.toContain('started_at')
+    expect(text).not.toContain('12345')
+    // 两次调用各自保留自己的 full_output_path（同一 item 内固定，不漂移）
     const text2 = stableToolResultText({
       command: 'ls',
       cwd: '/tmp',
@@ -323,7 +328,8 @@ describe('stableToolResultText', () => {
       finished_at: '2026-08-14T00:00:06Z',
       full_output_path: '/tmp/legalwork-bash-xyz789'
     })
-    expect(text2).toBe('file.txt\n')
+    expect(text2).toContain('file.txt')
+    expect(text2).toContain('full_output_path: /tmp/legalwork-bash-xyz789')
   })
 
   it('falls back to .text and .content, then the whole payload', () => {

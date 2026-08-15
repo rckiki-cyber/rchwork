@@ -278,16 +278,29 @@ export function stableToolResultText(output: unknown): string {
   const record = output as Record<string, unknown>
   for (const key of ['output', 'text', 'content'] as const) {
     const value = record[key]
-    if (typeof value === 'string' && value.trim()) return value
+    if (typeof value === 'string' && value.trim()) return appendStableMetaFields(value, record)
     if (value !== undefined && value !== null && typeof value !== 'string') {
       try {
-        return JSON.stringify(value) ?? ''
+        return appendStableMetaFields(JSON.stringify(value) ?? '', record)
       } catch {
         return String(value)
       }
     }
   }
-  return JSON.stringify(output) ?? ''
+  return appendStableMetaFields(JSON.stringify(output) ?? '', record)
+}
+
+// 只并入对模型有恢复/判断价值且**非动态**的结构化字段（白名单）：
+// bash 的 exit_code / truncation / full_output_path（snake_case，见 builtin-bash-tool 的
+// BashOutputPayload）。pid/时间戳等 volatile 字段会导致同结果跨步字节漂移、击穿缓存，一律不并入。
+function appendStableMetaFields(text: string, record: Record<string, unknown>): string {
+  const meta: string[] = []
+  const exitCode = record['exit_code']
+  if (typeof exitCode === 'number' && exitCode !== 0) meta.push(`exit_code: ${exitCode}`)
+  if (record['truncation'] === true) meta.push('truncated: true')
+  const fullPath = record['full_output_path']
+  if (typeof fullPath === 'string' && fullPath.trim()) meta.push(`full_output_path: ${fullPath}`)
+  return meta.length ? `${text}\n[${meta.join(' ')}]` : text
 }
 
 export const DEFAULT_TOOL_RESULT_MAX_TOKENS = 8_000

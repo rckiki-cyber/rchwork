@@ -246,6 +246,16 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
           isError: true
         }
       }
+      const missingRequiredArgs = missingDocumentWorkerArgs(kind, operation, args)
+      if (missingRequiredArgs.length > 0) {
+        return {
+          output: {
+            status: 'error',
+            error: `${kind}/${operation} requires args containing: ${missingRequiredArgs.join(', ')}`
+          },
+          isError: true
+        }
+      }
       const skill = options.skillRuntime?.load(LEGAL_DOCUMENT_FORMATTING_SKILL_ID)
       if (!skill) {
         return { output: { status: 'error', error: 'legal-document-formatting Skill is unavailable' }, isError: true }
@@ -406,6 +416,28 @@ function stringArrayArg(value: unknown): string[] | null {
 function hasArg(args: string[], name: string): boolean {
   const index = args.indexOf(name)
   return index >= 0 && Boolean(args[index + 1])
+}
+
+/**
+ * Required worker arguments per (kind, operation), matching the argparse
+ * `required=True` flags in docx_worker.py / xlsx_worker.py. Missing args are
+ * rejected here (before spawning the worker) so the model gets a clear,
+ * actionable error instead of a bare argparse usage dump.
+ */
+function missingDocumentWorkerArgs(
+  kind: string,
+  operation: string,
+  args: string[]
+): string[] {
+  const required: string[] = []
+  if (kind === 'docx' && operation === 'inspect') required.push('--input')
+  if (kind === 'docx' && (operation === 'normalize' || operation === 'page')) required.push('--input', '--output')
+  if (kind === 'docx' && operation === 'replace') required.push('--input', '--output', '--old', '--new')
+  if (kind === 'docx' && operation === 'template-fill') required.push('--input', '--output', '--values')
+  if (kind === 'xlsx' && operation === 'inspect') required.push('--input')
+  if (kind === 'xlsx' && operation === 'from-json') required.push('--spec', '--output')
+  if (kind === 'xlsx' && operation === 'replace') required.push('--input', '--output', '--find', '--replace')
+  return required.filter((flag) => !hasArg(args, flag))
 }
 
 function resolveWorkerPathArgs(args: string[], workspace: string): string[] {

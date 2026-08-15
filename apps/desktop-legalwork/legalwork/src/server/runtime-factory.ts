@@ -192,7 +192,10 @@ export async function createLegalworkServeRuntime(
   let mcpProviders = pendingMcpToolProviders(options.capabilities?.mcp)
   const anysearchApiKey = process.env.ANYSEARCH_API_KEY?.trim() || options.capabilities?.web?.anysearchApiKey
   const webProviders = buildWebToolProviders(options.capabilities?.web, {
-    anysearchApiKey
+    anysearchApiKey,
+    deepseekApiKey: options.apiKey,
+    deepseekBaseUrl: options.baseUrl,
+    deepseekModel: options.model
   })
   const skillRuntime = await SkillRuntime.create(options.capabilities?.skills, {
     deferDiscovery: true,
