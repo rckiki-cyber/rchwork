@@ -29,6 +29,25 @@
 > 🏛️ 面向法律专业人士的 AI 赋能平台<br>
 > 集成 OCR 文档识别、敏感信息脱敏、智能案情分析、法律检索、文书生成、合规审查等完整法律 AI 能力
 
+## 📌 RCH 正式发布版
+
+### v0.3.24-rch.1（2026-08-17）
+
+这是基于上游 LegalWork 0.3.24 制作的首个 RCH 正式发布版，重点解决 Windows 首次安装依赖失败、重复安装文件锁和后续更新来源问题。
+
+- **完整离线运行环境**：内置 Windows Python 3.11，以及 Word、Excel、PowerPoint、PDF、OCR、PaddleOCR、数据脱敏和合规审查等完整 Python 依赖；安装后无需首次联网下载依赖包。
+- **修复环境安装失败**：修复重复安装或重试时 `libcrypto-3-x64.dll` 被占用导致的 `EPERM: operation not permitted, unlink` 错误。
+- **改善后台运行体验**：优化 Office CLI 调用，避免 Windows 执行任务时弹出额外控制台窗口。
+- **独立更新通道**：自动更新源已切换至 `rckiki-cyber/rchwork`，后续 RCH 版本从本仓库 Releases 检查和下载更新。
+- **持续融合上游**：自动同步上游 `main`，依次合并完整依赖补丁和 RCH 发布配置；发生冲突时停止推送并创建 Issue，不会强制覆盖代码。
+- **保留用户数据**：覆盖安装不会删除用户配置、项目文件或个人 Skill 数据。
+
+> 从上游官方版迁移时，需要先手动安装本版本一次；从本版本开始，后续升级使用 RCH 更新通道。
+
+**下载：** [v0.3.24-rch.1 正式版及完整更新说明](https://github.com/rckiki-cyber/rchwork/releases/tag/v0.3.24-rch.1)
+
+**Windows x64 安装包 SHA-256：** `BB72F21C92E16F93FB41568C15271BD1DD3C46D4FB0F59560FEF79E3331C84CF`
+
 ## 🆕 0.3.15 功能更新
 
 - **知识库检索升级**：新增增量 SQLite FTS 索引 + 修订感知缓存 + 结构化分块（按标题层级切分、带出处/哈希），检索更快更准；可用 `LEGALWORK_KNOWLEDGE_SQLITE=1` 开启。
