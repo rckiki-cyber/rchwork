@@ -7,12 +7,14 @@ import {
   clearWatchedCompletionNotifications,
   clearPendingClawFeishuMirrors,
   completionNotificationDedupeKeyForWatchedThread,
+  isCodeThread,
   MAX_PENDING_CLAW_FEISHU_MIRRORS,
   MAX_WATCHED_COMPLETION_NOTIFICATIONS,
   rememberPendingClawFeishuMirror,
   takePendingClawFeishuMirror,
   watchTurnCompletionNotification
 } from './chat-store-runtime'
+import type { NormalizedThread } from '../agent/types'
 import type { ChatState, ChatStoreSet } from './chat-store-types'
 
 function makeSinkHarness(overrides: Partial<ChatState> = {}): {
@@ -82,7 +84,7 @@ describe('thread event sink binding', () => {
 
     controller.abort()
     sink.onDeltas([{ kind: 'agent_reasoning', text: 'late old reasoning', seq: 8 }])
-    sink.onTurnComplete()
+    sink.onTurnComplete('completed')
 
     expect(getState().liveReasoning).toBe('current reasoning')
     expect(getState().blocks).toEqual([])
@@ -106,6 +108,54 @@ describe('thread event sink binding', () => {
 })
 
 describe('thread event sink runtime errors', () => {
+  it('settles a terminal turn failure inline without showing the global warning banner', () => {
+    const { getState, set, get } = makeSinkHarness({
+      activeThreadId: 'thread-current',
+      busy: true,
+      error: 'old warning',
+      runtimeErrorDetail: 'old detail',
+      blocks: [{ kind: 'user', id: 'user-current', text: '公考具体考纲' }]
+    })
+    const sink = buildThreadEventSink(set, get, { threadId: 'thread-current' })
+    const error = new Error('模型连续多次只返回内部思考，没有生成可见答案。') as Error & {
+      terminalTurnFailure: true
+    }
+    error.terminalTurnFailure = true
+
+    sink.onError(error)
+
+    const state = getState()
+    expect(state.busy).toBe(false)
+    expect(state.currentTurnId).toBeNull()
+    expect(state.currentTurnUserId).toBeNull()
+    expect(state.error).toBeNull()
+    expect(state.runtimeErrorDetail).toBeNull()
+    expect(state.blocks.at(-1)).toMatchObject({
+      kind: 'system',
+      text: '模型连续多次只返回内部思考，没有生成可见答案。',
+      severity: 'error'
+    })
+  })
+
+  it('clears stale warning details when a new turn starts', () => {
+    const { getState, set, get } = makeSinkHarness({
+      activeThreadId: 'thread-current',
+      error: 'old warning',
+      runtimeErrorDetail: 'old detail'
+    })
+    const sink = buildThreadEventSink(set, get, { threadId: 'thread-current' })
+
+    sink.onUserMessage({
+      itemId: 'user-next',
+      text: '继续检索',
+      createdAt: new Date().toISOString(),
+      turnId: 'turn-next'
+    })
+
+    expect(getState().error).toBeNull()
+    expect(getState().runtimeErrorDetail).toBeNull()
+  })
+
   it('adds runtime error events to the timeline with details', () => {
     const { getState, set, get } = makeSinkHarness({
       activeThreadId: 'thread-current',
@@ -493,5 +543,32 @@ describe('thread event sink delta dedupe (duplicate-text fix)', () => {
     expect(getState().appliedSeq).toBe(5)
     // lastSeq 保持订阅水位，不被 delta 推进（由 onSeq 管理）
     expect(getState().lastSeq).toBe(10)
+  })
+
+  it('never surfaces document-writing scratch threads in the home conversation', () => {
+    const baseThread = (overrides: Partial<NormalizedThread>): NormalizedThread => ({
+      id: 'thr_doc',
+      title: '普通对话',
+      updatedAt: '',
+      model: '',
+      mode: 'agent',
+      workspace: '/Users/test/Downloads',
+      status: 'idle',
+      archived: false,
+      relation: 'primary',
+      parentThreadId: '',
+      forkedFromThreadId: '',
+      forkedFromTitle: '',
+      forkedAt: '',
+      forkedFromMessageCount: 0,
+      ...overrides
+    })
+    expect(isCodeThread(baseThread({}))).toBe(true)
+    expect(isCodeThread(baseThread({
+      title: '文书写作：民事上诉状'
+    }))).toBe(false)
+    expect(isCodeThread(baseThread({
+      workspace: '~/.legalwork/document-workspace'
+    }))).toBe(false)
   })
 })

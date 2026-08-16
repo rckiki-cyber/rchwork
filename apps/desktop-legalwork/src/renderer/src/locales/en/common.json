@@ -232,7 +232,7 @@
   "legalResearchStepError": "Error",
   "legalResearchSummaryTitle": "Research summary",
   "legalResearchSummary": "Completed multi-source legal research on \"{{query}}\". Cases, regulations, academic papers, and online sources have been synthesized and can be used to generate a legal analysis.",
-  "legalResearchAgentPrompt": "Conduct multi-source legal research on the following question: \"{{query}}\". Use Chinese for visible progress updates and the final report. Before research begins, form a concise but complete research plan as one continuous numbered list from 1 to N. Include only the issues to verify, search directions, and source strategy; do not mix in tool-availability checks, invocation attempts, execution logs, or lengthy internal analysis. Actively use available skills, knowledge bases, and legal-database tools. When PKULaw MCP is configured, use it as the primary source for statutes and cases, including its link-enhancement and citation-validation tools. The National Laws and Regulations Database is not mandatory: use it only when the user explicitly requests it, PKULaw is unavailable or returns no usable result, or sources materially conflict about validity. Do not query it merely to obtain an official link, and never open or control the user's browser, Chrome, or Playwright to access it. Begin retrieval only after planning. After each research stage, send one short, separate update describing what finished, the main result, and the next step; do not combine stages into one long paragraph or expose verbose tool logs. If an optional source fails, try at most one configured non-browser alternative, then mark the limitation without blocking the final report. Return the final report as the last separate response, structured with Markdown headings for conclusion, legal authorities, relevant cases, analysis and risks, and sources. Preserve complete real URLs returned by tools and never construct or guess a URL.",
+  "legalResearchAgentPrompt": "Conduct multi-source legal research on the following question: \"{{query}}\". Use Chinese for visible content and deliver the best available report in this turn. Planning may happen internally, but a standalone plan or progress update must not be the only output. Choose tools and sources autonomously; no source, tool call, citation check, or fixed section count is a completion prerequisite. Stop repeated retries when a source fails, continue from available material, mark genuine uncertainty, and never withhold the report. Markdown headings for conclusions, legal authorities, relevant cases, analysis and risks, and sources are recommended. Preserve real URLs and never construct or guess one.",
   "legalResearchToolUnknown": "Tool call",
   "legalResearchNoSummary": "Research completed, but no summary text was returned.",
   "legalResearchStopped": "Research was manually stopped.",
@@ -1503,7 +1503,7 @@
   "appErrorReload": "Reload",
   "learningIteration": "Learning iteration",
   "learningIterationOverview": "Learning overview",
-  "learningIterationSubtitle": "Learn reusable memory and workflows from interaction evidence while idle",
+  "learningIterationSubtitle": "Reviews recent conversations and actions while idle, then turns them into reusable memories, skills, and workflows",
   "learningIterationRecordSubtitle": "A clear look at what was learned this time",
   "learningReportTitle": "Learning outcomes",
   "learningReportEyebrow": "Learning completed",
@@ -1614,6 +1614,7 @@
   "mermaidViewSource": "View Mermaid source",
   "mermaidFullscreenLabel": "Fullscreen diagram",
   "mermaidExitFullscreen": "Exit fullscreen",
-  "legalResearchNoToolsHint": "The research produced a plan but executed no search (no tools were called). Please retry.",
+  "legalResearchNoToolsHint": "The research returned no content that can be displayed. Please retry.",
+  "legalResearchIncompleteReport": "Research ended without any displayable content.",
   "legalResearchCurrentTool": "Running: {{tool}}"
 }

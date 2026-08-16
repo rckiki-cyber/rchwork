@@ -26,7 +26,7 @@ const emptySignals = {
 }
 
 describe('automatic task plan', () => {
-  it('detects multi-stage, multi-artifact long tasks and builds runtime gates', () => {
+  it('detects multi-stage, multi-artifact long tasks without making the plan a delivery gate', () => {
     const prompt = [
       '请严格依次完成全部阶段并完整交付。'.repeat(20),
       '### 阶段一：本地知识库深度调研',
@@ -49,7 +49,8 @@ describe('automatic task plan', () => {
       }
     })
 
-    expect(plan?.runtimeManaged).toBe(true)
+    expect(plan?.runtimeManaged).toBe(false)
+    expect(plan?.genericTextCompletion).toBe(true)
     expect(plan?.stages.map((stage) => stage.key)).toEqual(expect.arrayContaining([
       'local-evidence',
       'pdf-reading',

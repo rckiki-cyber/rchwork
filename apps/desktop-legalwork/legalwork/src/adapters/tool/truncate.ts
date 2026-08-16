@@ -172,3 +172,30 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
     maxBytes
   }
 }
+
+/**
+ * 工具结果 head/middle/tail 裁剪（对齐 DSH tool-result-pruner）。
+ * 文本超 thresholdChars 时保留 head + tail、中间省略并加标记，避免大 tool_result
+ * 全量进 history 造成每轮重发 miss。只裁剪文本，不裁剪其它结构。
+ */
+export const PRUNE_MARKER = '\n\n[... tool result middle pruned ...]\n\n'
+export const DEFAULT_PRUNE_THRESHOLD_CHARS = 8192
+export const DEFAULT_PRUNE_HEAD_CHARS = 4096
+export const DEFAULT_PRUNE_TAIL_CHARS = 1024
+
+export function pruneLongTextMiddle(
+  text: string,
+  options: {
+    thresholdChars?: number
+    headChars?: number
+    tailChars?: number
+  } = {}
+): string {
+  const threshold = options.thresholdChars ?? DEFAULT_PRUNE_THRESHOLD_CHARS
+  const headChars = options.headChars ?? DEFAULT_PRUNE_HEAD_CHARS
+  const tailChars = options.tailChars ?? DEFAULT_PRUNE_TAIL_CHARS
+  if (text.length <= threshold) return text
+  const head = text.slice(0, headChars)
+  const tail = text.slice(-tailChars)
+  return `${head}${PRUNE_MARKER}${tail}`
+}

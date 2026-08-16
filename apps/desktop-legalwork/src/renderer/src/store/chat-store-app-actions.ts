@@ -58,7 +58,7 @@ export function createAppActions(options: CreateAppActionsOptions): Pick<
   let modelSwitchSequence = 0
 
   return {
-    setError: (message) => set({ error: message }),
+    setError: (message) => set({ error: message, runtimeErrorDetail: null }),
 
     setComposerModel: (modelId, requestedProviderId) => {
       const previousModel = get().composerModel

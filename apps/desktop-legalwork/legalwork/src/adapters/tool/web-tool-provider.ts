@@ -4,8 +4,12 @@ import { sourceIdFor, UnavailableWebProvider } from '../../ports/web-provider.js
 import type { CapabilityToolProvider } from './capability-registry.js'
 import { LocalToolHost } from './local-tool-host.js'
 import { AnysearchWebProvider } from './anysearch-web-provider.js'
+import { DeepseekServerSearchProvider } from './deepseek-server-search-provider.js'
 
 const DEFAULT_WEB_TIMEOUT_MS = 15_000
+// 服务端搜索(deepseek-server-search)单次请求需完成 LLM 推理+多次 web search+生成，
+// 15s 频繁误杀真实搜索（search_failed/aborted），单独放宽到 60s
+const DEFAULT_SEARCH_TIMEOUT_MS = 60_000
 // Cap web_fetch at ~96KB (~24K tokens) instead of 1MB: a full page can
 // otherwise inject up to ~250K tokens into the context as a single tool
 // result and dominate turn cost, especially during research tool loops.
@@ -36,6 +40,10 @@ export type WebToolProviderOptions = {
   nowIso?: () => string
   /** AnySearch API key for web search. When set, search is enabled automatically. */
   anysearchApiKey?: string
+  /** DeepSeek API key + endpoint for the server-side web_search tool. When set, search uses the DeepSeek server tool (cheap, no local round-trip). */
+  deepseekApiKey?: string
+  deepseekBaseUrl?: string
+  deepseekModel?: string
 }
 
 export function buildWebToolProviders(
@@ -53,18 +61,32 @@ export function buildWebToolProviders(
   }
 
   // Search provider: an explicitly injected provider wins (tests, private
-  // deployments and future adapters). Otherwise AnySearch is the default when
-  // no provider is named, or when the configured provider is "anysearch".
+  // deployments and future adapters). Otherwise the DeepSeek server-side
+  // web_search tool is preferred when a DeepSeek API key is available (cheap,
+  // executes in the API, no local round-trip). AnySearch is the fallback when
+  // no DeepSeek key is configured, or when the configured provider is "anysearch".
   const anysearchKey = options.anysearchApiKey?.trim()
   const anysearchProvider = new AnysearchWebProvider({ apiKey: anysearchKey || undefined, nowIso: options.nowIso })
-  const searchEnabled = web.searchEnabled
+  // 服务端 web_search 复用 DeepSeek 主 API key，无额外成本：只要配置了 DeepSeek
+  // key 就自动启用搜索（不受旧 AnySearch 时代 searchEnabled=false 的限制），
+  // 保证元典/北大法宝都不可用时模型有 web_search 兜底可用。
+  // 尊重显式 searchEnabled=false（保密性/合规场景可关）；
+  // 未显式配置(undefined)时，有 DeepSeek key 才自动启用服务端搜索（默认开）。
+  const searchEnabled = web.searchEnabled ?? Boolean(options.deepseekApiKey?.trim())
   const fetchProvider: WebProvider = options.provider ?? (web.fetchEnabled
     ? new FetchWebProvider(options.nowIso)
     : new UnavailableWebProvider(web.provider))
   const searchProvider: WebProvider = options.provider ?? (
-    !web.provider || web.provider === 'anysearch'
-      ? anysearchProvider
-      : new UnavailableWebProvider(web.provider)
+    options.deepseekApiKey?.trim()
+      ? new DeepseekServerSearchProvider({
+          apiKey: options.deepseekApiKey,
+          baseUrl: options.deepseekBaseUrl,
+          model: options.deepseekModel,
+          nowIso: options.nowIso
+        })
+      : (!web.provider || web.provider === 'anysearch'
+          ? anysearchProvider
+          : new UnavailableWebProvider(web.provider))
   )
 
   const tools = []
@@ -111,7 +133,7 @@ export function buildWebToolProviders(
 function createFetchTool(config: WebCapabilityConfig, provider: WebProvider) {
   return LocalToolHost.defineTool({
     name: 'web_fetch',
-    description: 'Fetch an allowed HTTP or HTTPS URL and return extracted text with source metadata.',
+    description: 'Fetch an HTTP(S) URL and return its extracted text. Use it to read pages when you need the full body text — e.g. a specific article, report, official document, or legal text — including following up on web_search results when the snippet is only a title and you need the actual content (court judgment details, regulation text, news article body). Do NOT fetch every search result indiscriminately; fetch only the specific page(s) that matter. Do NOT use it on local files (use read instead).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -181,7 +203,8 @@ function createSearchTool(config: WebCapabilityConfig, provider: WebProvider) {
       if (!query) return toolError('invalid_query', 'query is required')
       if (!provider.search) return toolError('provider_unavailable', 'web search provider is unavailable')
       const limit = boundedInt(args.limit, DEFAULT_SEARCH_LIMIT, 1, MAX_SEARCH_LIMIT)
-      const timeoutMs = boundedInt(args.timeout_ms, DEFAULT_WEB_TIMEOUT_MS, 1, DEFAULT_WEB_TIMEOUT_MS)
+      // 搜索超时用独立上限（服务端搜索一次请求耗时较长），与 web_fetch 的 15s 分开
+      const timeoutMs = boundedInt(args.timeout_ms, DEFAULT_SEARCH_TIMEOUT_MS, 1, DEFAULT_SEARCH_TIMEOUT_MS)
       try {
         const results = await provider.search({
           query,

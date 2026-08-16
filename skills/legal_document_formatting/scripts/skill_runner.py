@@ -68,7 +68,20 @@ def marker_path(venv_root: Path) -> Path:
     return venv_root / f".legalwork-document-skill-{RUNTIME_VERSION}"
 
 
-def python_version_ok(command: str) -> bool:
+def bundled_office_python_env(command: str) -> dict:
+    """python-build-standalone hard-codes sys.prefix at build time and is not
+    relocatable by default: once the tree is packaged under office-runtime/,
+    the python still looks for its stdlib/site-packages under the build-time
+    temp path unless PYTHONHOME re-anchors it. Without this, `import docx`
+    fails on end-user machines and reports "incomplete or incompatible".
+    """
+    env = dict(os.environ)
+    home = str(Path(command).resolve().parent.parent)
+    env["PYTHONHOME"] = home
+    return env
+
+
+def python_version_ok(command: str, env: dict | None = None) -> bool:
     try:
         completed = subprocess.run(
             [command, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
@@ -76,6 +89,7 @@ def python_version_ok(command: str) -> bool:
             text=True,
             timeout=8,
             check=False,
+            env=env,
         )
         if completed.returncode != 0:
             return False
@@ -85,7 +99,7 @@ def python_version_ok(command: str) -> bool:
         return False
 
 
-def imports_ok(command: str) -> bool:
+def imports_ok(command: str, env: dict | None = None) -> bool:
     code = "\n".join(f"import {name}" for name in REQUIRED_IMPORTS)
     try:
         completed = subprocess.run(
@@ -94,6 +108,7 @@ def imports_ok(command: str) -> bool:
             text=True,
             timeout=15,
             check=False,
+            env=env,
         )
         return completed.returncode == 0
     except Exception:
@@ -111,7 +126,8 @@ def bundled_office_python() -> str | None:
         if not path.is_file():
             continue
         command = str(path)
-        if python_version_ok(command) and imports_ok(command):
+        env = bundled_office_python_env(command)
+        if python_version_ok(command, env) and imports_ok(command, env):
             return command
         emit({
             "status": "error",

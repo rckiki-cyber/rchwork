@@ -21,6 +21,16 @@ describe('IMA knowledge router', () => {
     expect(shouldAutoRouteToIma('请起草一份劳动合同')).toBe(false)
   })
 
+  it('does not prefetch IMA ahead of a promised visible research plan', () => {
+    expect(shouldAutoRouteToIma([
+      '请对食品药品领域犯罪开展多源调研，IMA 作为补充来源。',
+      '调研开始前先形成调研规划，规划完成后再开始检索。'
+    ].join('\n'))).toBe(false)
+    expect(shouldAutoRouteToIma(
+      'Use IMA as a supplemental source. Begin retrieval only after planning.'
+    )).toBe(false)
+  })
+
   it('requires the direct research tool when MCP tools are advertised directly', () => {
     const action = resolveImaRouteAction({
       prompt,

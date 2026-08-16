@@ -86,6 +86,29 @@ describe('image attachment upload preparation', () => {
     expect(prepared.previewUrl).toBeUndefined()
   })
 
+  it('accepts unknown binary file types when the runtime advertises the */* wildcard', async () => {
+    const file = new File([new Uint8Array([0, 1, 2])], 'evidence.custombin', {
+      type: 'application/octet-stream'
+    })
+    const prepared = await prepareAttachmentUpload(file, {
+      maxImageBytes: 100,
+      maxImageDimension: 100,
+      allowedMimeTypes: ['*/*'],
+      textFallbackMaxBase64Bytes: 100
+    })
+
+    expect(prepared).toMatchObject({
+      dataBase64: 'AAEC',
+      mimeType: 'application/octet-stream',
+      textFallback: {
+        dataBase64: 'AAEC',
+        mimeType: 'application/octet-stream',
+        byteSize: 3,
+        wasCompressed: false
+      }
+    })
+  })
+
   it('infers PDF MIME type from the file name when the drag payload omits it', async () => {
     const file = new File(['%PDF'], 'contract.pdf', { type: '' })
     const prepared = await prepareAttachmentUpload(file, {

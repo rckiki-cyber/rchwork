@@ -5,6 +5,7 @@ const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path
 
 const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
   'legalwork/dist/cli/serve-entry.js',
+  'legalwork/dist/loop/agent-loop.js',
   'legalwork/package.json',
   'legalwork/package-lock.json',
   'legalwork/node_modules/zod/package.json',
@@ -12,6 +13,8 @@ const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
   'legalwork/node_modules/@modelcontextprotocol/sdk/package.json',
   'legalwork/node_modules/@officecli/officecli/package.json'
 ]
+
+const LEGALWORK_AGENT_LOOP_RELATIVE_PATH = 'legalwork/dist/loop/agent-loop.js'
 
 const DATA_COMPLIANCE_REQUIRED_PATHS = [
   'vendor/data-compliance-review-codex/data-compliance-web/app.py',
@@ -198,6 +201,33 @@ function validateBundledLegalworkRuntime(context) {
     join(root, 'node_modules', 'better-sqlite3', 'package.json'),
     'root better-sqlite3 dependency'
   )
+  validateBundledAgentLoop(join(root, LEGALWORK_AGENT_LOOP_RELATIVE_PATH))
+}
+
+/**
+ * Reject a compiled runtime that can crash before the first model request.
+ *
+ * A temporary ZERO-TOOLS diagnostic was once inserted directly into the
+ * generated agent-loop.js before `requestToolSpecs` was initialized.  The
+ * resulting temporal-dead-zone exception made every document turn fail during
+ * input routing and the GUI appeared to stop after an intermediate sentence.
+ * Checking the actual compiled file here protects release artifacts even when
+ * the TypeScript source and unit tests are clean.
+ */
+function validateBundledAgentLoop(agentLoopPath) {
+  const source = readFileSync(agentLoopPath, 'utf8')
+  const declarationIndex = source.indexOf('const requestToolSpecs')
+  if (declarationIndex < 0) {
+    throw new Error(`[after-pack] Invalid Legalwork agent loop: requestToolSpecs declaration missing: ${agentLoopPath}`)
+  }
+  if (source.slice(0, declarationIndex).includes('requestToolSpecs')) {
+    throw new Error(
+      `[after-pack] Invalid Legalwork agent loop: requestToolSpecs is accessed before initialization: ${agentLoopPath}`
+    )
+  }
+  if (source.includes('[ZERO-TOOLS]') || source.includes('[ZERO-TOOLS2]')) {
+    throw new Error(`[after-pack] Invalid Legalwork agent loop: temporary ZERO-TOOLS diagnostics remain: ${agentLoopPath}`)
+  }
 }
 
 function officeRuntimePythonPath(context) {
@@ -472,6 +502,7 @@ exports._internals = {
   prunePackedLegalworkDependencies,
   restoreBundledOfficeCli,
   validateBundledLegalworkRuntime,
+  validateBundledAgentLoop,
   validateBundledOfficeRuntime,
   validateBundledPdfFonts,
   validateBundledDataComplianceRuntime,

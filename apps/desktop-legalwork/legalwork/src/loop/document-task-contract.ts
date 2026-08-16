@@ -435,11 +435,11 @@ export function taskContractInstruction(input: {
   }
   if (!requirements.length) return undefined
   return [
-    '<explicit_task_contract>',
-    '以下是从用户原始请求中提取的强制验收条件，未全部通过前不得声称完成：',
+    '<explicit_task_advisory>',
+    '以下是从用户原始请求中提取的质量目标：',
     ...requirements.map((requirement) => `- ${requirement}`),
-    '引用核验必须提交完整终稿；生成 Word 时必须使用同一份已核验终稿。',
-    '</explicit_task_contract>'
+    '尽力完成上述目标。任一工具、来源、格式或验证目标未达成时，应带着明确局限继续交付已完成的正文或文件，不得吞掉结果。',
+    '</explicit_task_advisory>'
   ].join('\n')
 }
 

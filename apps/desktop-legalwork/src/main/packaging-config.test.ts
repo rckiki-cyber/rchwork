@@ -100,6 +100,11 @@ describe('electron-builder Legalwork packaging', () => {
     for (const relativePath of afterPack.LEGALWORK_RUNTIME_REQUIRED_PATHS) {
       touch(join(unpackedRoot, relativePath))
     }
+    writeFileSync(
+      join(unpackedRoot, 'legalwork/dist/loop/agent-loop.js'),
+      'const requestToolSpecs = [];\nvoid requestToolSpecs;\n',
+      'utf8'
+    )
     touch(join(unpackedRoot, 'node_modules/better-sqlite3/package.json'))
 
     expect(() => afterPack._internals.validateBundledLegalworkRuntime(context)).not.toThrow()
@@ -108,6 +113,34 @@ describe('electron-builder Legalwork packaging', () => {
 
     expect(() => afterPack._internals.validateBundledLegalworkRuntime(context)).toThrow(
       /legalwork\/node_modules\/zod\/package\.json/
+    )
+  })
+
+  it('rejects a bundled Agent Loop that reads requestToolSpecs before initialization', () => {
+    const root = tempRoot()
+    const agentLoopPath = join(root, 'agent-loop.js')
+    writeFileSync(
+      agentLoopPath,
+      'process.stderr.write(String(requestToolSpecs.length));\nconst requestToolSpecs = [];\n',
+      'utf8'
+    )
+
+    expect(() => afterPack._internals.validateBundledAgentLoop(agentLoopPath)).toThrow(
+      /requestToolSpecs is accessed before initialization/
+    )
+  })
+
+  it('rejects temporary ZERO-TOOLS diagnostics in the bundled Agent Loop', () => {
+    const root = tempRoot()
+    const agentLoopPath = join(root, 'agent-loop.js')
+    writeFileSync(
+      agentLoopPath,
+      'const requestToolSpecs = [];\nprocess.stderr.write("[ZERO-TOOLS]");\n',
+      'utf8'
+    )
+
+    expect(() => afterPack._internals.validateBundledAgentLoop(agentLoopPath)).toThrow(
+      /temporary ZERO-TOOLS diagnostics remain/
     )
   })
 

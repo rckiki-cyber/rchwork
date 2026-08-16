@@ -120,6 +120,13 @@ export class CapabilityRegistry {
     if (toolName === OFFICECLI_TOOL_NAME && !isOfficeFallbackGranted(context)) {
       return false
     }
+    // 主对话 web-first：默认不注入任何 MCP 工具（含 mcp_search/mcp_call 调度入口），
+    // 网络检索一律用 web_search。实测发现只要注入 mcp 调度入口，模型就积极用它而非
+    // web_search（把"网络检索"误解为法律数据库检索）。仅当用户明确要求法律数据库检索
+    // 或专用工作流（该轮 webFirstMcpScope=false）时，MCP 才整体恢复。
+    if (context?.webFirstMcpScope && toolName.startsWith('mcp_')) {
+      return false
+    }
     const allowed = context?.allowedToolNames
     return !allowed || allowed.includes(toolName)
   }

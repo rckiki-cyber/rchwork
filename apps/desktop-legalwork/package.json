@@ -1,7 +1,7 @@
 {
   "name": "legalwork",
   "productName": "legalwork",
-  "version": "0.3.18",
+  "version": "0.3.24",
   "description": "Electron workbench for the Legalwork runtime (HTTP/SSE)",
   "main": "./out/main/index.cjs",
   "type": "module",
@@ -60,6 +60,7 @@
   "scripts": {
     "dev": "npm run build:legalwork && electron-vite dev",
     "build": "npm run build:legalwork && node ./scripts/generate-error-report-config.cjs && electron-vite build",
+    "dev:quick": "npm run build && electron-vite preview",
     "build:legalwork": "node ./scripts/ensure-legalwork-install.cjs && npm --prefix legalwork run build",
     "lint": "eslint .",
     "test": "vitest run",

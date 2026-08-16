@@ -148,7 +148,8 @@ export function createThreadActions(
       set({
         ...clearedThreadSelection(),
         watchTurnCompletion: nextWatch,
-        error: null
+        error: null,
+        runtimeErrorDetail: null
       })
       syncTurnCompletionPoll(set, get)
     }
@@ -182,7 +183,7 @@ export function createThreadActions(
         if (get().activeThreadId !== reusableThreadId) {
           await get().selectThread(reusableThreadId)
         } else {
-          set({ error: null })
+          set({ error: null, runtimeErrorDetail: null })
         }
         return
       }
@@ -355,6 +356,7 @@ export function createThreadActions(
         liveReasoning: '',
         liveAssistant: '',
         error: null,
+        runtimeErrorDetail: null,
         busy,
         currentTurnId: busy ? latestTurnId ?? null : null,
         currentTurnUserId,
@@ -442,7 +444,8 @@ export function createThreadActions(
             ...(attachments?.length ? { attachments } : {})
           }
         ],
-        error: null
+        error: null,
+        runtimeErrorDetail: null
       }))
       // UI/runtime can briefly drift (busy=false while runtime still has an active turn).
       // Kick recovery so queued input drains as soon as the in-flight turn settles.
@@ -518,6 +521,7 @@ export function createThreadActions(
       liveReasoning: '',
       liveAssistant: '',
       error: null,
+      runtimeErrorDetail: null,
       currentTurnUserId: userBlockId,
       turnStartedAtByUserId: { ...s.turnStartedAtByUserId, [userBlockId]: now },
       queuedMessages: queued ? s.queuedMessages.filter((message) => message.id !== queued.id) : s.queuedMessages
@@ -805,6 +809,7 @@ export function createThreadActions(
         liveReasoning: '',
         liveAssistant: '',
         error: null,
+        runtimeErrorDetail: null,
         currentTurnId: null,
         currentTurnUserId: null
       })

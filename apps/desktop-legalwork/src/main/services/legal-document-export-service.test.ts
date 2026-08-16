@@ -3,11 +3,17 @@ import { describe, expect, it } from 'vitest'
 import {
   buildLegalDocumentHtml,
   legalDocumentMarkdownToDocx,
+  normalizeLegalDocxBuffer,
   normalizeLegalParagraphs,
   prepareLegalDocumentMarkdown
 } from './legal-document-export-service'
 
 const require = createRequire(import.meta.url)
+const htmlToDocx = require('html-to-docx') as (
+  htmlString: string,
+  headerHtmlString?: string | null,
+  documentOptions?: Record<string, unknown> | null
+) => Promise<ArrayBuffer | Blob>
 const JSZip = require('jszip') as {
   loadAsync(data: Buffer): Promise<{
     file(path: string): { async(type: 'string'): Promise<string> } | null
@@ -25,6 +31,102 @@ describe('legal document Word export', () => {
     expect(html).toContain('data-document-archetype="law-firm-opinion"')
     expect(html).toContain('.legal-document hr { display: none; }')
     expect(html).not.toContain('border-bottom')
+  })
+
+  it('recognizes plain-text legal-document headings without markdown markers', () => {
+    const markdown = prepareLegalDocumentMarkdown({
+      templateName: '法律意见书',
+      markdown: [
+        '法律意见书',
+        '',
+        '致：益阳郁沁工程有限公司',
+        '',
+        '一、基本事实',
+        '',
+        '（一）合同签署情况',
+        '',
+        '正文内容。',
+        '',
+        '【待核实：出具律所】',
+        '',
+        '律师：【待核实：出具律师】',
+        '',
+        '日期：【待核实：出具日期】'
+      ].join('\n')
+    })
+
+    expect(markdown).toContain('# 法律意见书')
+    expect(markdown).toContain('## 一、基本事实')
+    expect(markdown).toContain('### （一）合同签署情况')
+    expect(markdown).toContain('致：益阳郁沁工程有限公司')
+    expect(markdown).toContain('正文内容。')
+  })
+
+  it('centers the plain-text title and right-aligns the signature block in DOCX', async () => {
+    const buffer = await legalDocumentMarkdownToDocx({
+      templateId: 'legal-opinion',
+      templateName: '法律意见书',
+      markdown: [
+        '法律意见书',
+        '',
+        '致：益阳郁沁工程有限公司',
+        '',
+        '一、基本事实',
+        '',
+        '（一）合同签署情况',
+        '',
+        '正文内容。',
+        '',
+        '【待核实：出具律所】',
+        '',
+        '律师：【待核实：出具律师】',
+        '',
+        '日期：【待核实：出具日期】'
+      ].join('\n')
+    })
+    const zip = await JSZip.loadAsync(buffer)
+    const document = await zip.file('word/document.xml')!.async('string')
+    const paragraphs = [...document.matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g)].map((match) => match[1])
+    const textOf = (paragraph: string): string =>
+      [...paragraph.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((match) => match[1]).join('').trim()
+
+    const title = paragraphs.find((paragraph) => textOf(paragraph) === '法律意见书') ?? ''
+    expect(title).toContain('<w:pStyle w:val="Heading1"/>')
+    expect(title).toContain('<w:jc w:val="center"/>')
+    expect(paragraphs.some((paragraph) => textOf(paragraph) === '一、基本事实' && paragraph.includes('<w:pStyle w:val="Heading2"/>'))).toBe(true)
+    expect(paragraphs.some((paragraph) => textOf(paragraph) === '（一）合同签署情况' && paragraph.includes('<w:pStyle w:val="Heading3"/>'))).toBe(true)
+    for (const signature of ['【待核实：出具律所】', '律师：【待核实：出具律师】', '日期：【待核实：出具日期】']) {
+      const paragraph = paragraphs.find((candidate) => textOf(candidate) === signature) ?? ''
+      expect(paragraph).toContain('<w:jc w:val="right"/>')
+    }
+  })
+
+  it('normalizes legacy html-route DOCX output with legal typography', async () => {
+    const html = buildLegalDocumentHtml({
+      templateName: '法律意见书',
+      markdown: '法律意见书\n\n致：某公司\n\n一、基本事实\n\n中文正文。'
+    })
+    const raw = await htmlToDocx(html, null, {
+      title: '法律意见书',
+      creator: 'legalwork',
+      font: 'SimSun',
+      fontSize: 24
+    })
+    const rawBuffer = Buffer.isBuffer(raw)
+      ? raw
+      : raw instanceof ArrayBuffer
+        ? Buffer.from(new Uint8Array(raw))
+        : Buffer.from(await (raw as Blob).arrayBuffer())
+    const buffer = await normalizeLegalDocxBuffer(rawBuffer)
+    const zip = await JSZip.loadAsync(buffer)
+    const styles = await zip.file('word/styles.xml')!.async('string')
+    const document = await zip.file('word/document.xml')!.async('string')
+
+    expect(styles).toContain('w:eastAsia="宋体"')
+    expect(document).toContain('中文正文')
+    expect(document).toContain('w:line="360" w:lineRule="auto"')
+    expect(document).toContain('w:firstLine="480" w:firstLineChars="200"')
+    expect(document).toContain('<w:jc w:val="center"/>')
   })
 
   it('renders GFM tables and preserves link URLs in research exports', () => {

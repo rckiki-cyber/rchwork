@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdtemp, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { LocalTool } from './local-tool-host.js'
 import type { SkillToolsOptions } from './builtin-tool-types.js'
 import {
@@ -246,6 +246,16 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
           isError: true
         }
       }
+      const missingRequiredArgs = missingDocumentWorkerArgs(kind, operation, args)
+      if (missingRequiredArgs.length > 0) {
+        return {
+          output: {
+            status: 'error',
+            error: `${kind}/${operation} requires args containing: ${missingRequiredArgs.join(', ')}`
+          },
+          isError: true
+        }
+      }
       const skill = options.skillRuntime?.load(LEGAL_DOCUMENT_FORMATTING_SKILL_ID)
       if (!skill) {
         return { output: { status: 'error', error: 'legal-document-formatting Skill is unavailable' }, isError: true }
@@ -275,8 +285,13 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
 
       let prepared: Awaited<ReturnType<typeof prepareDocumentWorkerArgs>>
       try {
-        prepared = await prepareDocumentWorkerArgs({
+        const resolvedArgs = resolveAttachedDocumentInputArgs({
           args,
+          workspace: context.workspace,
+          attachmentFiles: context.attachmentFiles ?? []
+        })
+        prepared = await prepareDocumentWorkerArgs({
+          args: resolvedArgs,
           content,
           outputPath,
           profile,
@@ -403,6 +418,28 @@ function hasArg(args: string[], name: string): boolean {
   return index >= 0 && Boolean(args[index + 1])
 }
 
+/**
+ * Required worker arguments per (kind, operation), matching the argparse
+ * `required=True` flags in docx_worker.py / xlsx_worker.py. Missing args are
+ * rejected here (before spawning the worker) so the model gets a clear,
+ * actionable error instead of a bare argparse usage dump.
+ */
+function missingDocumentWorkerArgs(
+  kind: string,
+  operation: string,
+  args: string[]
+): string[] {
+  const required: string[] = []
+  if (kind === 'docx' && operation === 'inspect') required.push('--input')
+  if (kind === 'docx' && (operation === 'normalize' || operation === 'page')) required.push('--input', '--output')
+  if (kind === 'docx' && operation === 'replace') required.push('--input', '--output', '--old', '--new')
+  if (kind === 'docx' && operation === 'template-fill') required.push('--input', '--output', '--values')
+  if (kind === 'xlsx' && operation === 'inspect') required.push('--input')
+  if (kind === 'xlsx' && operation === 'from-json') required.push('--spec', '--output')
+  if (kind === 'xlsx' && operation === 'replace') required.push('--input', '--output', '--find', '--replace')
+  return required.filter((flag) => !hasArg(args, flag))
+}
+
 function resolveWorkerPathArgs(args: string[], workspace: string): string[] {
   const out = [...args]
   for (let index = 0; index < out.length - 1; index += 1) {
@@ -449,6 +486,47 @@ export async function prepareDocumentWorkerArgs(input: {
     workerArgs,
     cleanup: async () => rm(temporaryRoot, { recursive: true, force: true })
   }
+}
+
+export function resolveAttachedDocumentInputArgs(input: {
+  args: string[]
+  workspace: string
+  attachmentFiles: readonly {
+    id: string
+    name: string
+    mimeType: string
+    localFilePath: string
+  }[]
+}): string[] {
+  if (input.attachmentFiles.length === 0) return [...input.args]
+  const out = [...input.args]
+  for (let index = 0; index < out.length - 1; index += 1) {
+    if (out[index] !== '--input') continue
+    const requested = out[index + 1]
+    if (!requested || requested.startsWith('-')) continue
+    const resolvedRequested = resolveWorkspacePath(requested, input.workspace)
+    if (existsSync(resolvedRequested)) continue
+
+    const requestedName = normalizedAttachmentFilename(basename(requested))
+    const requestedExtension = extname(requested).toLowerCase()
+    const matches = input.attachmentFiles.filter((attachment) => {
+      if (!existsSync(attachment.localFilePath)) return false
+      if (requested === attachment.id) return true
+      const attachmentExtension = extname(attachment.name || attachment.localFilePath).toLowerCase()
+      if (requestedExtension && attachmentExtension && requestedExtension !== attachmentExtension) return false
+      return [attachment.name, basename(attachment.localFilePath)]
+        .some((name) => normalizedAttachmentFilename(name) === requestedName)
+    })
+    if (matches.length === 1) out[index + 1] = matches[0]?.localFilePath ?? requested
+  }
+  return out
+}
+
+function normalizedAttachmentFilename(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '')
 }
 
 function resolveInlineOutputPath(value: string, workspace: string): string {

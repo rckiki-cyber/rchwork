@@ -158,6 +158,26 @@ nav [role='button'] {
   font-weight: var(--weight-regular);
 }
 
+/* Conversation answers use a deliberately stronger reading weight. The
+   previous Markdown emphasis weight is now the body baseline, while explicit
+   emphasis and headings retain a clear step above it. */
+.ds-chat-answer {
+  font-weight: var(--weight-semibold);
+}
+
+.ds-chat-answer :where(strong, b),
+.ds-chat-answer :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: var(--weight-bold);
+}
+
+.ds-chat-answer a {
+  font-weight: inherit;
+}
+
+.ds-chat-answer :where(code, pre, kbd, samp) {
+  font-weight: var(--weight-regular);
+}
+
 .write-markdown-preview,
 .cm-write-live-preview .cm-content {
   font-family: var(--font-apple-ui);

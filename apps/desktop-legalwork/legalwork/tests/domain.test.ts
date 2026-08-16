@@ -17,7 +17,9 @@ import {
   makeToolCallItem,
   makeToolResultItem,
   makeUserInputItem,
-  makeUserItem
+  makeUserItem,
+  stableToolResultText,
+  truncateToolResultContent
 } from '../src/domain/item.js'
 import { compareEventSeq, groupEventsByKind } from '../src/domain/event.js'
 import {
@@ -291,5 +293,106 @@ describe('domain.session', () => {
   it('closes a session', () => {
     const session = createAgentSession({ threadId: 'th', turnId: 't' })
     expect(closeSession(session).closed).toBe(true)
+  })
+})
+
+describe('stableToolResultText', () => {
+  it('extracts the stable .output field and drops volatile metadata', () => {
+    // bash 工具结果：output 是稳定内容，pid/started_at/full_output_path 是动态元数据
+    const text = stableToolResultText({
+      command: 'ls',
+      cwd: '/tmp',
+      shell: 'bash',
+      exit_code: 0,
+      output: 'file.txt\n',
+      pid: 12345,
+      started_at: '2026-08-14T00:00:00Z',
+      finished_at: '2026-08-14T00:00:01Z',
+      full_output_path: '/tmp/legalwork-bash-abc123'
+    })
+    expect(text).toContain('file.txt')
+    // 白名单保留 full_output_path（非动态、对模型恢复有用）；pid/时间戳不并入
+    expect(text).toContain('full_output_path: /tmp/legalwork-bash-abc123')
+    expect(text).not.toContain('pid')
+    expect(text).not.toContain('started_at')
+    expect(text).not.toContain('12345')
+    // 两次调用各自保留自己的 full_output_path（同一 item 内固定，不漂移）
+    const text2 = stableToolResultText({
+      command: 'ls',
+      cwd: '/tmp',
+      shell: 'bash',
+      exit_code: 0,
+      output: 'file.txt\n',
+      pid: 99999,
+      started_at: '2026-08-14T00:00:05Z',
+      finished_at: '2026-08-14T00:00:06Z',
+      full_output_path: '/tmp/legalwork-bash-xyz789'
+    })
+    expect(text2).toContain('file.txt')
+    expect(text2).toContain('full_output_path: /tmp/legalwork-bash-xyz789')
+  })
+
+  it('falls back to .text and .content, then the whole payload', () => {
+    expect(stableToolResultText({ text: 'hi' })).toBe('hi')
+    expect(stableToolResultText({ content: 'hello' })).toBe('hello')
+    expect(stableToolResultText('plain')).toBe('plain')
+    expect(stableToolResultText({ a: 1, b: 'x' })).toBe(JSON.stringify({ a: 1, b: 'x' }))
+  })
+
+  it('keeps structured content while dropping volatile wrapper metadata', () => {
+    expect(stableToolResultText({
+      output: { rows: [{ id: 1, title: '判决书' }] },
+      pid: 91234,
+      started_at: '2026-08-15T01:02:03Z'
+    })).toBe(JSON.stringify({ rows: [{ id: 1, title: '判决书' }] }))
+  })
+
+  it('returns empty string for empty/whitespace-only content fields', () => {
+    // 空字符串/空白 .output 不应被选中，走 fallback
+    expect(stableToolResultText({ output: '  ' })).toBe(JSON.stringify({ output: '  ' }))
+  })
+})
+
+describe('truncateToolResultContent', () => {
+  it('passes through content within the token budget', () => {
+    const small = 'short tool result'
+    expect(truncateToolResultContent(small)).toBe(small)
+  })
+
+  it('truncates oversized content deterministically (head+tail+marker)', () => {
+    const big = 'x'.repeat(40_000)
+    const a = truncateToolResultContent(big)
+    const b = truncateToolResultContent(big)
+    // 确定性：同输入恒同输出
+    expect(a).toBe(b)
+    // 长度受限于 token 预算（8000 tokens ≈ 32000 chars + marker）
+    expect(a.length).toBeLessThan(32_200)
+    // 保留 head 和 tail
+    expect(a.startsWith('x'.repeat(1000))).toBe(true)
+    expect(a.endsWith('x'.repeat(1000))).toBe(true)
+    expect(a).toContain('truncated')
+  })
+
+  it('respects a custom maxTokens budget', () => {
+    const big = 'y'.repeat(10_000)
+    const capped = truncateToolResultContent(big, 100)
+    expect(capped.length).toBeLessThan(500)
+    expect(capped).toContain('truncated')
+  })
+
+  it('never expands content just above the default budget', () => {
+    for (const length of [8_001, 9_000, 15_999]) {
+      const input = '甲'.repeat(length)
+      const output = truncateToolResultContent(input)
+      expect(output.length).toBeLessThan(input.length)
+      expect(output).not.toMatch(/truncated -\d+ chars/)
+    }
+  })
+
+  it('never expands content under tiny custom budgets', () => {
+    for (const budget of [1, 8, 32]) {
+      const input = '甲'.repeat(budget + 1)
+      expect(truncateToolResultContent(input, budget).length).toBeLessThanOrEqual(budget)
+    }
   })
 })

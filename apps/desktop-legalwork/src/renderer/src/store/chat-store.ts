@@ -127,6 +127,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   liveReasoning: '',
   liveAssistant: '',
   lastSeq: 0,
+  appliedSeq: 0,
   usageRefreshKey: 0,
   busy: false,
   error: null,

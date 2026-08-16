@@ -1,6 +1,6 @@
 import type { TurnItem } from '../contracts/items.js'
 import type { ModelRequest, ModelTextAttachmentFallback, ModelToolSpec } from '../ports/model-client.js'
-import { ContextEstimator } from './context-estimator.js'
+import { ContextEstimator, estimateTextTokens } from './context-estimator.js'
 
 const CHARS_PER_TOKEN = 4
 
@@ -37,16 +37,19 @@ function estimateTools(tools: ModelToolSpec[]): number {
 function estimateTextFallbacks(fallbacks?: ModelTextAttachmentFallback[]): number {
   if (!fallbacks?.length) return 0
   return fallbacks.reduce((sum, attachment) => {
-    return sum + estimateText([
+    const metadataTokens = estimateText([
       attachment.name,
       attachment.mimeType,
-      String(attachment.byteSize),
-      attachment.dataBase64
+      String(attachment.byteSize)
     ].join('\n'))
+    // Base64 is high-entropy text and tokenizes far more densely than prose.
+    // Use two characters per token so request preflight errs on the safe side.
+    const payloadTokens = Math.ceil(attachment.dataBase64.length / 2)
+    return sum + metadataTokens + payloadTokens
   }, 0)
 }
 
 function estimateText(text?: string): number {
   if (!text?.trim()) return 0
-  return Math.max(1, Math.ceil(text.length / CHARS_PER_TOKEN))
+  return Math.max(1, estimateTextTokens(text, CHARS_PER_TOKEN))
 }

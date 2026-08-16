@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -7,6 +8,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -15,6 +17,14 @@ from docx.oxml.ns import qn
 
 WORKER = Path(__file__).resolve().parents[1] / "scripts" / "docx_worker.py"
 PROFILE_WORKER = Path(__file__).resolve().parents[1] / "scripts" / "legal_profile_worker.py"
+
+
+def _load_docx_worker_module():
+    """Import scripts/docx_worker.py in-process (not via subprocess)."""
+    spec = importlib.util.spec_from_file_location("docx_worker_under_test", WORKER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class FromMarkdownFormattingTest(unittest.TestCase):
@@ -128,6 +138,64 @@ class FromMarkdownFormattingTest(unittest.TestCase):
             self.assertEqual(str(title.font.color.rgb), "000000")
             self.assertIsNone(title._element.get_or_add_pPr().find(qn("w:pBdr")))
             self.assertIsNone(title._element.get_or_add_rPr().find(qn("w:spacing")))
+
+
+class FontTableLockDegradationTest(unittest.TestCase):
+    """ensure_generated_font_table 必须 best-effort：Windows 上目标文件被锁
+    （WinError 5）时静默降级，保留已写好的 docx，绝不让交付失败。"""
+
+    def test_replace_lock_does_not_raise_and_keeps_docx(self) -> None:
+        module = _load_docx_worker_module()
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            root = Path(raw_tmp)
+            out = root / "agreement.docx"
+            doc = Document()
+            doc.add_paragraph("委托代理协议", style="Title")
+            doc.save(out)
+            before = out.read_bytes()
+
+            real_replace = Path.replace
+
+            def locked_replace(self_path, other, *args, **kwargs):
+                raise PermissionError(5, "拒绝访问")
+
+            with mock.patch.object(Path, "replace", locked_replace):
+                module.ensure_generated_font_table(out)  # 不应抛异常
+
+            # 原 docx 必须完好保留
+            self.assertEqual(out.read_bytes(), before)
+            # 临时 staged 文件应被清理
+            leftovers = [p for p in root.iterdir() if p.name.startswith(".agreement.docx.font-table-")]
+            self.assertEqual(leftovers, [])
+            real_replace(out, out)  # noqa: keep reference alive
+
+    def test_replace_lock_transient_then_succeeds(self) -> None:
+        module = _load_docx_worker_module()
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            root = Path(raw_tmp)
+            out = root / "agreement.docx"
+            doc = Document()
+            doc.add_paragraph("委托代理协议", style="Title")
+            doc.save(out)
+
+            real_replace = Path.replace
+            calls = {"n": 0}
+
+            def flaky_replace(self_path, other, *args, **kwargs):
+                calls["n"] += 1
+                if calls["n"] <= 2:
+                    raise PermissionError(5, "拒绝访问")
+                return real_replace(self_path, other, *args, **kwargs)
+
+            with mock.patch.object(Path, "replace", flaky_replace):
+                module.ensure_generated_font_table(out)  # 不应抛异常
+
+            self.assertGreaterEqual(calls["n"], 3)
+            # 重试成功后 docx 仍是有效 zip 且含字体表声明
+            self.assertTrue(zipfile.is_zipfile(out))
+            with zipfile.ZipFile(out) as archive:
+                font_table = archive.read("word/fontTable.xml").decode("utf-8")
+            self.assertIn('w:name="宋体"', font_table)
 
 
 if __name__ == "__main__":

@@ -189,6 +189,47 @@ describe('resolveCodexRuntimeProxyEnv', () => {
   })
 })
 
+describe('resolveBundledOfficePythonPath', () => {
+  it('finds the staged development Office runtime for the current target', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const python = join(
+      tempRoot,
+      'vendor',
+      'office-runtime',
+      'mac-arm64',
+      'python',
+      'bin',
+      'python3'
+    )
+    mkdirSync(join(python, '..'), { recursive: true })
+    writeFileSync(python, '')
+    const module = await import('./legalwork-process')
+
+    expect(module.resolveBundledOfficePythonPath({
+      appPath: tempRoot,
+      isPackaged: false,
+      platform: 'darwin',
+      arch: 'arm64'
+    })).toBe(python)
+  })
+
+  it('finds the packaged Office runtime beside app.asar', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const python = join(tempRoot, 'office-runtime', 'python', 'python.exe')
+    mkdirSync(join(python, '..'), { recursive: true })
+    writeFileSync(python, '')
+    const module = await import('./legalwork-process')
+
+    expect(module.resolveBundledOfficePythonPath({
+      appPath: join(tempRoot, 'app.asar.unpacked'),
+      isPackaged: true,
+      resourcesPath: tempRoot,
+      platform: 'win32',
+      arch: 'x64'
+    })).toBe(python)
+  })
+})
+
 describe('reclaimLegalworkPort', () => {
   it('reports a port as unavailable when another listener owns it', async () => {
     const server = createServer()
@@ -1032,5 +1073,33 @@ describe('syncGuiManagedLegalworkConfig', () => {
     const pkulawIds = Object.keys(servers).filter((id: string) => id.startsWith('pkulaw-'))
     expect(pkulawIds).toHaveLength(2)
     expect(servers['pkulaw-law-keyword'].headers.Authorization).toBe('Bearer user-token-123')
+  })
+})
+
+describe('childWatchdogTick', () => {
+  it('resets the failure count on a healthy probe', async () => {
+    const module = await import('./legalwork-process')
+    const tick = module.childWatchdogTick
+    expect(tick(true, 2)).toEqual({ failures: 0, kill: false })
+    expect(tick(true, 0)).toEqual({ failures: 0, kill: false })
+  })
+
+  it('increments failures without killing below the threshold', async () => {
+    const module = await import('./legalwork-process')
+    const tick = module.childWatchdogTick
+    // 默认阈值 3：前 2 次失败只累计，不 kill
+    expect(tick(false, 0)).toEqual({ failures: 1, kill: false })
+    expect(tick(false, 1)).toEqual({ failures: 2, kill: false })
+  })
+
+  it('kills when consecutive failures reach the configured threshold', async () => {
+    const module = await import('./legalwork-process')
+    const tick = module.childWatchdogTick
+    // 默认阈值 3：第 3 次连续失败即触发 kill
+    expect(tick(false, 2)).toEqual({ failures: 3, kill: true })
+    expect(tick(false, 3)).toEqual({ failures: 4, kill: true })
+    // 更高阈值：第 5 次才 kill
+    expect(tick(false, 4, 5)).toEqual({ failures: 5, kill: true })
+    expect(tick(false, 3, 5)).toEqual({ failures: 4, kill: false })
   })
 })

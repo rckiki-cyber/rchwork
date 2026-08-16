@@ -15,6 +15,8 @@ const KNOWLEDGE_ACTION_PATTERN =
   /查询|查找|查一下|检索|研究|分析|依据|规定|是什么|怎么|如何|是否|能否|风险|起草|审查|比较|总结|解释|适用|效力|引用|出处|梳理|论证|评估|意见/
 const IMA_MANAGEMENT_PATTERN =
   /登录|扫码|刷新|配置|插件|接口|协议|报错|错误|调试|代码|MCP|RAG|向量|路由|有哪些知识库|知识库列表/i
+const PLAN_BEFORE_RETRIEVAL_PATTERN =
+  /(?:调研|研究)?(?:规划|计划).{0,24}(?:完成|形成|制定|输出).{0,16}(?:后|之后).{0,12}(?:再|才).{0,8}(?:开始|进行)?(?:检索|查询|研究|调研)|(?:调研|研究)开始前.{0,16}(?:形成|制定|输出).{0,8}(?:规划|计划)|(?:begin|start)\s+(?:retrieval|research|searching?)\s+only\s+after\s+(?:the\s+)?(?:plan|planning)|(?:plan|planning).{0,40}(?:before|prior\s+to).{0,24}(?:retrieval|research|search)/is
 
 export type ImaRouteAction = {
   kind: 'direct' | 'discover' | 'call'
@@ -26,6 +28,11 @@ export type ImaRouteAction = {
 export function shouldAutoRouteToIma(prompt: string): boolean {
   const text = prompt.trim()
   if (!text) return false
+  // Some workflows promise a visible plan before any retrieval begins. A
+  // deterministic prefetch would run before the model's first response and
+  // can therefore hide that plan for the full IMA timeout. Let the model emit
+  // the plan first and choose the research tools in its following step.
+  if (PLAN_BEFORE_RETRIEVAL_PATTERN.test(text)) return false
   if (
     /(?:不要|不用|无需|不必|禁止).{0,12}(?:调用|使用|查询|检索)?.{0,8}(?:IMA|知识库|外部资料|外部来源)/i.test(text)
   ) {

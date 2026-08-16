@@ -153,6 +153,19 @@ export function formatResearchPlanIndex(index: number): string {
   return String(index + 1).padStart(2, '0')
 }
 
+export function buildImmediateResearchPlan(query: string): string {
+  const subject = query.trim() || '该法律问题'
+  return [
+    '## 调研规划',
+    '',
+    `1. 核验规范基础：围绕“${subject}”检索现行法律、行政法规、司法解释及政策文件，确认效力状态与适用范围。`,
+    `2. 梳理争议焦点：识别“${subject}”涉及的构成要件、适用条件、例外规则与责任边界。`,
+    `3. 检索裁判实践：查找可核验案号的裁判案例、指导性案例或典型案例，提炼裁判规则。`,
+    `4. 补充研究观点：检索学术文献与实务材料，比较主要观点及其依据。`,
+    `5. 综合复核：交叉核对规范、案例与观点，形成结论、风险提示和完整来源清单。`
+  ].join('\n')
+}
+
 const CHINESE_NUMERALS: Record<string, number> = {
   一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
   十一: 11, 十二: 12, 十三: 13, 十四: 14, 十五: 15, 十六: 16, 十七: 17, 十八: 18, 十九: 19, 二十: 20

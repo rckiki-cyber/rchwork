@@ -3,7 +3,13 @@ import {
   isNoProjectWorkspaceRoot,
   NO_PROJECT_WORKSPACE_ROOT
 } from '@shared/workspace-context'
-import { normalizeWorkspaceRoot, workspaceRootIdentityKey } from './workspace-path'
+import {
+  isInternalTemporaryWorkspace,
+  isLegalworkDocumentWorkspace,
+  isLegalworkResearchWorkspace,
+  normalizeWorkspaceRoot,
+  workspaceRootIdentityKey
+} from './workspace-path'
 
 describe('no-project workspace', () => {
   it('recognizes both the portable marker and expanded home paths', () => {
@@ -39,5 +45,15 @@ describe('no-project workspace', () => {
   it('does not change ordinary project paths', () => {
     expect(normalizeWorkspaceRoot('/Users/test/legalwork')).toBe('/Users/test/legalwork')
     expect(isNoProjectWorkspaceRoot('/Users/test/legalwork')).toBe(false)
+  })
+
+  it('keeps document-writing scratch workspace out of project and code-thread views', () => {
+    expect(isLegalworkDocumentWorkspace('~/.legalwork/document-workspace')).toBe(true)
+    expect(isLegalworkDocumentWorkspace('/Users/test/.legalwork/document-workspace')).toBe(true)
+    expect(isLegalworkDocumentWorkspace('~/.legalwork/research-workspace')).toBe(false)
+    expect(isLegalworkResearchWorkspace('~/.legalwork/document-workspace')).toBe(false)
+    expect(isInternalTemporaryWorkspace('~/.legalwork/document-workspace')).toBe(true)
+    expect(isInternalTemporaryWorkspace('/Users/test/.legalwork/document-workspace')).toBe(true)
+    expect(normalizeWorkspaceRoot('/Users/test/.legalwork/document-workspace')).toBe('')
   })
 })

@@ -106,6 +106,13 @@ typography:
     display: 24
     hero: 30
   weight_scale: [400, 500, 600, 700]
+  weight_usage:
+    regular: 400
+    medium: 500
+    semibold: 600
+    bold: 700
+    chat_body: 600
+    chat_emphasis: 700
   leading:
     tight: 5
     snug: 6
@@ -125,7 +132,7 @@ typography:
     title_sm: "Strong inline label"
     body_xl: "Settings subtitle, session header sub"
     body_lg: "Primary form input text, list row primary"
-    chat_body: "Agent conversation body and user message bubbles; one step above sidebar/list UI, below document-preview prose"
+    chat_body: "Agent conversation body at weight 600; explicit Markdown emphasis and headings use 700. User message bubbles remain regular weight."
     body: "Default body, button text, table cell"
     body_sm: "Secondary metadata, list row secondary"
     label_small: "Tab label, table header"

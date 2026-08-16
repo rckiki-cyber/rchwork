@@ -12,6 +12,7 @@ import json
 import re
 import shutil
 import tempfile
+import time
 import uuid
 import zipfile
 from collections import Counter
@@ -246,6 +247,27 @@ def set_style_font(style: Any, east_asia: str, latin: str, size_pt: float, bold:
     rfonts.set(qn("w:hint"), "eastAsia")
 
 
+def _replace_staged_with_lock_retry(staged: Path, destination: Path, attempts: int = 3, delay_s: float = 0.3) -> bool:
+    """Swap ``staged`` over ``destination``, retrying transient Windows locks.
+
+    On Windows the destination file can be briefly held by an open preview
+    pane, OneDrive/杀软/同步工具扫描, or an editor handshake right after the
+    worker writes it. ``Path.replace`` then raises ``[WinError 5] 拒绝访问``.
+    A short retry absorbs the transient lock. Returns ``False`` when the swap
+    still fails so callers can degrade gracefully instead of failing the whole
+    document delivery (the already-written DOCX stays valid on disk).
+    """
+    for attempt in range(max(1, attempts)):
+        try:
+            staged.replace(destination)
+            return True
+        except OSError:
+            if attempt + 1 >= max(1, attempts):
+                return False
+            time.sleep(delay_s)
+    return False
+
+
 def ensure_generated_font_table(path: Path) -> None:
     """Declare LegalWork's CJK fonts for stricter DOCX consumers.
 
@@ -253,6 +275,11 @@ def ensure_generated_font_table(path: Path) -> None:
     converters treat the missing declaration as an unavailable font and apply
     an arbitrary sans-serif fallback. Keep the user-facing run/style names as
     宋体/黑体 while making the package self-consistent.
+
+    This is a best-effort post-processing step (mirroring inject_footnotes):
+    the DOCX has already been written by the caller. If the staged swap is
+    blocked by a transient Windows file lock, retry briefly and then keep the
+    already-saved file rather than failing the tool call.
     """
     staged = path.with_name(f".{path.name}.font-table-{uuid.uuid4().hex}")
     try:
@@ -276,7 +303,7 @@ def ensure_generated_font_table(path: Path) -> None:
                         text = text.replace("</w:fonts>", "".join(entries) + "</w:fonts>")
                         payload = text.encode("utf-8")
                 target.writestr(info, payload)
-        staged.replace(path)
+        _replace_staged_with_lock_retry(staged, path)
     finally:
         staged.unlink(missing_ok=True)
 

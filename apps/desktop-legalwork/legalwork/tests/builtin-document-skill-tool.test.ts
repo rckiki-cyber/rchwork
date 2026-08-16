@@ -1,11 +1,12 @@
-import { mkdtemp, readFile, rm, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createDocumentSkillExecuteTool,
   deterministicPdfPayloadError,
-  prepareDocumentWorkerArgs
+  prepareDocumentWorkerArgs,
+  resolveAttachedDocumentInputArgs
 } from '../src/adapters/tool/builtin-document-skill-tool.js'
 import type { ToolHostContext } from '../src/ports/tool-host.js'
 
@@ -114,6 +115,38 @@ describe('document_skill_execute', () => {
     })
   })
 
+  it('rejects docx page/normalize without required worker args', async () => {
+    const tool = createDocumentSkillExecuteTool()
+    await expect(tool.execute({
+      kind: 'docx', operation: 'page', args: ['--input', 'a.docx']
+    }, context())).resolves.toMatchObject({
+      isError: true,
+      output: { error: 'docx/page requires args containing: --output' }
+    })
+    await expect(tool.execute({
+      kind: 'docx', operation: 'normalize', args: []
+    }, context())).resolves.toMatchObject({
+      isError: true,
+      output: { error: 'docx/normalize requires args containing: --input, --output' }
+    })
+  })
+
+  it('rejects docx template-fill and xlsx from-json without required args', async () => {
+    const tool = createDocumentSkillExecuteTool()
+    await expect(tool.execute({
+      kind: 'docx', operation: 'template-fill', args: ['--input', 't.docx', '--output', 'o.docx']
+    }, context())).resolves.toMatchObject({
+      isError: true,
+      output: { error: 'docx/template-fill requires args containing: --values' }
+    })
+    await expect(tool.execute({
+      kind: 'xlsx', operation: 'from-json', args: []
+    }, context())).resolves.toMatchObject({
+      isError: true,
+      output: { error: 'xlsx/from-json requires args containing: --spec, --output' }
+    })
+  })
+
   it('accepts only application-owned PDF rendering with embedded bundled fonts', () => {
     expect(deterministicPdfPayloadError({
       status: 'ok',
@@ -201,6 +234,44 @@ describe('document_skill_execute', () => {
       outputPath: '../escaped.docx',
       workspace
     })).rejects.toThrow(/inside the thread workspace/)
+  })
+
+  it('resolves a guessed Word path to the current uploaded attachment', async () => {
+    const attachmentPath = join(root, 'attachments', 'files', 'att_test', '宽严相济刑事政策对惩治食药领域犯罪的具体贯彻_终稿_(1).docx')
+    await mkdir(join(attachmentPath, '..'), { recursive: true })
+    await writeFile(attachmentPath, 'uploaded Word bytes')
+
+    expect(resolveAttachedDocumentInputArgs({
+      args: [
+        '--input',
+        '/Users/example/Desktop/宽严相济刑事政策对惩治食药领域犯罪的具体贯彻（终稿）（1）.docx'
+      ],
+      workspace,
+      attachmentFiles: [{
+        id: 'att_test',
+        name: '宽严相济刑事政策对惩治食药领域犯罪的具体贯彻（终稿）(1).docx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        localFilePath: attachmentPath
+      }]
+    })).toEqual(['--input', attachmentPath])
+  })
+
+  it('does not replace an existing user-selected input file with an attachment', async () => {
+    const selectedPath = join(workspace, 'selected.docx')
+    const attachmentPath = join(root, 'attachment.docx')
+    await writeFile(selectedPath, 'selected')
+    await writeFile(attachmentPath, 'attachment')
+
+    expect(resolveAttachedDocumentInputArgs({
+      args: ['--input', selectedPath],
+      workspace,
+      attachmentFiles: [{
+        id: 'att_test',
+        name: 'selected.docx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        localFilePath: attachmentPath
+      }]
+    })).toEqual(['--input', selectedPath])
   })
 
   function context(): ToolHostContext {

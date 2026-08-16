@@ -330,6 +330,10 @@ export function isCodeThread(
   clawChannels: ClawImChannelV1[] = []
 ): boolean {
   const workspace = normalizeWorkspaceRoot(thread.workspace)
+  // Document-writing threads are internal scratch sessions surfaced only in
+  // the writing panel. Never let them appear in the home conversation,
+  // including threads created before they moved to an internal workspace.
+  if (/^文书写作：/.test(thread.title ?? '')) return false
   return Boolean(workspace) &&
     thread.archived !== true &&
     !isInternalTemporaryWorkspace(thread.workspace) &&
@@ -379,6 +383,14 @@ function upsertRuntimeErrorBlock(blocks: ChatBlock[], block: Extract<ChatBlock, 
   const next = [...blocks]
   next[index] = block
   return next
+}
+
+function isTerminalTurnFailure(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === 'object' &&
+    (error as { terminalTurnFailure?: unknown }).terminalTurnFailure === true
+  )
 }
 
 export function armBusyWatchdog(
@@ -493,7 +505,8 @@ export function buildThreadEventSink(
             ...s.turnStartedAtByUserId,
             [ev.itemId]: s.turnStartedAtByUserId[ev.itemId] ?? startedAt
           },
-          error: clearRuntimeStreamRecoveringError(s.error)
+          error: null,
+          runtimeErrorDetail: null
         }
       }),
     onDeltas: (deltas) =>
@@ -949,6 +962,7 @@ export function buildThreadEventSink(
         const base = flushLiveBlocks(s, {
           ...finalizeTurnTiming(s),
           error: null,
+          runtimeErrorDetail: null,
           currentTurnId: null
         })
         if (s.busy) base.busy = false
@@ -985,20 +999,33 @@ export function buildThreadEventSink(
       const detail = runtimeErrorDetail(err)
       const interrupted = isInterruptSettledError(err, message)
       const insufficientBalance = isInsufficientBalanceError(err)
+      const terminalTurnFailure = isTerminalTurnFailure(err)
       takePendingClawFeishuMirror(state.currentTurnId)
       set((s) => {
         const wasBusy = s.busy
         const out = flushLiveBlocks(s, {
           ...finalizeTurnTiming(s),
-          error: interrupted ? null : message,
-          runtimeErrorDetail: interrupted ? null : detail || null
+          error: interrupted || (terminalTurnFailure && !insufficientBalance) ? null : message,
+          runtimeErrorDetail: interrupted || (terminalTurnFailure && !insufficientBalance) ? null : detail || null
         })
+        if (terminalTurnFailure && !interrupted && !insufficientBalance) {
+          const baseBlocks = out.blocks ?? s.blocks
+          const block: Extract<ChatBlock, { kind: 'system' }> = {
+            kind: 'system',
+            id: `turn-error-${s.currentTurnId ?? s.currentTurnUserId ?? 'current'}`,
+            createdAt: new Date().toISOString(),
+            text: message,
+            ...(detail ? { detail } : {}),
+            severity: 'error'
+          }
+          out.blocks = upsertRuntimeErrorBlock(baseBlocks, block)
+        }
         // Keep the busy flag if the turn was active — the interrupt button
         // should stay visible so the user can interrupt a stuck turn. The
         // watchdog (re-armed below) will eventually time out if the turn
         // never recovers.
         // 余额不足是确定性失败：立即退出 busy，避免界面一直"思考中"且无提示。
-        if (!wasBusy || interrupted || insufficientBalance) {
+        if (!wasBusy || interrupted || insufficientBalance || terminalTurnFailure) {
           out.busy = false
           out.currentTurnId = null
           out.currentTurnUserId = null

@@ -88,7 +88,10 @@ export class ContextCompactor {
           ? 'aggressive'
           : 'normal'
     const source = promptTokens !== undefined && promptTokens >= estimatedTokens ? 'usage prompt_tokens' : 'estimated prompt tokens'
-    const keepRecent = mode === 'force' ? 1 : mode === 'aggressive' ? 2 : 4
+    // A hard overflow must be able to fold the latest item too. Its durable
+    // user request and attachment ids are copied into the summary, while the
+    // original item remains in the append-only session log for UI/history.
+    const keepRecent = mode === 'force' ? 0 : mode === 'aggressive' ? 2 : 4
     return {
       mode,
       keepRecent,
@@ -125,9 +128,12 @@ export class ContextCompactor {
     const frozen = frozenMessageCount > 0 ? input.history.slice(0, frozenMessageCount) : []
     const history = trimTrailingToolCalls(input.history.slice(frozenMessageCount))
     const requestedKeepRecent = Math.max(0, input.keepRecent ?? 4)
-    const keepRecent =
-      history.length <= 1 ? history.length : Math.min(requestedKeepRecent, history.length - 1)
-    if (history.length <= 1 || history.length - keepRecent <= 0) {
+    const keepRecent = requestedKeepRecent === 0
+      ? 0
+      : history.length <= 1
+        ? history.length
+        : Math.min(requestedKeepRecent, history.length - 1)
+    if (history.length === 0 || history.length - keepRecent <= 0) {
       return {
         next: [...frozen, ...history],
         summaryItem: makeCompactionItem({
@@ -248,12 +254,34 @@ function buildCompactionSummary(input: {
   }
   const durableUserRequests = input.head
     .filter((item): item is Extract<TurnItem, { kind: 'user_message' }> => item.kind === 'user_message')
-    .slice(-6)
+    .filter((item) => item.text.trim() || (item.attachmentIds?.length ?? 0) > 0)
     .reverse()
   if (durableUserRequests.length > 0) {
     lines.push('Durable user requests (newest first; preserve as authoritative):')
-    for (const item of durableUserRequests) {
-      lines.push(`- ${clipText(item.text, 6_000)}`)
+    for (const item of fitDurableUserRequests(durableUserRequests, Math.max(12_000, contentBudget))) {
+      const attachmentNote = item.attachmentIds?.length
+        ? ` [uploaded files: ${item.attachmentIds.join(', ')}]`
+        : ''
+      lines.push(`- ${clipText(item.text, 6_000)}${attachmentNote}`)
+    }
+    lines.push('')
+  }
+  const attachmentIds = [...new Set(
+    input.history.flatMap((item) => item.kind === 'user_message' ? item.attachmentIds ?? [] : [])
+  )]
+  if (attachmentIds.length > 0) {
+    lines.push('Uploaded file registry (never discard; file bytes remain in the attachment store):')
+    for (const attachmentId of attachmentIds) lines.push(`- ${attachmentId}`)
+    lines.push('')
+  }
+  const inheritedSummaries = input.head.filter(
+    (item): item is Extract<TurnItem, { kind: 'compaction' }> =>
+      item.kind === 'compaction' && item.replacedTokens > 0 && item.summary.trim().length > 0
+  )
+  if (inheritedSummaries.length > 0) {
+    lines.push('Inherited durable context from earlier compactions (preserve transitively):')
+    for (const item of inheritedSummaries) {
+      lines.push(clipText(item.summary, Math.max(8_000, Math.floor(contentBudget / inheritedSummaries.length))))
     }
     lines.push('')
   }
@@ -272,6 +300,21 @@ function buildCompactionSummary(input: {
     lines.push(...summaryLines)
   }
   return lines.join('\n')
+}
+
+function fitDurableUserRequests(
+  items: Array<Extract<TurnItem, { kind: 'user_message' }>>,
+  charBudget: number
+): Array<Extract<TurnItem, { kind: 'user_message' }>> {
+  const selected: Array<Extract<TurnItem, { kind: 'user_message' }>> = []
+  let used = 0
+  for (const item of items) {
+    const cost = Math.min(item.text.length, 6_000) + (item.attachmentIds?.join(', ').length ?? 0) + 32
+    if (selected.length > 0 && used + cost > charBudget) continue
+    selected.push(item)
+    used += cost
+  }
+  return selected
 }
 
 function extractSkillPins(history: TurnItem[]): string[] {

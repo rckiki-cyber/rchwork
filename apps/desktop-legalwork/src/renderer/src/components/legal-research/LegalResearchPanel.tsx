@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { MouseEvent, ReactElement } from 'react'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -54,6 +54,15 @@ export function shouldFollowLatestResearchContent(
 ): boolean {
   const distanceFromLatest = element.scrollHeight - element.scrollTop - element.clientHeight
   return distanceFromLatest <= threshold
+}
+
+// 外部配置链接（如北大法宝获取 Token）走系统浏览器打开，避免在内置 Electron 窗口中
+// 加载第三方站点时触发对方前端 JS 兼容性问题（如 mcp.pkulaw.com 的 Next.js 客户端异常）。
+function handleExternalOpen(event: MouseEvent<HTMLAnchorElement>): void {
+  const href = event.currentTarget.getAttribute('href')
+  if (!href || typeof window.dsGui?.openExternal !== 'function') return
+  event.preventDefault()
+  void window.dsGui.openExternal(href).catch(() => undefined)
 }
 
 export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): ReactElement {
@@ -348,8 +357,10 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
   const runningSince = activeRecord?.status === 'running' ? clockNow - updatedAt : 0
   const hasActiveReport = Boolean(
     activeRecord
-      && activeRecord.status !== 'running'
       && (activeRecord.summary || activeRecord.editedSummary !== undefined)
+  )
+  const canManageActiveReport = Boolean(
+    hasActiveReport && activeRecord?.status !== 'running'
   )
   const resolvedReport = useMemo(
     () => hasActiveReport && activeRecord
@@ -364,11 +375,18 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
     [activeRecord?.reasoning, activeRecord?.planning]
   )
   const researchUpdates = activeRecord?.updates ?? []
-  const visibleResearchUpdates = activeRecord?.status === 'running'
-    ? researchUpdates
-    : researchUpdates.slice(0, -1)
-  const showResearchPlan = activeRecord?.status === 'running' || Boolean(activeRecord?.reasoning)
-  const isResearchPlanStreaming = activeRecord?.status === 'running' && visibleResearchUpdates.length === 0
+  // Planning and the final report are classified into separate fields, so
+  // every entry left in `updates` is a genuine stage update. Do not drop the
+  // last one after completion (the old code did so because the final report
+  // used to be mixed into this same array).
+  const visibleResearchUpdates = researchUpdates
+  const showResearchPlan = activeRecord?.status === 'running' || Boolean(
+    activeRecord?.planning || activeRecord?.reasoning
+  )
+  const isResearchPlanStreaming = activeRecord?.status === 'running' && (
+    researchPlanItems.length === 0 ||
+    ((activeRecord.steps?.length ?? 0) === 0 && visibleResearchUpdates.length === 0)
+  )
   // 当前正在执行的关键工具（例如阻塞较久的 IMA 知识库检索），让用户在等待期
   // 知道 agent 在做什么，而不是只看到“等待下一条结果”的转圈。
   const currentTool = useMemo(() => {
@@ -444,6 +462,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                   href="https://mcp.pkulaw.com/console/apps"
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={handleExternalOpen}
                   className="ml-1 text-[var(--ds-accent)] underline hover:opacity-80"
                 >
                   {t('legalResearchTokenTipConfigure')}
@@ -454,7 +473,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
         </div>
       </header>
 
-      {hasActiveReport && activeRecord ? (
+      {canManageActiveReport && activeRecord ? (
         <div className="shrink-0 border-b border-[var(--ds-border)] px-6 py-2.5">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <div
@@ -614,10 +633,10 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] border border-[var(--ds-accent)]/15 bg-[var(--ds-accent-soft)] text-[10px] font-semibold tabular-nums text-[var(--ds-accent)]">
                               {formatResearchPlanIndex(index)}
                             </span>
-                            <p className="min-w-0 flex-1 pt-0.5 text-[13px] leading-6 text-[var(--ds-muted)] [overflow-wrap:anywhere]">
-                              {item}
+                            <div className="min-w-0 flex-1 pt-0.5 text-[13px] leading-6 text-[var(--ds-muted)] [overflow-wrap:anywhere]">
+                              <StableAssistantMarkdown text={item} streaming={isStreamingItem} />
                               {isStreamingItem ? <span aria-hidden className="legal-research-stream-caret ml-0.5" /> : null}
-                            </p>
+                            </div>
                           </div>
                         )
                       })}
@@ -695,7 +714,11 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                       {t('legalResearchSummaryTitle')}
                     </h3>
                   </div>
-                  <CheckCircle2 className="h-4 w-4 text-[var(--ds-success)]" strokeWidth={1.75} />
+                  {activeRecord.status === 'running' ? (
+                    <ThinkingOrbStatus state="composing" size={20} />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-[var(--ds-success)]" strokeWidth={1.75} />
+                  )}
                 </div>
                 <div className="px-5 py-4">
                   {resolvedReport ? (
@@ -703,7 +726,7 @@ export function LegalResearchPanel({ legalResearch }: LegalResearchPanelProps): 
                       <StableAssistantMarkdown
                         key={`${activeRecord.id}:${activeRecord.reportRevision ?? 'generated'}`}
                         text={resolvedReport}
-                        streaming={false}
+                        streaming={activeRecord.status === 'running'}
                       />
                     </div>
                   ) : (

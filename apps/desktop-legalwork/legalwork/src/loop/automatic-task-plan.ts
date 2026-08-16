@@ -212,16 +212,17 @@ export function buildAutomaticTaskPlan(input: {
     complexityScore: complexity.score,
     reasons: complexity.reasons,
     stages,
-    runtimeManaged: hasRuntimeGates,
-    genericTextCompletion: !hasRuntimeGates
+    // The plan is progress visibility, not a delivery gate. The model may use
+    // tools opportunistically and must still finish with the best available
+    // result when an optional stage cannot be completed.
+    runtimeManaged: false,
+    genericTextCompletion: true
   }
 }
 
 export function automaticTaskPlanInstruction(plan: AutomaticTaskPlan): string {
   const firstIncomplete = plan.stages.find((stage) => !stage.completed)
-  const progressionRule = plan.runtimeManaged
-    ? '- 只推进当前 in_progress 阶段；已完成阶段不得重复检索或重做。运行时会在工具/产物验收后自动解锁下一阶段。'
-    : '- 在本次执行中按顺序完成 in_progress 与后续 pending 阶段；输出前逐项自检，不得只完成第一步便收尾。'
+  const progressionRule = '- 在本次执行中按顺序尽力完成 in_progress 与后续 pending 阶段；某阶段因工具或来源不可用而失败时，记录局限并继续交付。'
   return [
     '<automatic_task_plan>',
     `运行时已识别复杂任务（${plan.reasons.join('、')}），并建立持久化执行计划。`,
@@ -229,9 +230,9 @@ export function automaticTaskPlanInstruction(plan: AutomaticTaskPlan): string {
     '',
     '执行规则：',
     progressionRule,
-    '- 工具失败时修复当前失败点，不得转去用 shell 翻查会话历史或绕过验收。',
-    '- 长正文、引用核验稿和文件生成必须复用运行时保存的规范版本，不得重新凭记忆改写。',
-    '- 所有明确要求的交付物实际生成并验收前，不得输出完成声明。',
+    '- 工具失败时可修正一次；仍失败则停止重试，避免循环。',
+    '- 长正文、引用核验稿和文件生成尽量复用运行时保存的规范版本。',
+    '- 文件未能生成时，仍应输出可用正文、大纲或中间成果，并说明文件未生成。',
     '- 此计划由运行时自动维护，不要调用 todo_write 覆盖它。',
     '</automatic_task_plan>'
   ].join('\n')

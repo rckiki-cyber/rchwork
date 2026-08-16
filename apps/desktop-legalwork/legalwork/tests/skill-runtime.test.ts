@@ -337,14 +337,17 @@ describe('SkillRuntime', () => {
 
     await h.loop.runTurn(h.threadId, h.turnId)
 
-    expect(seenRequest?.contextInstructions?.join('\n')).toContain('Always inspect the diff first.')
+    expect([
+      ...(seenRequest?.prefixInstructions ?? []),
+      ...(seenRequest?.contextInstructions ?? [])
+    ].join('\n')).toContain('Always inspect the diff first.')
     expect(seenRequest?.tools.map((tool) => tool.name)).toEqual(['read'])
     const turn = await h.turns.getTurn(h.threadId, h.turnId)
     expect(turn?.activeSkillIds).toEqual(['review'])
     expect(turn?.skillInjectionBytes).toBeGreaterThan(0)
   })
 
-  it('requires the document executor before completing an activated document turn', async () => {
+  it('does not fail the turn when a requested document executor is skipped', async () => {
     await writeSkill('document', {
       id: 'legal-document-formatting',
       name: 'Document',
@@ -376,9 +379,25 @@ describe('SkillRuntime', () => {
 
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
-    expect(status).toBe('failed')
+    expect(status).toBe('completed')
     expect(seenRequest?.requiredToolName).toBe('document_skill_execute')
     expect(seenRequest?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
+  })
+
+  it('does not auto-activate file formatting for inline document-writing UI prompts', async () => {
+    await writeSkill('document', {
+      id: 'legal-document-formatting',
+      name: 'Document',
+      triggers: { promptPatterns: ['撰写.*法律意见书'] }
+    }, 'Create the file with document_skill_execute.')
+    const skillRuntime = await createRuntime()
+
+    const resolution = skillRuntime.resolveTurn({
+      workspace: root,
+      prompt: '<inline_document_response>请撰写法律意见书</inline_document_response>'
+    })
+
+    expect(resolution.activeSkillIds).not.toContain('legal-document-formatting')
   })
 
   it('hands PPT-only creation to open-kimi-ppt instead of forcing the generic document executor', async () => {
@@ -489,7 +508,7 @@ describe('SkillRuntime', () => {
     expect(requests[1]?.contextInstructions?.join('\n')).toContain('--scenario education-training')
   })
 
-  it('removes document tools after one successful artifact generation', async () => {
+  it('finishes immediately after one successful Word artifact generation', async () => {
     await writeSkill('document', {
       id: 'legal-document-formatting',
       name: 'Document',
@@ -541,18 +560,22 @@ describe('SkillRuntime', () => {
 
     expect(status).toBe('completed')
     expect(executions).toBe(1)
-    expect(requests).toHaveLength(2)
+    expect(requests).toHaveLength(1)
     expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
-    expect(requests[1]?.tools).toEqual([])
+    const items = await h.sessionStore.loadItems(h.threadId)
+    expect(items.at(-1)).toMatchObject({
+      kind: 'assistant_text',
+      text: 'Word 文档已生成：\n\n综述.docx'
+    })
   })
 
-  it('requires the document executor even when Skill activation is unavailable', async () => {
-    let seenRequest: ModelRequest | undefined
+  it('keeps the document executor available without failing when Skill activation is unavailable', async () => {
+    const requests: ModelRequest[] = []
     const model: ModelClient = {
       provider: 'fake',
       model: 'fake',
       async *stream(request) {
-        seenRequest = request
+        requests.push(request)
         yield { kind: 'completed', stopReason: 'stop' }
       }
     }
@@ -569,9 +592,9 @@ describe('SkillRuntime', () => {
 
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
-    expect(status).toBe('failed')
-    expect(seenRequest?.requiredToolName).toBe('document_skill_execute')
-    expect(seenRequest?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
+    expect(status).toBe('completed')
+    expect(requests[0]?.requiredToolName).toBe('document_skill_execute')
+    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(['document_skill_execute'])
   })
 
   it('does not force document creation for an informational Word-format question', async () => {

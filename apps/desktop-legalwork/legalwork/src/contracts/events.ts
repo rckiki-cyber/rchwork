@@ -54,6 +54,7 @@ export const PipelineStage = z.enum([
   'input_remembered',
   'pre_send',
   'post_send',
+  'prefix_stability_warning',
   'response_received'
 ])
 export type PipelineStage = z.infer<typeof PipelineStage>

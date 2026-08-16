@@ -3,7 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { getProvider } from '../../agent/registry'
 import type { ChatBlock, ThreadDeltaEvent, ThreadEventSink, ToolEventPayload } from '../../agent/types'
 import { applyLegalResearchSummaryEdit } from './legal-research-records'
-import { extractResearchPlanItems, isResearchPlanMessage } from './legal-research-plan'
+import { buildImmediateResearchPlan } from './legal-research-plan'
+import {
+  bestAvailableLegalResearchText,
+  splitLegalResearchMessage
+} from './legal-research-message'
 
 type ResearchStepStatus = 'pending' | 'running' | 'done' | 'error'
 
@@ -122,7 +126,7 @@ export function useLegalResearch() {
       t('legalResearchAgentPrompt', {
         query,
         defaultValue:
-          '请对以下法律问题进行多源调研：「{{query}}」。\n\n【重要要求】\n1. 所有可见过程播报与最终报告使用中文。\n2. 调研开始前先形成简洁但完整的调研规划。规划回答“准备核验什么、怎么检索、从哪些来源取得依据、如何比较并形成结论”，每项必须是针对本题的可执行调研动作，通常使用“核验、检索、比较、复核、综合”等动词开头。可根据问题复杂度自主决定步骤数量。不要把“形成规划、使用编号、输出中文、阶段播报、最终报告”等格式或交付要求写成规划步骤；不要写工具可用性判断、调用尝试、“我应该……”等内部思考。\n3. 由 Agent 根据具体问题自主决定调用哪些工具、调用次数和检索路径，不要求机械地调用全部来源或遵循固定步骤。来源定位上，已配置北大法宝 MCP 时，将北大法宝作为法规与案例的默认主来源；按需使用其引证核验与链接增强工具。IMA 与本地知识库作为补充来源，用于学术观点、内部材料和实务参考，不得因自动路由被强制置于北大法宝之前。\n4. 国家法律法规数据库不是强制来源。仅在用户明确指定、北大法宝不可用/无结果或不同来源对效力状态存在重大冲突时按需使用；不得仅为取得官方链接而查询，也不得为访问国家库调用用户浏览器、Chrome 或 Playwright。\n5. 规划完成后再开始检索；每完成一个检索阶段，可用一条简短消息说明“已完成什么、得到什么、下一步是什么”，不要把多个阶段压成一个长段落，也不要输出冗长工具日志。\n6. 某个可选来源失败时最多换用一个已配置的非浏览器来源；不要反复重试。资料仍无法核验时如实标注，不阻塞最终报告。\n7. 最终报告必须作为最后一条独立回复，以 Markdown 分级标题组织，至少区分：结论、法律依据、相关案例、分析与风险提示、来源。保留工具返回的完整真实 URL，不得自行拼接或猜测。'
+          '请对以下法律问题进行多源调研：「{{query}}」。\n\n【重要要求】\n1. 所有可见内容使用中文，并在本轮直接交付最佳可用报告。\n2. 可在内部简要规划，但不要把单独规划或阶段播报作为唯一输出，也不要等待全部检索完成后才开始组织报告。\n3. 由 Agent 根据具体问题自主决定是否调用工具、调用次数和检索路径，不要求机械地调用任何来源。北大法宝或元典可作为法规与案例主来源；任一主来源已有可用内容后，不再为链接装饰或重复核验扩张检索。\n4. 只有在主要法律数据库均实际失败/无结果、存在重大效力冲突，或用户明确指定网页核验时，才按需使用一个权威网页替代来源。\n5. 某个来源或工具失败时停止反复重试，直接基于现有材料继续；资料无法核验时如实标注，不得阻塞或吞掉报告。\n6. 报告建议以 Markdown 分级标题区分结论、法律依据、相关案例、分析与风险提示、来源；保留真实 URL，没有 URL 时按数据库名称、法规名称和案号标注，不得猜测。'
       }),
     [t]
   )
@@ -142,6 +146,29 @@ export function useLegalResearch() {
 
       let threadId = ''
       let turnId = ''
+      let bestAvailableDuringResearch = (): string => ''
+
+      // Publish a query-specific plan immediately, before thread creation or
+      // any network/model round-trip. The runtime will replace this draft with
+      // the model's streamed plan as soon as it arrives.
+      const immediatePlanning = buildImmediateResearchPlan(trimmedQuery)
+      const initialRecord: ResearchRecord = {
+        id: recordId,
+        query: trimmedQuery,
+        timestamp: new Date().toLocaleString('zh-CN', { hour12: false }),
+        updatedAt: Date.now(),
+        status: 'running',
+        blocks: [],
+        steps: [],
+        updates: [],
+        summary: '',
+        reasoning: '',
+        planning: immediatePlanning,
+        threadId
+      }
+
+      persist((prev) => [initialRecord, ...prev])
+      setActiveRecordId(recordId)
 
       try {
         const provider = getProvider()
@@ -156,23 +183,9 @@ export function useLegalResearch() {
           mode: 'agent'
         })
         threadId = thread.id
-
-        const initialRecord: ResearchRecord = {
-          id: recordId,
-          query: trimmedQuery,
-          timestamp: new Date().toLocaleString('zh-CN', { hour12: false }),
-          updatedAt: Date.now(),
-          status: 'running',
-          blocks: [],
-          steps: [],
-          updates: [],
-          summary: '',
-          reasoning: '',
-          threadId
-        }
-
-        persist((prev) => [initialRecord, ...prev])
-        setActiveRecordId(recordId)
+        persist((prev) => prev.map((record) =>
+          record.id === recordId ? { ...record, threadId } : record
+        ))
 
         const sendResult = await provider.sendUserMessage(threadId, buildResearchPrompt(trimmedQuery), {
           mode: 'agent'
@@ -190,7 +203,7 @@ export function useLegalResearch() {
         // 调研规划可能以正文播报形式输出（“收到，开始多源调研。以下是调研规划：
         // 1. …2. …”），而 flushUpdates 会把这些规划消息从阶段播报里过滤掉，导致
         // 规划卡片永远空白。单独累积规划播报文本，供规划卡片从中提取编号列表。
-        let planningText = ''
+        let planningText = immediatePlanning
         const toolSteps = new Map<string, ResearchStep>()
         const blockMap = new Map<string, ChatBlock>()
 
@@ -205,15 +218,31 @@ export function useLegalResearch() {
         function flushUpdates(): ResearchUpdate[] {
           return assistantSegmentOrder
             .map((id) => assistantSegments.get(id))
-            .filter((update): update is ResearchUpdate => (
-              Boolean(update?.text.trim()) && !isResearchPlanMessage(update?.text ?? '')
-            ))
+            .filter((update): update is ResearchUpdate => Boolean(update?.text.trim()))
+            .map((update) => ({
+              ...update,
+              text: splitLegalResearchMessage(update.text).update
+            }))
+            .filter((update) => Boolean(update.text.trim()))
         }
 
-        function latestAssistantText(): string {
-          const latestId = assistantSegmentOrder[assistantSegmentOrder.length - 1]
-          return latestId ? assistantSegments.get(latestId)?.text.trim() ?? '' : ''
+        function latestReportText(): string {
+          for (let index = assistantSegmentOrder.length - 1; index >= 0; index -= 1) {
+            const id = assistantSegmentOrder[index]
+            const text = id ? assistantSegments.get(id)?.text ?? '' : ''
+            const report = splitLegalResearchMessage(text).report
+            if (report) return report
+          }
+          return ''
         }
+
+        function bestAvailableResearchText(): string {
+          return bestAvailableLegalResearchText(
+            assistantSegmentOrder.map((id) => assistantSegments.get(id)?.text ?? ''),
+            reasoningText
+          )
+        }
+        bestAvailableDuringResearch = bestAvailableResearchText
 
         function completeAssistantUpdates(): void {
           for (const [id, update] of assistantSegments) {
@@ -280,13 +309,8 @@ export function useLegalResearch() {
                 // 规划播报在流式过程中可能先不满足完整匹配，累积到完整后再判断。
                 // 除了标准“调研规划”标题外，模型也可能直接输出带编号的可执行规划列表
                 // 而无标题，此时依据提取到的规划项数量兜底识别，避免规划卡片空白。
-                const trimmed = segmentText.trim()
-                if (
-                  isResearchPlanMessage(trimmed) ||
-                  (/规划/.test(trimmed) && extractResearchPlanItems(trimmed).length >= 2)
-                ) {
-                  planningText = trimmed
-                }
+                const parts = splitLegalResearchMessage(segmentText)
+                if (parts.planning) planningText = parts.planning
                 upsertBlock({
                   kind: 'assistant',
                   id: segmentId,
@@ -308,7 +332,7 @@ export function useLegalResearch() {
             }
             scheduleRecordUpdate({
               updates: flushUpdates(),
-              summary: latestAssistantText(),
+              summary: latestReportText(),
               planning: planningText,
               ...(planningReasoningChanged ? { reasoning: reasoningText.trim() } : {})
             })
@@ -375,26 +399,24 @@ export function useLegalResearch() {
           onTurnComplete: () => {
             terminalEventReceived = true
             completeAssistantUpdates()
-            const noToolsExecuted = toolSteps.size === 0
-            const latestText = latestAssistantText()
-            if (noToolsExecuted) {
-              // The model finished the turn without invoking any tool —
-              // it produced only a plan. Mark it as not-done so the UI does
-              // not claim a completed research, and surface a clear hint.
+            const finalReport = bestAvailableResearchText()
+            if (!finalReport) {
               commitRecordUpdate({
                 status: 'error',
                 updates: flushUpdates(),
-                summary: latestText || t('legalResearchNoSummary'),
-                error: t('legalResearchNoToolsHint')
+                summary: '',
+                planning: planningText,
+                error: t('legalResearchIncompleteReport', {
+                  defaultValue: '调研已结束，但没有收到可展示内容。'
+                })
               })
               setIsResearching(false)
               return
             }
-            // 只有真正成功完成时才标记为 done
             commitRecordUpdate({
               status: 'done',
               updates: flushUpdates(),
-              summary: latestText || t('legalResearchNoSummary'),
+              summary: finalReport,
               planning: planningText,
               error: undefined // 清除之前的错误
             })
@@ -408,13 +430,16 @@ export function useLegalResearch() {
             if (!surfacedError && rawMessage && !/legalwork turn failed/i.test(rawMessage)) {
               surfacedError = rawMessage
             }
+            const partial = bestAvailableResearchText()
             commitRecordUpdate({
-              status: 'error',
-              error: surfacedError
-                ? `${t('legalResearchTurnFailed')}${surfacedError}`
-                : t('legalResearchTurnFailed'),
+              status: partial ? 'done' : 'error',
+              error: partial
+                ? undefined
+                : surfacedError
+                  ? `${t('legalResearchTurnFailed')}${surfacedError}`
+                  : t('legalResearchTurnFailed'),
               updates: flushUpdates(),
-              summary: latestAssistantText() || t('legalResearchNoSummary'),
+              summary: partial,
               planning: planningText
             })
             setIsResearching(false)
@@ -435,24 +460,25 @@ export function useLegalResearch() {
             const detail = await provider.getThreadDetail(threadId)
             if (detail?.latestTurnId && detail.threadStatus !== 'running') {
               const recovered: ResearchUpdate[] = []
-              let recoveredPlanning = ''
+              let recoveredPlanning = planningText
+              const recoveredAssistantTexts: string[] = []
               for (const block of detail.blocks ?? []) {
                 if (
                   block.kind === 'assistant' &&
                   typeof block.text === 'string' &&
                   block.text.trim()
-                ) {
-                  if (isResearchPlanMessage(block.text)) {
-                    // 规划播报在重放时同样收集，避免规划卡片在恢复场景下空白。
-                    recoveredPlanning = block.text.trim()
-                    continue
+                  ) {
+                  recoveredAssistantTexts.push(block.text)
+                  const parts = splitLegalResearchMessage(block.text)
+                  if (parts.planning) recoveredPlanning = parts.planning
+                  if (parts.update) {
+                    recovered.push({
+                      id: block.id,
+                      text: parts.update,
+                      createdAt: block.createdAt ?? new Date().toISOString(),
+                      completed: true
+                    })
                   }
-                  recovered.push({
-                    id: block.id,
-                    text: block.text.trim(),
-                    createdAt: block.createdAt ?? new Date().toISOString(),
-                    completed: true
-                  })
                 }
               }
               const recoveredReasoning = detail.blocks
@@ -460,7 +486,11 @@ export function useLegalResearch() {
                 .map((b) => (typeof b.text === 'string' ? b.text : ''))
                 .join('\n')
                 .trim()
-              if (recovered.length > 0 || recoveredReasoning) {
+              const recoveredBest = bestAvailableLegalResearchText(
+                recoveredAssistantTexts,
+                recoveredReasoning
+              )
+              if (recovered.length > 0 || recoveredReasoning || recoveredBest) {
                 assistantSegmentOrder.length = 0
                 assistantSegments.clear()
                 for (const update of recovered) {
@@ -471,17 +501,15 @@ export function useLegalResearch() {
                   reasoningText = recoveredReasoning
                   upsertBlock({ kind: 'reasoning', id: 'reasoning', createdAt: new Date().toISOString(), text: recoveredReasoning })
                 }
-                const recoveredSummary =
-                  recovered[recovered.length - 1]?.text ||
-                  latestAssistantText() ||
-                  t('legalResearchNoSummary')
                 commitRecordUpdate({
-                  status: 'done',
+                  status: recoveredBest ? 'done' : 'error',
                   updates: flushUpdates(),
-                  summary: recoveredSummary,
+                  summary: recoveredBest,
                   planning: recoveredPlanning || planningText,
                   ...(recoveredReasoning ? { reasoning: recoveredReasoning } : {}),
-                  error: undefined
+                  error: recoveredBest ? undefined : t('legalResearchIncompleteReport', {
+                    defaultValue: '调研已结束，但没有收到可展示内容。'
+                  })
                 })
                 setIsResearching(false)
                 return
@@ -490,11 +518,12 @@ export function useLegalResearch() {
           } catch {
             // Reconcile is best-effort; fall through to the error state below.
           }
+          const partial = bestAvailableResearchText()
           commitRecordUpdate({
-            status: 'error',
-            error: t('legalResearchStreamEnded'),
+            status: partial ? 'done' : 'error',
+            error: partial ? undefined : t('legalResearchStreamEnded'),
             updates: flushUpdates(),
-            summary: latestAssistantText() || t('legalResearchNoSummary')
+            summary: partial
           })
           setIsResearching(false)
         }
@@ -507,10 +536,19 @@ export function useLegalResearch() {
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err ?? 'unknown error')
+        const partial = bestAvailableDuringResearch()
         persist((prev) => {
           const existing = prev.find((r) => r.id === recordId)
           if (existing) {
-            return prev.map((r) => (r.id === recordId ? { ...r, status: 'error', updatedAt: Date.now(), error: `调研启动失败：${message}` } : r))
+            return prev.map((r) => (r.id === recordId
+              ? {
+                  ...r,
+                  status: partial ? 'done' : 'error',
+                  updatedAt: Date.now(),
+                  summary: partial || r.summary,
+                  error: partial ? undefined : `调研启动失败：${message}`
+                }
+              : r))
           }
           return [
             {

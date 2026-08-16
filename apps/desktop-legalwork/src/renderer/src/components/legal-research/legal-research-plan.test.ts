@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildImmediateResearchPlan,
   extractResearchPlanItems,
   extractStageNumber,
   formatResearchPlanIndex,
@@ -7,6 +8,13 @@ import {
 } from './legal-research-plan'
 
 describe('legal research plan extraction', () => {
+  it('builds a visible query-specific plan synchronously', () => {
+    const plan = buildImmediateResearchPlan('宽严相济在食品药品犯罪中的应用')
+    expect(plan).toContain('## 调研规划')
+    expect(plan).toContain('宽严相济在食品药品犯罪中的应用')
+    expect(extractResearchPlanItems(plan)).toHaveLength(5)
+  })
+
   it('keeps the first complete numbered plan and drops later execution logs', () => {
     const reasoning = `先规划需要核验的问题：
 1. 英国出生孩子的国籍问题

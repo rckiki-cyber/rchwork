@@ -98,7 +98,7 @@ describe('Office fallback gate in MCP search mode', () => {
 
     const describeBefore = await byName('mcp_describe').execute({ toolId: 'officecli/officecli' }, context)
     expect(describeBefore.isError).toBe(true)
-    expect(describeBefore.output).toMatchObject({ error: 'unknown MCP tool: officecli/officecli' })
+    expect(describeBefore.output).toMatchObject({ error: expect.stringContaining('unknown MCP tool: officecli/officecli') })
 
     const callBefore = await byName('mcp_call').execute({
       toolId: 'officecli/officecli',

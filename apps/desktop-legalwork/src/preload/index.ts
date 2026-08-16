@@ -267,6 +267,15 @@ const api = {
   imaGetConfig: () => ipcRenderer.invoke('ima:get-config'),
   imaGetMcpConfig: () => ipcRenderer.invoke('ima:get-mcp-config'),
   imaRefresh: () => ipcRenderer.invoke('ima:auth-refresh'),
+
+  // 北大法宝内置控制台
+  openPkulawConsole: () => ipcRenderer.invoke('pkulaw:open-console'),
+  claimPkulawToken: () => ipcRenderer.invoke('pkulaw:claim-token'),
+  getPkulawAutoClaim: () => ipcRenderer.invoke('pkulaw:auto-claim-state'),
+  setPkulawAutoClaim: (enabled: boolean) => ipcRenderer.invoke('pkulaw:auto-claim-set', enabled),
+
+  // 元典内置控制台
+  openYuandianConsole: () => ipcRenderer.invoke('yuandian:open-console'),
 } satisfies DsGuiApi
 
 contextBridge.exposeInMainWorld('dsGui', api)

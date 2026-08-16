@@ -31,6 +31,15 @@ export function isLegalworkResearchWorkspace(path?: string): boolean {
   return normalized.includes('/.legalwork/research-workspace')
 }
 
+/** Dedicated workspace for document-writing scratch threads. Kept out of the
+ * main conversation list just like legal-research threads. */
+export function isLegalworkDocumentWorkspace(path?: string): boolean {
+  const trimmed = path?.trim() ?? ''
+  if (!trimmed) return false
+  const normalized = normalizePathForMatch(trimmed)
+  return normalized.includes('/.legalwork/document-workspace')
+}
+
 export function isInternalTemporaryWorkspace(path?: string): boolean {
   const trimmed = path?.trim() ?? ''
   if (!trimmed) return false
@@ -45,6 +54,7 @@ export function isInternalTemporaryWorkspace(path?: string): boolean {
     || /^\/private\/var\/folders\/[^/]+\/[^/]+\/t(?:\/|$)/.test(normalized)
     || /\/appdata\/local\/temp(?:\/|$)/.test(normalized)
     || isLegalworkResearchWorkspace(path)
+    || isLegalworkDocumentWorkspace(path)
   )
 }
 

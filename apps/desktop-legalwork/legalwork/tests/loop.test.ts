@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { appendFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { InMemoryEventBus } from '../src/adapters/in-memory-event-bus.js'
@@ -13,21 +13,31 @@ import {
   DEFAULT_MAX_AGENT_LOOP_STEPS,
   MAX_AGENT_LOOP_STEPS_ENV,
   MAX_AGENT_LOOP_STEPS_ENV_CAP,
+  assistantAnnouncesPendingToolWork,
+  attachResolvedAttachmentContextToHistory,
+  deliveredWordLocationAnswer,
   isBareResearchTopicPrompt,
+  attachmentIdsForTurn,
+  isContextWindowExceededError,
   knowledgeShellBypassError,
   requestedDocumentArtifacts,
   requestsLocalKnowledgeRetrieval,
   requestsDocumentMutation,
   requestsAcademicCitationVerification,
   resolveMaxAgentLoopSteps,
-  skillRoutingPrompt
+  skillRoutingPrompt,
+  turnBudgetCompletionToolSpecs
 } from '../src/loop/agent-loop.js'
 import { resolveModelContextProfile } from '../src/loop/model-context-profile.js'
-import { makeAssistantTextItem, makeToolCallItem, makeUserItem } from '../src/domain/item.js'
+import { requiresFreshWebSearch, requiresWebSearch } from '../src/loop/fact-verification.js'
+import { makeAssistantTextItem, makeToolCallItem, makeToolResultItem, makeUserItem } from '../src/domain/item.js'
 import { createThreadRecord } from '../src/domain/thread.js'
 import { createImmutablePrefix, setSystemPrompt } from '../src/cache/immutable-prefix.js'
 import type { TurnItem } from '../src/contracts/items.js'
 import type { ModelRequest, ModelStreamChunk } from '../src/ports/model-client.js'
+import type { AttachmentStore } from '../src/attachments/attachment-store.js'
+import type { AttachmentMetadata } from '../src/contracts/attachments.js'
+import { plainTextToDocxBuffer } from '../src/adapters/tool/plain-text-docx.js'
 import {
   bootstrapThread,
   makeFakeModel,
@@ -35,6 +45,58 @@ import {
   makeSilentModel,
   resolveNextUserInput
 } from './loop-test-harness.js'
+
+/** 最小内存 AttachmentStore：写文件返回 localFilePath，供附件文档地图路径使用 */
+function makeFakeAttachmentStore(rootDir: string): AttachmentStore {
+  const entries = new Map<string, { meta: AttachmentMetadata; data: Buffer; filePath: string }>()
+  let seq = 0
+  const now = (): string => '2026-06-03T00:00:00.000Z'
+  return {
+    async create(input) {
+      seq += 1
+      const id = `att_a1b2c3d4e5f60718293a4b${String(seq).padStart(2, '0')}`
+      const ext = input.name.includes('.') ? input.name.slice(input.name.lastIndexOf('.')) : ''
+      const filePath = join(rootDir, `att_${seq}${ext}`)
+      await writeFile(filePath, input.data)
+      const meta: AttachmentMetadata = {
+        id,
+        name: input.name,
+        mimeType: input.mimeType ?? 'application/octet-stream',
+        byteSize: input.data.length,
+        hash: `fake-hash-${seq}`,
+        threadIds: input.threadId ? [input.threadId] : [],
+        workspaces: input.workspace ? [input.workspace] : [],
+        createdAt: now(),
+        updatedAt: now()
+      }
+      entries.set(id, { meta, data: input.data, filePath })
+      return meta
+    },
+    async get(id) {
+      return entries.get(id)?.meta ?? null
+    },
+    async resolveContent(id) {
+      const entry = entries.get(id)
+      if (!entry) throw new Error(`attachment not found: ${id}`)
+      return { ...entry.meta, data: entry.data, localFilePath: entry.filePath }
+    },
+    textFallbackPolicy() {
+      return {
+        textFallbackMaxBase64Bytes: 1_000_000,
+        textFallbackMaxImageDimension: 4096,
+        textFallbackPreferredMimeType: 'image/png'
+      }
+    },
+    async diagnostics() {
+      return {
+        enabled: true,
+        rootDir,
+        count: entries.size,
+        totalBytes: [...entries.values()].reduce((acc, entry) => acc + entry.data.length, 0)
+      }
+    }
+  }
+}
 
 describe('AgentLoop', () => {
   it('distinguishes document creation requests from formatting questions', () => {
@@ -44,14 +106,25 @@ describe('AgentLoop', () => {
     expect(requestsDocumentMutation('如何设置 Word 的页边距？')).toBe(false)
     expect(requestsDocumentMutation('为什么 Word 正文通常使用宋体？')).toBe(false)
     expect(requestsDocumentMutation('Word 文档有哪些常用格式？')).toBe(false)
+    expect(requestsDocumentMutation('读取这个 Word，只告诉我主标题，不要生成新文件。')).toBe(false)
+    expect(requestsDocumentMutation('分析附件内容，不用导出 PDF。')).toBe(false)
+    expect(requestsDocumentMutation('修改这个 Word，但不要另外生成 PDF。')).toBe(true)
+    expect(requestsDocumentMutation(
+      '读取这个 Word，只告诉我主标题，不要生成新文件。当前追问：根据这个 Word 重新生成一份总结 Word。'
+    )).toBe(true)
     expect(requestsDocumentMutation('修订')).toBe(true)
     expect(requestsDocumentMutation('把这篇文章按新框架重构，并补充最新文献')).toBe(true)
+    expect(requestsDocumentMutation('我他妈让你扩充论文而已')).toBe(true)
+    expect(requestsDocumentMutation('把这篇稿件续写并增补案例')).toBe(true)
   })
 
   it('tracks every explicitly requested deliverable format', () => {
     const request = '请完成研究并交付 Word、PDF、PPT 三份完整文件'
     expect(requestedDocumentArtifacts(request)).toEqual(['docx', 'pdf', 'pptx'])
-    expect(requestedDocumentArtifacts('请生成一份研究报告')).toEqual(['docx'])
+    expect(requestedDocumentArtifacts('请生成一份研究报告')).toEqual([])
+    expect(requestedDocumentArtifacts(
+      '<inline_document_response>请撰写意见书，模板原来用于 DOCX。</inline_document_response>'
+    )).toEqual([])
     expect(requestsLocalKnowledgeRetrieval('先检索本地知识库，再生成报告')).toBe(true)
     expect(requestsLocalKnowledgeRetrieval(
       '查一下食药犯罪中的宽严相济案例。后续要求：撰写这篇论文。当前追问：文献应该尽可能参考多的'
@@ -73,11 +146,36 @@ describe('AgentLoop', () => {
     )).toBe(true)
   })
 
+  it('does not force citation verification when expanding an existing paper', () => {
+    expect(requestsAcademicCitationVerification(
+      '请把上传的论文复制一份，生成新的word文档，在新的副本上扩充论文内容，新增引用用GFM真脚注。'
+    )).toBe(false)
+    expect(requestsAcademicCitationVerification(
+      '帮我扩充下论文内容，复制一份生成新的word，在新的基础上改'
+    )).toBe(false)
+    // 明确要求核验引用的扩充任务仍应触发
+    expect(requestsAcademicCitationVerification(
+      '请扩充这篇论文，并把新增引注逐条核验来源'
+    )).toBe(true)
+  })
+
   it('does not treat a bare academic title as authorization for paid research', () => {
     expect(isBareResearchTopicPrompt('行政程序与人工智能的媾和')).toBe(true)
     expect(isBareResearchTopicPrompt('自动化/半自动化行政行为的程序要件如何重构')).toBe(false)
     expect(isBareResearchTopicPrompt('检索知识库')).toBe(false)
     expect(isBareResearchTopicPrompt('写一篇文献综述word')).toBe(false)
+    expect(isBareResearchTopicPrompt('我他妈让你扩充论文而已')).toBe(false)
+    expect(isBareResearchTopicPrompt('你他妈倒是干活啊')).toBe(false)
+    expect(isBareResearchTopicPrompt('这个案子的具体内容')).toBe(false)
+  })
+
+  it('does not treat a document-operation prompt as a bare research topic', () => {
+    // 文档生成/整理类 prompt 必须保留 document_skill_execute 工具，
+    // 不能被“裸研究话题”逻辑收窄成空工具列表（否则模型想调工具却没有工具）。
+    expect(isBareResearchTopicPrompt('把上传文档里所有引注整理到一个word文档里')).toBe(false)
+    expect(isBareResearchTopicPrompt('整理引注到word')).toBe(false)
+    expect(isBareResearchTopicPrompt('把这个文档排版一下')).toBe(false)
+    expect(isBareResearchTopicPrompt('把附件整理成docx文件')).toBe(false)
   })
 
   it('inherits the previous substantive Skill context for terse follow-ups', () => {
@@ -98,6 +196,199 @@ describe('AgentLoop', () => {
 
     expect(skillRoutingPrompt('？', items, 'turn_question')).toContain('写一篇文献综述word')
     expect(skillRoutingPrompt('重新分析合同', items, 'turn_new')).toBe('重新分析合同')
+    expect(skillRoutingPrompt('把本文所有引注都整理到word里', items, 'turn_citations'))
+      .toContain('写一篇文献综述word')
+  })
+
+  it('keeps every uploaded attachment available for every later turn in the thread', () => {
+    const items: TurnItem[] = [
+      makeUserItem({
+        id: 'u_file',
+        turnId: 'turn_file',
+        threadId: 'thr_1',
+        text: '修复这个 Word',
+        attachmentIds: ['att_word']
+      }),
+      makeUserItem({
+        id: 'u_followup',
+        turnId: 'turn_followup',
+        threadId: 'thr_1',
+        text: '出了什么问题？'
+      })
+    ]
+
+    expect(attachmentIdsForTurn({
+      prompt: '出了什么问题？',
+      turnId: 'turn_followup',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '重新分析另一个案件',
+      turnId: 'turn_new_topic',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '当前消息',
+      turnId: 'turn_current',
+      turnAttachmentIds: ['att_current', 'att_current'],
+      items
+    })).toEqual(['att_word', 'att_current'])
+    expect(attachmentIdsForTurn({
+      prompt: '扩充这篇论文并生成新的 Word',
+      turnId: 'turn_expand',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '脱敏',
+      turnId: 'turn_redact',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '审核呀',
+      turnId: 'turn_review',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '脱敏啊！',
+      turnId: 'turn_redact_particle',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '你他妈倒是干活啊',
+      turnId: 'turn_resume',
+      items
+    })).toEqual(['att_word'])
+    expect(attachmentIdsForTurn({
+      prompt: '任意后续消息',
+      turnId: 'turn_after_multiple_uploads',
+      items: [
+        ...items,
+        makeUserItem({
+          id: 'u_pdf',
+          turnId: 'turn_pdf',
+          threadId: 'thr_1',
+          text: '再补充一份材料',
+          attachmentIds: ['att_pdf']
+        })
+      ]
+    })).toEqual(['att_word', 'att_pdf'])
+  })
+
+  it('appends new attachment context without rewriting an earlier user-message prefix', () => {
+    const first = makeUserItem({
+      id: 'u_a',
+      turnId: 'turn_a',
+      threadId: 'thr_1',
+      text: '审查 A',
+      attachmentIds: ['att_a']
+    })
+    const second = makeUserItem({
+      id: 'u_b',
+      turnId: 'turn_b',
+      threadId: 'thr_1',
+      text: '审查 B',
+      attachmentIds: ['att_b']
+    })
+    const reference = (id: string) => ({
+      id,
+      name: `${id}.txt`,
+      mimeType: 'text/plain',
+      localFilePath: `/tmp/${id}.txt`
+    })
+    const withA = attachResolvedAttachmentContextToHistory([first], {
+      fileReferences: [reference('att_a')],
+      documentMaps: [],
+      ocrResults: []
+    })
+    const withAB = attachResolvedAttachmentContextToHistory([first, second], {
+      fileReferences: [reference('att_a'), reference('att_b')],
+      documentMaps: [],
+      ocrResults: []
+    })
+
+    expect(withAB[0]).toEqual(withA[0])
+    expect(withAB[0]?.kind === 'user_message' ? withAB[0].text : '').not.toContain('att_b')
+    expect(withAB[1]?.kind === 'user_message' ? withAB[1].text : '').toContain('att_b')
+  })
+
+  it('detects assistant prose that announces unfinished tool work', () => {
+    expect(assistantAnnouncesPendingToolWork('我按现有规则重新生成一份干净的脱敏版。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('开始。先读原文。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork(`${'分析。'.repeat(1_000)}开始。先读原文。`)).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('文件已生成并验证通过。')).toBe(false)
+  })
+
+  it('detects common spoken Chinese verification announcements (strike-loop repro)', () => {
+    // "罢工"复现：agent 说"我这就检查"后回合被提前终止，从未发出核对工具调用。
+    expect(assistantAnnouncesPendingToolWork('我这就检查:')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('我这就确认一下:稍等，我实际检查一下文件夹内容确认结果:')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('让我检查一下这个文件夹')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('稍等，我先确认一下文件夹内容')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('我来验证一下输出文件是否存在')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('我去检查一下桌面文件夹')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('查一下最新法考政策动态。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('现在去把详细报道抓出来。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('我先联网核实最新考纲内容，再给你完整梳理。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('查看过程记录文件与原稿完整标题结构，确认重组方案：')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('补充检索国家库宽严相济意见记录。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('直接用脚本生成 JSONL 文件（避免手工转义错误）。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('表格被 CSV 解析拆分成了多余行，正文编号重复。先合并表格单元格内容、删除多余行，再修正正文编号文本。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('平台可能先给高价、验机后压价，务必先确认验机标准，并检查屏幕和电池。')).toBe(false)
+    expect(assistantAnnouncesPendingToolWork('购买前先检查电池，再确认屏幕和序列号。')).toBe(false)
+    expect(assistantAnnouncesPendingToolWork('检查结果如下：文件内容完整，编号连续。')).toBe(false)
+    expect(assistantAnnouncesPendingToolWork('建议直接用脚本生成 JSONL 文件，避免手工转义错误。')).toBe(false)
+    // 不误伤已经完成事实陈述的普通回答
+    expect(assistantAnnouncesPendingToolWork('文件已经生成好了，放在桌面的执行和解协议文件夹里。')).toBe(false)
+    expect(assistantAnnouncesPendingToolWork('已核对无误，文件夹内容与交付一致。')).toBe(false)
+  })
+
+  it('answers a follow-up location question by reusing the delivered DOCX path', () => {
+    const docxResult = makeToolResultItem({
+      id: 'item_tool_result_1',
+      turnId: 'turn_1',
+      threadId: 'thread_1',
+      callId: 'call_1',
+      toolName: 'document_skill_execute',
+      output: {
+        status: 'ok',
+        operation: 'from-markdown',
+        kind: 'docx',
+        output: 'C:\\Users\\lenoo\\Desktop\\执行和解协议.docx'
+      }
+    })
+    // "放在哪了"追问直接复用上一回合交付路径，不再触发目录核对
+    expect(deliveredWordLocationAnswer([docxResult], '放在哪了')).toContain('执行和解协议.docx')
+    expect(deliveredWordLocationAnswer([docxResult], '文件在哪，我找不到')).toContain('执行和解协议.docx')
+    // 非位置追问不应短路
+    expect(deliveredWordLocationAnswer([docxResult], '帮我修改一下这个文档')).toBeUndefined()
+    // "随便放哪都行"是授权自选位置，不是追问路径
+    expect(deliveredWordLocationAnswer([docxResult], '重新生成一个，随便放哪都行')).toBeUndefined()
+    // 失败/inspect 的交付不应被当作已交付
+    const failedResult = makeToolResultItem({
+      id: 'item_tool_result_2',
+      turnId: 'turn_1',
+      threadId: 'thread_1',
+      callId: 'call_2',
+      toolName: 'document_skill_execute',
+      isError: true,
+      output: { status: 'error', operation: 'from-markdown', kind: 'docx', output: '' }
+    })
+    expect(deliveredWordLocationAnswer([failedResult], '放在哪了')).toBeUndefined()
+  })
+
+  it('keeps completion tools while removing research tools at budget wrap-up', () => {
+    const tools = [
+      { name: 'web_search' },
+      { name: 'mcp_ima_research' },
+      { name: 'read' },
+      { name: 'bash' },
+      { name: 'data_compliance' },
+      { name: 'document_skill_execute' }
+    ]
+    expect(turnBudgetCompletionToolSpecs(tools).map((tool) => tool.name)).toEqual([
+      'data_compliance',
+      'document_skill_execute'
+    ])
   })
 
   it('keeps the original legal topic across referential artifact follow-ups', () => {
@@ -122,6 +413,19 @@ describe('AgentLoop', () => {
     expect(routed).toContain('撰写这篇论文')
     expect(routed).toContain('文献应该尽可能参考多的')
     expect(routed).not.toContain('他妈的原文呢')
+  })
+
+  it('keeps a concrete task even when the user expresses it angrily', () => {
+    const items: TurnItem[] = [
+      makeUserItem({
+        id: 'u_expand',
+        turnId: 'turn_expand',
+        threadId: 'thr_angry',
+        text: '我他妈让你扩充论文而已'
+      })
+    ]
+    expect(skillRoutingPrompt('怎么不动了', items, 'turn_followup'))
+      .toContain('扩充论文')
   })
 
   it('blocks shell scripts that bulk-parse the managed knowledge PDF store', () => {
@@ -149,6 +453,40 @@ describe('AgentLoop', () => {
       .toBe(MAX_AGENT_LOOP_STEPS_ENV_CAP)
   })
 
+  it('falls back to a bounded visible notice at the loop step limit', async () => {
+    const previous = process.env[MAX_AGENT_LOOP_STEPS_ENV]
+    process.env[MAX_AGENT_LOOP_STEPS_ENV] = '2'
+    try {
+      let calls = 0
+      const h = makeHarness({
+        provider: 'step-limit-fallback',
+        model: 'step-limit-fallback',
+        async *stream(): AsyncIterable<ModelStreamChunk> {
+          calls += 1
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_step_limit_${calls}`,
+            toolName: 'ls',
+            arguments: { path: '.' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+        }
+      }, { tools: buildDefaultLocalTools(), toolStorm: { enabled: false } })
+      await bootstrapThread(h)
+
+      expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+      const items = await h.sessionStore.loadItems(h.threadId)
+      const visibleText = items
+        .filter((item) => item.kind === 'assistant_text')
+        .map((item) => item.text)
+        .join('\n')
+      expect(visibleText).toContain('已停止继续调用工具')
+    } finally {
+      if (previous === undefined) delete process.env[MAX_AGENT_LOOP_STEPS_ENV]
+      else process.env[MAX_AGENT_LOOP_STEPS_ENV] = previous
+    }
+  })
+
   it('finishes a silent model run as completed', async () => {
     const h = makeHarness(makeSilentModel())
     await bootstrapThread(h)
@@ -174,8 +512,8 @@ describe('AgentLoop', () => {
     const request = observedRequest as ModelRequest | null
     if (!request) throw new Error('expected model request')
     expect(request.tools.map((tool) => tool.name)).toContain('bash')
-    expect(request.contextInstructions?.join('\n')).toContain('Shell runtime:')
-    expect(request.contextInstructions?.join('\n')).toContain('shell commands appropriate for the host platform')
+    expect(request.prefixInstructions?.join('\n')).toContain('Shell runtime:')
+    expect(request.prefixInstructions?.join('\n')).toContain('shell commands appropriate for the host platform')
   })
 
   it('injects the primary legal research source instruction when configured', async () => {
@@ -188,12 +526,12 @@ describe('AgentLoop', () => {
         yield { kind: 'completed', stopReason: 'stop' }
       }
     }, { primaryLegalSource: 'pkulaw' })
-    await bootstrapThread(h)
+    await bootstrapThread(h, { title: '法律调研:测试' })
     await h.loop.runTurn(h.threadId, h.turnId)
 
     const request = observedRequest as ModelRequest | null
     if (!request) throw new Error('expected model request')
-    const instructions = request.contextInstructions?.join('\n') ?? ''
+    const instructions = request.prefixInstructions?.join('\n') ?? ''
     expect(instructions).toContain('北大法宝(PKULaw)')
     expect(instructions).toContain('元典(Yuandian)')
     expect(instructions).toContain('优先使用')
@@ -216,6 +554,183 @@ describe('AgentLoop', () => {
     if (!request) throw new Error('expected model request')
     const instructions = request.contextInstructions?.join('\n') ?? ''
     expect(instructions).not.toContain('首要来源')
+  })
+
+  it('injects a compact document map instead of full attachment text (map default)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'legalwork-map-'))
+    try {
+      const store = makeFakeAttachmentStore(dir)
+      const judgment = [
+        '第 1 页',
+        '民 事 判 决 书',
+        '（2025）内25民终813号',
+        '上诉人（原审原告）：河南联洋建筑工程有限公司。',
+        '事实和理由：',
+        '一、关于利息，双方合同第八条明确约定付款时间。',
+        '二、关于 343, 350 元款项，该笔款项并非蓝尚宝公司收取。',
+        ...Array.from({ length: 60 }, (_, i) => `双方就第 ${i + 3} 项争议进行了充分举证质证，一审法院对此予以查明。`),
+        '本院认为：',
+        '本案争议焦点为利息计算标准。',
+        '判决如下：',
+        '一、驳回上诉，维持原判。',
+        '第 2 页'
+      ].join('\n')
+      const attachment = await store.create({
+        name: '判决书.docx',
+        data: plainTextToDocxBuffer(judgment, { title: '判决书' }),
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        threadId: 'thr_map',
+        workspace: '/tmp/ws'
+      })
+      let observedRequest: ModelRequest | null = null
+      const h = makeHarness({
+        provider: 'map-test',
+        model: 'map-test',
+        async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
+          observedRequest = request
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      }, { attachmentStore: store })
+      await bootstrapThread(h, {
+        workspace: '/tmp/ws',
+        request: { prompt: '请分析这份判决书', attachmentIds: [attachment.id], model: 'map-test' }
+      })
+      await h.loop.runTurn(h.threadId, h.turnId)
+
+      const request = observedRequest as ModelRequest | null
+      if (!request) throw new Error('expected model request')
+      const attachmentHistory = request.history
+        .flatMap((item) => item.kind === 'user_message'
+          ? [item.text]
+          : item.kind === 'compaction'
+            ? [item.summary]
+            : [])
+        .join('\n')
+      expect(request.prefixInstructions?.join('\n') ?? '').not.toContain('<uploaded_document_map>')
+      expect(attachmentHistory).toContain('<uploaded_document_map>')
+      expect(attachmentHistory).toContain('结构索引')
+      expect(attachmentHistory).not.toContain('<uploaded_document_text>')
+      expect(attachmentHistory).not.toContain('--- DOCUMENT BEGIN')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('restores full-text injection under LEGALWORK_ATTACHMENT_READ_STRATEGY=full', async () => {
+    const previous = process.env.LEGALWORK_ATTACHMENT_READ_STRATEGY
+    process.env.LEGALWORK_ATTACHMENT_READ_STRATEGY = 'full'
+    const dir = await mkdtemp(join(tmpdir(), 'legalwork-full-'))
+    try {
+      const store = makeFakeAttachmentStore(dir)
+      const judgment = '民 事 判 决 书\n（2025）内25民终813号\n上诉人（原审原告）：河南联洋建筑工程有限公司。\n判决如下：\n一、驳回上诉，维持原判。'
+      const attachment = await store.create({
+        name: '判决书.docx',
+        data: plainTextToDocxBuffer(judgment, { title: '判决书' }),
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        threadId: 'thr_full',
+        workspace: '/tmp/ws'
+      })
+      let observedRequest: ModelRequest | null = null
+      const h = makeHarness({
+        provider: 'full-test',
+        model: 'full-test',
+        async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
+          observedRequest = request
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      }, { attachmentStore: store })
+      await bootstrapThread(h, {
+        workspace: '/tmp/ws',
+        request: { prompt: '请分析这份判决书', attachmentIds: [attachment.id], model: 'full-test' }
+      })
+      await h.loop.runTurn(h.threadId, h.turnId)
+
+      const request = observedRequest as ModelRequest | null
+      if (!request) throw new Error('expected model request')
+      const attachmentHistory = request.history
+        .flatMap((item) => item.kind === 'user_message'
+          ? [item.text]
+          : item.kind === 'compaction'
+            ? [item.summary]
+            : [])
+        .join('\n')
+      expect(request.prefixInstructions?.join('\n') ?? '').not.toContain('<uploaded_document_text>')
+      expect(attachmentHistory).toContain('<uploaded_document_text>')
+      expect(attachmentHistory).toContain('--- DOCUMENT BEGIN')
+      expect(attachmentHistory).not.toContain('<uploaded_document_map>')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+      if (previous === undefined) delete process.env.LEGALWORK_ATTACHMENT_READ_STRATEGY
+      else process.env.LEGALWORK_ATTACHMENT_READ_STRATEGY = previous
+    }
+  })
+
+  it('does not force knowledge retrieval on learning-iteration threads', async () => {
+    const executed: string[] = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('knowledge_auto_retrieve', async () => {
+        executed.push('knowledge_auto_retrieve')
+        return { output: { sources: [], contextText: '' } }
+      }),
+      define('knowledge_search', async () => {
+        executed.push('knowledge_search')
+        return { output: { sources: [] } }
+      })
+    ]
+    const corpus = [
+      '# 用户交互语料',
+      '用户提到了知识库检索和来源核验，并研究多源法律依据。',
+      '材料来源：thread:xxx，包含引用与文献。'
+    ].join('\n')
+    const prompt = [
+      'Use $legalwork-learning-iteration to analyze the bounded corpus below.',
+      'Do not call any tools — analyze the corpus purely in text.',
+      'Return exactly one JSON object between the marker lines.',
+      'BEGIN_LEARNING_RESULT',
+      '{}',
+      'END_LEARNING_RESULT',
+      corpus
+    ].join('\n')
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'learning-iteration',
+      model: 'learning-iteration',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        yield {
+          kind: 'assistant_text_delta',
+          text: '本轮学习检查已完成。这次完成了学习检查，但没有发现足够稳定的新规律。'
+        }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools })
+    await bootstrapThread(h, { request: { prompt } })
+    await h.threadStore.upsert(
+      createThreadRecord({
+        id: h.threadId,
+        title: '[Learning iteration] 2026-08-12-0002-test',
+        workspace: '/tmp',
+        model: 'fake'
+      })
+    )
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed).toEqual([])
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.requiredToolName).toBeUndefined()
+    expect(requests[0]?.tools ?? []).toHaveLength(0)
   })
 
   it('records elapsed seconds for active goals after a turn finishes', async () => {
@@ -288,6 +803,24 @@ describe('AgentLoop', () => {
       event.code === 'http_400'
     )).toBe(true)
     expect(events.some((event) => event.kind === 'turn_failed')).toBe(true)
+  })
+
+  it('preserves partial model text when the stream ends with an error chunk', async () => {
+    const h = makeHarness({
+      provider: 'partial-error-chunk',
+      model: 'partial-error-chunk',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        yield { kind: 'assistant_text_delta', text: '这是已经生成的可交付正文。' }
+        yield { kind: 'error', message: 'connection reset after response', code: 'stream_reset' }
+      }
+    })
+    await bootstrapThread(h)
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    const items = await h.sessionStore.loadItems(h.threadId)
+    expect(items.some((item) =>
+      item.kind === 'assistant_text' && item.text === '这是已经生成的可交付正文。'
+    )).toBe(true)
   })
 
   it('emits named pipeline lifecycle stages for a model request', async () => {
@@ -401,6 +934,134 @@ describe('AgentLoop', () => {
     expect(toolCall).toMatchObject({ kind: 'tool_call', status: 'completed' })
   })
 
+  it('finishes a Word-only delivery from the successful tool result without a second model request', async () => {
+    let modelCalls = 0
+    const documentTool = LocalToolHost.defineTool({
+      name: 'document_skill_execute',
+      description: 'Generate Word documents',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      async execute() {
+        return {
+          output: {
+            status: 'ok',
+            kind: 'docx',
+            operation: 'from-markdown',
+            output: '/tmp/律师审核意见.docx'
+          }
+        }
+      }
+    })
+    const h = makeHarness({
+      provider: 'word-delivery-fast-finish',
+      model: 'word-delivery-fast-finish',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        modelCalls += 1
+        expect(request.requiredToolName).toBe('document_skill_execute')
+        yield {
+          kind: 'tool_call_complete',
+          callId: 'call_word_delivery',
+          toolName: 'document_skill_execute',
+          arguments: { kind: 'docx', operation: 'from-markdown' }
+        }
+        yield { kind: 'completed', stopReason: 'tool_calls' }
+      }
+    }, { tools: [documentTool] })
+    await bootstrapThread(h, {
+      request: { prompt: '审核合同并在 Word 里提出修改建议' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const items = await h.sessionStore.loadItems(h.threadId)
+
+    expect(status).toBe('completed')
+    expect(modelCalls).toBe(1)
+    expect(items.at(-1)).toMatchObject({
+      kind: 'assistant_text',
+      text: 'Word 文档已生成：\n\n/tmp/律师审核意见.docx',
+      status: 'completed'
+    })
+  })
+
+  it('continues when the model announces pending work but stops before calling the tool', async () => {
+    let calls = 0
+    const h = makeHarness({
+      provider: 'unfinished-announcement',
+      model: 'unfinished-announcement',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        calls += 1
+        if (calls === 1) {
+          yield { kind: 'assistant_text_delta', text: '我先联网核实最新考纲内容，再给你完整梳理。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        if (calls === 2) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_echo_after_announcement',
+            toolName: 'echo',
+            arguments: { text: 'done' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '处理已完成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h)
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const items = await h.sessionStore.loadItems(h.threadId)
+
+    expect(status).toBe('completed')
+    expect(calls).toBe(3)
+    expect(items.some((item) => item.kind === 'tool_result' && item.toolName === 'echo')).toBe(true)
+  })
+
+  it('does not replace a substantive answer when ordinary advice contains repeated 先 phrases', async () => {
+    let calls = 0
+    const answer = [
+      '以下是 iPad Pro 二手行情完整汇总。',
+      '平台可能先给高价、验机后压价，务必先确认验机标准，并检查屏幕和电池。',
+      '购买前还应核对序列号、容量、成色和维修记录。'
+    ].join('\n\n')
+    const h = makeHarness({
+      provider: 'completed-advice-with-first-phrases',
+      model: 'completed-advice-with-first-phrases',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        calls += 1
+        yield { kind: 'assistant_text_delta', text: answer }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h, { request: { prompt: 'ipadpro二手价格' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(calls).toBe(1)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    expect(items.filter((item) => item.kind === 'assistant_text')).toHaveLength(1)
+    expect(items.some((item) => item.kind === 'assistant_text' && item.text === answer)).toBe(true)
+  })
+
+  it('fails instead of completing after bounded repeated work announcements', async () => {
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'repeated-unfinished-announcement',
+      model: 'repeated-unfinished-announcement',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        yield { kind: 'assistant_text_delta', text: '接下来我会调用工具并完成正文。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h)
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('failed')
+    expect(requests).toHaveLength(3)
+    expect(requests[1]?.contextInstructions?.join('\n')).toContain('不要再预告步骤')
+  })
+
   it('removes research tools after the cumulative turn input budget is exhausted', async () => {
     const requests: ModelRequest[] = []
     const h = makeHarness({
@@ -441,11 +1102,14 @@ describe('AgentLoop', () => {
     expect(status).toBe('completed')
     expect(requests).toHaveLength(2)
     expect(requests[0]?.tools.map((tool) => tool.name)).toContain('echo')
-    expect(requests[1]?.tools).toEqual([])
+    // 预算耗尽后研究、读取和 shell 工具都被移除，防止模型把
+    // “收尾”解释成新一轮调查；文档交付等有界工具仍可用。
+    expect(requests[1]?.tools.map((tool) => tool.name)).not.toContain('echo')
+    expect(requests[1]?.tools.map((tool) => tool.name)).not.toContain('read')
     expect(requests[1]?.contextInstructions?.join('\n')).toContain('成本预算提醒')
   })
 
-  it('enforces IMA research for knowledge-heavy legal work when the model skips the tool', async () => {
+  it('keeps IMA research advisory for knowledge-heavy legal work when the model skips the tool', async () => {
     const requests: ModelRequest[] = []
     let executions = 0
     const imaResearchTool = LocalToolHost.defineTool({
@@ -481,21 +1145,21 @@ describe('AgentLoop', () => {
     const items = await h.sessionStore.loadItems(h.threadId)
 
     expect(status).toBe('completed')
-    expect(executions).toBe(1)
+    expect(executions).toBe(0)
     expect(requests).toHaveLength(1)
     expect(requests[0]?.requiredToolName).toBeUndefined()
     expect(requests[0]?.contextInstructions?.join('\n') ?? '').not.toContain('<ima_auto_route>')
     expect(requests[0]?.history.some((item) =>
       item.kind === 'tool_result' && item.toolName === 'mcp_ima_knowledge_base_research_ima'
-    )).toBe(true)
+    )).toBe(false)
     expect(items.some((item) =>
       item.kind === 'tool_result' &&
       item.toolName === 'mcp_ima_knowledge_base_research_ima' &&
       item.isError !== true
-    )).toBe(true)
+    )).toBe(false)
   })
 
-  it('enforces IMA discovery and call in progressive MCP mode', async () => {
+  it('does not force IMA discovery and calls in progressive MCP mode', async () => {
     const executed: Array<{ name: string; args: Record<string, unknown> }> = []
     const mcpSearch = LocalToolHost.defineTool({
       name: 'mcp_search',
@@ -547,15 +1211,10 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(requests).toBe(1)
-    expect(executed.map((entry) => entry.name)).toEqual(['mcp_search', 'mcp_call'])
-    expect(executed[0]?.args).toMatchObject({ serverId: 'ima-knowledge-base' })
-    expect(executed[1]?.args).toEqual({
-      toolId: 'ima-knowledge-base/research_ima',
-      arguments: { question, timeout: 210 }
-    })
+    expect(executed).toEqual([])
   })
 
-  it('returns control to the model after a progressive IMA call fails', async () => {
+  it('lets the model answer without a forced progressive IMA call', async () => {
     const executed: string[] = []
     const mcpSearch = LocalToolHost.defineTool({
       name: 'mcp_search',
@@ -604,16 +1263,16 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(executed).toEqual(['mcp_search', 'mcp_call'])
+    expect(executed).toEqual([])
     expect(requests).toHaveLength(1)
     expect(requests[0]?.history.some((item) =>
       item.kind === 'tool_result' &&
       item.toolName === 'mcp_call' &&
       item.isError === true
-    )).toBe(true)
+    )).toBe(false)
   })
 
-  it('retrieves local knowledge before IMA and completes every requested file format', async () => {
+  it('completes every requested file format without forced research gates', async () => {
     const executed: Array<{ name: string; args: Record<string, unknown> }> = []
     const define = (
       name: string,
@@ -766,9 +1425,6 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(executed.map((entry) => entry.name)).toEqual([
-      'knowledge_auto_retrieve',
-      'mcp_search',
-      'mcp_call',
       'document_skill_execute',
       'document_skill_execute',
       'bash'
@@ -777,7 +1433,46 @@ describe('AgentLoop', () => {
     expect(requests.at(-1)?.requiredToolName).toBeUndefined()
   })
 
-  it('falls back to local search and blocks generation when local KB has no evidence', async () => {
+  it('answers renderer-grounded knowledge QA without forcing a second retrieval tool', async () => {
+    const requests: ModelRequest[] = []
+    const knowledgeTool = LocalToolHost.defineTool({
+      name: 'knowledge_auto_retrieve',
+      description: 'retrieve local knowledge',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => ({ output: { sources: [], contextText: '' } })
+    })
+    const h = makeHarness({
+      provider: 'knowledge-direct-answer',
+      model: 'knowledge-direct-answer',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        yield { kind: 'assistant_text_delta', text: '知识库中共有十二个文件。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [knowledgeTool] })
+    await h.threadStore.upsert(createThreadRecord({
+      id: h.threadId,
+      title: '知识库全局对话 · 有什么文件',
+      workspace: '/tmp',
+      model: 'fake'
+    }))
+    const { turnId } = await h.turns.startTurn({
+      threadId: h.threadId,
+      request: {
+        prompt: '请基于以下从知识库中检索到的相关内容回答：知识库有什么文件？\n\nRAG 检索上下文：共十二个文件。'
+      }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, turnId)
+
+    expect(status).toBe('completed')
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.tools).toEqual([])
+    expect(requests[0]?.requiredToolName).toBeUndefined()
+  })
+
+  it('does not force local retrieval or block the model response when evidence is unavailable', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -835,12 +1530,11 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(executed).toEqual(['knowledge_auto_retrieve', 'knowledge_search'])
-    expect(requests.at(-1)?.tools).toEqual([])
-    expect(requests.at(-1)?.contextInstructions?.join('\n')).toContain('本地知识库未返回')
+    expect(executed).toEqual([])
+    expect(requests.at(-1)?.contextInstructions?.join('\n') ?? '').not.toContain('知识库证据门禁未通过')
   })
 
-  it('requires successful citation verification before generating a KB-grounded literature review', async () => {
+  it('generates an explicitly requested Word file without forcing research or citation verification', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -909,15 +1603,10 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(executed).toEqual([
-      'knowledge_auto_retrieve',
-      'mcp_ima_knowledge_base_research_ima',
-      'knowledge_citation_verify',
-      'document_skill_execute'
-    ])
+    expect(executed).toEqual(['document_skill_execute'])
   })
 
-  it('caps forced retrieval batches to one search and the remaining distinct PDF count', async () => {
+  it('does not inject forced retrieval batches when the model answers directly', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -987,12 +1676,7 @@ describe('AgentLoop', () => {
     })
 
     expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
-    expect(executed).toEqual([
-      'auto:主检索',
-      'read:论文1.pdf',
-      'read:论文2.pdf',
-      'read:论文3.pdf'
-    ])
+    expect(executed).toEqual([])
   })
 
   it('enforces a complex report contract before citation verification and Word/PDF delivery', async () => {
@@ -1179,36 +1863,28 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(executed).toEqual([
-      'knowledge_auto_retrieve',
-      'knowledge_read_file:论文一.pdf',
-      'knowledge_read_file:论文二.pdf',
-      'knowledge_read_file:论文三.pdf',
-      'knowledge_auto_retrieve',
       'data_compliance',
-      'knowledge_citation_verify',
       'document_skill_execute:docx',
       'document_skill_execute:pdf'
     ])
-    expect(citationAttempts).toBe(2)
-    expect(modelDocxRequests).toBe(0)
+    expect(citationAttempts).toBe(0)
+    expect(modelDocxRequests).toBe(1)
     expect(documentInputs[0]).toMatchObject({
       kind: 'docx',
       operation: 'from-markdown',
       content: fullDraft,
-      outputPath: '数字行政法体系建构研究报告.docx',
-      profile: 'academic'
+      outputPath: '数字行政法体系建构研究报告.docx'
     })
     expect(finishedThread?.todos?.items.length).toBeGreaterThan(3)
     expect(finishedThread?.todos?.items.every((item) => item.status === 'completed')).toBe(true)
     expect(items.some((item) =>
       item.kind === 'tool_result' &&
-      item.toolName === 'knowledge_citation_verify' &&
       item.isError === true &&
       JSON.stringify(item.output).includes('explicit_task_contract_failed')
-    )).toBe(true)
+    )).toBe(false)
   })
 
-  it('unlocks the full contract-review pipeline when the active Skill has a legacy restrictive allowlist', async () => {
+  it('delivers contract-review output without forcing the legacy research pipeline', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -1327,18 +2003,12 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(executed).toEqual([
-      'knowledge_auto_retrieve',
-      'mcp_search',
-      'mcp_call',
-      'document_skill_execute'
-    ])
-    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['knowledge_auto_retrieve']))
+    expect(executed).toEqual(['document_skill_execute'])
     expect(requests.some((request) => request.requiredToolName === 'document_skill_execute')).toBe(true)
     expect(executed).not.toContain('bash')
   })
 
-  it('retrieves local and IMA evidence before handing an exact PPT task to the specialist workflow', async () => {
+  it('hands an exact PPT task to the specialist workflow without forced research gates', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -1460,7 +2130,7 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    expect(executed).toEqual(['knowledge_auto_retrieve', 'mcp_search', 'mcp_call', 'bash'])
+    expect(executed).toEqual(['bash'])
     const specialistRequests = requests.filter((request) => request.requiredToolName === 'bash')
     expect(specialistRequests).toHaveLength(1)
     expect(specialistRequests[0]?.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['bash']))
@@ -1524,12 +2194,181 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(executions).toBe(1)
-    expect(requests).toBe(2)
-    expect(items.filter((item) => item.kind === 'assistant_text').map((item) => item.text).join('\n'))
-      .not.toContain('DSML')
+    expect(requests).toBe(1)
+    const visibleText = items
+      .filter((item) => item.kind === 'assistant_text')
+      .map((item) => item.text)
+      .join('\n')
+    expect(visibleText).toContain('/tmp/report.docx')
+    expect(visibleText).not.toContain('DSML')
   })
 
-  it('does not render a false success message before a required tool gate passes', async () => {
+  it('does not execute a tool call emitted only on the reasoning channel', async () => {
+    let executions = 0
+    let modelCalls = 0
+    const templateTool = LocalToolHost.defineTool({
+      name: 'resolve_legal_document_template',
+      description: 'resolve template',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async (args) => {
+        executions += 1
+        expect(args).toMatchObject({
+          documentType: '民事起诉状',
+          query: '买卖合同纠纷'
+        })
+        expect(args).not.toHaveProperty('caseCause')
+        return { output: { matched: true, args, template: '# 民事起诉状' } }
+      }
+    })
+    const h = makeHarness({
+      provider: 'reasoning-dsml-recovery',
+      model: 'reasoning-dsml-recovery',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        modelCalls += 1
+        if (modelCalls === 1) {
+          for (const text of [
+            '<',
+            '| |DSML| | tool_calls>\n',
+            '<| |DSML| | invoke name="resolve_legal_document_template">\n',
+            '<| |DSML| | parameter name="documentType" string="true">民事起诉状</| |DSML| | parameter>\n',
+            '<| |DSML| | parameter name="caseCause" string="true">买卖合同纠纷</| |DSML| | parameter>\n',
+            '</| |DSML| | invoke>\n',
+            '</| |DSML| | tool_calls>'
+          ]) yield { kind: 'assistant_reasoning_delta', text }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '# 民事起诉状\n\n原告：甲公司\n\n诉讼请求：判令被告支付货款。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [templateTool] })
+    await bootstrapThread(h, { request: { prompt: '写一份买卖合同纠纷民事起诉状' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    // Reasoning-channel DSML is not recovered into tool executions (GitHub behavior).
+    expect(executions).toBe(0)
+    expect(modelCalls).toBe(2)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    const visible = items
+      .filter((item) => item.kind === 'assistant_text')
+      .map((item) => item.text)
+      .join('\n')
+    expect(visible).toContain('# 民事起诉状')
+    expect(visible).not.toContain('DSML')
+  })
+
+  it('executes a new Word mutation for a referential follow-up instead of reusing the previous artifact', async () => {
+    let documentExecutions = 0
+    const requiredTools: Array<string | undefined> = []
+    const documentTool = LocalToolHost.defineTool({
+      name: 'document_skill_execute',
+      description: 'create document',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async (args) => {
+        documentExecutions += 1
+        return {
+          output: {
+            status: 'ok',
+            kind: 'docx',
+            operation: 'from-markdown',
+            output: `/tmp/report-${documentExecutions}.docx`,
+            args
+          }
+        }
+      }
+    })
+    const h = makeHarness({
+      provider: 'referential-document-follow-up',
+      model: 'referential-document-follow-up',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requiredTools.push(request.requiredToolName)
+        if (request.requiredToolName === 'document_skill_execute') {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_document_${requiredTools.length}`,
+            toolName: 'document_skill_execute',
+            arguments: {
+              kind: 'docx',
+              operation: 'from-markdown',
+              content: '# 文档',
+              outputPath: `report-${requiredTools.length}.docx`
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: 'Word 已生成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [documentTool] })
+    await bootstrapThread(h, { request: { prompt: '写一个word，总结这个论文' } })
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+
+    const followUp = await h.turns.startTurn({
+      threadId: h.threadId,
+      request: { prompt: '把本文所有引注都整理到word里' }
+    })
+    h.turnId = followUp.turnId
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+
+    expect(documentExecutions).toBe(2)
+    expect(requiredTools.filter((name) => name === 'document_skill_execute')).toHaveLength(2)
+  })
+
+  it('converts a chunked EOF-truncated DSML frame into a real tool call without visible leakage', async () => {
+    let bashExecutions = 0
+    let modelCalls = 0
+    const advertisedTools: string[][] = []
+    const bashTool = LocalToolHost.defineTool({
+      name: 'bash',
+      description: 'run command',
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute: async () => {
+        bashExecutions += 1
+        return { output: { exit_code: 0, output: 'done' } }
+      }
+    })
+    const h = makeHarness({
+      provider: 'truncated-dsml-stream',
+      model: 'truncated-dsml-stream',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        modelCalls += 1
+        advertisedTools.push(request.tools.map((tool) => tool.name))
+        if (modelCalls === 1) {
+          for (const text of [
+            '<',
+            '｜｜DSML｜｜',
+            'tool_calls>\n',
+            '<｜｜DSML｜｜invoke name="bash">\n',
+            '<｜｜DSML｜｜parameter name="command" string="true">echo done</｜｜DSML｜｜parameter>\n',
+            '</｜｜DSML｜｜invoke>\n',
+            '</｜｜DSML｜｜tool_calls'
+          ]) yield { kind: 'assistant_text_delta', text }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '命令执行完成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [bashTool] })
+    await bootstrapThread(h, { request: { prompt: '请帮我运行命令查看当前环境并告诉我结果' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
+    const visibleText = events
+      .filter((event) => event.kind === 'assistant_text_delta')
+      .map((event) => event.kind === 'assistant_text_delta' && 'text' in event.item ? event.item.text : '')
+      .join('')
+    expect(advertisedTools[0]).toContain('bash')
+    expect(bashExecutions).toBe(1)
+    expect(visibleText).toBe('命令执行完成。')
+    expect(visibleText).not.toContain('DSML')
+  })
+
+  it('does not discard a visible response when an optional delivery tool is skipped', async () => {
     let requests = 0
     const documentTool = LocalToolHost.defineTool({
       name: 'document_skill_execute',
@@ -1554,20 +2393,20 @@ describe('AgentLoop', () => {
     const items = await h.sessionStore.loadItems(h.threadId)
     const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
 
-    expect(status).toBe('failed')
-    expect(requests).toBe(3)
+    expect(status).toBe('completed')
+    expect(requests).toBeGreaterThanOrEqual(1)
     expect(items.some((item) =>
       item.kind === 'assistant_text' && item.text.includes('交付成功')
-    )).toBe(false)
+    )).toBe(true)
     expect(events.some((event) =>
       event.kind === 'assistant_text_delta' || event.kind === 'assistant_reasoning_delta'
     )).toBe(false)
     expect(items.some((item) =>
       item.kind === 'error' && item.code === 'required_tool_missing'
-    )).toBe(true)
+    )).toBe(false)
   })
 
-  it('fails a document turn after three consecutive worker errors instead of looping', async () => {
+  it('returns a fallback after bounded document worker errors instead of failing or looping', async () => {
     let executions = 0
     const documentTool = LocalToolHost.defineTool({
       name: 'document_skill_execute',
@@ -1603,14 +2442,14 @@ describe('AgentLoop', () => {
 
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
-    expect(status).toBe('failed')
+    expect(status).toBe('completed')
     // The repeat-loop guard suppresses the third identical dispatch; the
     // document state machine then treats that suppression as the third failure.
     expect(executions).toBe(2)
     expect(calls).toBe(3)
   })
 
-  it('fails the presentation delivery lane after its bounded export budget', async () => {
+  it('returns a fallback after the bounded presentation export budget', async () => {
     let executions = 0
     const bashTool = LocalToolHost.defineTool({
       name: 'bash',
@@ -1653,12 +2492,12 @@ describe('AgentLoop', () => {
 
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
-    expect(status).toBe('failed')
+    expect(status).toBe('completed')
     expect(executions).toBe(2)
     expect(calls).toBe(3)
   })
 
-  it('blocks document delivery when explicit IMA retrieval exhausts timeout recovery', async () => {
+  it('does not block document delivery on an explicit IMA request', async () => {
     const executed: string[] = []
     const define = (
       name: string,
@@ -1727,11 +2566,320 @@ describe('AgentLoop', () => {
     const status = await h.loop.runTurn(h.threadId, h.turnId)
 
     expect(status).toBe('completed')
-    // One initial model pass plus the evidence lane's two bounded recovery passes.
-    expect(recoveryRequests).toBe(3)
-    expect(executed).toEqual(['mcp_search', 'mcp_call'])
-    expect(requests.at(-1)?.tools).toEqual([])
-    expect(requests.at(-1)?.contextInstructions?.join('\n')).toContain('知识库证据门禁未通过')
+    expect(recoveryRequests).toBe(0)
+    expect(executed).toEqual(['document_skill_execute'])
+    expect(requests.at(-1)?.requiredToolName).toBe('document_skill_execute')
+    expect(requests.at(-1)?.contextInstructions?.join('\n') ?? '').not.toContain('知识库证据门禁未通过')
+  })
+
+  it('keeps the tool catalog after MCP discovery in legal research turns', async () => {
+    const executed: Array<{ name: string; args: Record<string, unknown> }> = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('mcp_search', async (args) => {
+        executed.push({ name: 'mcp_search', args })
+        return {
+          output: {
+            results: [{
+              toolId: 'yuandian-law/yuandian_law_vector_search',
+              serverId: 'yuandian-law',
+              title: '法律法规语义检索接口',
+              description: '元典：按自然语言查询法条级语义检索，返回 fatiao 法条内容。'
+            }, {
+              toolId: 'pkulaw-case-number-recognition/anhao_recognition',
+              serverId: 'pkulaw-case-number-recognition',
+              title: '案号识别与标准化',
+              description: '北大法宝：识别并标准化案号，返回案例标题与链接。'
+            }]
+          }
+        }
+      }),
+      define('mcp_call', async (args) => {
+        executed.push({ name: 'mcp_call', args })
+        const toolName = String(args.toolName ?? '')
+        if (toolName.includes('case') || toolName.includes('qwal')) {
+          return {
+            output: {
+              serverId: 'yuandian-case',
+              toolName,
+              result: { content: [{ type: 'text', text: '（2022）京02刑终376号裁判要旨及基本案情。'.repeat(10) }] }
+            }
+          }
+        }
+        return {
+          output: {
+            serverId: 'yuandian-law',
+            toolName,
+            result: { content: [{ type: 'text', text: '《中华人民共和国民法典》第一千一百六十五条现行条文及人工智能侵权责任相关规范。'.repeat(10) }] }
+          }
+        }
+      }),
+      define('knowledge_auto_retrieve', async (args) => {
+        executed.push({ name: 'knowledge_auto_retrieve', args })
+        return {
+          output: {
+            contextText: '本地知识库论文摘要：生成式人工智能侵权责任规则研究。',
+            sources: [{ path: '论文/人工智能侵权责任研究.pdf' }]
+          }
+        }
+      })
+    ]
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'legal-research-discovery',
+      model: 'legal-research-discovery',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        const searchCount = executed.filter((item) => item.name === 'mcp_search').length
+        const legalCallCount = executed.filter((item) => item.name === 'mcp_call').length
+        if (searchCount === 0) {
+          yield { kind: 'tool_call_complete', callId: 'call_discover_1', toolName: 'mcp_search', arguments: { query: '元典 法律法规 案例 检索' } }
+          yield { kind: 'tool_call_complete', callId: 'call_discover_2', toolName: 'mcp_search', arguments: { query: '北大法宝 法规 案例' } }
+          yield { kind: 'tool_call_complete', callId: 'call_kb_1', toolName: 'knowledge_auto_retrieve', arguments: { query: '人工智能侵权责任' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (legalCallCount === 0) {
+          yield { kind: 'tool_call_complete', callId: 'call_law_1', toolName: 'mcp_call', arguments: { serverId: 'yuandian-law', toolName: 'yuandian_law_vector_search', query: '人工智能侵权责任' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (legalCallCount === 1) {
+          yield { kind: 'tool_call_complete', callId: 'call_case_1', toolName: 'mcp_call', arguments: { serverId: 'yuandian-case', toolName: 'yuandian_rh_qwal_search', query: '人工智能侵权责任典型案例' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: [
+          '# 人工智能侵权责任多源调研报告',
+          '## 一、结论',
+          '结论正文。'.repeat(30),
+          '## 二、法律依据',
+          '依据正文。'.repeat(20),
+          '## 三、相关案例',
+          '案例正文。'.repeat(20),
+          '## 四、分析与风险提示',
+          '分析正文。'.repeat(20),
+          '## 五、来源',
+          '来源正文。'.repeat(10)
+        ].join('\n\n') }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools, primaryLegalSource: 'yuandian' })
+    await bootstrapThread(h, {
+      title: '法律调研:测试',
+      request: { prompt: '请对以下法律问题进行多源调研：「人工智能的侵权责任」。最终报告必须作为最后一条独立回复。' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed.filter((item) => item.name === 'mcp_call').length).toBe(2)
+    // The second model step must still see the research tools. Treating the
+    // mcp_search discovery listing as primary evidence used to strip the whole
+    // catalog, so the turn ended with a plan and nothing else.
+    expect(requests.length).toBeGreaterThanOrEqual(3)
+    for (const request of requests.slice(0, 3)) {
+      expect(request.tools.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('continues a legal research turn after a stage broadcast instead of ending it', async () => {
+    const executed: Array<{ name: string; args: Record<string, unknown> }> = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('mcp_search', async (args) => {
+        executed.push({ name: 'mcp_search', args })
+        return {
+          output: {
+            results: [{
+              toolId: 'yuandian-law/yuandian_law_vector_search',
+              serverId: 'yuandian-law',
+              title: '法律法规语义检索接口',
+              description: '元典：法条级语义检索。'
+            }]
+          }
+        }
+      }),
+      define('mcp_call', async (args) => {
+        executed.push({ name: 'mcp_call', args })
+        const toolName = String(args.toolName ?? '')
+        if (toolName.includes('qwal') || toolName.includes('case')) {
+          return {
+            output: {
+              serverId: 'yuandian-case',
+              toolName,
+              result: { content: [{ type: 'text', text: '（2022）京02刑终376号裁判要旨。'.repeat(10) }] }
+            }
+          }
+        }
+        return {
+          output: {
+            serverId: 'yuandian-law',
+            toolName,
+            result: { content: [{ type: 'text', text: '《中华人民共和国民法典》第一千一百六十五条及人工智能侵权责任相关规范条文。'.repeat(10) }] }
+          }
+        }
+      }),
+      define('knowledge_auto_retrieve', async () => {
+        return { output: { contextText: '本地知识库检索结果。', sources: [{ path: '论文/人工智能侵权责任.pdf' }] } }
+      })
+    ]
+    const requests: ModelRequest[] = []
+    let broadcastSent = false
+    const h = makeHarness({
+      provider: 'legal-research-broadcast',
+      model: 'legal-research-broadcast',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        const searchCount = executed.filter((item) => item.name === 'mcp_search').length
+        const legalCallCount = executed.filter((item) => item.name === 'mcp_call').length
+        if (searchCount === 0) {
+          yield { kind: 'tool_call_complete', callId: 'call_discover_1', toolName: 'mcp_search', arguments: { query: '元典 法规 案例' } }
+          yield { kind: 'tool_call_complete', callId: 'call_kb_1', toolName: 'knowledge_auto_retrieve', arguments: { query: '人工智能侵权责任' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (legalCallCount === 0) {
+          yield { kind: 'tool_call_complete', callId: 'call_law_1', toolName: 'mcp_call', arguments: { serverId: 'yuandian-law', toolName: 'yuandian_law_vector_search', query: '人工智能侵权责任' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (legalCallCount === 1) {
+          yield { kind: 'tool_call_complete', callId: 'call_case_1', toolName: 'mcp_call', arguments: { serverId: 'yuandian-case', toolName: 'yuandian_rh_qwal_search', query: '人工智能侵权责任典型案例' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (legalCallCount === 2 && !broadcastSent) {
+          broadcastSent = true
+          yield { kind: 'assistant_text_delta', text: '已有充足材料。继续补充获取民法典关键条文与北大法宝补充。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        if (legalCallCount === 2 && broadcastSent) {
+          yield { kind: 'tool_call_complete', callId: 'call_supplement_1', toolName: 'mcp_call', arguments: { serverId: 'yuandian-law', toolName: 'yuandian_law_vector_search', query: '民法典第一千一百六十五条' } }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: [
+          '# 人工智能侵权责任多源调研报告',
+          '## 一、结论',
+          '结论正文。'.repeat(30),
+          '## 二、法律依据',
+          '依据正文。'.repeat(20),
+          '## 三、相关案例',
+          '案例正文。'.repeat(20),
+          '## 四、分析与风险提示',
+          '分析正文。'.repeat(20),
+          '## 五、来源',
+          '来源正文。'.repeat(10)
+        ].join('\n\n') }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools, primaryLegalSource: 'yuandian' })
+    await bootstrapThread(h, {
+      title: '法律调研:测试',
+      request: { prompt: '请对以下法律问题进行多源调研：「人工智能侵权责任」。最终报告必须作为最后一条独立回复。' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(executed.filter((item) => item.name === 'mcp_call').length).toBe(3)
+    expect(broadcastSent).toBe(true)
+    expect(requests.length).toBeGreaterThanOrEqual(4)
+    // The request following the stage broadcast must still carry the tools.
+    for (const request of requests) {
+      expect(request.tools.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps the legal template resolver in document-writing tool catalogs', async () => {
+    const executed: string[] = []
+    const define = (
+      name: string,
+      execute: (args: Record<string, unknown>) => Promise<{ output: unknown; isError?: boolean }>
+    ) => LocalToolHost.defineTool({
+      name,
+      description: name,
+      inputSchema: { type: 'object', properties: {} },
+      policy: 'auto',
+      execute
+    })
+    const tools = [
+      define('mcp_call', async () => {
+        executed.push('mcp_call')
+        return { output: { ok: true } }
+      }),
+      define('resolve_legal_document_template', async () => {
+        executed.push('resolve_legal_document_template')
+        return { output: { matched: false } }
+      }),
+      define('todo_list', async () => {
+        executed.push('todo_list')
+        return { output: { items: [] } }
+      }),
+      define('todo_write', async () => {
+        executed.push('todo_write')
+        return { output: { ok: true } }
+      })
+    ]
+    const requests: ModelRequest[] = []
+    const h = makeHarness({
+      provider: 'doc-writing-tools',
+      model: 'doc-writing-tools',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
+        yield { kind: 'assistant_text_delta', text: '# 民事上诉状\n\n正文' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, {
+      tools,
+      skillRuntime: {
+        resolveTurn: () => ({
+          activeSkillIds: ['restrictive-skill'],
+          activations: [],
+          instructions: [],
+          injectedBytes: 0,
+          allowedToolNames: ['mcp_call']
+        })
+      } as never
+    })
+    await bootstrapThread(h, {
+      request: {
+        prompt: [
+          '<inline_document_response>',
+          '你正在执行 LegalWork 文书写作任务。',
+          '起草民事起诉状或民事答辩状时，可优先调用 resolve_legal_document_template。',
+          '</inline_document_response>'
+        ].join('\n')
+      }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    const toolNames = (requests[0]?.tools ?? []).map((tool) => tool.name)
+    expect(toolNames).toContain('resolve_legal_document_template')
+    expect(toolNames).toContain('mcp_call')
+    expect(toolNames).toContain('todo_list')
   })
 
   it('keeps running past the legacy eight-step ceiling until the model stops', async () => {
@@ -1853,7 +3001,10 @@ describe('AgentLoop', () => {
         provider: 'catalog-drift',
         model: 'catalog-drift',
         async *stream(request: ModelRequest): AsyncIterable<ModelStreamChunk> {
-          seenInstructions.push(request.contextInstructions ?? [])
+          seenInstructions.push([
+            ...(request.prefixInstructions ?? []),
+            ...(request.contextInstructions ?? [])
+          ])
           modelCalls += 1
           if (modelCalls === 1) {
             yield {
@@ -1881,11 +3032,13 @@ describe('AgentLoop', () => {
 	      kind: 'tool_catalog_changed',
 	      changeKind: 'additive'
 	    })
-	    expect(items.some((item) => item.kind === 'error' && item.code === 'tool_catalog_changed')).toBe(true)
+	    // Catalog growth is informational, not a turn failure: it must not be
+	    // persisted as an error item (clients treat error items as failures).
+	    expect(items.some((item) => item.kind === 'error' && item.code === 'tool_catalog_changed')).toBe(false)
 	    expect(seenInstructions[1]?.some((text) => text.includes('Tool catalog changed'))).toBe(true)
 	  })
 
-	  it('stops the turn when an existing tool schema mutates in-place', async () => {
+	  it('records an in-place tool schema mutation and continues delivery', async () => {
 	    let modelCalls = 0
 	    const inputSchema: Record<string, unknown> = {
 	      type: 'object',
@@ -1911,6 +3064,11 @@ describe('AgentLoop', () => {
 	        model: 'catalog-breaking-drift',
 	        async *stream(): AsyncIterable<ModelStreamChunk> {
 	          modelCalls += 1
+	          if (modelCalls > 1) {
+	            yield { kind: 'assistant_text_delta', text: '工具目录已刷新，继续完成回答。' }
+	            yield { kind: 'completed', stopReason: 'stop' }
+	            return
+	          }
 	          yield {
 	            kind: 'tool_call_complete',
 	            callId: 'call_echo',
@@ -1929,16 +3087,15 @@ describe('AgentLoop', () => {
 	    const items = await h.sessionStore.loadItems(h.threadId)
 
 	    expect(status).toBe('completed')
-	    expect(modelCalls).toBe(1)
+	    expect(modelCalls).toBe(2)
 	    expect(events.find((event) => event.kind === 'tool_catalog_changed')).toMatchObject({
 	      kind: 'tool_catalog_changed',
 	      changeKind: 'breaking'
 	    })
-	    expect(items.find((item) => item.kind === 'error' && item.code === 'tool_catalog_changed'))
-	      .toMatchObject({
-	        kind: 'error',
-	        message: expect.stringContaining('Legalwork stopped this turn')
-	      })
+	    expect(items.some((item) => item.kind === 'error' && item.code === 'tool_catalog_changed')).toBe(false)
+	    expect(items.some((item) =>
+	      item.kind === 'assistant_text' && item.text.includes('继续完成回答')
+	    )).toBe(true)
 	  })
 
 	  it('runs consecutive built-in read-only tool calls in a deterministic parallel batch', async () => {
@@ -3213,6 +4370,28 @@ describe('AgentLoop', () => {
     expect(compactor.shouldCompact(tinyHistory, { promptTokens: 120 })).toBe(true)
   })
 
+  it('estimates Chinese history conservatively enough to trigger compaction', () => {
+    const compactor = new ContextCompactor({ softThreshold: 100, hardThreshold: 200 })
+    const chineseHistory = [
+      makeUserItem({
+        id: 'chinese_history',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: '这是需要完整保留的关键案件事实和用户要求。'.repeat(6)
+      })
+    ]
+
+    expect(compactor.estimate(chineseHistory)).toBeGreaterThanOrEqual(100)
+    expect(compactor.shouldCompact(chineseHistory)).toBe(true)
+  })
+
+  it('recognizes provider context-window errors without treating ordinary 400s as overflow', () => {
+    expect(isContextWindowExceededError(
+      "This model's maximum context length is 1048576 tokens. However, you requested 1057631 tokens."
+    )).toBe(true)
+    expect(isContextWindowExceededError('invalid API key (status 400)')).toBe(false)
+  })
+
   it('plans normal, aggressive, and force compaction levels', () => {
     const compactor = new ContextCompactor({ softThreshold: 100, hardThreshold: 200 })
     const tinyHistory = [
@@ -3234,7 +4413,7 @@ describe('AgentLoop', () => {
     })
     expect(compactor.planCompaction(tinyHistory, { promptTokens: 220 })).toMatchObject({
       mode: 'force',
-      keepRecent: 1
+      keepRecent: 0
     })
   })
 
@@ -3308,6 +4487,125 @@ describe('AgentLoop', () => {
 
     expect(summary).toContain('按我的新框架重构全文')
     expect(summary).toContain('Durable user requests')
+  })
+
+  it('keeps every uploaded file id in the durable compaction summary', () => {
+    const compactor = new ContextCompactor({ softThreshold: 1, hardThreshold: 2 })
+    const prefix = createImmutablePrefix({ systemPrompt: 'system' })
+    const history: TurnItem[] = [
+      makeUserItem({
+        id: 'attachment_request',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: '请以附件合同为准完成审查，并保留全部关键事实。',
+        attachmentIds: ['att_1234567890abcdef12345678', 'att_abcdef1234567890abcdef12']
+      }),
+      makeAssistantTextItem({
+        id: 'transient_reply',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        text: '正在处理。',
+        status: 'completed'
+      }),
+      makeUserItem({ id: 'recent', turnId: 'turn_1', threadId: 'thr_1', text: '继续' })
+    ]
+
+    const result = compactor.compact({
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      prefix,
+      keepRecent: 1,
+      history
+    })
+    const summary = result.summaryItem.kind === 'compaction' ? result.summaryItem.summary : ''
+
+    expect(summary).toContain('请以附件合同为准完成审查')
+    expect(summary).toContain('att_1234567890abcdef12345678')
+    expect(summary).toContain('att_abcdef1234567890abcdef12')
+    expect(summary).toContain('Uploaded file registry')
+  })
+
+  it('carries durable user facts through repeated compactions', () => {
+    const compactor = new ContextCompactor({ softThreshold: 1, hardThreshold: 2 })
+    const prefix = createImmutablePrefix({ systemPrompt: 'system' })
+    const first = compactor.compact({
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      prefix,
+      keepRecent: 0,
+      history: [
+        makeUserItem({
+          id: 'original_fact',
+          turnId: 'turn_1',
+          threadId: 'thr_1',
+          text: '关键事实：付款日期是2026年8月8日，争议金额是88万元。',
+          attachmentIds: ['att_1234567890abcdef12345678']
+        })
+      ]
+    })
+    const second = compactor.compact({
+      threadId: 'thr_1',
+      turnId: 'turn_2',
+      prefix,
+      keepRecent: 0,
+      history: [
+        first.summaryItem,
+        makeUserItem({ id: 'follow_up', turnId: 'turn_2', threadId: 'thr_1', text: '继续分析违约责任。' })
+      ]
+    })
+    const summary = second.summaryItem.kind === 'compaction' ? second.summaryItem.summary : ''
+
+    expect(summary).toContain('付款日期是2026年8月8日')
+    expect(summary).toContain('争议金额是88万元')
+    expect(summary).toContain('att_1234567890abcdef12345678')
+  })
+
+  it('automatically compacts and retries after a provider context overflow', async () => {
+    let calls = 0
+    const requests: ModelRequest[] = []
+    const h = makeHarness(
+      {
+        provider: 'overflow-test',
+        model: 'fake',
+        async *stream(request): AsyncIterable<ModelStreamChunk> {
+          calls += 1
+          requests.push(request)
+          if (calls === 1) {
+            yield {
+              kind: 'error',
+              message: "This model's maximum context length is 200 tokens. However, you requested 260 tokens.",
+              code: 'invalid_request_error'
+            }
+            yield { kind: 'completed', stopReason: 'error' }
+            return
+          }
+          yield { kind: 'assistant_text_delta', text: '压缩后已恢复。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+        }
+      },
+      { compactor: new ContextCompactor({ softThreshold: 100, hardThreshold: 200 }) }
+    )
+    await bootstrapThread(h)
+    for (let index = 0; index < 8; index += 1) {
+      await h.sessionStore.appendItem(
+        h.threadId,
+        makeUserItem({
+          id: `overflow_history_${index}`,
+          turnId: h.turnId,
+          threadId: h.threadId,
+          text: `关键事实${index}：` + '案情材料'.repeat(8)
+        })
+      )
+    }
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+    const persisted = await h.sessionStore.loadItems(h.threadId)
+
+    expect(status).toBe('completed')
+    expect(calls).toBe(2)
+    expect(requests[1]?.history.some((item) => item.kind === 'compaction')).toBe(true)
+    expect(persisted.some((item) => item.kind === 'compaction')).toBe(true)
+    expect(persisted.some((item) => item.kind === 'error' && item.code === 'invalid_request_error')).toBe(false)
   })
 
   it('embeds a digest marker and skips frozen messages when compacting history', () => {
@@ -4048,7 +5346,172 @@ describe('FileSessionStore', () => {
     expect(await sessionStore.highestSeq('thr_usage_compact')).toBe(7)
   })
 
-  it('forces broad fact audits through search, source reads, legal evidence and a provenance ledger', async () => {
+  it('retries once when a model stops after reasoning without a visible answer', async () => {
+    let requests = 0
+    const h = makeHarness({
+      provider: 'reasoning-only-recovery',
+      model: 'reasoning-only-recovery',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        requests += 1
+        if (requests === 1) {
+          yield { kind: 'assistant_reasoning_delta', text: '我需要先继续规划。' }
+          yield { kind: 'completed', stopReason: 'stop' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '# 最终正文\n\n已基于现有材料完成。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h, { request: { prompt: '请直接输出文书正文。' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(requests).toBe(2)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    expect(items.some((item) =>
+      item.kind === 'assistant_text' && item.text.includes('最终正文')
+    )).toBe(true)
+    const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
+    expect(events.some((event) => event.kind === 'tool_result_upload_wait')).toBe(false)
+  })
+
+  it('fails instead of marking a reasoning-only turn as completed', async () => {
+    let requests = 0
+    const h = makeHarness({
+      provider: 'reasoning-only-failure',
+      model: 'reasoning-only-failure',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        requests += 1
+        yield { kind: 'assistant_reasoning_delta', text: '我还需要继续规划。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h, { request: { prompt: '请直接输出结果。' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('failed')
+    expect(requests).toBe(3)
+    const thread = await h.threadStore.get(h.threadId)
+    expect(thread?.turns.find((turn) => turn.id === h.turnId)?.status).toBe('failed')
+  })
+
+  it.each([
+    '最新法考政策',
+    '法考最新政策',
+    '最新的公考考纲',
+    '生态环境法典第一案',
+    '法考政策',
+    '公考考纲',
+    '公务员具体的考察要素',
+    '帮我查一下司法部发布的法考公告'
+  ])('runtime-prefetches web_search before answering a fresh topic: %s', async (prompt) => {
+    const executedQueries: string[] = []
+    let modelRequests = 0
+    let modelSawSearchResult = false
+    const webSearch = LocalToolHost.defineTool({
+      name: 'web_search',
+      description: 'Search current web information.',
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' }, limit: { type: 'number' } },
+        required: ['query'],
+        additionalProperties: false
+      },
+      policy: 'auto',
+      execute: async (args) => {
+        executedQueries.push(String(args.query ?? ''))
+        return {
+          output: {
+            results: [{
+              title: '司法部官方通知',
+              url: 'https://example.test/current-policy',
+              snippet: '这是本年度发布的政策正文摘要。'
+            }]
+          }
+        }
+      }
+    })
+    const h = makeHarness({
+      provider: 'fresh-web-prefetch',
+      model: 'fresh-web-prefetch',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        modelRequests += 1
+        modelSawSearchResult = request.history.some((item) =>
+          item.kind === 'tool_result' && item.toolName === 'web_search'
+        )
+        yield { kind: 'assistant_text_delta', text: '已根据刚刚检索到的来源给出完整回答。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [webSearch] })
+    await bootstrapThread(h, { request: { prompt } })
+
+    expect(requiresWebSearch(prompt)).toBe(true)
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(executedQueries).toEqual([prompt])
+    expect(modelRequests).toBe(1)
+    expect(modelSawSearchResult).toBe(true)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    expect(items.some((item) =>
+      item.kind === 'tool_result' && item.toolName === 'web_search'
+    )).toBe(true)
+  })
+
+  it('keeps mandatory searches isolated across three concurrent conversations', async () => {
+    const searchedThreads: string[] = []
+    const webSearch = LocalToolHost.defineTool({
+      name: 'web_search',
+      description: 'Search current web information.',
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' }, limit: { type: 'number' } },
+        required: ['query'],
+        additionalProperties: false
+      },
+      policy: 'auto',
+      execute: async (_args, context) => {
+        searchedThreads.push(context.threadId)
+        return {
+          output: {
+            results: [{ title: '最新考纲', url: 'https://example.test/exam-outline' }]
+          }
+        }
+      }
+    })
+    const h = makeHarness({
+      provider: 'concurrent-fresh-search',
+      model: 'concurrent-fresh-search',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        const hasSearchResult = request.history.some((item) =>
+          item.kind === 'tool_result' && item.toolName === 'web_search'
+        )
+        if (!hasSearchResult) throw new Error('model request arrived before mandatory search')
+        yield { kind: 'assistant_text_delta', text: '已根据最新搜索结果作答。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [webSearch] })
+    const threadIds = ['thr_concurrent_1', 'thr_concurrent_2', 'thr_concurrent_3']
+    const turnIds: string[] = []
+    for (const threadId of threadIds) {
+      await h.threadStore.upsert(createThreadRecord({
+        id: threadId,
+        title: '最新的公考考纲',
+        workspace: '/tmp',
+        model: 'concurrent-fresh-search'
+      }))
+      const started = await h.turns.startTurn({
+        threadId,
+        request: { prompt: '最新的公考考纲' }
+      })
+      turnIds.push(started.turnId)
+    }
+
+    const statuses = await Promise.all(threadIds.map((threadId, index) =>
+      h.loop.runTurn(threadId, turnIds[index] ?? '')
+    ))
+
+    expect(statuses).toEqual(['completed', 'completed', 'completed'])
+    expect(searchedThreads.sort()).toEqual([...threadIds].sort())
+  })
+
+  it('keeps broad fact-audit tools advisory instead of blocking the final answer', async () => {
     const executed: string[] = []
     const fetchedUrls = [
       'https://news.example.test/a',
@@ -4133,23 +5596,8 @@ describe('FileSessionStore', () => {
     })
 
     expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
-    expect(requiredSeen).toEqual([
-      'web_search',
-      'knowledge_legal_external_sources',
-      'web_fetch',
-      'web_fetch',
-      'web_fetch',
-      'fact_verification_finalize',
-      undefined
-    ])
-    expect(executed).toEqual([
-      'web_search',
-      'knowledge_legal_external_sources',
-      'web_fetch',
-      'web_fetch',
-      'web_fetch',
-      'fact_verification_finalize'
-    ])
+    expect(requiredSeen).toEqual([undefined])
+    expect(executed).toEqual([])
   })
 })
 
@@ -4253,5 +5701,64 @@ describe('read continuation with offset is not deduplicated', () => {
     )
     expect(dedupHits).toHaveLength(0)
   })
-})
 
+  it('allows distinct character ranges on the same OCR line', async () => {
+    const readCalls: Array<{ charStart?: number; charLen?: number }> = []
+    const readTool = LocalToolHost.defineTool({
+      name: 'read',
+      description: 'Read a character range.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+          offset: { type: 'number' },
+          charStart: { type: 'number' },
+          charLen: { type: 'number' }
+        },
+        required: ['path'],
+        additionalProperties: false
+      },
+      policy: 'auto',
+      execute: async (args: { charStart?: number; charLen?: number }) => {
+        readCalls.push(args)
+        return { output: { content: `range-${args.charStart}` } }
+      }
+    })
+    let requests = 0
+    const h = makeHarness({
+      provider: 'read-char-continuation',
+      model: 'read-char-continuation',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        requests += 1
+        if (requests <= 2) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: `call_char_${requests}`,
+            toolName: 'read',
+            arguments: {
+              path: '/tmp/ocr.txt',
+              offset: 31,
+              charStart: requests === 1 ? 1 : 2_001,
+              charLen: 2_000
+            }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '已读完 OCR 长行。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [readTool] })
+    await bootstrapThread(h, { request: { prompt: '读取 OCR 长行' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(readCalls).toEqual([
+      expect.objectContaining({ charStart: 1, charLen: 2_000 }),
+      expect.objectContaining({ charStart: 2_001, charLen: 2_000 })
+    ])
+    const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
+    expect(events.some((event) =>
+      event.kind === 'pipeline_stage' && event.stage === 'prefix_stability_warning'
+    )).toBe(false)
+  })
+})

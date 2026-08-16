@@ -3,6 +3,8 @@ import { makeToolResultItem } from '../src/domain/item.js'
 import {
   factVerificationContract,
   factVerificationProgress,
+  requiresFreshWebSearch,
+  requiresWebSearch,
   validateFactVerificationLedger
 } from '../src/loop/fact-verification.js'
 
@@ -22,6 +24,28 @@ const result = (
 })
 
 describe('fact verification contract', () => {
+  it('requires web retrieval for current policy and first-case topics', () => {
+    expect(requiresFreshWebSearch('最新法考政策')).toBe(true)
+    expect(requiresFreshWebSearch('法考最新政策')).toBe(true)
+    expect(requiresFreshWebSearch('最新的公考考纲')).toBe(true)
+    expect(requiresFreshWebSearch('生态环境法典第一案')).toBe(true)
+    expect(requiresFreshWebSearch('截至今年的法律职业资格考试报名要求')).toBe(true)
+    expect(requiresFreshWebSearch('行政程序与人工智能的媾和')).toBe(false)
+  })
+
+  it('recognizes general retrieval intent without overriding dedicated sources or opt-outs', () => {
+    expect(requiresWebSearch('帮我查一下司法部发布的法考公告')).toBe(true)
+    expect(requiresWebSearch('联网搜索这个案件的判决情况')).toBe(true)
+    expect(requiresWebSearch('公考考纲')).toBe(true)
+    expect(requiresWebSearch('公务员具体的考察要素')).toBe(true)
+    expect(requiresWebSearch('法考政策')).toBe(true)
+    expect(requiresWebSearch('不要联网，仅根据上传附件总结')).toBe(false)
+    expect(requiresWebSearch('检索本地知识库里的行政法论文')).toBe(false)
+    expect(requiresWebSearch('请查询北大法宝中的现行法条')).toBe(false)
+    expect(requiresWebSearch('请基于以下从知识库中检索到的相关内容回答：知识库有什么文件？\n\nRAG 检索上下文：共十二个文件。')).toBe(false)
+    expect(requiresWebSearch('行政程序与人工智能的媾和')).toBe(false)
+  })
+
   it('treats a whole-document fact, norm and news audit as a broad evidence task', () => {
     expect(factVerificationContract(
       '核实下里面提到的事实、规范、新闻什么的，准确性、真实度'
@@ -31,6 +55,28 @@ describe('fact verification contract', () => {
       requiresLegalEvidence: true,
       minimumFetchedSources: 3,
       minimumClaims: 5
+    })
+  })
+
+  it('does not attach a fact-verification gate to inline document drafting', () => {
+    expect(factVerificationContract(
+      '<inline_document_response>核验法律效力并撰写法律意见书</inline_document_response>'
+    )).toMatchObject({
+      required: false,
+      requiresWebEvidence: false,
+      requiresLegalEvidence: false,
+      minimumFetchedSources: 0
+    })
+  })
+
+  it('does not force general web evidence onto the dedicated legal-research workflow', () => {
+    expect(factVerificationContract(
+      '请对以下法律问题进行多源调研：「醉驾的最新入刑标准」。最终报告必须作为最后一条独立回复。'
+    )).toMatchObject({
+      required: false,
+      requiresWebEvidence: false,
+      requiresLegalEvidence: false,
+      minimumFetchedSources: 0
     })
   })
 

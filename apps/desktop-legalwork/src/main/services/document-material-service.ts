@@ -292,9 +292,9 @@ export async function extractDocumentMaterial(
     if (ext === 'pdf') {
       const textResult = await extractPdfTextLayer(buffer)
       if (!textResult.ok) return textResult
-      // Any non-whitespace extracted text proves that the PDF has a text layer.
-      // OCR is only appropriate when the parser succeeds but finds no text at all.
-      if (textResult.content.trim()) return textResult
+      // Scanners often leave only page numbers or a watermark as a tiny text
+      // layer. That is not usable document content and must not suppress OCR.
+      if (hasUsablePdfTextLayer(textResult.content)) return textResult
       return extractScannedPdfWithOcr(request.fileName, buffer)
     }
 
@@ -305,4 +305,16 @@ export async function extractDocumentMaterial(
       message: error instanceof Error ? error.message : String(error)
     }
   }
+}
+
+export function hasUsablePdfTextLayer(content: string): boolean {
+  const informativeLines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^(?:第\s*)?\d+\s*(?:页|\/\s*\d+)?$/i.test(line))
+    .filter((line) => !/^(?:page\s*)?\d+(?:\s*(?:of|\/)\s*\d+)?$/i.test(line))
+    .filter((line) => !/^(?:扫描全能王|cam(?:era)?scanner|scanned\s+by)$/i.test(line))
+  const semantic = informativeLines.join('').match(/[\p{L}\p{N}]/gu)?.length ?? 0
+  return semantic >= 10
 }

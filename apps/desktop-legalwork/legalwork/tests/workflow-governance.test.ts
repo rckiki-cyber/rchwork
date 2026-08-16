@@ -46,7 +46,7 @@ describe('workflow governance', () => {
     })
     expect(blocked.accepted).toBe(false)
     expect(blocked.missingKeys).toEqual(['artifact.pptx'])
-    expect(workflowAcceptanceInstruction(blocked)).toContain('不得声明任务完成')
+    expect(workflowAcceptanceInstruction(blocked)).toContain('继续交付已完成的正文或文件')
 
     const accepted = evaluateWorkflowAcceptance({
       requiredKeys: blocked.requiredKeys,

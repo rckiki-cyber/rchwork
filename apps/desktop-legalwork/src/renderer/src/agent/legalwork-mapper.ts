@@ -769,6 +769,12 @@ function errorForRuntimeEvent(payload: RuntimeErrorEventPayload): Error {
   }))
 }
 
+function terminalTurnError(message: string): Error {
+  const error = new Error(message) as Error & { terminalTurnFailure: true }
+  error.terminalTurnFailure = true
+  return error
+}
+
 function systemErrorBlockFromItem(item: CoreTurnItemJson): ChatBlock {
   const message = item.message ?? 'Runtime error'
   const detail = runtimeErrorDetail(message, item.code, item.details)
@@ -887,7 +893,11 @@ function emitItem(
       sink.onReview?.(reviewFromItem(item))
       return
     case 'error':
-      sink.onError(new Error(item.message ?? 'Legalwork item failed'))
+      // Informational self-correctable notices (tool catalog settling mid-turn,
+      // tool storm suppression) must not fail a running turn. The matching
+      // runtime event already surfaces them as a status update.
+      if (item.code === 'tool_catalog_changed' || item.code === 'tool_storm_suppressed') return
+      sink.onError(terminalTurnError(item.message ?? 'Legalwork item failed'))
       return
   }
 }
@@ -1089,8 +1099,10 @@ export async function dispatchLegalworkRuntimeEvent(
       if (event.usage) sink.onUsage?.(usageFromCore(event.usage))
       return
     case 'turn_completed':
+      sink.onTurnComplete('completed')
+      return
     case 'turn_aborted':
-      sink.onTurnComplete()
+      sink.onTurnComplete('aborted')
       return
     case 'turn_failed':
     case 'error':
@@ -1100,7 +1112,7 @@ export async function dispatchLegalworkRuntimeEvent(
         return
       }
       // message 优先；委派/子 agent 事件把失败原因放在 text 字段，兜底读取
-      sink.onError(new Error(event.message ?? event.text ?? 'Legalwork turn failed'))
+      sink.onError(terminalTurnError(event.message ?? event.text ?? 'Legalwork turn failed'))
       return
     default:
       return

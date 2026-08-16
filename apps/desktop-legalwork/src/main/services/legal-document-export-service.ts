@@ -317,6 +317,41 @@ function normalizeResearchHeadings(lines: string[]): string[] {
   })
 }
 
+const LEGAL_SECTION_HEADING_RE = /^[一二三四五六七八九十百]+[、.．]\s*\S/
+// Chinese numerals only: a leading "（2024）" is usually a case number, not a heading.
+const LEGAL_SUBSECTION_HEADING_RE = /^[（(][一二三四五六七八九十百]+[）)]\s*\S/
+const LEGAL_TITLE_EXCLUDED_RE =
+  /^(?:致|关于|事由|案由|编号|本所|尊敬的|尊敬的[：:]|第[一二三四五六七八九十\d]+[章节部分项]|[一二三四五六七八九十]+、|[（(][一二三四五六七八九十百\d]+[）)])/
+
+/**
+ * Legal documents generated from plain text often omit Markdown heading
+ * markers (`#`). Recognize the conventional Chinese structure so the Word
+ * export still gets a centered bold title and distinct section headings.
+ */
+function normalizeLegalDocHeadings(lines: string[]): string[] {
+  let titleSeen = false
+  return lines.map((line) => {
+    const trimmed = line.trim()
+    if (!trimmed || /^#{1,6}\s+/.test(trimmed)) return line
+    if (!titleSeen) {
+      titleSeen = true
+      const looksLikeTitle =
+        trimmed.length <= 40 &&
+        !/[。；，,.]$/.test(trimmed) &&
+        !/^\d+[、.)]/.test(trimmed) &&
+        !LEGAL_TITLE_EXCLUDED_RE.test(trimmed)
+      if (looksLikeTitle) return `# ${trimmed}`
+    }
+    if (LEGAL_SECTION_HEADING_RE.test(trimmed) && trimmed.length <= 40) {
+      return `## ${trimmed}`
+    }
+    if (LEGAL_SUBSECTION_HEADING_RE.test(trimmed) && trimmed.length <= 40) {
+      return `### ${trimmed}`
+    }
+    return line
+  })
+}
+
 export function prepareLegalDocumentMarkdown(options: {
   markdown: string
   templateName: string
@@ -330,6 +365,8 @@ export function prepareLegalDocumentMarkdown(options: {
     lines = normalizeResearchTables(lines)
     lines = lines.filter((line) => !RESEARCH_METADATA_LINE_RE.test(line))
     lines = normalizeResearchHeadings(lines)
+  } else {
+    lines = normalizeLegalDocHeadings(lines)
   }
 
   let inFence = false
@@ -370,7 +407,10 @@ function paragraphClass(children: ReactNode): string | undefined {
   const text = textFromReactNode(children).trim()
   if (/^(致|关于|事由|案由|编号)[：:]/.test(text)) return text.startsWith('致') ? 'addressee' : 'subject'
   if (/^此致[！!。.]?$/.test(text)) return 'closing'
-  if (/^(申请人|具状人|答辩人|上诉人|委托人|律师事务所|经办律师|律师|日期|签署日期|立遗嘱人|甲方|乙方)[：:]/.test(text)) return 'signature'
+  if (
+    /^(?:申请人|具状人|答辩人|上诉人|委托人|律师事务所|经办律师|律师|律所|日期|签署日期|立遗嘱人|甲方|乙方)[：:]/.test(text) ||
+    /^【[^】]*(?:律所|律师)[^】]*】/.test(text)
+  ) return 'signature'
   if (/^(尊敬的|敬启者|申请人|被申请人|原告|被告|上诉人|被上诉人|答辩人)[：:]/.test(text)) return 'no-indent'
   return undefined
 }
@@ -496,7 +536,8 @@ export function normalizeLegalParagraphs(xml: string): string {
 
     const style = content.match(/<w:pStyle w:val="([^"]+)"\/>/)?.[1]
     const isNumbered = /<w:numPr>[\s\S]*?<\/w:numPr>/.test(content)
-    const isSignature = /^(申请人|具状人|答辩人|上诉人|委托人|律师事务所|某.+律师事务所|经办律师|律师|日期|签署日期|立遗嘱人)[：:：]?/.test(text)
+    const isSignature = /^(?:申请人|具状人|答辩人|上诉人|委托人|律师事务所|某.+律师事务所|经办律师|律师|律所|日期|签署日期|立遗嘱人)[：:：]?/.test(text) ||
+      /^【[^】]*(?:律所|律师)[^】]*】/.test(text)
     const isNoIndent = /^(致[：:]|关于[：:]|事由[：:]|案由[：:]|编号[：:]|此致[！!。.]?$)/.test(text)
 
     let properties = content.match(/<w:pPr>([\s\S]*?)<\/w:pPr>/)?.[1] ?? ''
@@ -600,6 +641,10 @@ async function normalizeLegalDocxFonts(buffer: Buffer): Promise<Buffer> {
     zip.file(path, normalized)
   }
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+}
+
+export async function normalizeLegalDocxBuffer(buffer: Buffer): Promise<Buffer> {
+  return normalizeLegalDocxFonts(buffer)
 }
 
 async function toBuffer(result: HtmlToDocxResult): Promise<Buffer> {

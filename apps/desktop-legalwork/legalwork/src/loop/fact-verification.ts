@@ -1,4 +1,5 @@
 import type { TurnItem } from '../contracts/items.js'
+import { isLegalResearchWorkflowPrompt } from './legal-research-workflow.js'
 
 export const FACT_VERIFICATION_FINALIZE_TOOL_NAME = 'fact_verification_finalize'
 
@@ -23,10 +24,87 @@ export type FactVerificationProgress = {
   finalizedClaimCount: number
 }
 
-export function factVerificationContract(prompt: string): FactVerificationContract {
+/**
+ * Current-policy/news questions cannot be answered safely from model memory.
+ * Keep this separate from the optional broad fact-audit quality gate: freshness
+ * is a correctness prerequisite, while a full multi-source ledger is an
+ * optional delivery-quality workflow.
+ */
+export function requiresFreshWebSearch(prompt: string): boolean {
+  if (prompt.includes('<inline_document_response>')) return false
+  const compact = prompt.replace(/\s+/g, '')
+  if (!compact) return false
+
+  const freshnessSignal = /(?:最新|当前|现行|截至|近期|最近|今年|本月|今日|今天|刚刚|新出台|新发布|新修订)/.test(compact)
+  const changingSubject = /(?:政策|规定|规则|要求|标准|资格|考试|公考|法考|考纲|大纲|法规|法律|司法解释|通知|公告|动态|消息|新闻|案例|判决|裁判)/.test(compact)
+  const firstCaseSignal = /(?:首例|第一案)/.test(compact) &&
+    /(?:法典|法律|法规|法院|判决|裁判|案件|案)/.test(compact)
+
+  return (freshnessSignal && changingSubject) || firstCaseSignal
+}
+
+/**
+ * Decide whether answering the user's request inherently requires a web
+ * retrieval step. This is intentionally broader than freshness detection:
+ * explicit search instructions and inherently changing public information
+ * must not depend on the model voluntarily emitting a tool call.
+ *
+ * Source-specific requests are excluded so local knowledge, attachments and
+ * configured legal databases keep their dedicated routing semantics.
+ */
+export function requiresWebSearch(prompt: string): boolean {
+  if (prompt.includes('<inline_document_response>')) return false
+  const compact = prompt.replace(/\s+/g, '')
+  if (!compact) return false
+
+  // Renderer-grounded knowledge answers already contain retrieved evidence.
+  // Do not mistake words such as “检索到” inside that envelope for a new web
+  // search request.
+  if (/(?:RAG检索上下文|从知识库中检索到的相关内容|<knowledge_context>)/i.test(compact)) return false
+
+  const optsOut = /(?:不要|无需|不用|禁止)(?:联网|上网|搜索|检索|查询|查找|使用网页|使用网络)|(?:仅|只)(?:根据|依据|使用)(?:已有内容|当前内容|附件|上传文件|本地文件)/.test(compact)
+  if (optsOut) return false
+
+  const dedicatedSource = /(?:本地知识库|本地资料库|上传(?:的)?(?:附件|文件)|当前附件|IMA|北大法宝|元典)(?:中|内|里)?(?:查|搜|检索|查询|查找|寻找|获取|研究)/i.test(compact) ||
+    /(?:查|搜|检索|查询|查找|寻找|获取|研究).{0,16}(?:本地知识库|本地资料库|上传(?:的)?(?:附件|文件)|当前附件|IMA|北大法宝|元典)/i.test(compact)
+  if (dedicatedSource) return false
+
+  if (requiresFreshWebSearch(prompt)) return true
+
+  const explicitWebSearch = /(?:联网|上网|网上|网页|网络|官网).{0,16}(?:查|搜|检索|搜索|查询|查找|寻找|获取)|(?:查|搜|检索|搜索|查询|查找|寻找|获取).{0,16}(?:联网|上网|网上|网页|网络|官网)/.test(compact)
+  if (explicitWebSearch) return true
+
+  const explicitGenericSearch = /(?:请|帮我|替我|给我|先|去|需要|麻烦)?(?:查一下|搜一下|找一下|检索一下|查询一下|搜索一下|查找一下|检索|搜索|查找|查询).{2,}/.test(compact)
+  if (explicitGenericSearch) return true
+
+  // Some public facts are defined by a periodically replaced official
+  // document. Users reasonably expect the current version even when they omit
+  // the word "latest".
+  return /(?:法考|公考|国考|省考|公务员).{0,12}(?:政策|公告|通知|考纲|大纲|报名条件|报名时间|考试时间|考察要素|考查要素|考察内容|考查内容)|(?:政策|公告|通知|考纲|大纲|报名条件|报名时间|考试时间|考察要素|考查要素|考察内容|考查内容).{0,12}(?:法考|公考|国考|省考|公务员)/.test(compact)
+}
+
+export function factVerificationContract(
+  prompt: string,
+  options?: { primaryLegalSource?: 'pkulaw' | 'yuandian' }
+): FactVerificationContract {
+  if (
+    prompt.includes('<inline_document_response>') ||
+    isLegalResearchWorkflowPrompt(prompt)
+  ) {
+    return {
+      required: false,
+      requiresWebEvidence: false,
+      requiresLegalEvidence: false,
+      minimumFetchedSources: 0,
+      minimumClaims: 1
+    }
+  }
   const compact = prompt.replace(/\s+/g, '')
   const required = /(?:核实|核验|查证|验证|辨别|判断).{0,20}(?:事实|真实性|准确性|真伪|真假|来源|新闻|规范|政策|数据)|(?:真实性|准确性|真伪|真假).{0,20}(?:核实|核验|查证|验证|判断)/s.test(compact)
-  const requiresLegalEvidence = required && /(?:规范|法律|法规|规章|司法解释|政策|条文|效力|现行有效)/.test(compact)
+  // 配置了法律主源（元典/北大法宝）时，法律规范/案例的核验由该 MCP 直接给出、
+  // 内容可信，不再强制 web 交叉核验；普通事实/文书忠实性核验仍保留。
+  const primaryLegalConfigured = options?.primaryLegalSource === 'pkulaw' || options?.primaryLegalSource === 'yuandian'
+  const requiresLegalEvidence = !primaryLegalConfigured && required && /(?:规范|法律|法规|规章|司法解释|政策|条文|效力|现行有效)/.test(compact)
   const requiresWebEvidence = required && (
     /(?:事实|新闻|事件|数据|真实性|准确性|来源)/.test(compact) || !requiresLegalEvidence
   )
@@ -50,15 +128,16 @@ export function factVerificationInstruction(
 ): string | undefined {
   if (!contract.required) return undefined
   return [
-    '<fact_verification_contract>',
-    `本任务是事实核验任务。网页正文要求：${contract.minimumFetchedSources} 个不同来源；法律规范权威来源：${contract.requiresLegalEvidence ? '必需' : '非必需'}。`,
+    '<fact_verification_advisory>',
+    `本任务包含事实核验需求。建议读取 ${contract.minimumFetchedSources} 个不同网页来源；法律规范权威来源：${contract.requiresLegalEvidence ? '优先取得' : '按需取得'}。`,
     `当前已读取网页来源 ${progress.fetchedSourceUrls.size} 个，法律来源${progress.legalEvidenceSatisfied ? '已取得' : '未取得'}，核验账本${progress.finalized ? '已通过' : '未通过'}。`,
-    '- 必须先识别原文中的具体可核实陈述，再逐项给出 verified / contradicted / mixed / unverified 结论。',
-    '- 搜索结果摘要不能直接作为最终证据；网页类来源必须实际调用 web_fetch 读取正文。',
+    '- 尽可能先识别原文中的具体可核实陈述，再逐项给出 verified / contradicted / mixed / unverified 结论。',
+    '- 优先使用 `web_search` 返回的 snippet 与 URL 作为引用来源；若 snippet 仅有标题、无实质内容（无法据此核实），应对关键来源调用 `web_fetch` 读取正文；不要为每个搜索结果逐个 fetch。',
     '- 规范、政策和法律文本必须核对名称、条文、发布机关、发布日期及效力状态。',
-    `- 研究完成后必须调用 ${FACT_VERIFICATION_FINALIZE_TOOL_NAME}；其中 URL 只能来自本轮实际读取的来源。`,
+    `- 如来源足够，可调用 ${FACT_VERIFICATION_FINALIZE_TOOL_NAME} 整理核验账本；其中 URL 只能来自本轮实际读取的来源。`,
     '- 最终回答按“原陈述—结论—核验理由—来源—未决事项”展示，不得把未核实内容写成已确认事实。',
-    '</fact_verification_contract>'
+    '- 工具不可用、来源不足或账本未完成时，明确标注局限并继续输出可交付结果，不得仅输出阻塞说明。',
+    '</fact_verification_advisory>'
   ].join('\n')
 }
 

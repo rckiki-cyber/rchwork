@@ -8,7 +8,7 @@ import {
   markKnowledgeSourceReferences,
   stripRepeatedKnowledgeQuestionLead
 } from './knowledge-chat-history'
-import { KnowledgeChatComposer } from './KnowledgeChatUI'
+import { KnowledgeChatComposer, KnowledgeChatMessage } from './KnowledgeChatUI'
 
 describe('knowledgeChatHistoryFromBlocks', () => {
   it('restores the visible user question from a stored global RAG prompt', () => {
@@ -123,6 +123,15 @@ describe('knowledgeChatHistoryFromBlocks', () => {
     expect(html).toContain('行政机关处理个人信息应当遵循合法、正当、必要原则。')
     expect(html).toContain('value="这段话的法律依据是什么？"')
     expect(html).toContain('移除引用')
+  })
+
+  it('uses the main conversation answer typography for knowledge assistant messages', () => {
+    const html = renderToStaticMarkup(createElement(KnowledgeChatMessage, {
+      role: 'assistant',
+      children: '知识库回答'
+    }))
+
+    expect(html).toContain('ds-chat-answer')
   })
 
   it('extracts the file context from a stored file chat prompt', () => {

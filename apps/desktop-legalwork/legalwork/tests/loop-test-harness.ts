@@ -86,6 +86,7 @@ export function makeHarness(
     }
     primaryLegalSource?: 'pkulaw' | 'yuandian'
     turnTokenBudget?: number
+    systemPrompt?: string
   } = {}
 ): Harness {
   const bus = new InMemoryEventBus()
@@ -103,7 +104,7 @@ export function makeHarness(
   const allocateSeq = (threadId: string) => bus.allocateSeq(threadId)
   const events = new RuntimeEventRecorder({ eventBus: bus, sessionStore, allocateSeq, nowIso })
   const ids = new SequentialIdGenerator()
-  const prefix = createImmutablePrefix({ systemPrompt: 'be brief' })
+  const prefix = createImmutablePrefix({ systemPrompt: options.systemPrompt ?? 'be brief' })
   const turns = new TurnService({
     threadStore,
     sessionStore,
@@ -173,11 +174,12 @@ export async function bootstrapThread(
   h: Harness,
   options: {
     workspace?: string
+    title?: string
     request?: Parameters<TurnService['startTurn']>[0]['request']
   } = {}
 ): Promise<void> {
   await h.threadStore.upsert(
-    createThreadRecord({ id: h.threadId, title: 'demo', workspace: options.workspace ?? '/tmp', model: 'fake' })
+    createThreadRecord({ id: h.threadId, title: options.title ?? 'demo', workspace: options.workspace ?? '/tmp', model: 'fake' })
   )
   const response = await h.turns.startTurn({
     threadId: h.threadId,

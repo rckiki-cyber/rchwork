@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { repairModelHistoryItems } from '../src/domain/model-history-repair.js'
-import { healLoadedHistoryItems } from '../src/loop/history-healing.js'
+import { confirmedHistoryFingerprint, confirmedPrefixEquals, healLoadedHistoryItems } from '../src/loop/history-healing.js'
 import {
   makeAssistantTextItem,
   makeToolCallItem,
@@ -171,5 +171,85 @@ describe('model history repair', () => {
       kind: 'assistant_text',
       id: 'item_healed_0_assistant_text'
     })
+  })
+})
+
+describe('confirmedHistoryFingerprint', () => {
+  function historyWithTool(
+    extra: Array<ReturnType<typeof makeToolResultItem>> = []
+  ) {
+    return [
+      makeUserItem({ id: 'u1', threadId: 'thr', turnId: 't1', text: 'hello' }),
+      makeAssistantTextItem({ id: 'a1', threadId: 'thr', turnId: 't1', text: 'checking' }),
+      makeToolCallItem({
+        id: 'c1',
+        threadId: 'thr',
+        turnId: 't1',
+        callId: 'call1',
+        toolName: 'bash',
+        arguments: { command: 'ls' }
+      }),
+      makeToolResultItem({
+        id: 'r1',
+        threadId: 'thr',
+        turnId: 't1',
+        callId: 'call1',
+        toolName: 'bash',
+        output: 'file.txt'
+      }),
+      ...extra
+    ]
+  }
+
+  it('is stable for the same confirmed history', () => {
+    const a = confirmedHistoryFingerprint(historyWithTool())
+    const b = confirmedHistoryFingerprint(historyWithTool())
+    expect(a).toBe(b)
+  })
+
+  it('prefix equals stays true when a new tail accumulates after the confirmed segment', () => {
+    // 缓存命中关键场景：step N 发送了 4 条确认历史，step N+1 多了新的
+    // tool block。前 4 条（confirmed prefix）必须与上次完全一致。
+    const base = historyWithTool()
+    const grown = historyWithTool([
+      makeToolCallItem({
+        id: 'c2',
+        threadId: 'thr',
+        turnId: 't1',
+        callId: 'call2',
+        toolName: 'bash',
+        arguments: { command: 'pwd' }
+      }),
+      makeToolResultItem({
+        id: 'r2',
+        threadId: 'thr',
+        turnId: 't1',
+        callId: 'call2',
+        toolName: 'bash',
+        output: '/tmp'
+      })
+    ])
+    // 前 base.length 条与 base 一致（tail 不影响 prefix）
+    expect(confirmedPrefixEquals(grown.slice(0, base.length), base)).toBe(true)
+    // 完整对比（含 tail）会不同——所以必须按 prefix 比较
+    expect(confirmedPrefixEquals(grown, base)).toBe(false)
+  })
+
+  it('changes when the confirmed content actually differs', () => {
+    const changed = historyWithTool().map((item, index) =>
+      index === 2
+        ? makeToolCallItem({
+            id: 'c1',
+            threadId: 'thr',
+            turnId: 't1',
+            callId: 'call1',
+            toolName: 'bash',
+            arguments: { command: 'pwd' }
+          })
+        : item
+    )
+    expect(confirmedHistoryFingerprint(changed)).not.toBe(
+      confirmedHistoryFingerprint(historyWithTool())
+    )
   })
 })

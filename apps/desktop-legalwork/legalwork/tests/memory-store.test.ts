@@ -440,7 +440,11 @@ describe('Memory store and recall', () => {
 
     await h.loop.runTurn(h.threadId, h.turnId)
 
-    expect(seenRequests.at(-1)?.contextInstructions?.join('\n')).toContain(memory.id)
+    const allInstructions = (r: ModelRequest): string => [
+      ...(r.prefixInstructions ?? []),
+      ...(r.contextInstructions ?? [])
+    ].join('\n')
+    expect(allInstructions(seenRequests.at(-1) as ModelRequest)).toContain(memory.id)
     expect((await h.turns.getTurn(h.threadId, h.turnId))?.injectedMemoryIds).toEqual([memory.id])
     expect((await store.diagnostics()).lastInjectedIds).toEqual([memory.id])
 
@@ -448,9 +452,34 @@ describe('Memory store and recall', () => {
     const h2 = makeHarness(model, { memoryStore: store })
     await bootstrapThread(h2, { workspace: '/tmp/ws', request: { prompt: 'frontend pnpm setup?' } })
     await h2.loop.runTurn(h2.threadId, h2.turnId)
-    const finalInstructions = seenRequests.at(-1)?.contextInstructions?.join('\n') ?? ''
+    const finalInstructions = allInstructions(seenRequests.at(-1) as ModelRequest)
     expect(finalInstructions).not.toContain(memory.id)
     expect(finalInstructions).toContain('Shell runtime:')
+  })
+
+  it('keeps a deterministic ordering for always memories with equal confidence', async () => {
+    const store = createStore({ maxInjectedRecords: 10 })
+    await store.create({
+      content: '用户要求法律文书默认使用简体中文',
+      scope: 'user',
+      category: 'workflow',
+      recallPolicy: 'always',
+      confidence: 0.9,
+      captureSource: 'automatic'
+    })
+    await store.create({
+      content: '用户偏好简洁的合同审查意见',
+      scope: 'user',
+      category: 'preference',
+      recallPolicy: 'always',
+      confidence: 0.9,
+      captureSource: 'automatic'
+    })
+    const recalled = await store.retrieve({ query: '记忆', workspace: undefined })
+    expect(recalled.length).toBe(2)
+    // 两次 retrieve 顺序完全一致（排序确定，id 作最终 tiebreaker）
+    const again = await store.retrieve({ query: '记忆', workspace: undefined })
+    expect(recalled.map((record) => record.id)).toEqual(again.map((record) => record.id))
   })
 
   function createStore(overrides: Partial<MemoryCapabilityConfig> = {}) {

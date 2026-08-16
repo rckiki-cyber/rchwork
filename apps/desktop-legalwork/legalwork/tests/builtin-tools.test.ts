@@ -130,6 +130,41 @@ describe('Legalwork built-in tools', () => {
     expect(String(readOutput.content)).toContain('Use offset=2 to continue')
   })
 
+  it('read with structure:true returns a deterministic section-index map', async () => {
+    const judgment = [
+      '第 1 页',
+      '民 事 判 决 书',
+      '（2025）内25民终813号',
+      '本院认为：',
+      '本案争议焦点为利息计算标准。',
+      '判决如下：',
+      '一、驳回上诉，维持原判。',
+      ...Array.from({ length: 60 }, (_, i) => `双方就第 ${i + 3} 项争议进行了充分举证质证，一审法院对此予以查明。`),
+      '第 2 页'
+    ].join('\n')
+    await writeFile(join(workspace, 'judgment.txt'), judgment, 'utf8')
+
+    const output = await executeTool(host, workspace, 'read', { path: 'judgment.txt', structure: true })
+    expect(output.kind).toBe('document_map')
+    expect(output.content).toContain('结构索引')
+    expect(output.content).toContain('[4] 本院认为')
+    expect(output.content).not.toContain('第 1 页')
+    expect(output.content).not.toContain('第 2 页')
+
+    const again = await executeTool(host, workspace, 'read', { path: 'judgment.txt', structure: true })
+    expect(again.content).toBe(output.content)
+  })
+
+  it('read with charStart/charLen reads a character slice of the selected lines', async () => {
+    const longLine = '甲'.repeat(100) + '本院认为' + '乙'.repeat(200)
+    await writeFile(join(workspace, 'long.txt'), longLine, 'utf8')
+    const output = await executeTool(host, workspace, 'read', { path: 'long.txt', charStart: 101, charLen: 4 })
+    expect(output.content).toBe('本院认为')
+    // 缺省 charLen 时读固定小段
+    const head = await executeTool(host, workspace, 'read', { path: 'long.txt', charStart: 1, charLen: 50 })
+    expect(String(head.content).length).toBeLessThanOrEqual(50)
+  })
+
   it('lets the agent search and load one Skill on demand', async () => {
     const skillRoot = join(workspace, 'skills', 'contract-review')
     await mkdir(skillRoot, { recursive: true })

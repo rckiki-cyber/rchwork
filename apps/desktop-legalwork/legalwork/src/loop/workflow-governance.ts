@@ -129,12 +129,12 @@ export function workflowAcceptanceInstruction(acceptance: WorkflowAcceptance): s
     ].join('\n')
   }
   return [
-    '<workflow_final_acceptance>',
-    `运行时最终验收未通过；缺少：${acceptance.missingKeys.join('、') || '无'}。`,
+    '<workflow_final_advisory>',
+    `运行时自检发现未完成项：${acceptance.missingKeys.join('、') || '无'}。`,
     ...(acceptance.blockerReasons.length
-      ? [`阻塞原因：${acceptance.blockerReasons.join('；')}`]
+      ? [`局限说明：${acceptance.blockerReasons.join('；')}`]
       : []),
-    '不得声明任务完成。',
-    '</workflow_final_acceptance>'
+    '继续交付已完成的正文或文件，并在结果中简洁说明未完成项。',
+    '</workflow_final_advisory>'
   ].join('\n')
 }

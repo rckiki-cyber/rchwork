@@ -5,6 +5,7 @@ import type {
 import type { ToolHostContext } from '../../ports/tool-host.js'
 import type { CapabilityToolProvider } from './capability-registry.js'
 import { LocalToolHost, type LocalTool } from './local-tool-host.js'
+import { truncateMcpTextOutput, shouldDropMcpStructuredContent } from './mcp-tool-provider.js'
 import {
   OFFICECLI_TOOL_NAME,
   isOfficeFallbackGranted
@@ -14,6 +15,14 @@ const MCP_SEARCH_TOOL_NAME = 'mcp_search'
 const MCP_DESCRIBE_TOOL_NAME = 'mcp_describe'
 const MCP_CALL_TOOL_NAME = 'mcp_call'
 const MCP_REFRESH_CATALOG_TOOL_NAME = 'mcp_refresh_catalog'
+
+/** 本地文件操作（read/bash/grep 等）不走 mcp_call；给出友好提示避免模型反复猜 toolId。 */
+function unknownMcpToolError(toolId: string): string {
+  const looksLikeLocalBuiltin = /^(?:builtin|local)[/:_-]?(?:read|bash|edit|write|grep|find|ls)$/i.test(toolId)
+  return looksLikeLocalBuiltin
+    ? `${toolId} 是本地内置工具，不是 MCP 工具。读/编辑附件或工作区文件请直接用本地工具（read / grep / bash / edit），不要通过 mcp_call。`
+    : `unknown MCP tool: ${toolId}。请先用 mcp_search 查找可用的 MCP 工具，确认 serverId/toolName 拼写。`
+}
 
 const STOP_WORDS = new Set([
   'the',
@@ -263,7 +272,7 @@ function createMcpSearchTools(options: McpSearchProviderOptions): LocalTool[] {
       execute: async (args, context) => {
         const toolId = stringArg(args.toolId)
         const record = resolveTrustedRecord(options, context, toolId)
-        if (!record) return { output: { error: `unknown MCP tool: ${toolId}` }, isError: true }
+        if (!record) return { output: { error: unknownMcpToolError(toolId) }, isError: true }
         return { output: describeRecord(record) }
       }
     }),
@@ -282,7 +291,7 @@ function createMcpSearchTools(options: McpSearchProviderOptions): LocalTool[] {
       execute: async (args, context) => {
         const toolId = stringArg(args.toolId)
         const record = resolveTrustedRecord(options, context, toolId)
-        if (!record) return { output: { error: `unknown MCP tool: ${toolId}` }, isError: true }
+        if (!record) return { output: { error: unknownMcpToolError(toolId) }, isError: true }
         const callArgs = objectArg(args.arguments)
         const argumentIssues = [
           ...validateMcpArguments(callArgs, record.descriptor.inputSchema),
@@ -309,12 +318,17 @@ function createMcpSearchTools(options: McpSearchProviderOptions): LocalTool[] {
           { name: record.descriptor.name, arguments: callArgs },
           { signal: context.abortSignal, timeout: record.server.timeoutMs }
         )
+        // 无损精简：仅对元典/北大法宝（text 即完整 JSON）删除 structuredContent 冗余副本；
+        // 超大文本按结构化边界截断（见 truncateMcpTextOutput）。
+        const slimResult = truncateMcpTextOutput(result, {
+          dropStructuredContent: shouldDropMcpStructuredContent(record.serverId)
+        })
         return {
           output: {
             serverId: record.serverId,
             toolName: record.descriptor.name,
             toolId: record.toolId,
-            result
+            result: slimResult
           },
           isError: mcpResultIndicatesError(result)
         }

@@ -1,6 +1,7 @@
 import type { ModelClient, ModelRequest, ModelStreamChunk, ModelToolSpec } from '../../ports/model-client.js'
 import type { TurnItem } from '../../contracts/items.js'
 import { emptyUsageSnapshot, type UsageSnapshot } from '../../contracts/usage.js'
+import { stableToolResultText, truncateToolResultContent } from '../../domain/item.js'
 
 /**
  * Configuration for an Anthropic-compatible HTTP model client.
@@ -311,7 +312,7 @@ export class AnthropicCompatModelClient implements ModelClient {
           toolResultBlocks.push({
             type: 'tool_result',
             tool_use_id: item.callId,
-            content: toolResultContent(item.output),
+            content: truncateToolResultContent(toolResultContent(item.output)),
             is_error: item.isError
           })
         }
@@ -384,7 +385,7 @@ export class AnthropicCompatModelClient implements ModelClient {
             {
               type: 'tool_result',
               tool_use_id: item.callId,
-              content: toolResultContent(item.output),
+              content: truncateToolResultContent(toolResultContent(item.output)),
               is_error: item.isError
             }
           ]
@@ -690,8 +691,7 @@ function canonicalize(value: unknown): unknown {
 }
 
 function toolResultContent(output: unknown): string {
-  if (typeof output === 'string') return output
-  return JSON.stringify(output) ?? ''
+  return stableToolResultText(output)
 }
 
 function limitHistoryPreservingCompaction(history: TurnItem[], windowSize: number): TurnItem[] {
