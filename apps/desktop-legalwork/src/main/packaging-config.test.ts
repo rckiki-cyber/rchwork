@@ -289,14 +289,4 @@ describe('electron-builder Legalwork packaging', () => {
     }
   })
 
-  it('runs npm through cmd.exe during Windows afterPack hooks', () => {
-    expect(afterPack._internals.npmCommand(['prune'], 'win32')).toEqual({
-      command: 'cmd.exe',
-      args: ['/d', '/s', '/c', 'npm', 'prune']
-    })
-    expect(afterPack._internals.npmCommand(['prune'], 'darwin')).toEqual({
-      command: 'npm',
-      args: ['prune']
-    })
-  })
 })

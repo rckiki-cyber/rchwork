@@ -96,6 +96,18 @@ afterEach(() => {
 })
 
 describe('initializeGuiUpdater', () => {
+  it('ships the fork GitHub Releases feed by default', async () => {
+    Object.assign(mockApp, { getAppPath: () => process.cwd() })
+    const module = await import('./gui-updater')
+    module.initializeGuiUpdater(() => null, () => 'stable')
+
+    expect(updater.setFeedURL).toHaveBeenLastCalledWith({
+      provider: 'github',
+      owner: 'rckiki-cyber',
+      repo: 'rchwork'
+    })
+  })
+
   it('uses GitHub Releases as the packaged update feed when a repository is configured', async () => {
     process.env.LEGALWORK_GITHUB_REPO = 'sunyifeisb-art/legalwork'
 

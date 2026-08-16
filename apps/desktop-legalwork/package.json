@@ -47,10 +47,10 @@
     "zustand": "^5.0.3"
   },
   "author": "Legalwork Contributors",
-  "homepage": "https://legalwork.local",
+  "homepage": "https://github.com/rckiki-cyber/rchwork",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sunyifeisb-art/legalwork.git"
+    "url": "https://github.com/rckiki-cyber/rchwork.git"
   },
   "updateChannel": "stable",
   "buildHints": {

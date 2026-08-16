@@ -62,9 +62,12 @@ function normalizeUpdateChannel(raw) {
   throw new Error(`LEGALWORK_UPDATE_CHANNEL must be "stable" or "frontier", got: ${raw}`)
 }
 
-if (releaseAppVersion && !/^\d+\.\d+\.\d+$/.test(releaseAppVersion)) {
+if (
+  releaseAppVersion &&
+  !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(releaseAppVersion)
+) {
   throw new Error(
-    `LEGALWORK_APP_VERSION must be a valid x.y.z semver for electron-updater, got: ${releaseAppVersion}`
+    `LEGALWORK_APP_VERSION must be a valid SemVer version for electron-updater, got: ${releaseAppVersion}`
   )
 }
 
