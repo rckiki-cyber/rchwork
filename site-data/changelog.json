@@ -1,7 +1,35 @@
 {
-  "generated_at": "2026-08-16T09:49:48.243Z",
-  "repository": "sunyifeisb-art/legalwork",
+  "generated_at": "2026-08-16T15:37:41.677Z",
+  "repository": "rckiki-cyber/rchwork",
   "releases": [
+    {
+      "tag_name": "v0.3.24-rch.1",
+      "name": "legalwork 0.3.24-rch.1",
+      "published_at": "2026-08-16T15:37:27Z",
+      "html_url": "https://github.com/rckiki-cyber/rchwork/releases/tag/v0.3.24-rch.1",
+      "prerelease": false,
+      "summary": "本次更新包括：数据合规、桌面端、修复优化。",
+      "highlights": [
+        "使用体验更新：基于上游 legalwork 0.3.24 的 RCH 首个完整依赖版。",
+        "数据合规和附件上传体验优化，处理图片和材料时操作反馈更明确。",
+        "修复了使用中的稳定性问题：修复重复安装时 DLL 文件锁导致的 EPERM 失败",
+        "使用体验更新：更新源切换至 rckiki-cyber/rchwork，后续 RCH 版本从本仓库检查并下载更新",
+        "使用体验更新：首次使用请下载安装 legalwork-0.3.24-rch.1-win-x64.exe。"
+      ],
+      "categories": [
+        "数据合规",
+        "桌面端",
+        "修复优化"
+      ],
+      "assets": [
+        {
+          "name": "legalwork-0.3.24-rch.1-win-x64.exe",
+          "browser_download_url": "https://github.com/rckiki-cyber/rchwork/releases/download/v0.3.24-rch.1/legalwork-0.3.24-rch.1-win-x64.exe",
+          "download_count": 0,
+          "size": 578359355
+        }
+      ]
+    },
     {
       "tag_name": "v0.3.24",
       "name": "LegalWork 0.3.24",
