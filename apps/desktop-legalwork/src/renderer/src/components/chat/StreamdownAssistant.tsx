@@ -5,6 +5,7 @@ import { harden } from 'rehype-harden'
 import 'streamdown/styles.css'
 import { parseFileReferenceHref, rehypeFileReferences } from '../../lib/file-references'
 import { rehypeHeadingIds } from '../../lib/rehype-heading-ids'
+import { remarkRepairInlineEmphasis } from '../../lib/remark-repair-inline-emphasis'
 import { useValidatedFileReference } from '../../lib/file-reference-validation'
 import { openWorkspacePathInEditor } from '../../lib/open-workspace-path'
 import { previewWorkspaceFile } from '../../lib/workspace-file-preview'
@@ -187,7 +188,7 @@ export function StreamdownAssistant({ text, streaming, className }: Props): Reac
       parseIncompleteMarkdown={streaming}
       isAnimating={isAnimating}
       animated={animated}
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkRepairInlineEmphasis]}
       rehypePlugins={rehypePlugins}
       components={components}
     >

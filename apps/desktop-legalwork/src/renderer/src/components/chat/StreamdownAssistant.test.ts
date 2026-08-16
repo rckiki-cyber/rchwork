@@ -38,6 +38,19 @@ describe('shouldAnimateStreamingText', () => {
     expect(html).not.toContain('**核验规范依据**')
   })
 
+  it('repairs model emphasis markers embedded directly after Chinese text', () => {
+    const html = renderToStaticMarkup(
+      createElement(StreamdownAssistant, {
+        text: '> 核心观点是**“噪声达标并不当然免责”**。',
+        streaming: false
+      })
+    )
+
+    expect(html).toContain('data-streamdown="strong"')
+    expect(html).toContain('“噪声达标并不当然免责”')
+    expect(html).not.toContain('**“噪声达标并不当然免责”**')
+  })
+
   it('recognizes only browser-safe Markdown links as external targets', () => {
     expect(isExternalMarkdownHref('https://www.pkulaw.com/')).toBe(true)
     expect(isExternalMarkdownHref('http://example.com/law')).toBe(true)

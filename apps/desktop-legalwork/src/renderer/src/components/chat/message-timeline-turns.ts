@@ -57,18 +57,21 @@ export function turnHasPendingRuntimeWork(turn: Turn): boolean {
 }
 
 export function findTrailingAssistantContentStart(blocks: ChatBlock[]): number {
-  let start = blocks.length
-
-  for (let index = blocks.length - 1; index >= 0; index -= 1) {
-    const block = blocks[index]
-    // Completed reasoning may be persisted after final text; it should not hide the answer bubble.
-    if (block.kind === 'reasoning' && start === blocks.length) continue
-    if (block.kind !== 'assistant') break
-
-    const split = splitThink(block.text)
-    if (!split.content.trim()) break
-    start = index
+  // Everything produced after the final actionable process block belongs to
+  // the answer phase. Reasoning can legitimately be persisted between two
+  // assistant_text items (a full answer followed by a short wrap-up); it must
+  // not make the UI discard the earlier, substantive text.
+  let lastProcessBoundary = -1
+  for (const [index, block] of blocks.entries()) {
+    if (block.kind !== 'assistant' && block.kind !== 'reasoning') {
+      lastProcessBoundary = index
+    }
   }
 
-  return start
+  for (let index = lastProcessBoundary + 1; index < blocks.length; index += 1) {
+    const block = blocks[index]
+    if (block.kind !== 'assistant') continue
+    if (splitThink(block.text).content.trim()) return index
+  }
+  return blocks.length
 }
