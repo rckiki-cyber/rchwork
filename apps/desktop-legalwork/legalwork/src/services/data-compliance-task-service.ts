@@ -366,15 +366,10 @@ export class DataComplianceTaskService {
       }
     }
 
-    const missing = await this.findMissingPackages(CORE_REQUIRED_PYTHON_PACKAGES, this.pythonBin)
-    if (missing.length > 0) {
-      return {
-        ok: false,
-        reason: `缺少 Python 依赖包: ${missing.join(', ')}`,
-        fix: `请在数据合规 venv 中运行: ${this.pythonBin} -m pip install -r ${join(this.webRoot, 'requirements.txt')}`
-      }
-    }
-
+    // ensurePythonEnvironment is the single source of truth for dependency
+    // installation and verification. Re-importing every core package here makes
+    // each status request start PaddleOCR again, which can exceed the desktop
+    // client's probe timeout and falsely trigger a destructive reinstall.
     return { ok: true, python: this.pythonBin }
   }
 
@@ -403,20 +398,10 @@ export class DataComplianceTaskService {
 
       if (!existsSync(requirementsPath)) return
       if (existsSync(markerPath)) {
-        // marker 可能来自旧版安装（残留 paddle 2.x 孤儿文件）。快速探测 paddle：
-        // 若为混装则自动重建一次，避免"标记已装好但实际损坏"的假阳性。
-        const probe = await this.runCommand(venvPython, ['-c', 'import paddle'], {
-          timeoutMs: PYTHON_IMPORT_TIMEOUT_MS
-        })
-        if (probe.exitCode === 0) return
-        const probeText = `${probe.stdout}\n${probe.stderr}`
-        if (/cannot import name [\s\S]{0,120}bwd_graph_utils|capture_backward_subgraph_guard/.test(probeText)) {
-          if (rebuildCount === 0) {
-            rebuildCount += 1
-            await rm(this.venvDir, { recursive: true, force: true })
-            continue
-          }
-        }
+        // This versioned marker is written only after every core import passes.
+        // Trust it on status probes: cold Paddle/PaddleOCR imports are expensive
+        // and concurrent renderer probes can otherwise time out and start a
+        // reinstall that tries to delete loaded Windows DLLs.
         return
       }
 

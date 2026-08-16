@@ -98,7 +98,10 @@ import {
   resolveBundledImaMcpScriptPath,
   resolveLegalworkDataDir
 } from '../legalwork-process'
-import { imaStandalonePythonCandidates } from '../ima-python-runtime'
+import {
+  firstSupportedStandalonePython,
+  imaStandalonePythonCandidates
+} from '../ima-python-runtime'
 import { createAndSwitchGitBranch, getGitBranches, switchGitBranch } from '../services/git-service'
 import {
   createWorkspaceDirectory,
@@ -570,9 +573,11 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       const dataDir = resolveLegalworkDataDir(runtime)
       const venvDir = resolveDataComplianceVenvDir(dataDir)
       const venvPython = resolveDataComplianceVenvPython(venvDir)
-      const standalonePython = process.platform === 'win32'
-        ? join(dataDir, 'data-compliance', 'python-standalone', 'python.exe')
-        : join(dataDir, 'data-compliance', 'python-standalone', 'bin', 'python3')
+      const standaloneCandidates = imaStandalonePythonCandidates(
+        app.getPath('userData'),
+        dataDir,
+        process.platform
+      )
       const webRoot = resolveDataComplianceWebRootCandidates()
         .find((candidate) => existsSync(join(candidate, 'requirements.txt'))) ??
         resolveDataComplianceWebRootCandidates()[0]
@@ -580,9 +585,10 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
 
       // 1. Detect Python
       sendProgress({ step: 'detecting', percent: 5, message: '正在检测 Python 3.10-3.12 环境…' })
-      let pythonCmd = existsSync(standalonePython) && await isSupportedPythonExecutable(standalonePython)
-        ? standalonePython
-        : await resolvePythonForCompliance()
+      let pythonCmd = await firstSupportedStandalonePython(
+        standaloneCandidates,
+        async (candidate) => existsSync(candidate) && await isSupportedPythonExecutable(candidate)
+      ) ?? await resolvePythonForCompliance()
 
       // Windows: auto-download and install Python if not found.
       if (!pythonCmd && process.platform === 'win32') {
@@ -1170,6 +1176,20 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
       const result = await runtimeRequest('/data-compliance/environment', 'GET')
       if (!result.ok) {
         const parsed = JSON.parse(result.body || '{}') as { error?: string; fix?: string }
+        // status 0 is a transport/probe failure (for example, the backend is
+        // still starting or a cold Python import exceeded the request timeout).
+        // It is not evidence that the managed environment is missing. Starting
+        // an installer here can race the running Python process and fail while
+        // deleting loaded DLLs on Windows (EPERM: unlink libcrypto-3-x64.dll).
+        if (result.status === 0) {
+          return {
+            ok: false,
+            running: false,
+            installing: dataComplianceInstalling,
+            baseUrl: '',
+            message: parsed.error || '数据合规环境检测暂时不可用，请稍后重试'
+          }
+        }
         // Auto-trigger silent install whenever the environment is not ready.
         // The install function itself will skip already-completed steps (Python, venv, deps).
         if (!dataComplianceInstalling) {

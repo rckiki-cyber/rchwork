@@ -113,6 +113,26 @@ describe('registerAppIpcHandlers', () => {
     expect(isSupportedDataCompliancePythonVersion('Python 3.11.9')).toBe(true)
   })
 
+  it('does not reinstall data compliance after a transient environment probe failure', async () => {
+    const { registerAppIpcHandlers } = await import('./register-app-ipc-handlers')
+    const runtimeRequest = vi.fn(async () => ({
+      ok: false,
+      status: 0,
+      body: JSON.stringify({ error: 'fetch timed out' })
+    }))
+
+    registerAppIpcHandlers(registerOptions({ runtimeRequest: runtimeRequest as never }))
+
+    await expect(handlers.get('data-compliance:status')?.({})).resolves.toEqual({
+      ok: false,
+      running: false,
+      installing: false,
+      baseUrl: '',
+      message: 'fetch timed out'
+    })
+    expect(runtimeRequest).toHaveBeenCalledTimes(1)
+  })
+
   it('passes valid settings patches through to applySettingsPatch', async () => {
     const { registerAppIpcHandlers } = await import('./register-app-ipc-handlers')
     const applySettingsPatch = vi.fn(async () => settings())

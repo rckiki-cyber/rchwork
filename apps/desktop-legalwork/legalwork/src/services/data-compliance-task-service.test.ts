@@ -29,6 +29,30 @@ describe('data compliance Python version helpers', () => {
   })
 })
 
+describe('data compliance environment checks', () => {
+  it('does not repeat the full package scan after environment preparation succeeds', async () => {
+    const dataDir = await makeTempDir()
+    const webRoot = await makeTempDir()
+    const logDir = await makeTempDir()
+    const service = new DataComplianceTaskService({ dataDir, webRoot, logDir })
+    const internals = service as unknown as {
+      resolvePythonExecutable: () => string | null
+      runPython: () => Promise<{ exitCode: number; stdout: string; stderr: string }>
+      ensurePythonEnvironment: () => Promise<void>
+      findMissingPackages: () => Promise<string[]>
+    }
+
+    internals.resolvePythonExecutable = () => 'python'
+    internals.runPython = async () => ({ exitCode: 0, stdout: 'Python 3.11.9', stderr: '' })
+    internals.ensurePythonEnvironment = async () => undefined
+    internals.findMissingPackages = async () => {
+      throw new Error('redundant package scan')
+    }
+
+    await expect(service.checkEnvironment()).resolves.toEqual({ ok: true, python: 'python' })
+  })
+})
+
 describe('data compliance task creation', () => {
   async function createService(): Promise<DataComplianceTaskService> {
     const dataDir = await makeTempDir()
