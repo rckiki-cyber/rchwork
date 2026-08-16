@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
@@ -469,6 +469,11 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
     isPackaged: app.isPackaged,
     resourcesPath: process.resourcesPath
   })
+  const bundledCompliancePython = resolveBundledCompliancePythonPath({
+    appPath: root,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath
+  })
   // Chromium uses the OS proxy during ChatGPT login, while the Codex binary
   // only reads proxy environment variables. Mirror the same proxy into the
   // ChatGPT-authenticated runtime so login and subsequent model turns use the
@@ -496,6 +501,11 @@ async function startLegalworkChildOnce(settings: AppSettingsV1): Promise<void> {
       ...(existsSync(ocrAgentPath) ? { LEGALWORK_OCR_AGENT_PATH: ocrAgentPath } : {}),
       ...(ocrPython ? { LEGALWORK_OCR_PYTHON: ocrPython } : {}),
       ...(bundledOfficePython ? { LEGALWORK_OFFICE_PYTHON: bundledOfficePython } : {}),
+      ...(bundledCompliancePython ? {
+        COMPLIANCEAI_PYTHON: bundledCompliancePython,
+        LEGALWORK_BUNDLED_COMPLIANCE_RUNTIME: '1',
+        LEGALWORK_BUNDLED_COMPLIANCE_PYTHONHOME: dirname(bundledCompliancePython)
+      } : {}),
       DEEPSEEK_API_KEY: runtime.apiKey || process.env.DEEPSEEK_API_KEY || '',
       KIMI_API_KEY: runtime.apiKey || process.env.KIMI_API_KEY || ''
     }
@@ -776,6 +786,37 @@ export function resolveBundledOfficePythonPath(input: {
     : join(input.appPath, 'vendor', 'office-runtime', `${platformName}-${arch}`)
   const candidate = join(runtimeRoot, 'python', executable)
   return existsSync(candidate) ? candidate : undefined
+}
+
+export function resolveBundledCompliancePythonPath(input: {
+  appPath: string
+  isPackaged: boolean
+  resourcesPath?: string
+  platform?: NodeJS.Platform
+  arch?: string
+}): string | undefined {
+  const python = resolveBundledOfficePythonPath(input)
+  if (!python) return undefined
+  const platform = input.platform ?? process.platform
+  const arch = input.arch ?? process.arch
+  // PaddlePaddle's distributable Windows runtime is x64-only.
+  if (platform !== 'win32' || arch !== 'x64') return undefined
+  const runtimeRoot = dirname(dirname(python))
+  const manifestPath = join(runtimeRoot, 'runtime.json')
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      dataComplianceReady?: boolean
+      imports?: unknown
+    }
+    return manifest.dataComplianceReady === true &&
+      Array.isArray(manifest.imports) &&
+      manifest.imports.includes('paddle') &&
+      manifest.imports.includes('paddleocr')
+      ? python
+      : undefined
+  } catch {
+    return undefined
+  }
 }
 
 function buildOfficeCliLegalworkMcpServer(

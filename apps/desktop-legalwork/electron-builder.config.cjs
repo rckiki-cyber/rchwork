@@ -217,7 +217,10 @@ module.exports = {
   },
   win: {
     icon: './src/asset/img/legalwork.png',
-    target: [{ target: 'nsis', arch: ['x64', 'ia32'] }]
+    // The fully bundled data-compliance stack (Paddle/Pandas/spaCy) publishes
+    // Windows wheels for x64, not ia32. Shipping ia32 would fall back to a
+    // first-run network install and violate the offline-install contract.
+    target: [{ target: 'nsis', arch: ['x64'] }]
   },
   nsis: {
     oneClick: false,

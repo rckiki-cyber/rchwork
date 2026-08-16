@@ -187,6 +187,9 @@ export function buildDataCompliancePythonEnv(
   ].filter(Boolean)
   return {
     ...env,
+    ...(env.LEGALWORK_BUNDLED_COMPLIANCE_PYTHONHOME
+      ? { PYTHONHOME: env.LEGALWORK_BUNDLED_COMPLIANCE_PYTHONHOME }
+      : {}),
     [pathKey]: entries.join(delimiter)
   }
 }
@@ -374,6 +377,18 @@ export class DataComplianceTaskService {
   }
 
   private async ensurePythonEnvironment(): Promise<void> {
+    // Release builds can carry a verified, relocatable Python distribution
+    // containing every data-compliance dependency. Use it in place instead of
+    // creating a user venv and running pip on first launch.
+    if (
+      process.env.LEGALWORK_BUNDLED_COMPLIANCE_RUNTIME === '1' &&
+      this.pythonBin === process.env.COMPLIANCEAI_PYTHON &&
+      this.pythonBin &&
+      this.canRunPython(this.pythonBin)
+    ) {
+      return
+    }
+
     // Paddle 2.x/3.x 混装残留（旧 paddle 孤儿文件，pip 无法清理）会让
     // import paddle 持续失败，表现为"缺少 paddle/paddleocr"。自动重建一次
     // venv 即可修复，用户无需手动删除目录。

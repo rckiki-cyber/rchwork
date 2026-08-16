@@ -7,7 +7,6 @@ const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
   'legalwork/dist/cli/serve-entry.js',
   'legalwork/dist/loop/agent-loop.js',
   'legalwork/package.json',
-  'legalwork/package-lock.json',
   'legalwork/node_modules/zod/package.json',
   'legalwork/node_modules/diff/package.json',
   'legalwork/node_modules/@modelcontextprotocol/sdk/package.json',
@@ -38,6 +37,17 @@ const DOCUMENT_OCR_REQUIRED_PATHS = [
 ]
 
 const OFFICE_RUNTIME_IMPORTS = ['docx', 'openpyxl', 'pptx', 'lxml', 'PIL', 'reportlab']
+const DATA_COMPLIANCE_RUNTIME_IMPORTS = [
+  'flask',
+  'fitz',
+  'openai',
+  'paddle',
+  'paddleocr',
+  'pypdf',
+  'pandas',
+  'presidio_analyzer',
+  'presidio_anonymizer'
+]
 const OFFICE_RUNTIME_PYTHON_LINE = '3.11'
 const BUNDLED_PDF_FONT_SOURCE_SHA256 = '050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9'
 const BUNDLED_PDF_FONT_PREPARATION_VERSION = 2
@@ -85,16 +95,6 @@ function sha256File(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
-function npmCommand(args, platform = process.platform) {
-  if (platform === 'win32') {
-    return {
-      command: 'cmd.exe',
-      args: ['/d', '/s', '/c', 'npm', ...args]
-    }
-  }
-  return { command: 'npm', args }
-}
-
 function prunePackedLegalworkDependencies(context) {
   const root = unpackedAppRoot(context)
   const legalworkDir = join(root, 'legalwork')
@@ -103,16 +103,10 @@ function prunePackedLegalworkDependencies(context) {
   assertExists(join(legalworkDir, 'package.json'), 'Legalwork package manifest')
   assertExists(join(legalworkDir, 'node_modules'), 'Legalwork node_modules')
 
-  const prune = npmCommand(['prune', '--omit=dev', '--ignore-scripts'])
-  execFileSync(prune.command, prune.args, {
-    cwd: legalworkDir,
-    env: {
-      ...process.env,
-      npm_config_audit: 'false',
-      npm_config_fund: 'false'
-    },
-    stdio: 'inherit'
-  })
+  // electron-builder's file filters already exclude Legalwork development
+  // dependencies. Never run npm in afterPack: it may access the registry,
+  // mutate the completed package, or fail on a damaged global npm cache.
+  // Packaging must be deterministic and fully offline once inputs exist.
 
   // Keep native SQLite on the app root dependency so electron-builder's
   // native-module rebuild owns the target arch and Electron ABI.
@@ -318,6 +312,20 @@ function validateBundledOfficeRuntime(context) {
   if (!Array.isArray(manifest.imports) || OFFICE_RUNTIME_IMPORTS.some((name) => !manifest.imports.includes(name))) {
     throw new Error('[after-pack] Office runtime manifest is missing required Word/Excel/PPT imports')
   }
+  if (normalizePlatform(context.electronPlatformName) === 'win32') {
+    if (context.arch !== 'x64' && Number(context.arch) !== 1) {
+      throw new Error('[after-pack] Fully bundled Windows runtime is supported only for x64')
+    }
+    if (manifest.dataComplianceReady !== true) {
+      throw new Error('[after-pack] Windows runtime is missing bundled data-compliance dependencies')
+    }
+    for (const moduleName of DATA_COMPLIANCE_RUNTIME_IMPORTS) {
+      assertExists(join(sitePackages, moduleName), `data compliance Python module ${moduleName}`)
+      if (!manifest.imports.includes(moduleName)) {
+        throw new Error(`[after-pack] Runtime manifest is missing data compliance import ${moduleName}`)
+      }
+    }
+  }
 }
 
 function validateBundledPdfFonts(context) {
@@ -487,13 +495,13 @@ exports.DATA_COMPLIANCE_REQUIRED_PATHS = DATA_COMPLIANCE_REQUIRED_PATHS
 exports.DATA_COMPLIANCE_OPTIONAL_PATHS = DATA_COMPLIANCE_OPTIONAL_PATHS
 exports.DOCUMENT_OCR_REQUIRED_PATHS = DOCUMENT_OCR_REQUIRED_PATHS
 exports.OFFICE_RUNTIME_IMPORTS = OFFICE_RUNTIME_IMPORTS
+exports.DATA_COMPLIANCE_RUNTIME_IMPORTS = DATA_COMPLIANCE_RUNTIME_IMPORTS
 exports.OFFICE_RUNTIME_PYTHON_LINE = OFFICE_RUNTIME_PYTHON_LINE
 exports.IMA_MCP_SCRIPT_RELATIVE_PATH = IMA_MCP_SCRIPT_RELATIVE_PATH
 exports._internals = {
   appBundlePath,
   packedResourcesDir,
   unpackedAppRoot,
-  npmCommand,
   findInfoPlists,
   macInfoPlistPaths,
   officeRuntimePythonPath,
