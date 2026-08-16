@@ -225,10 +225,12 @@ describe('review mapping', () => {
 describe('create_plan tool mapping', () => {
   it('surfaces turn failure messages from Legalwork lifecycle events', async () => {
     let captured: string | null = null
+    let terminal = false
     const sink: ThreadEventSink = {
       ...makeSink(),
       onError: (error) => {
         captured = error.message
+        terminal = (error as Error & { terminalTurnFailure?: boolean }).terminalTurnFailure === true
       }
     }
 
@@ -242,6 +244,7 @@ describe('create_plan tool mapping', () => {
     }, sink, async () => undefined)
 
     expect(captured).toBe('model stream exploded')
+    expect(terminal).toBe(true)
   })
 
   it('maps a successful create_plan result to a tool block with plan metadata', () => {

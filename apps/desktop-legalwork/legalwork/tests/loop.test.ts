@@ -29,6 +29,7 @@ import {
   turnBudgetCompletionToolSpecs
 } from '../src/loop/agent-loop.js'
 import { resolveModelContextProfile } from '../src/loop/model-context-profile.js'
+import { requiresFreshWebSearch, requiresWebSearch } from '../src/loop/fact-verification.js'
 import { makeAssistantTextItem, makeToolCallItem, makeToolResultItem, makeUserItem } from '../src/domain/item.js'
 import { createThreadRecord } from '../src/domain/thread.js'
 import { createImmutablePrefix, setSystemPrompt } from '../src/cache/immutable-prefix.js'
@@ -165,6 +166,7 @@ describe('AgentLoop', () => {
     expect(isBareResearchTopicPrompt('写一篇文献综述word')).toBe(false)
     expect(isBareResearchTopicPrompt('我他妈让你扩充论文而已')).toBe(false)
     expect(isBareResearchTopicPrompt('你他妈倒是干活啊')).toBe(false)
+    expect(isBareResearchTopicPrompt('这个案子的具体内容')).toBe(false)
   })
 
   it('does not treat a document-operation prompt as a bare research topic', () => {
@@ -324,6 +326,17 @@ describe('AgentLoop', () => {
     expect(assistantAnnouncesPendingToolWork('稍等，我先确认一下文件夹内容')).toBe(true)
     expect(assistantAnnouncesPendingToolWork('我来验证一下输出文件是否存在')).toBe(true)
     expect(assistantAnnouncesPendingToolWork('我去检查一下桌面文件夹')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('查一下最新法考政策动态。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('现在去把详细报道抓出来。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('我先联网核实最新考纲内容，再给你完整梳理。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('查看过程记录文件与原稿完整标题结构，确认重组方案：')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('补充检索国家库宽严相济意见记录。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('直接用脚本生成 JSONL 文件（避免手工转义错误）。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('表格被 CSV 解析拆分成了多余行，正文编号重复。先合并表格单元格内容、删除多余行，再修正正文编号文本。')).toBe(true)
+    expect(assistantAnnouncesPendingToolWork('平台可能先给高价、验机后压价，务必先确认验机标准，并检查屏幕和电池。')).toBe(false)
+    expect(assistantAnnouncesPendingToolWork('购买前先检查电池，再确认屏幕和序列号。')).toBe(false)
+    expect(assistantAnnouncesPendingToolWork('检查结果如下：文件内容完整，编号连续。')).toBe(false)
+    expect(assistantAnnouncesPendingToolWork('建议直接用脚本生成 JSONL 文件，避免手工转义错误。')).toBe(false)
     // 不误伤已经完成事实陈述的普通回答
     expect(assistantAnnouncesPendingToolWork('文件已经生成好了，放在桌面的执行和解协议文件夹里。')).toBe(false)
     expect(assistantAnnouncesPendingToolWork('已核对无误，文件夹内容与交付一致。')).toBe(false)
@@ -978,7 +991,7 @@ describe('AgentLoop', () => {
       async *stream(): AsyncIterable<ModelStreamChunk> {
         calls += 1
         if (calls === 1) {
-          yield { kind: 'assistant_text_delta', text: '我现在调用工具完成处理。' }
+          yield { kind: 'assistant_text_delta', text: '我先联网核实最新考纲内容，再给你完整梳理。' }
           yield { kind: 'completed', stopReason: 'stop' }
           return
         }
@@ -1006,7 +1019,32 @@ describe('AgentLoop', () => {
     expect(items.some((item) => item.kind === 'tool_result' && item.toolName === 'echo')).toBe(true)
   })
 
-  it('limits repeated work announcements to one focused recovery request', async () => {
+  it('does not replace a substantive answer when ordinary advice contains repeated 先 phrases', async () => {
+    let calls = 0
+    const answer = [
+      '以下是 iPad Pro 二手行情完整汇总。',
+      '平台可能先给高价、验机后压价，务必先确认验机标准，并检查屏幕和电池。',
+      '购买前还应核对序列号、容量、成色和维修记录。'
+    ].join('\n\n')
+    const h = makeHarness({
+      provider: 'completed-advice-with-first-phrases',
+      model: 'completed-advice-with-first-phrases',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        calls += 1
+        yield { kind: 'assistant_text_delta', text: answer }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h, { request: { prompt: 'ipadpro二手价格' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(calls).toBe(1)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    expect(items.filter((item) => item.kind === 'assistant_text')).toHaveLength(1)
+    expect(items.some((item) => item.kind === 'assistant_text' && item.text === answer)).toBe(true)
+  })
+
+  it('fails instead of completing after bounded repeated work announcements', async () => {
     const requests: ModelRequest[] = []
     const h = makeHarness({
       provider: 'repeated-unfinished-announcement',
@@ -1019,8 +1057,8 @@ describe('AgentLoop', () => {
     })
     await bootstrapThread(h)
 
-    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
-    expect(requests).toHaveLength(2)
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('failed')
+    expect(requests).toHaveLength(3)
     expect(requests[1]?.contextInstructions?.join('\n')).toContain('不要再预告步骤')
   })
 
@@ -5332,6 +5370,145 @@ describe('FileSessionStore', () => {
     expect(items.some((item) =>
       item.kind === 'assistant_text' && item.text.includes('最终正文')
     )).toBe(true)
+    const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
+    expect(events.some((event) => event.kind === 'tool_result_upload_wait')).toBe(false)
+  })
+
+  it('fails instead of marking a reasoning-only turn as completed', async () => {
+    let requests = 0
+    const h = makeHarness({
+      provider: 'reasoning-only-failure',
+      model: 'reasoning-only-failure',
+      async *stream(): AsyncIterable<ModelStreamChunk> {
+        requests += 1
+        yield { kind: 'assistant_reasoning_delta', text: '我还需要继续规划。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    })
+    await bootstrapThread(h, { request: { prompt: '请直接输出结果。' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('failed')
+    expect(requests).toBe(3)
+    const thread = await h.threadStore.get(h.threadId)
+    expect(thread?.turns.find((turn) => turn.id === h.turnId)?.status).toBe('failed')
+  })
+
+  it.each([
+    '最新法考政策',
+    '法考最新政策',
+    '最新的公考考纲',
+    '生态环境法典第一案',
+    '法考政策',
+    '公考考纲',
+    '公务员具体的考察要素',
+    '帮我查一下司法部发布的法考公告'
+  ])('runtime-prefetches web_search before answering a fresh topic: %s', async (prompt) => {
+    const executedQueries: string[] = []
+    let modelRequests = 0
+    let modelSawSearchResult = false
+    const webSearch = LocalToolHost.defineTool({
+      name: 'web_search',
+      description: 'Search current web information.',
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' }, limit: { type: 'number' } },
+        required: ['query'],
+        additionalProperties: false
+      },
+      policy: 'auto',
+      execute: async (args) => {
+        executedQueries.push(String(args.query ?? ''))
+        return {
+          output: {
+            results: [{
+              title: '司法部官方通知',
+              url: 'https://example.test/current-policy',
+              snippet: '这是本年度发布的政策正文摘要。'
+            }]
+          }
+        }
+      }
+    })
+    const h = makeHarness({
+      provider: 'fresh-web-prefetch',
+      model: 'fresh-web-prefetch',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        modelRequests += 1
+        modelSawSearchResult = request.history.some((item) =>
+          item.kind === 'tool_result' && item.toolName === 'web_search'
+        )
+        yield { kind: 'assistant_text_delta', text: '已根据刚刚检索到的来源给出完整回答。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [webSearch] })
+    await bootstrapThread(h, { request: { prompt } })
+
+    expect(requiresWebSearch(prompt)).toBe(true)
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(executedQueries).toEqual([prompt])
+    expect(modelRequests).toBe(1)
+    expect(modelSawSearchResult).toBe(true)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    expect(items.some((item) =>
+      item.kind === 'tool_result' && item.toolName === 'web_search'
+    )).toBe(true)
+  })
+
+  it('keeps mandatory searches isolated across three concurrent conversations', async () => {
+    const searchedThreads: string[] = []
+    const webSearch = LocalToolHost.defineTool({
+      name: 'web_search',
+      description: 'Search current web information.',
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' }, limit: { type: 'number' } },
+        required: ['query'],
+        additionalProperties: false
+      },
+      policy: 'auto',
+      execute: async (_args, context) => {
+        searchedThreads.push(context.threadId)
+        return {
+          output: {
+            results: [{ title: '最新考纲', url: 'https://example.test/exam-outline' }]
+          }
+        }
+      }
+    })
+    const h = makeHarness({
+      provider: 'concurrent-fresh-search',
+      model: 'concurrent-fresh-search',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        const hasSearchResult = request.history.some((item) =>
+          item.kind === 'tool_result' && item.toolName === 'web_search'
+        )
+        if (!hasSearchResult) throw new Error('model request arrived before mandatory search')
+        yield { kind: 'assistant_text_delta', text: '已根据最新搜索结果作答。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [webSearch] })
+    const threadIds = ['thr_concurrent_1', 'thr_concurrent_2', 'thr_concurrent_3']
+    const turnIds: string[] = []
+    for (const threadId of threadIds) {
+      await h.threadStore.upsert(createThreadRecord({
+        id: threadId,
+        title: '最新的公考考纲',
+        workspace: '/tmp',
+        model: 'concurrent-fresh-search'
+      }))
+      const started = await h.turns.startTurn({
+        threadId,
+        request: { prompt: '最新的公考考纲' }
+      })
+      turnIds.push(started.turnId)
+    }
+
+    const statuses = await Promise.all(threadIds.map((threadId, index) =>
+      h.loop.runTurn(threadId, turnIds[index] ?? '')
+    ))
+
+    expect(statuses).toEqual(['completed', 'completed', 'completed'])
+    expect(searchedThreads.sort()).toEqual([...threadIds].sort())
   })
 
   it('keeps broad fact-audit tools advisory instead of blocking the final answer', async () => {

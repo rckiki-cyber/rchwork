@@ -148,6 +148,8 @@ import {
   factVerificationContract,
   factVerificationInstruction,
   factVerificationProgress,
+  requiresFreshWebSearch,
+  requiresWebSearch,
   type FactVerificationContract
 } from './fact-verification.js'
 import {
@@ -235,6 +237,10 @@ const TURN_BUDGET_COMPLETION_TOOL_NAMES = new Set([
 ])
 const MAX_GOAL_NO_TOOL_CONTINUATIONS = 2
 const MAX_LEGAL_RESEARCH_REPORT_CONTINUATIONS = 5
+const MAX_REASONING_ONLY_CONTINUATIONS = 2
+// 模型宣布"将调用工具"但未生成 tool_use 时最多续几轮（DeepSeek 偶发首轮只 reasoning
+// 不生成 tool_use，续 2 次提高生成成功率；超过则停止避免空转烧 token）。
+const MAX_PENDING_WORK_CONTINUATIONS = 2
 const DEFAULT_COMPACTION_SUMMARY_TIMEOUT_MS = 15_000
 const DEFAULT_COMPACTION_SUMMARY_MAX_TOKENS = 8_000
 const DEFAULT_COMPACTION_SUMMARY_INPUT_MAX_BYTES = 512 * 1024
@@ -825,7 +831,7 @@ export function isBareResearchTopicPrompt(prompt: string): boolean {
   // A complaint/continuation is conversational control, never a new research
   // topic. Misclassifying "你倒是干活啊" as a topic removed every tool
   // precisely when the user was asking the agent to resume unfinished work.
-  if (isContinuationOnlyPrompt(value) || isLowSignalComplaint(value)) return false
+  if (isContinuationOnlyPrompt(value) || isLowSignalComplaint(value) || isContextDependentPrompt(value)) return false
   // 排除词同时覆盖两类信号：命令式动作（请/帮我/检索…）和文档操作词
   // （word/docx/文档/整理/排版…）。后者不能当作“裸研究话题”，否则“把引注
   // 整理到word”这类文档生成任务会被错误地收窄掉 document_skill_execute，
@@ -850,10 +856,31 @@ export function assistantAnnouncesPendingToolWork(text: string): boolean {
   // (the reproduced failure ended with "开始。先读原文。"). Inspect a
   // bounded tail instead of rejecting long responses outright.
   const compact = normalized.slice(-2_000)
-  const action = '(?:读取|打开|检查|核对|确认|处理|脱敏|生成|重新生成|创建|修改|修复|重写|替换|保存|导出|验证|执行|调用|运行|写入|制作|检索|搜索|获取|补充|查询|核验|采集)'
-  const announced = new RegExp(`(?:我(?:将|会|现在|马上|直接|先|这就|这就去|来|去)|接下来|下一步|开始|现在开始|先|让我|我来|稍等(?:我|一下)?).{0,60}${action}`)
+  const action = '(?:读取|打开|检查|核对|确认|处理|脱敏|生成|重新生成|创建|修改|修复|重写|替换|保存|导出|验证|执行|调用|运行|写入|制作|检索|搜索|获取|补充|查询|核验|核实|采集|联网|查看|抓取|找)'
+  // A bare “先” is common inside completed advice (for example “平台先给
+  // 高价，务必先确认验机标准、检查屏幕”). Treating any such sentence as
+  // a work announcement caused the runtime to request another model step and
+  // replace a substantial answer with a tiny wrap-up. Require an explicit
+  // first-person/future lead-in; the dedicated suffix rule below still covers
+  // terse commands such as “开始。先读原文。”.
+  const announced = new RegExp(`(?:我(?:将|会|现在|马上|直接|先|这就|这就去|来|去)|接下来|下一步|开始|现在开始|让我|我来|稍等(?:我|一下)?).{0,60}${action}`)
   const retry = new RegExp(`(?:我)?(?:按|依|照)?.{0,40}(?:重新|继续|直接)${action}`)
-  return announced.test(compact) || retry.test(compact) || /(?:开始。?)?先(?:读|打开|处理|生成|执行)[^?？!！]{0,30}[。.]?$/.test(compact)
+  const terseCommand = compact.length <= 100 && (
+    /^(?:现在)?(?:去)?(?:查一下|检索一下|搜索一下|查询一下|抓取一下|获取一下|打开一下|读取一下)/.test(compact) ||
+    /^(?:现在)?去.{0,50}(?:查|检索|搜索|抓|获取|读取)/.test(compact)
+  )
+  // Some models emit a terse operational note without a subject (for example
+  // “补充检索……”, “直接用脚本生成……”) and then stop. These are still
+  // unfinished execution, but keep the rule bounded and exclude result/status
+  // language so short final answers such as “检查结果如下” are not retried.
+  const shortOperationalCommand = compact.length <= 160 &&
+    !/(?:建议|可以|应当|务必|购买前|验机时|结果|如下|完成|成功|已经|已核对|可见|结论)/.test(compact) && (
+      /^(?:(?:继续|重新|补充)(?:查看|读取|检查|核对|确认|检索|搜索|查询|抓取|获取)|(?:查看|读取|检查|核对|检索|搜索|查询|抓取|获取|调用|执行|运行))/.test(compact) ||
+      /^直接(?:用|调用|执行|运行).{0,80}(?:生成|处理|修正|合并|读取|检索|查询|写入|导出)/.test(compact) ||
+      (/(?:文件|表格|CSV|JSONL|正文|编号|数据|脚本|代码|文档|原稿|目录|记录)/i.test(compact) &&
+        /(?:^|[。；;：:])先(?:合并|修正|处理|生成|读取|检查|核对|删除|整理|执行).{0,80}(?:再|然后)(?:合并|修正|处理|生成|读取|检查|核对|删除|整理|执行)/.test(compact))
+    )
+  return announced.test(compact) || retry.test(compact) || terseCommand || shortOperationalCommand || /(?:开始。?)?先(?:读|打开|处理|生成|执行)[^?？!！]{0,30}[。.]?$/.test(compact)
 }
 
 function successfulDocumentArtifacts(
@@ -1627,6 +1654,8 @@ function webFirstToolGuidanceInstruction(): string {
     '用户要求"网络检索/联网检索/上网查/网上搜/web 检索/搜索"时，直接调用 web_search；不得用本地知识库检索替代网络检索。',
     '涉及"最新/现行/当前/2025/2026/最近/最新动态"等时效性法规、政策、规范、标准、案例的问题，必须先 web_search 检索核实，不得仅凭已有知识直接回答（训练知识可能过时）。',
     '检索工具调用是完成任务所必需，不视为浪费工具调用。',
+    '检索类请求**直接调用 web_search/web_fetch 执行**，不要先输出"我先联网/我马上查/我检索一下/等我确认"之类的开场白或计划——工具调用本身就是执行，先说话而不调用会中断任务。',
+    '检索完成后，正式回答必须把检索到的具体内容完整展开写入（当事人、案情经过、判决/结果、法律依据、数据、时间等），并引用来源；不得只给概况、标题列表，或收尾成"以上就是…需要进一步…吗"之类的选项。',
     '本对话默认未启用法律数据库检索；如用户明确要求权威法律数据库核实（查法条原文/案例原文），可提示用户，由用户在对话中明确要求后再启用。',
     '</web_first_tool_guidance>'
   ].join('\n')
@@ -2022,13 +2051,15 @@ export class AgentLoop {
       const toolResultCount = healed.items.filter(
         (item) => item.turnId === turnId && item.kind === 'tool_result'
       ).length
-      await this.opts.events.record({
-        kind: 'tool_result_upload_wait',
-        threadId,
-        turnId,
-        status: 'waiting',
-        toolResultCount
-      })
+      if (toolResultCount > 0) {
+        await this.opts.events.record({
+          kind: 'tool_result_upload_wait',
+          threadId,
+          turnId,
+          status: 'waiting',
+          toolResultCount
+        })
+      }
       const routedPrompt = skillRoutingPrompt(turn?.prompt ?? '', healed.items, turnId)
       const completedDelivery = completedWordDeliveryMessage(healed.items, turnId, routedPrompt)
       if (completedDelivery) {
@@ -2342,6 +2373,11 @@ export class AgentLoop {
       ? EMPTY_FACT_CONTRACT
       : factVerificationContract(routedSkillPrompt, { primaryLegalSource: this.opts.primaryLegalSource })
     const factProgress = factVerificationProgress(healed.items, turnId, factContract)
+    const webSearchRequired =
+      !isLearningIterationThread &&
+      !planTurnActive &&
+      !legalResearchWorkflow &&
+      requiresWebSearch(routedSkillPrompt)
     const primaryLegalDatabaseEvidenceReady = legalResearchWorkflow &&
       hasUsablePrimaryLegalDatabaseEvidence(healed.items, turnId)
     const legalResearchSynthesisReady = primaryLegalDatabaseEvidenceReady &&
@@ -2451,7 +2487,7 @@ export class AgentLoop {
     if (deferDocumentForImaRecovery) {
       this.imaRecoveryPasses.set(turnId, imaRecoveryPassCount + 1)
     }
-    const bareResearchTopic = !isLearningIterationThread && isBareResearchTopicPrompt(
+    const bareResearchTopic = !webSearchRequired && !isLearningIterationThread && isBareResearchTopicPrompt(
       latestUserMessageText(healed.items, turnId) || turn?.prompt || ''
     )
     const turnBudgetWrapUp = this.armTurnBudgetWrapUp(turnId)
@@ -2728,6 +2764,71 @@ export class AgentLoop {
       // loop step: the dedicated automatic-plan instruction below already has
       // the fresh state, so no extra loop iteration or model call is needed.
       await this.syncAutomaticTaskPlan(threadId, turnId, automaticPlan)
+    }
+
+    // Freshness is a correctness prerequisite, not an advisory quality gate.
+    // Dispatch search in the runtime so completion never depends on a provider
+    // honoring tool_choice (or on the model remembering to emit tool_use after
+    // saying "I'll search"). The normal tool-call/result history is persisted,
+    // then the next loop step asks the model to synthesize the retrieved facts.
+    if (webSearchRequired && !factProgress.webSearchSatisfied) {
+      const webSearchAvailable = toolSpecs.some((tool) => tool.name === 'web_search')
+      if (!webSearchAvailable) {
+        throw new Error('This current-information request requires web_search, but the tool is unavailable.')
+      }
+      if (factProgress.webSearchAttempts >= workflowAttemptLimit('evidence')) {
+        throw new Error('web_search did not return usable results after the allowed attempts.')
+      }
+      const callId = this.opts.ids.next('call_fresh_web_search')
+      const provider = toolProviderMetadata.get('web_search')
+      const toolKind = toolKinds.get('web_search')
+      const searchArguments = { query: routedSkillPrompt, limit: 8 }
+      const call: ToolCallLike = {
+        callId,
+        toolName: 'web_search',
+        ...(provider?.providerId ? { providerId: provider.providerId } : {}),
+        toolKind,
+        arguments: searchArguments
+      }
+      const itemId = `item_tool_${turnId}_${callId}`
+      await this.opts.turns.applyItem(
+        threadId,
+        makeToolCallItem({
+          id: itemId,
+          turnId,
+          threadId,
+          callId,
+          toolName: 'web_search',
+          toolKind,
+          arguments: searchArguments,
+          summary: 'Runtime-prefetched current web information before answer synthesis.'
+        })
+      )
+      await this.opts.events.record({
+        kind: 'tool_call_ready',
+        threadId,
+        turnId,
+        itemId,
+        callId,
+        toolName: 'web_search',
+        readyCount: 1
+      })
+      const dispatched = await this.dispatchToolCalls({
+        calls: [call],
+        threadId,
+        turnId,
+        workspace: thread?.workspace ?? '',
+        threadMode: effectiveMode,
+        activePlanContext,
+        modelCapabilities,
+        activeSkillIds: skillResolution.activeSkillIds,
+        allowedToolNames,
+        toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
+        approvalPolicy,
+        signal
+      })
+      if (dispatched === 'aborted') return 'aborted'
+      return 'continue'
     }
 
     if (caseResearchRequiredToolName) {
@@ -3050,7 +3151,7 @@ export class AgentLoop {
         )
       : turnBudgetWrapUp
         ? turnBudgetCompletionToolSpecs(visibleScopedToolSpecs)
-        : bareResearchTopic || documentMutationSatisfied || deliveryAttemptsExhausted
+        : documentMutationSatisfied || deliveryAttemptsExhausted
           ? []
           : visibleScopedToolSpecs
     const officeWorkflowInstruction = specializedPresentationPending
@@ -3759,9 +3860,12 @@ export class AgentLoop {
         stopReason === 'stop' &&
         !textAccumulator.value.trim() &&
         reasoningAccumulator.value.trim() &&
-        (this.reasoningOnlyContinuations.get(turnId) ?? 0) < 1
+        (this.reasoningOnlyContinuations.get(turnId) ?? 0) < MAX_REASONING_ONLY_CONTINUATIONS
       ) {
-        this.reasoningOnlyContinuations.set(turnId, 1)
+        this.reasoningOnlyContinuations.set(
+          turnId,
+          (this.reasoningOnlyContinuations.get(turnId) ?? 0) + 1
+        )
         return 'continue'
       }
       if (stopReason === 'stop' && activeGoalInstruction && stepIndex < MAX_GOAL_NO_TOOL_CONTINUATIONS) {
@@ -3786,18 +3890,40 @@ export class AgentLoop {
           return 'continue'
         }
       }
-      const announcedWork = textAccumulator.value.trim() || reasoningAccumulator.value.trim()
+      if (
+        stopReason === 'stop' &&
+        !textAccumulator.value.trim() &&
+        reasoningAccumulator.value.trim() &&
+        (this.reasoningOnlyContinuations.get(turnId) ?? 0) >= MAX_REASONING_ONLY_CONTINUATIONS
+      ) {
+        throw new Error('模型连续多次只返回内部思考，没有生成可见答案。')
+      }
+      const announcedWork = [reasoningAccumulator.value, textAccumulator.value]
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .join('\n')
       if (
         stopReason === 'stop' &&
         request.tools.length > 0 &&
         assistantAnnouncesPendingToolWork(announcedWork) &&
-        (this.pendingWorkContinuations.get(turnId) ?? 0) < 1
+        (this.pendingWorkContinuations.get(turnId) ?? 0) < MAX_PENDING_WORK_CONTINUATIONS
       ) {
         // A response that says "I will/next/first do X" is not a completed
         // task. Keep the turn alive so the following model step can issue the
-        // tool call it just announced.
-        this.pendingWorkContinuations.set(turnId, 1)
+        // tool call it just announced. DeepSeek 模型偶尔首轮生成 reasoning
+        // 但不生成 tool_use，续 2 次提高生成工具调用的成功率。
+        this.pendingWorkContinuations.set(
+          turnId,
+          (this.pendingWorkContinuations.get(turnId) ?? 0) + 1
+        )
         return 'continue'
+      }
+      if (
+        stopReason === 'stop' &&
+        assistantAnnouncesPendingToolWork(announcedWork) &&
+        (this.pendingWorkContinuations.get(turnId) ?? 0) >= MAX_PENDING_WORK_CONTINUATIONS
+      ) {
+        throw new Error('Model repeatedly announced tool work without executing it.')
       }
       if (
         automaticPlan?.genericTextCompletion &&

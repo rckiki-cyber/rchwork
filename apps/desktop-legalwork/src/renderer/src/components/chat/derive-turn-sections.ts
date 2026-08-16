@@ -27,6 +27,15 @@ type DeriveTurnSectionsInput = {
   workspaceRoot: string
 }
 
+function isSubstantiveAssistantContent(text: string): boolean {
+  const value = text.trim()
+  if (value.length >= 240) return true
+  if (value.length >= 120 && /^#{1,6}\s+\S/m.test(value)) return true
+  if (value.length >= 120 && /^\s*\|.+\|\s*$/m.test(value) && /^\s*\|?\s*:?-{3,}/m.test(value)) return true
+  const listRows = value.match(/^\s*(?:[-*+] |\d+[.)]\s+)/gm)?.length ?? 0
+  return value.length >= 160 && listRows >= 3
+}
+
 /**
  * Pure derivation of a turn's three view slices:
  *  - `processBlocks`: chronological reasoning/tool/compaction/approval
@@ -64,8 +73,15 @@ export function deriveTurnSections({
         latestAssistantContentBlock = contentBlock
         if (isProcessing) {
           processBlocks.push(contentBlock)
-        } else if (index >= trailingAssistantContentStart) {
+        } else if (
+          index >= trailingAssistantContentStart ||
+          isSubstantiveAssistantContent(contentBlock.text)
+        ) {
           assistantContentBlocks.push(contentBlock)
+        } else {
+          // Short progress prose is still visible data. Keep it in the
+          // collapsible process timeline instead of silently dropping it.
+          processBlocks.push(contentBlock)
         }
       }
       continue
@@ -77,6 +93,10 @@ export function deriveTurnSections({
 
   if (!isProcessing && assistantContentBlocks.length === 0 && latestAssistantContentBlock) {
     assistantContentBlocks.push(latestAssistantContentBlock)
+    const processIndex = processBlocks.findIndex(
+      (block) => block.kind === 'assistant' && block.id === latestAssistantContentBlock.id
+    )
+    if (processIndex >= 0) processBlocks.splice(processIndex, 1)
   }
 
   if (liveProcessText.trim()) {

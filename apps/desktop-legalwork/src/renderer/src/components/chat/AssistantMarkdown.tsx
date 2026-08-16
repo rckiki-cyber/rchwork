@@ -1,16 +1,19 @@
 import { Component, lazy, Suspense, type ErrorInfo, type ReactElement, type ReactNode } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { remarkRepairInlineEmphasis } from '../../lib/remark-repair-inline-emphasis'
 
 const LazyStreamdownAssistant = lazy(() =>
   import('./StreamdownAssistant').then((module) => ({ default: module.StreamdownAssistant }))
 )
 
-function PlainTextFallback({ text, className }: { text: string; className?: string }): ReactElement {
+function MarkdownFallback({ text, className }: { text: string; className?: string }): ReactElement {
   return (
     <div
-      className={[className, 'whitespace-pre-wrap break-words'].filter(Boolean).join(' ')}
+      className={[className, 'break-words'].filter(Boolean).join(' ')}
       data-assistant-markdown-fallback="true"
     >
-      {text}
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkRepairInlineEmphasis]}>{text}</ReactMarkdown>
     </div>
   )
 }
@@ -43,7 +46,7 @@ class AssistantMarkdownErrorBoundary extends Component<BoundaryProps, BoundarySt
 
   override render(): ReactNode {
     if (this.state.failed) {
-      return <PlainTextFallback text={this.props.text} className={this.props.className} />
+      return <MarkdownFallback text={this.props.text} className={this.props.className} />
     }
     return this.props.children
   }
@@ -60,7 +63,7 @@ export function AssistantMarkdown({
 }): ReactElement {
   return (
     <AssistantMarkdownErrorBoundary text={text} className={className}>
-      <Suspense fallback={<PlainTextFallback text={text} className={className} />}>
+      <Suspense fallback={<MarkdownFallback text={text} className={className} />}>
         <LazyStreamdownAssistant text={text} streaming={streaming} className={className} />
       </Suspense>
     </AssistantMarkdownErrorBoundary>

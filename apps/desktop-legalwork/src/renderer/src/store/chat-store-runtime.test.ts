@@ -108,6 +108,54 @@ describe('thread event sink binding', () => {
 })
 
 describe('thread event sink runtime errors', () => {
+  it('settles a terminal turn failure inline without showing the global warning banner', () => {
+    const { getState, set, get } = makeSinkHarness({
+      activeThreadId: 'thread-current',
+      busy: true,
+      error: 'old warning',
+      runtimeErrorDetail: 'old detail',
+      blocks: [{ kind: 'user', id: 'user-current', text: '公考具体考纲' }]
+    })
+    const sink = buildThreadEventSink(set, get, { threadId: 'thread-current' })
+    const error = new Error('模型连续多次只返回内部思考，没有生成可见答案。') as Error & {
+      terminalTurnFailure: true
+    }
+    error.terminalTurnFailure = true
+
+    sink.onError(error)
+
+    const state = getState()
+    expect(state.busy).toBe(false)
+    expect(state.currentTurnId).toBeNull()
+    expect(state.currentTurnUserId).toBeNull()
+    expect(state.error).toBeNull()
+    expect(state.runtimeErrorDetail).toBeNull()
+    expect(state.blocks.at(-1)).toMatchObject({
+      kind: 'system',
+      text: '模型连续多次只返回内部思考，没有生成可见答案。',
+      severity: 'error'
+    })
+  })
+
+  it('clears stale warning details when a new turn starts', () => {
+    const { getState, set, get } = makeSinkHarness({
+      activeThreadId: 'thread-current',
+      error: 'old warning',
+      runtimeErrorDetail: 'old detail'
+    })
+    const sink = buildThreadEventSink(set, get, { threadId: 'thread-current' })
+
+    sink.onUserMessage({
+      itemId: 'user-next',
+      text: '继续检索',
+      createdAt: new Date().toISOString(),
+      turnId: 'turn-next'
+    })
+
+    expect(getState().error).toBeNull()
+    expect(getState().runtimeErrorDetail).toBeNull()
+  })
+
   it('adds runtime error events to the timeline with details', () => {
     const { getState, set, get } = makeSinkHarness({
       activeThreadId: 'thread-current',

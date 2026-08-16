@@ -40,6 +40,86 @@ describe('deriveTurnSections', () => {
     expect(result.processBlocks.map((block) => block.kind)).toEqual(['reasoning'])
   })
 
+  it('keeps the full answer when reasoning and a short wrap-up were persisted after it', () => {
+    const result = sections([
+      {
+        kind: 'tool',
+        id: 'tool_search',
+        summary: 'web_search',
+        status: 'success',
+        toolKind: 'tool_call'
+      },
+      { kind: 'reasoning', id: 'reasoning-main', text: '现在整理完整行情。' },
+      { kind: 'assistant', id: 'full-answer', text: '这是包含价格表、来源和购买建议的完整正文。' },
+      { kind: 'reasoning', id: 'reasoning-wrap', text: '回答已经完成。' },
+      { kind: 'assistant', id: 'wrap-up', text: '以上即行情汇总。' }
+    ])
+
+    expect(result.assistantContentBlocks.map((block) => block.id)).toEqual([
+      'full-answer',
+      'wrap-up'
+    ])
+    expect(result.assistantContentBlocks.map((block) => block.text).join('\n')).toContain('完整正文')
+  })
+
+  it('does not discard a substantial report written before a later validation tool', () => {
+    const fullReport = [
+      '## 完整法律调研报告',
+      '',
+      '这是已经形成的完整分析正文，包含争议焦点、现行规范、裁判观点、论证过程和结论。'.repeat(8),
+      '',
+      '- 结论一：正文必须保留。',
+      '- 结论二：后续校验不应覆盖正文。',
+      '- 结论三：最终收尾只能作为补充。'
+    ].join('\n')
+    const result = sections([
+      {
+        kind: 'tool',
+        id: 'tool_search',
+        summary: 'web_search',
+        status: 'success',
+        toolKind: 'tool_call'
+      },
+      { kind: 'assistant', id: 'full-report', text: fullReport },
+      { kind: 'reasoning', id: 'reasoning-validate', text: '再核对一个来源。' },
+      {
+        kind: 'tool',
+        id: 'tool_validate',
+        summary: 'web_fetch',
+        status: 'success',
+        toolKind: 'tool_call'
+      },
+      { kind: 'assistant', id: 'wrap-up', text: '报告已交付。' }
+    ])
+
+    expect(result.assistantContentBlocks.map((block) => block.id)).toEqual([
+      'full-report',
+      'wrap-up'
+    ])
+    expect(result.processBlocks.map((block) => block.id)).toEqual([
+      'tool_search',
+      'reasoning-validate',
+      'tool_validate'
+    ])
+  })
+
+  it('keeps short progress prose in the process timeline instead of dropping it', () => {
+    const result = sections([
+      { kind: 'assistant', id: 'progress', text: '我先核对一下来源。' },
+      {
+        kind: 'tool',
+        id: 'tool_search',
+        summary: 'web_search',
+        status: 'success',
+        toolKind: 'tool_call'
+      },
+      { kind: 'assistant', id: 'answer', text: '这是最终回答。' }
+    ])
+
+    expect(result.assistantContentBlocks.map((block) => block.id)).toEqual(['answer'])
+    expect(result.processBlocks.map((block) => block.id)).toEqual(['progress', 'tool_search'])
+  })
+
   it('uses the last assistant text as final content without duplicating it in process work', () => {
     const result = sections([
       { kind: 'assistant', id: 'preface', text: '我先检查一下。' },

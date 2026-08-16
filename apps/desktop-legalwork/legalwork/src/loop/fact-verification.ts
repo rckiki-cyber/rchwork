@@ -24,6 +24,65 @@ export type FactVerificationProgress = {
   finalizedClaimCount: number
 }
 
+/**
+ * Current-policy/news questions cannot be answered safely from model memory.
+ * Keep this separate from the optional broad fact-audit quality gate: freshness
+ * is a correctness prerequisite, while a full multi-source ledger is an
+ * optional delivery-quality workflow.
+ */
+export function requiresFreshWebSearch(prompt: string): boolean {
+  if (prompt.includes('<inline_document_response>')) return false
+  const compact = prompt.replace(/\s+/g, '')
+  if (!compact) return false
+
+  const freshnessSignal = /(?:最新|当前|现行|截至|近期|最近|今年|本月|今日|今天|刚刚|新出台|新发布|新修订)/.test(compact)
+  const changingSubject = /(?:政策|规定|规则|要求|标准|资格|考试|公考|法考|考纲|大纲|法规|法律|司法解释|通知|公告|动态|消息|新闻|案例|判决|裁判)/.test(compact)
+  const firstCaseSignal = /(?:首例|第一案)/.test(compact) &&
+    /(?:法典|法律|法规|法院|判决|裁判|案件|案)/.test(compact)
+
+  return (freshnessSignal && changingSubject) || firstCaseSignal
+}
+
+/**
+ * Decide whether answering the user's request inherently requires a web
+ * retrieval step. This is intentionally broader than freshness detection:
+ * explicit search instructions and inherently changing public information
+ * must not depend on the model voluntarily emitting a tool call.
+ *
+ * Source-specific requests are excluded so local knowledge, attachments and
+ * configured legal databases keep their dedicated routing semantics.
+ */
+export function requiresWebSearch(prompt: string): boolean {
+  if (prompt.includes('<inline_document_response>')) return false
+  const compact = prompt.replace(/\s+/g, '')
+  if (!compact) return false
+
+  // Renderer-grounded knowledge answers already contain retrieved evidence.
+  // Do not mistake words such as “检索到” inside that envelope for a new web
+  // search request.
+  if (/(?:RAG检索上下文|从知识库中检索到的相关内容|<knowledge_context>)/i.test(compact)) return false
+
+  const optsOut = /(?:不要|无需|不用|禁止)(?:联网|上网|搜索|检索|查询|查找|使用网页|使用网络)|(?:仅|只)(?:根据|依据|使用)(?:已有内容|当前内容|附件|上传文件|本地文件)/.test(compact)
+  if (optsOut) return false
+
+  const dedicatedSource = /(?:本地知识库|本地资料库|上传(?:的)?(?:附件|文件)|当前附件|IMA|北大法宝|元典)(?:中|内|里)?(?:查|搜|检索|查询|查找|寻找|获取|研究)/i.test(compact) ||
+    /(?:查|搜|检索|查询|查找|寻找|获取|研究).{0,16}(?:本地知识库|本地资料库|上传(?:的)?(?:附件|文件)|当前附件|IMA|北大法宝|元典)/i.test(compact)
+  if (dedicatedSource) return false
+
+  if (requiresFreshWebSearch(prompt)) return true
+
+  const explicitWebSearch = /(?:联网|上网|网上|网页|网络|官网).{0,16}(?:查|搜|检索|搜索|查询|查找|寻找|获取)|(?:查|搜|检索|搜索|查询|查找|寻找|获取).{0,16}(?:联网|上网|网上|网页|网络|官网)/.test(compact)
+  if (explicitWebSearch) return true
+
+  const explicitGenericSearch = /(?:请|帮我|替我|给我|先|去|需要|麻烦)?(?:查一下|搜一下|找一下|检索一下|查询一下|搜索一下|查找一下|检索|搜索|查找|查询).{2,}/.test(compact)
+  if (explicitGenericSearch) return true
+
+  // Some public facts are defined by a periodically replaced official
+  // document. Users reasonably expect the current version even when they omit
+  // the word "latest".
+  return /(?:法考|公考|国考|省考|公务员).{0,12}(?:政策|公告|通知|考纲|大纲|报名条件|报名时间|考试时间|考察要素|考查要素|考察内容|考查内容)|(?:政策|公告|通知|考纲|大纲|报名条件|报名时间|考试时间|考察要素|考查要素|考察内容|考查内容).{0,12}(?:法考|公考|国考|省考|公务员)/.test(compact)
+}
+
 export function factVerificationContract(
   prompt: string,
   options?: { primaryLegalSource?: 'pkulaw' | 'yuandian' }

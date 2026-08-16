@@ -133,7 +133,7 @@ export function buildWebToolProviders(
 function createFetchTool(config: WebCapabilityConfig, provider: WebProvider) {
   return LocalToolHost.defineTool({
     name: 'web_fetch',
-    description: 'Fetch an HTTP(S) URL and return its extracted text. Use this ONLY to read a URL the user explicitly provided or explicitly asked you to open. Do NOT use it to "verify" or follow up on `web_search` results — the search snippets already carry the usable content, and fetching every result wastes context. Rely on `web_search` snippets for general lookups.',
+    description: 'Fetch an HTTP(S) URL and return its extracted text. Use it to read pages when you need the full body text — e.g. a specific article, report, official document, or legal text — including following up on web_search results when the snippet is only a title and you need the actual content (court judgment details, regulation text, news article body). Do NOT fetch every search result indiscriminately; fetch only the specific page(s) that matter. Do NOT use it on local files (use read instead).',
     inputSchema: {
       type: 'object',
       properties: {
