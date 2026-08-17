@@ -110,6 +110,8 @@ describe('SkillRuntime', () => {
     })
     expect(resolution.activeSkillIds).toEqual([])
     expect(runtime.load('capital-markets-prepare-ipo-risk-factors')?.instructions).toContain('IPO Risk Factors')
+    expect(runtime.load('plugin:capital-markets-prepare-ipo-risk-factors')?.instructions)
+      .toContain('IPO Risk Factors')
   })
 
   it('bridges Chinese legal prompts to English skill metadata through search', async () => {
@@ -141,5 +143,109 @@ describe('SkillRuntime', () => {
       reason: 'keywords'
     })
     expect(resolution.activeSkillIds).toEqual([])
+  })
+
+  it('auto-activates native skills while keeping supplemental skills as opt-in fallbacks', async () => {
+    const nativeRoot = join(tempRoot, 'native')
+    const supplementalRoot = join(tempRoot, 'supplemental')
+    const nativeSkill = join(nativeRoot, 'native-contract-review')
+    const supplementalSkill = join(supplementalRoot, 'extra-contract-review')
+    await mkdir(nativeSkill, { recursive: true })
+    await mkdir(supplementalSkill, { recursive: true })
+    await writeFile(join(nativeSkill, 'SKILL.md'), [
+      '---',
+      'name: native-contract-review',
+      'description: Review contract agreement clauses and legal risks.',
+      '---',
+      '# Native contract review'
+    ].join('\n'), 'utf8')
+    await writeFile(join(nativeSkill, 'skill.json'), JSON.stringify({
+      id: 'native-contract-review',
+      name: 'native-contract-review',
+      description: 'Review contract agreement clauses and legal risks.',
+      triggers: { promptPatterns: ['contract agreement'] }
+    }), 'utf8')
+    await writeFile(join(supplementalSkill, 'SKILL.md'), [
+      '---',
+      'name: extra-contract-review',
+      'description: Review contract agreement clauses with an extra workflow.',
+      '---',
+      '# Supplemental contract review'
+    ].join('\n'), 'utf8')
+
+    const runtime = await SkillRuntime.create({
+      enabled: true,
+      roots: [supplementalRoot, nativeRoot],
+      nativeRoots: [nativeRoot],
+      legacySkillMd: true
+    })
+    const prompt = 'Review this contract agreement and identify clause risks.'
+
+    expect(runtime.resolveTurn({ prompt, workspace: tempRoot }).activeSkillIds)
+      .toEqual(['native-contract-review'])
+    expect(runtime.search({ query: prompt })[0]).toMatchObject({
+      id: 'native-contract-review',
+      source: 'native'
+    })
+    expect(runtime.load('extra-contract-review')).toMatchObject({ source: 'supplemental' })
+  })
+
+  it('keeps the Legalwork native implementation when a supplemental skill has the same id', async () => {
+    const nativeRoot = join(tempRoot, 'native')
+    const supplementalRoot = join(tempRoot, 'supplemental')
+    for (const [root, marker] of [
+      [nativeRoot, 'LEGALWORK NATIVE IMPLEMENTATION'],
+      [supplementalRoot, 'USER SUPPLEMENTAL IMPLEMENTATION']
+    ] as const) {
+      const skillDir = join(root, 'contract-review')
+      await mkdir(skillDir, { recursive: true })
+      await writeFile(join(skillDir, 'SKILL.md'), [
+        '---',
+        'name: contract-review',
+        'description: Review contract agreement clauses.',
+        '---',
+        `# ${marker}`
+      ].join('\n'), 'utf8')
+    }
+
+    const runtime = await SkillRuntime.create({
+      enabled: true,
+      // Supplemental deliberately comes first to verify source priority is not
+      // an accidental consequence of configured root order.
+      roots: [supplementalRoot, nativeRoot],
+      nativeRoots: [nativeRoot],
+      legacySkillMd: true
+    })
+
+    expect(runtime.load('contract-review')).toMatchObject({ source: 'native' })
+    expect(runtime.load('contract-review')?.instructions).toContain('LEGALWORK NATIVE IMPLEMENTATION')
+    expect(runtime.load('contract-review')?.instructions).not.toContain('USER SUPPLEMENTAL IMPLEMENTATION')
+    expect(runtime.diagnostics().validationErrors).toContainEqual(expect.objectContaining({
+      root: join(supplementalRoot, 'contract-review'),
+      message: expect.stringContaining('Legalwork native skill takes priority')
+    }))
+  })
+
+  it('still allows an explicitly named supplemental skill for a confirmed capability gap', async () => {
+    const supplementalRoot = join(tempRoot, 'supplemental')
+    const skillDir = join(supplementalRoot, 'legacy-word-annotations')
+    await mkdir(skillDir, { recursive: true })
+    await writeFile(join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: legacy-word-annotations',
+      'description: Adds legacy Word annotations unsupported by the native path.',
+      '---',
+      '# Legacy Word annotations'
+    ].join('\n'), 'utf8')
+    const runtime = await SkillRuntime.create({
+      enabled: true,
+      roots: [supplementalRoot],
+      legacySkillMd: true
+    })
+
+    expect(runtime.resolveTurn({
+      prompt: '原生路径缺少旧版批注支持，请使用 @legacy-word-annotations 补齐。',
+      workspace: tempRoot
+    }).activeSkillIds).toEqual(['legacy-word-annotations'])
   })
 })

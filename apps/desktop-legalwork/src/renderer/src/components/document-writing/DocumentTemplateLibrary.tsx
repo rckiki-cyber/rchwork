@@ -108,15 +108,15 @@ export function DocumentTemplateLibrary({
             { value: 'all', label: t('documentWritingAll') },
             {
               value: 'litigation',
-              label: t('documentWritingLitigation')
+              label: t('documentWritingLitigationTab')
             },
             {
               value: 'non-litigation',
-              label: t('documentWritingNonLitigation')
+              label: t('documentWritingNonLitigationTab')
             },
             {
               value: 'custom',
-              label: t('documentWritingMyTemplates')
+              label: t('documentWritingMyTemplatesTab')
             }
           ]}
           onChange={onCategoryChange}
@@ -148,7 +148,7 @@ export function DocumentTemplateLibrary({
             </p>
           </div>
         ) : (
-          <div data-control-hover-root className="grid grid-cols-2 gap-1">
+          <div data-control-hover-root className="grid grid-cols-2 gap-2">
             {filteredTemplates.map((tmpl) => {
               const isCustom = tmpl.category === 'custom' || '_isCustom' in tmpl
               return (
@@ -158,33 +158,42 @@ export function DocumentTemplateLibrary({
                     data-control-active={activeTemplateId === tmpl.id ? 'true' : undefined}
                     onClick={() => onSelectTemplate(tmpl)}
                     title={tmpl.name}
-                    className={`ds-no-drag flex h-9 w-full min-w-0 items-center gap-1.5 rounded-[8px] px-2 text-left transition duration-150 ${
+                    className={`ds-no-drag flex min-h-[84px] w-full flex-col items-start justify-between rounded-[14px] px-3 py-3 text-left transition duration-150 ${
                       activeTemplateId === tmpl.id
-                        ? 'bg-[var(--ds-sidebar-row-active)] text-[var(--ds-ink)] shadow-[inset_0_0_0_1px_var(--ds-sidebar-row-ring)]'
-                        : 'text-[var(--ds-muted)] hover:bg-[var(--ds-sidebar-row-hover)] hover:text-[var(--ds-ink)]'
+                        ? 'bg-[var(--ds-sidebar-field-focus)] shadow-[0_8px_22px_rgba(65,83,112,0.08),inset_0_0_0_1px_color-mix(in_srgb,var(--ds-accent)_24%,var(--ds-sidebar-row-ring)),inset_0_1px_0_rgba(255,255,255,0.82)] dark:bg-white/[0.09] dark:shadow-[0_10px_24px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(51,156,255,0.22)]'
+                        : 'bg-[color-mix(in_srgb,var(--ds-sidebar-field-bg)_60%,transparent)] shadow-[inset_0_0_0_1px_var(--ds-sidebar-row-ring)] hover:-translate-y-0.5 hover:bg-[var(--ds-sidebar-field-focus)] hover:shadow-[0_8px_20px_rgba(65,83,112,0.07),inset_0_0_0_1px_var(--ds-sidebar-row-ring)] dark:hover:bg-white/[0.07]'
                     }`}
                   >
-                    <span className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[6px] ${
+                    <span className={`flex h-8 w-8 items-center justify-center rounded-[10px] ${
                       activeTemplateId === tmpl.id
                         ? 'bg-[var(--ds-accent-soft)] text-[var(--ds-accent)]'
                         : 'bg-[var(--ds-sidebar-field-focus)] text-[var(--ds-muted)]'
                     }`}>
                       {categoryIcons[tmpl.category] ?? <FileText className="h-4 w-4" strokeWidth={1.75} />}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-[var(--ds-ink)]">
+                    <span className="mt-2 line-clamp-2 text-[12.5px] font-medium leading-[1.35] text-[var(--ds-ink)]">
                       {tmpl.name}
                     </span>
-                    {isCustom && tmpl.learningStatus === 'analyzing' ? (
-                      <span className="inline-flex shrink-0 items-center gap-1 text-[10.5px] text-amber-500">
+                    {isCustom && tmpl.learningStatus === 'analyzing' && (
+                      <span className="mt-1 inline-flex items-center gap-1 text-[9.5px] text-amber-500">
                         <Loader2 className="h-2.5 w-2.5 animate-spin" strokeWidth={2.2} />
-                        分析中
+                        AI 分析中
                       </span>
-                    ) : null}
-                    {isCustom && tmpl.learningStatus === 'failed' ? (
-                      <span className="shrink-0 text-[10.5px] text-red-400" title={tmpl.learningError || 'AI 分析失败，可重试'}>
-                        失败
+                    )}
+                    {isCustom && tmpl.learningStatus === 'failed' && (
+                      <span
+                        className="mt-1 inline-flex items-center gap-1 text-[9.5px] text-red-400"
+                        title={tmpl.learningError || 'AI 分析失败，可重试'}
+                      >
+                        AI 分析失败
                       </span>
-                    ) : null}
+                    )}
+                    {isCustom && (!tmpl.learningStatus || tmpl.learningStatus === 'idle' || tmpl.learningStatus === 'done') && (
+                      <span className="mt-1 inline-flex items-center gap-1 text-[9.5px] text-[var(--ds-accent)]">
+                        <User className="h-2.5 w-2.5" strokeWidth={2.2} />
+                        自定义
+                      </span>
+                    )}
                   </button>
                   {isCustom && tmpl.learningStatus === 'failed' && onRetryUserTemplate && (
                     <button
@@ -194,7 +203,7 @@ export function DocumentTemplateLibrary({
                         event.stopPropagation()
                         onRetryUserTemplate(tmpl.id)
                       }}
-                      className="absolute right-9 top-1/2 -translate-y-1/2 rounded-[7px] p-1 text-red-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                      className="absolute bottom-2 right-2 rounded-[7px] p-1 text-red-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
                       title={tmpl.learningError ? `重新分析：${tmpl.learningError}` : '重新分析模板'}
                       aria-label={`重新分析 ${tmpl.name}`}
                     >
@@ -210,7 +219,7 @@ export function DocumentTemplateLibrary({
                         onDeleteUserTemplate(tmpl.id)
                       }}
                       disabled={deletingTemplateId === tmpl.id}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-[7px] p-1 text-[var(--ds-faint)] opacity-0 transition hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-red-900/20"
+                      className="absolute right-2 top-2 rounded-[7px] p-1 text-[var(--ds-faint)] opacity-0 transition hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-red-900/20"
                       title={t('documentWritingDeleteTemplate')}
                     >
                       {deletingTemplateId === tmpl.id ? (

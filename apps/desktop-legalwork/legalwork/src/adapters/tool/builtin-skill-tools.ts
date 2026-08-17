@@ -55,7 +55,7 @@ export function createSearchSkillsTool(options: SkillToolsOptions = {}): LocalTo
   return LocalToolHost.defineTool({
     name: 'search_skills',
     description:
-      'Search available LegalWork skills by task description before choosing a workflow. Returns concise candidates only; use load_skill to read one selected skill.',
+      'Search the skill catalog only after checking LegalWork native tools, workflows, and packaged skills and identifying a capability gap. Native skills are preferred; user/project/plugin skills are supplemental fallbacks. Returns concise candidates only; use load_skill to read one selected skill.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -87,6 +87,7 @@ export function createSearchSkillsTool(options: SkillToolsOptions = {}): LocalTo
               id: skill.id,
               name: skill.name,
               ...(skill.description ? { description: skill.description } : {}),
+              source: skill.source,
               legacy: skill.legacy,
               score: skill.score,
               reason: skill.reason,
@@ -103,7 +104,7 @@ export function createLoadSkillTool(options: SkillToolsOptions = {}): LocalTool 
   return LocalToolHost.defineTool({
     name: 'load_skill',
     description:
-      'Load the full instructions for exactly one selected LegalWork skill. Use after search_skills or when the user explicitly names a skill.',
+      'Load exactly one selected skill. Prefer a LegalWork-native skill; load a supplemental user/project/plugin skill only for a concrete gap the native path cannot satisfy or when the user explicitly requires that named skill.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -127,13 +128,25 @@ export function createLoadSkillTool(options: SkillToolsOptions = {}): LocalTool 
         }
         const skill = options.skillRuntime.load(skillId)
         if (!skill) {
-          return { output: { error: `Skill not found: ${skillId}` }, isError: true }
+          const suggestions = options.skillRuntime.search({ query: skillId, limit: 5 })
+            .map((candidate) => ({ id: candidate.id, name: candidate.name }))
+          return {
+            output: {
+              found: false,
+              requestedSkillId: skillId,
+              message: suggestions.length > 0
+                ? 'The requested skill is not installed under that exact id. Use one of the returned ids or continue without it.'
+                : 'The requested skill is not installed. Continue with the currently advertised tools instead of retrying the same id.',
+              suggestions
+            }
+          }
         }
         return {
           output: {
             id: skill.id,
             name: skill.name,
             ...(skill.description ? { description: skill.description } : {}),
+            source: skill.source,
             legacy: skill.legacy,
             allowedTools: skill.allowedTools,
             instructions: skill.instructions

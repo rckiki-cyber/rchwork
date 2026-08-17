@@ -187,6 +187,9 @@ export function buildDataCompliancePythonEnv(
   ].filter(Boolean)
   return {
     ...env,
+    ...(env.LEGALWORK_BUNDLED_COMPLIANCE_PYTHONHOME
+      ? { PYTHONHOME: env.LEGALWORK_BUNDLED_COMPLIANCE_PYTHONHOME }
+      : {}),
     [pathKey]: entries.join(delimiter)
   }
 }
@@ -366,19 +369,19 @@ export class DataComplianceTaskService {
       }
     }
 
-    const missing = await this.findMissingPackages(CORE_REQUIRED_PYTHON_PACKAGES, this.pythonBin)
-    if (missing.length > 0) {
-      return {
-        ok: false,
-        reason: `缺少 Python 依赖包: ${missing.join(', ')}`,
-        fix: `请在数据合规 venv 中运行: ${this.pythonBin} -m pip install -r ${join(this.webRoot, 'requirements.txt')}`
-      }
-    }
-
     return { ok: true, python: this.pythonBin }
   }
 
   private async ensurePythonEnvironment(): Promise<void> {
+    if (
+      process.env.LEGALWORK_BUNDLED_COMPLIANCE_RUNTIME === '1' &&
+      this.pythonBin === process.env.COMPLIANCEAI_PYTHON &&
+      this.pythonBin &&
+      this.canRunPython(this.pythonBin)
+    ) {
+      return
+    }
+
     // Paddle 2.x/3.x 混装残留（旧 paddle 孤儿文件，pip 无法清理）会让
     // import paddle 持续失败，表现为"缺少 paddle/paddleocr"。自动重建一次
     // venv 即可修复，用户无需手动删除目录。
@@ -403,20 +406,6 @@ export class DataComplianceTaskService {
 
       if (!existsSync(requirementsPath)) return
       if (existsSync(markerPath)) {
-        // marker 可能来自旧版安装（残留 paddle 2.x 孤儿文件）。快速探测 paddle：
-        // 若为混装则自动重建一次，避免"标记已装好但实际损坏"的假阳性。
-        const probe = await this.runCommand(venvPython, ['-c', 'import paddle'], {
-          timeoutMs: PYTHON_IMPORT_TIMEOUT_MS
-        })
-        if (probe.exitCode === 0) return
-        const probeText = `${probe.stdout}\n${probe.stderr}`
-        if (/cannot import name [\s\S]{0,120}bwd_graph_utils|capture_backward_subgraph_guard/.test(probeText)) {
-          if (rebuildCount === 0) {
-            rebuildCount += 1
-            await rm(this.venvDir, { recursive: true, force: true })
-            continue
-          }
-        }
         return
       }
 

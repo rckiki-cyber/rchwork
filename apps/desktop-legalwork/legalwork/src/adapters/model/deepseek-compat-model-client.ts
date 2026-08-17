@@ -355,6 +355,11 @@ export class DeepseekCompatModelClient implements ModelClient {
       reasoning: this.modelReasoningFor(model),
       maxReasoningEffort: isDeepSeekHost(this.config.baseUrl) ? 'max' : 'high'
     })
+    applyOfficialCompatibleProviderReasoningEffort(body, request.reasoningEffort, {
+      baseUrl: this.config.baseUrl,
+      model,
+      reasoning: this.modelReasoningFor(model)
+    })
     // The `thinking` field is a DeepSeek-specific protocol extension.
     // Relay stations / OpenAI-compat providers (one-api, new-api,
     // OpenRouter, llama.cpp, etc.) may reject or silently drop it, so we
@@ -408,7 +413,8 @@ export class DeepseekCompatModelClient implements ModelClient {
     }
     const reasoning = responsesReasoningForEffort(
       request.reasoningEffort,
-      this.modelReasoningFor(model)
+      this.modelReasoningFor(model),
+      model
     )
     if (reasoning) body.reasoning = reasoning
     const tools = normalizeToolSpecs(request.tools)
@@ -1013,6 +1019,7 @@ export class DeepseekCompatModelClient implements ModelClient {
       const response = recordValue(payload, 'response') as ResponsesApiResponse | null
       const materialized = this.materializeResponsesOutput(response ?? (payload as ResponsesApiResponse), {
         skipText: Boolean(text),
+        skipReasoning: Boolean(reasoning),
         pendingArguments,
         completedToolCalls
       }, model)
@@ -1209,6 +1216,7 @@ export class DeepseekCompatModelClient implements ModelClient {
     payload: ResponsesApiResponse,
     options: {
       skipText?: boolean
+      skipReasoning?: boolean
       pendingArguments?: Map<string, PendingToolCall>
       completedToolCalls?: Set<string>
     } = {},
@@ -1226,6 +1234,12 @@ export class DeepseekCompatModelClient implements ModelClient {
         : responsesOutputText(payload.output)
       if (outputText) {
         chunks.push({ kind: 'assistant_text_delta', text: outputText })
+      }
+    }
+    if (!options.skipReasoning) {
+      const reasoningText = responsesReasoningText(payload.output)
+      if (reasoningText) {
+        chunks.push({ kind: 'assistant_reasoning_delta', text: reasoningText })
       }
     }
     for (const item of payload.output ?? []) {
@@ -1578,9 +1592,11 @@ type NormalizedReasoningEffort = ModelReasoningCapability['defaultEffort']
 
 function responsesReasoningForEffort(
   effort: string | undefined,
-  reasoning?: ModelReasoningCapability
+  reasoning: ModelReasoningCapability | undefined,
+  model: string
 ): Record<string, unknown> | null {
   if (reasoning && reasoning.requestProtocol !== 'openai-responses') return null
+  if (!reasoning && !isOpenAiReasoningModel(model)) return null
   const resolved = reasoning
     ? resolveReasoningEffort(effort, reasoning)
     : normalizeReasoningEffortValue(effort)
@@ -1588,15 +1604,20 @@ function responsesReasoningForEffort(
   const normalized = resolved
   switch (normalized) {
     case 'low':
-      return { effort: 'low' }
+      return { effort: 'low', summary: 'detailed' }
     case 'medium':
-      return { effort: 'medium' }
+      return { effort: 'medium', summary: 'detailed' }
     case 'high':
     case 'max':
-      return { effort: 'high' }
+      return { effort: 'high', summary: 'detailed' }
     default:
       return null
   }
+}
+
+function isOpenAiReasoningModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase().split('/').pop() ?? ''
+  return /^(?:o[134](?:-|$)|gpt-5(?:[.-]|$)|codex-mini(?:-|$))/.test(normalized)
 }
 
 function buildModelEndpointUrl(baseUrl: string, endpointFormat: ModelEndpointFormat): string {
@@ -1646,6 +1667,26 @@ function responsesOutputText(output: ResponsesApiResponse['output']): string {
     }
   }
   return parts.join('')
+}
+
+function responsesReasoningText(output: ResponsesApiResponse['output']): string {
+  const parts: string[] = []
+  for (const item of output ?? []) {
+    if (recordString(item, 'type') !== 'reasoning') continue
+    const summary = item.summary
+    const content = item.content
+    const blocks = Array.isArray(summary) && summary.length > 0
+      ? summary
+      : Array.isArray(content)
+        ? content
+        : []
+    for (const block of blocks) {
+      if (!block || typeof block !== 'object') continue
+      const text = recordString(block as Record<string, unknown>, 'text')
+      if (text) parts.push(text)
+    }
+  }
+  return parts.join('\n')
 }
 
 function responseStreamCallId(
@@ -1860,6 +1901,49 @@ function applyProfileReasoningEffort(
   }
 }
 
+function applyOfficialCompatibleProviderReasoningEffort(
+  body: Record<string, unknown>,
+  effort: string | undefined,
+  options: {
+    baseUrl: string
+    model: string
+    reasoning?: ModelReasoningCapability
+  }
+): void {
+  // Explicit capability protocols remain authoritative. `none` is used by
+  // provider-discovered profiles when a model can reason but the generic
+  // capability feed cannot describe its vendor-specific request field.
+  if (options.reasoning && options.reasoning.requestProtocol !== 'none') return
+  const resolved = options.reasoning
+    ? resolveReasoningEffort(effort, options.reasoning)
+    : normalizeReasoningEffortValue(effort)
+  if (!resolved) return
+
+  if (isDashScopeCompatibleEndpoint(options.baseUrl) && isDashScopeThinkingModel(options.model)) {
+    body.enable_thinking = resolved !== 'off'
+    return
+  }
+  if (isBigModelEndpoint(options.baseUrl) && isGlmModel(options.model)) {
+    body.thinking = { type: resolved === 'off' ? 'disabled' : 'enabled' }
+    return
+  }
+  if (isVolcengineArkEndpoint(options.baseUrl) && isDoubaoModel(options.model)) {
+    body.thinking = {
+      type: resolved === 'off' ? 'disabled' : resolved === 'auto' ? 'auto' : 'enabled'
+    }
+    return
+  }
+  if (isMiniMaxEndpoint(options.baseUrl) && isMiniMaxReasoningModel(options.model)) {
+    // MiniMax otherwise embeds thinking in <think> tags inside `content`.
+    // Splitting keeps it available as structured reasoning_content for the UI
+    // and for multi-step tool-call history.
+    body.reasoning_split = true
+    if (isMiniMaxM3Model(options.model)) {
+      body.thinking = { type: resolved === 'off' ? 'disabled' : 'adaptive' }
+    }
+  }
+}
+
 function applyOpenAiChatReasoningEffort(
   body: Record<string, unknown>,
   effort: NormalizedReasoningEffort
@@ -1977,6 +2061,59 @@ function isAzureOpenAiEndpoint(baseUrl: string): boolean {
   }
 }
 
+function endpointHostname(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+function isDashScopeCompatibleEndpoint(baseUrl: string): boolean {
+  const host = endpointHostname(baseUrl)
+  return host === 'dashscope.aliyuncs.com' || host.endsWith('.dashscope.aliyuncs.com')
+}
+
+function isBigModelEndpoint(baseUrl: string): boolean {
+  const host = endpointHostname(baseUrl)
+  return host === 'open.bigmodel.cn' || host.endsWith('.bigmodel.cn')
+}
+
+function isVolcengineArkEndpoint(baseUrl: string): boolean {
+  const host = endpointHostname(baseUrl)
+  return host.endsWith('.volces.com') && host.startsWith('ark.')
+}
+
+function isMiniMaxEndpoint(baseUrl: string): boolean {
+  const host = endpointHostname(baseUrl)
+  return host === 'api.minimaxi.com' || host === 'api.minimax.io' || host === 'api.minimax.chat'
+}
+
+function isDashScopeThinkingModel(model: string): boolean {
+  const normalized = normalizeModelId(model)
+  return /(?:^|\/)(?:qwen|qwq|kimi|glm)[\w.-]*/i.test(normalized)
+}
+
+function isGlmModel(model: string | undefined): boolean {
+  const normalized = normalizeModelId(model)
+  return /(?:^|\/)(?:glm|chatglm)[\w.-]*/i.test(normalized)
+}
+
+function isDoubaoModel(model: string | undefined): boolean {
+  const normalized = normalizeModelId(model)
+  return /(?:^|\/)doubao[\w.-]*/i.test(normalized)
+}
+
+function isMiniMaxReasoningModel(model: string | undefined): boolean {
+  const normalized = normalizeModelId(model)
+  return /(?:^|\/)minimax-m(?:2(?:[.-]|$)|3(?:[.-]|$))/i.test(normalized)
+}
+
+function isMiniMaxM3Model(model: string | undefined): boolean {
+  const normalized = normalizeModelId(model)
+  return /(?:^|\/)minimax-m3(?:[.-]|$)/i.test(normalized)
+}
+
 function isThinkingMode(effort: string | undefined): boolean {
   const normalized = effort?.trim().toLowerCase()
   if (!normalized) return false
@@ -1992,7 +2129,12 @@ function requiresReasoningRoundTrip(
   if (reasoning) {
     const resolved = resolveReasoningEffort(effort, reasoning)
     if (resolved) {
-      return resolved !== 'off' && reasoning.requestProtocol !== 'none'
+      if (resolved === 'off') return false
+      if (reasoning.requestProtocol !== 'none') return true
+      return (isDashScopeCompatibleEndpoint(baseUrl) && isDashScopeThinkingModel(model ?? '')) ||
+        (isBigModelEndpoint(baseUrl) && isGlmModel(model)) ||
+        (isVolcengineArkEndpoint(baseUrl) && isDoubaoModel(model)) ||
+        (isMiniMaxEndpoint(baseUrl) && isMiniMaxReasoningModel(model))
     }
     // No explicit effort: same host policy as the non-capabilities branch —
     // only auto-enable the thinking round trip on the official DeepSeek host,

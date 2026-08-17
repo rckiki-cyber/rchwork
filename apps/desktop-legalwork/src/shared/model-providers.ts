@@ -114,7 +114,9 @@ export const BUILTIN_MODEL_PROVIDER_PRESETS: BuiltinModelProviderPreset[] = [
     baseUrl: 'https://api.openai.com/v1',
     models: ['gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'o3-mini'],
     apiKeyPlaceholder: 'sk-...',
-    endpointFormat: 'chat_completions'
+    // Reasoning summaries are only available on the Responses API. All
+    // built-in OpenAI conversation models listed here support this endpoint.
+    endpointFormat: 'responses'
   },
   {
     id: 'claude',

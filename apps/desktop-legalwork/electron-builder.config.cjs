@@ -83,6 +83,7 @@ module.exports = {
     '**/node_modules/better-sqlite3/**/*',
     '**/node_modules/bindings/**/*',
     '**/node_modules/file-uri-to-path/**/*',
+    '**/node_modules/@napi-rs/canvas/**/*',
     '**/node_modules/@openai/codex*/**/*'
   ],
   npmRebuild: true,
@@ -217,7 +218,7 @@ module.exports = {
   },
   win: {
     icon: './src/asset/img/legalwork.png',
-    target: [{ target: 'nsis', arch: ['x64', 'ia32'] }]
+    target: [{ target: 'nsis', arch: ['x64'] }]
   },
   nsis: {
     oneClick: false,

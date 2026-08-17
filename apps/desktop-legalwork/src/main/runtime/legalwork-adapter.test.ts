@@ -110,4 +110,31 @@ describe('runtimeRequestViaHost', () => {
     expect(seenUrl).toBe('/v1/usage?group_by=day&from=2026-06-01&to=2026-06-02&timezone=Asia%2FShanghai')
     expect(seenAuthorization).toBe('Bearer usage-token')
   })
+
+  it('re-ensures and retries an idempotent read when the runtime exits after the health probe', async () => {
+    let attempts = 0
+    let ensures = 0
+    const port = await listen((_req, res) => {
+      attempts += 1
+      if (attempts === 1) {
+        res.socket?.destroy()
+        return
+      }
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({ ok: true }))
+    })
+
+    const response = await runtimeRequestViaHost(
+      settingsForPort(port),
+      '/v1/knowledge/tree',
+      { method: 'GET' },
+      async () => {
+        ensures += 1
+      }
+    )
+
+    expect(response).toEqual({ ok: true, status: 200, body: JSON.stringify({ ok: true }) })
+    expect(attempts).toBe(2)
+    expect(ensures).toBe(2)
+  })
 })

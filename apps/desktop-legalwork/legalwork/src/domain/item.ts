@@ -52,6 +52,7 @@ export function makeAssistantReasoningItem(input: {
   turnId: string
   threadId: string
   text: string
+  signature?: string
   status?: 'running' | 'completed' | 'failed'
 }): TurnItem {
   return {
@@ -62,7 +63,8 @@ export function makeAssistantReasoningItem(input: {
     status: input.status ?? 'running',
     createdAt: new Date().toISOString(),
     kind: 'assistant_reasoning',
-    text: input.text
+    text: input.text,
+    ...(input.signature ? { signature: input.signature } : {})
   }
 }
 

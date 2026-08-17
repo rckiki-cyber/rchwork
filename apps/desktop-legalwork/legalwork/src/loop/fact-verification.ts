@@ -1,4 +1,5 @@
 import type { TurnItem } from '../contracts/items.js'
+import type { LegalResearchPrimarySource } from '../contracts/capabilities.js'
 import { isLegalResearchWorkflowPrompt } from './legal-research-workflow.js'
 
 export const FACT_VERIFICATION_FINALIZE_TOOL_NAME = 'fact_verification_finalize'
@@ -85,7 +86,7 @@ export function requiresWebSearch(prompt: string): boolean {
 
 export function factVerificationContract(
   prompt: string,
-  options?: { primaryLegalSource?: 'pkulaw' | 'yuandian' }
+  options?: { primaryLegalSource?: LegalResearchPrimarySource }
 ): FactVerificationContract {
   if (
     prompt.includes('<inline_document_response>') ||
@@ -103,7 +104,7 @@ export function factVerificationContract(
   const required = /(?:核实|核验|查证|验证|辨别|判断).{0,20}(?:事实|真实性|准确性|真伪|真假|来源|新闻|规范|政策|数据)|(?:真实性|准确性|真伪|真假).{0,20}(?:核实|核验|查证|验证|判断)/s.test(compact)
   // 配置了法律主源（元典/北大法宝）时，法律规范/案例的核验由该 MCP 直接给出、
   // 内容可信，不再强制 web 交叉核验；普通事实/文书忠实性核验仍保留。
-  const primaryLegalConfigured = options?.primaryLegalSource === 'pkulaw' || options?.primaryLegalSource === 'yuandian'
+  const primaryLegalConfigured = options?.primaryLegalSource !== undefined
   const requiresLegalEvidence = !primaryLegalConfigured && required && /(?:规范|法律|法规|规章|司法解释|政策|条文|效力|现行有效)/.test(compact)
   const requiresWebEvidence = required && (
     /(?:事实|新闻|事件|数据|真实性|准确性|来源)/.test(compact) || !requiresLegalEvidence

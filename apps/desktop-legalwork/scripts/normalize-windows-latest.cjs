@@ -72,12 +72,12 @@ function main() {
     if (arch) filesByArch.set(arch, file)
   }
 
-  const missing = ['x64', 'ia32'].filter((arch) => !filesByArch.has(arch))
+  const missing = ['x64'].filter((arch) => !filesByArch.has(arch))
   if (missing.length > 0) {
-    throw new Error(`Windows in-app updates require x64 and ia32 installers; missing: ${missing.join(', ')}`)
+    throw new Error(`Windows in-app updates require an x64 installer; missing: ${missing.join(', ')}`)
   }
 
-  const files = ['x64', 'ia32'].map((arch) => filesByArch.get(arch))
+  const files = ['x64'].map((arch) => filesByArch.get(arch))
   const primary = filesByArch.get('x64')
   writeFileSync(latestPath, emitLatestYml(info, files, primary), 'utf8')
   console.log(`Normalized ${latestPath}`)

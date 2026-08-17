@@ -24,7 +24,7 @@ export class DeepseekServerSearchProvider implements WebProvider {
     nowIso?: () => string
   }) {
     this.apiKey = options?.apiKey?.trim() || undefined
-    this.baseUrl = (options?.baseUrl ?? 'https://api.deepseek.com').replace(/\/$/, '')
+    this.baseUrl = normalizeDeepseekServerSearchBaseUrl(options?.baseUrl)
     this.model = options?.model ?? 'deepseek-v4-flash'
     this.nowIso = options?.nowIso ?? (() => new Date().toISOString())
   }
@@ -121,4 +121,10 @@ export class DeepseekServerSearchProvider implements WebProvider {
     }
     return results
   }
+}
+
+export function normalizeDeepseekServerSearchBaseUrl(baseUrl?: string): string {
+  return (baseUrl?.trim() || 'https://api.deepseek.com')
+    .replace(/\/+$/, '')
+    .replace(/\/v1$/i, '')
 }
