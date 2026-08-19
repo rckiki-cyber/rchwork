@@ -7,7 +7,7 @@ import type {
   GuiPlanContext,
   ToolProviderKind
 } from '../ports/tool-host.js'
-import type { ModelCapabilityMetadata } from '../contracts/capabilities.js'
+import type { LegalResearchPrimarySource, ModelCapabilityMetadata } from '../contracts/capabilities.js'
 import { DEFAULT_APPROVAL_POLICY } from '../contracts/policy.js'
 import type { ThreadStore } from '../ports/thread-store.js'
 import type { SessionStore } from '../ports/session-store.js'
@@ -346,6 +346,31 @@ export function resolveInefficientTurnThreshold(env: NodeJS.ProcessEnv = process
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_INEFFICIENT_TURN_THRESHOLD
 }
 
+export type TurnProgressSnapshot = {
+  toolCalls: number
+  successfulToolResults: number
+}
+
+export function turnProgressSnapshot(items: readonly TurnItem[], turnId: string): TurnProgressSnapshot {
+  let toolCalls = 0
+  let successfulToolResults = 0
+  for (const item of items) {
+    if (item.turnId !== turnId) continue
+    if (item.kind === 'tool_call') toolCalls += 1
+    if (item.kind === 'tool_result' && item.isError !== true) successfulToolResults += 1
+  }
+  return { toolCalls, successfulToolResults }
+}
+
+export function isStalledTurnProgress(
+  previous: TurnProgressSnapshot,
+  current: TurnProgressSnapshot
+): boolean {
+  const newToolCalls = current.toolCalls - previous.toolCalls
+  const newSuccessfulResults = current.successfulToolResults - previous.successfulToolResults
+  return newToolCalls === 0 || newSuccessfulResults === 0
+}
+
 /**
  * Wraps a model stream with an idle timeout that covers the entire iterator —
  * including "request sent, connection open, zero bytes ever" and "stream was
@@ -437,7 +462,38 @@ function extractToolError(output: unknown): string {
  * - `command aborted` 是用户/上层主动取消，属正常操作，不上报。
  * - 仅进程启动失败、超时等带 error 字段的真异常才上报。
  */
-function shouldReportToolError(toolName: string, output: unknown): boolean {
+export function shouldReportToolError(toolName: string, output: unknown): boolean {
+  const message = extractToolError(output)
+  // A model may serialize a stale or hallucinated tool name even though the
+  // current request's schema did not advertise it. The tool result already
+  // tells the model to use the active catalog; this is a recoverable model
+  // action, not a product/runtime incident worth uploading to GitHub.
+  if (/not advertised by active tool policy|not advertised in this turn context|unknown tool:/i.test(message)) {
+    return false
+  }
+  // Remote pages, search providers, and legal databases routinely reject an
+  // individual URL/query. Those failures are returned to the model so it can
+  // try another source; they are not evidence that the desktop runtime broke.
+  if (toolName === 'web_fetch' || toolName === 'web_search') return false
+  if (/^mcp_pkulaw/i.test(toolName) && (
+    /\b90001\b|remaining\s+points|鉴权失败|配额|积分不足|至少有一个不为空|参数.*(?:无效|为空)/i.test(message)
+  )) {
+    return false
+  }
+  if (toolName === 'document_skill_execute' && /expected \.(?:doc|xls|ppt)|unsupported (?:input|file)|invalid file extension/i.test(message)) {
+    return false
+  }
+  if (/^(?:read|ls|find|grep|knowledge_read_file)$/i.test(toolName) && (
+    /\b(?:ENOENT|EISDIR)\b|does not exist|no such file|not a (?:text )?file|only supports text files|no readable text/i.test(message)
+  )) {
+    return false
+  }
+  if (/^mcp_(?:pkulaw|yuandian)/i.test(toolName) && /arguments do not match the schema|invalid arguments/i.test(message)) {
+    return false
+  }
+  if (/^mcp_node_repl/i.test(toolName) && /native pipe startup failed/i.test(message)) {
+    return false
+  }
   if (toolName !== 'bash') return true
   if (!output || typeof output !== 'object') return true
   const record = output as Record<string, unknown>
@@ -812,7 +868,7 @@ export function requestsAcademicCitationVerification(prompt: string): boolean {
 
 export function requestsFactVerification(
   prompt: string,
-  primaryLegalSource?: 'pkulaw' | 'yuandian'
+  primaryLegalSource?: LegalResearchPrimarySource
 ): boolean {
   return factVerificationContract(prompt, { primaryLegalSource }).required
 }
@@ -1544,7 +1600,7 @@ function allowedToolNamesWithGuiStateTools(
   activeGoal: boolean,
   prompt = '',
   activeSkillIds: readonly string[] = [],
-  primaryLegalSource?: 'pkulaw' | 'yuandian'
+  primaryLegalSource?: LegalResearchPrimarySource
 ): readonly string[] | undefined {
   if (!allowedToolNames) return allowedToolNames
   const next = new Set(allowedToolNames)
@@ -1692,7 +1748,7 @@ export type AgentLoopOptions = {
    */
   turnTokenBudget?: number
   /** 首选的法律调研 MCP 源。有值时在每轮注入"优先使用 + 失败回退"指引。 */
-  primaryLegalSource?: 'pkulaw' | 'yuandian'
+  primaryLegalSource?: LegalResearchPrimarySource
   toolStorm?: ToolStormBreakerOptions & { enabled?: boolean }
   toolArgumentRepair?: {
     maxStringBytes?: number
@@ -1954,6 +2010,7 @@ export class AgentLoop {
     // 简单问题复杂化检测：执行步数超过阈值仍未完成 → 触发一次上报（仅步数，无对话内容）。
     const inefficientThreshold = resolveInefficientTurnThreshold()
     let inefficientReported = false
+    let lastProgressSnapshot: TurnProgressSnapshot = { toolCalls: 0, successfulToolResults: 0 }
     for (let step = 0; step < maxSteps; step += 1) {
       if (signal.aborted) return 'aborted'
       await this.drainSteering(threadId, turnId, signal)
@@ -1962,20 +2019,31 @@ export class AgentLoop {
       if (stepResult === 'failed') return 'failed'
       if (stepResult === 'aborted') return 'aborted'
       const stepsExecuted = step + 1
-      if (!inefficientReported && stepsExecuted >= inefficientThreshold) {
-        inefficientReported = true
-        try {
-          this.opts.onInefficientTurn?.({ threadId, turnId, steps: stepsExecuted, toolCalls: 0 })
-        } catch {
-          // 上报失败绝不影响 agent 主流程
+      if (!inefficientReported && stepsExecuted % inefficientThreshold === 0) {
+        const progress = turnProgressSnapshot(await this.opts.sessionStore.loadItems(threadId), turnId)
+        const stalled = isStalledTurnProgress(lastProgressSnapshot, progress)
+        lastProgressSnapshot = progress
+        if (stalled) {
+          inefficientReported = true
+          try {
+            this.opts.onInefficientTurn?.({
+              threadId,
+              turnId,
+              steps: stepsExecuted,
+              toolCalls: progress.toolCalls
+            })
+          } catch {
+            // 上报失败绝不影响 agent 主流程
+          }
+          // Only intervene when the last threshold window made no successful
+          // tool progress. Complex research with many successful calls is not
+          // a stall and must not be forced to stop merely for reaching step 16.
+          this.opts.steering.enqueue(
+            turnId,
+            '你已经连续多步没有取得新的成功工具结果。请立即停止反复试探，直接交付当前已有的最佳结果；' +
+              '不要空转思考、不要重复失败调用、不要为追求完美而追加额外步骤。'
+          )
         }
-        // 干预而非仅上报：注入一条强制收敛指令，让模型停止空转/反复试探，
-        // 直接交付当前最佳结果，避免烧满 maxSteps（默认 128 步）造成 token 浪费。
-        this.opts.steering.enqueue(
-          turnId,
-          '你已经执行了很多步但尚未完成。请立即停止继续调用工具或反复试探，直接交付当前已有的最佳结果；' +
-            '不要空转思考、不要重复读同一内容、不要为追求完美而追加额外步骤。'
-        )
       }
     }
     const message = `Stopped additional work after ${maxSteps} model/tool steps to avoid an infinite agent loop.`
@@ -3355,6 +3423,7 @@ export class AgentLoop {
     const textAccumulator: { value: string } = { value: '' }
     let emittedVisibleTextLength = 0
     const reasoningAccumulator: { value: string } = { value: '' }
+    const reasoningSignatureAccumulator: { value: string } = { value: '' }
     let textItemId = ''
     let reasoningItemId = ''
     const completedToolCalls: ToolCallLike[] = []
@@ -3466,6 +3535,12 @@ export class AgentLoop {
               })
             })
           }
+          break
+        case 'assistant_reasoning_signature_delta':
+          // Signatures are provider continuity metadata, never user-visible.
+          // Persist them with the completed reasoning item so a subsequent
+          // tool-result turn can replay the signed thinking block unchanged.
+          reasoningSignatureAccumulator.value += chunk.signature
           break
         case 'tool_call_delta':
           break
@@ -3679,6 +3754,9 @@ export class AgentLoop {
           turnId,
           threadId,
           text: reasoningAccumulator.value,
+          ...(reasoningSignatureAccumulator.value
+            ? { signature: reasoningSignatureAccumulator.value }
+            : {}),
           status: 'completed'
         })
       )
@@ -3923,7 +4001,10 @@ export class AgentLoop {
         assistantAnnouncesPendingToolWork(announcedWork) &&
         (this.pendingWorkContinuations.get(turnId) ?? 0) >= MAX_PENDING_WORK_CONTINUATIONS
       ) {
-        throw new Error('Model repeatedly announced tool work without executing it.')
+        // The model has already produced visible text. Treat the bounded
+        // recovery as exhausted and finish with that text instead of turning
+        // a usable partial response into a failed turn (and a 500 on IM).
+        return 'stop'
       }
       if (
         automaticPlan?.genericTextCompletion &&
@@ -5683,9 +5764,17 @@ function memoryInstructions(memories: Array<{ id: string; content: string; scope
 }
 
 /** 首选法律调研源的指引：优先使用首要源，其鉴权/配额失败时换用另一源。 */
-function primaryLegalSourceInstruction(source: 'pkulaw' | 'yuandian'): string {
-  const primary = source === 'pkulaw' ? '北大法宝(PKULaw)' : '元典(Yuandian)'
-  const fallback = source === 'pkulaw' ? '元典(Yuandian)' : '北大法宝(PKULaw)'
+function primaryLegalSourceInstruction(source: LegalResearchPrimarySource): string {
+  const labels: Record<LegalResearchPrimarySource, string> = {
+    pkulaw: '北大法宝(PKULaw)',
+    yuandian: '元典(Yuandian)',
+    wk: '威科先行(WK)'
+  }
+  const primary = labels[source]
+  const fallback = Object.entries(labels)
+    .filter(([id]) => id !== source)
+    .map(([, label]) => label)
+    .join('、')
   return (
     `法律调研时默认优先使用 ${primary} 作为首要来源。` +
     `本配置由运行时的 primaryLegalSource 决定，优先于任何长期记忆中的来源偏好；` +

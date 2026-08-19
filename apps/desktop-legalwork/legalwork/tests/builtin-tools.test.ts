@@ -197,6 +197,14 @@ describe('Legalwork built-in tools', () => {
       skill_id: 'contract-review'
     })
     expect(String(loadOutput.instructions)).toContain('Inspect clauses before drafting risk comments.')
+
+    const missingOutput = await executeTool(customHost, workspace, 'load_skill', {
+      skill_id: 'plugin:missing-skill'
+    })
+    expect(missingOutput).toMatchObject({
+      found: false,
+      requestedSkillId: 'plugin:missing-skill'
+    })
   })
 
   it('exposes pi-style alias composition helpers and tool-name set', async () => {

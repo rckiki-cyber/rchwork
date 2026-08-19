@@ -102,7 +102,7 @@ function Test-GitHubReleaseAssets([string]$TagName, [bool]$ExpectedDraft, [strin
 function Test-WindowsReleaseAssets([string]$TagName, [bool]$ExpectedDraft) {
   Test-GitHubReleaseAssets $TagName $ExpectedDraft 'Windows' @(
     '^latest\.yml$',
-    '^legalwork-[0-9]+\.[0-9]+\.[0-9]+-win-(x64|ia32)\.exe$'
+    '^legalwork-[0-9]+\.[0-9]+\.[0-9]+-win-x64\.exe$'
   )
 }
 
@@ -112,7 +112,7 @@ function Test-DesktopAutoUpdateReleaseAssets([string]$TagName, [bool]$ExpectedDr
     '^legalwork-[0-9]+\.[0-9]+\.[0-9]+-mac-arm64\.zip$',
     '^legalwork-[0-9]+\.[0-9]+\.[0-9]+-mac-x64\.zip$',
     '^latest\.yml$',
-    '^legalwork-[0-9]+\.[0-9]+\.[0-9]+-win-(x64|ia32)\.exe$'
+    '^legalwork-[0-9]+\.[0-9]+\.[0-9]+-win-x64\.exe$'
   )
 }
 

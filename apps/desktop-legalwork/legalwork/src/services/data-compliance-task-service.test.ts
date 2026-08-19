@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  buildDataCompliancePythonEnv,
   DataComplianceTaskService,
   isSupportedDataCompliancePythonVersion,
   parsePythonVersionOutput
@@ -26,6 +27,39 @@ describe('data compliance Python version helpers', () => {
     expect(isSupportedDataCompliancePythonVersion('Python 3.9.18')).toBe(false)
     expect(isSupportedDataCompliancePythonVersion('Python 3.10.0')).toBe(true)
     expect(isSupportedDataCompliancePythonVersion('Python 3.12.1')).toBe(true)
+  })
+})
+
+describe('data compliance environment checks', () => {
+  it('anchors bundled Python with PYTHONHOME', () => {
+    expect(buildDataCompliancePythonEnv({
+      Path: 'C:\\Windows',
+      LEGALWORK_BUNDLED_COMPLIANCE_PYTHONHOME: 'C:\\Program Files\\legalwork\\resources\\office-runtime\\python'
+    }, 'win32')).toMatchObject({
+      PYTHONHOME: 'C:\\Program Files\\legalwork\\resources\\office-runtime\\python'
+    })
+  })
+
+  it('does not repeat the full package scan after environment preparation succeeds', async () => {
+    const dataDir = await makeTempDir()
+    const webRoot = await makeTempDir()
+    const logDir = await makeTempDir()
+    const service = new DataComplianceTaskService({ dataDir, webRoot, logDir })
+    const internals = service as unknown as {
+      resolvePythonExecutable: () => string | null
+      runPython: () => Promise<{ exitCode: number; stdout: string; stderr: string }>
+      ensurePythonEnvironment: () => Promise<void>
+      findMissingPackages: () => Promise<string[]>
+    }
+
+    internals.resolvePythonExecutable = () => 'python'
+    internals.runPython = async () => ({ exitCode: 0, stdout: 'Python 3.11.9', stderr: '' })
+    internals.ensurePythonEnvironment = async () => undefined
+    internals.findMissingPackages = async () => {
+      throw new Error('redundant package scan')
+    }
+
+    await expect(service.checkEnvironment()).resolves.toEqual({ ok: true, python: 'python' })
   })
 })
 

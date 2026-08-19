@@ -7,7 +7,6 @@ const LEGALWORK_RUNTIME_REQUIRED_PATHS = [
   'legalwork/dist/cli/serve-entry.js',
   'legalwork/dist/loop/agent-loop.js',
   'legalwork/package.json',
-  'legalwork/package-lock.json',
   'legalwork/node_modules/zod/package.json',
   'legalwork/node_modules/diff/package.json',
   'legalwork/node_modules/@modelcontextprotocol/sdk/package.json',
@@ -38,11 +37,23 @@ const DOCUMENT_OCR_REQUIRED_PATHS = [
 ]
 
 const OFFICE_RUNTIME_IMPORTS = ['docx', 'openpyxl', 'pptx', 'lxml', 'PIL', 'reportlab']
+const DATA_COMPLIANCE_RUNTIME_IMPORTS = [
+  'flask',
+  'fitz',
+  'openai',
+  'paddle',
+  'paddleocr',
+  'pypdf',
+  'pandas',
+  'presidio_analyzer',
+  'presidio_anonymizer'
+]
 const OFFICE_RUNTIME_PYTHON_LINE = '3.11'
 const BUNDLED_PDF_FONT_SOURCE_SHA256 = '050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9'
 const BUNDLED_PDF_FONT_PREPARATION_VERSION = 2
 const BUNDLED_PDF_FONT_NAMES = ['NotoSerifSC-Regular.ttf', 'NotoSerifSC-Bold.ttf']
 const IMA_MCP_SCRIPT_RELATIVE_PATH = 'scripts/ima-mcp-server.py'
+const CANVAS_NATIVE_PACKAGE_PATTERN = /^canvas-(?:android|darwin|freebsd|linux|win32)-/
 
 // legalwork 不使用相机 / 麦克风 / 蓝牙 / 相册。Electron 框架默认在 Info.plist 里塞了这些
 // 权限用途串，会导致 macOS 在相关 API 被触达时弹出无谓的权限请求（如相册访问）。
@@ -58,6 +69,30 @@ const MAC_UNUSED_PERMISSION_KEYS = [
 
 function normalizePlatform(platform) {
   return platform === 'win' ? 'win32' : platform
+}
+
+function normalizeArch(arch) {
+  if (typeof arch === 'string' && ['ia32', 'x64', 'arm64'].includes(arch)) return arch
+  const numeric = Number(arch)
+  if (numeric === 0) return 'ia32'
+  if (numeric === 1) return 'x64'
+  if (numeric === 3) return 'arm64'
+  return String(arch)
+}
+
+function expectedCanvasNativePackage(context) {
+  const platform = normalizePlatform(context.electronPlatformName)
+  const arch = normalizeArch(context.arch)
+  if (platform === 'darwin' && (arch === 'arm64' || arch === 'x64')) {
+    return `canvas-darwin-${arch}`
+  }
+  if (platform === 'win32' && (arch === 'arm64' || arch === 'x64' || arch === 'ia32')) {
+    return `canvas-win32-${arch}-msvc`
+  }
+  if (platform === 'linux' && (arch === 'arm64' || arch === 'x64')) {
+    return `canvas-linux-${arch}-gnu`
+  }
+  return null
 }
 
 function appBundlePath(context) {
@@ -85,16 +120,6 @@ function sha256File(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
-function npmCommand(args, platform = process.platform) {
-  if (platform === 'win32') {
-    return {
-      command: 'cmd.exe',
-      args: ['/d', '/s', '/c', 'npm', ...args]
-    }
-  }
-  return { command: 'npm', args }
-}
-
 function prunePackedLegalworkDependencies(context) {
   const root = unpackedAppRoot(context)
   const legalworkDir = join(root, 'legalwork')
@@ -103,17 +128,6 @@ function prunePackedLegalworkDependencies(context) {
   assertExists(join(legalworkDir, 'package.json'), 'Legalwork package manifest')
   assertExists(join(legalworkDir, 'node_modules'), 'Legalwork node_modules')
 
-  const prune = npmCommand(['prune', '--omit=dev', '--ignore-scripts'])
-  execFileSync(prune.command, prune.args, {
-    cwd: legalworkDir,
-    env: {
-      ...process.env,
-      npm_config_audit: 'false',
-      npm_config_fund: 'false'
-    },
-    stdio: 'inherit'
-  })
-
   // Keep native SQLite on the app root dependency so electron-builder's
   // native-module rebuild owns the target arch and Electron ABI.
   assertExists(
@@ -121,6 +135,56 @@ function prunePackedLegalworkDependencies(context) {
     'root better-sqlite3 dependency'
   )
   rmSync(join(legalworkDir, 'node_modules', 'better-sqlite3'), { recursive: true, force: true })
+}
+
+function canvasPackageRoots(context) {
+  const root = unpackedAppRoot(context)
+  return [
+    join(root, 'node_modules', '@napi-rs'),
+    join(root, 'node_modules', 'pdf-parse', 'node_modules', '@napi-rs'),
+    join(root, 'legalwork', 'node_modules', '@napi-rs'),
+    join(root, 'legalwork', 'node_modules', 'pdf-parse', 'node_modules', '@napi-rs')
+  ]
+}
+
+/** Remove host-architecture Canvas binaries from cross-architecture artifacts. */
+function pruneIncompatibleCanvasNativePackages(context) {
+  const expected = expectedCanvasNativePackage(context)
+  for (const packageRoot of canvasPackageRoots(context)) {
+    if (!existsSync(packageRoot)) continue
+    for (const entry of readdirSync(packageRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      if (!CANVAS_NATIVE_PACKAGE_PATTERN.test(entry.name)) continue
+      if (entry.name === expected) continue
+      rmSync(join(packageRoot, entry.name), { recursive: true, force: true })
+    }
+  }
+}
+
+function validateBundledPdfParserRuntime(context) {
+  const root = unpackedAppRoot(context)
+  assertExists(
+    join(root, 'node_modules', '@napi-rs', 'canvas', 'geometry.js'),
+    'root PDF DOM geometry fallback'
+  )
+  assertExists(
+    join(root, 'legalwork', 'node_modules', '@napi-rs', 'canvas', 'geometry.js'),
+    'Legalwork PDF DOM geometry fallback'
+  )
+
+  const expected = expectedCanvasNativePackage(context)
+  for (const packageRoot of canvasPackageRoots(context)) {
+    if (!existsSync(packageRoot)) continue
+    const incompatible = readdirSync(packageRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && CANVAS_NATIVE_PACKAGE_PATTERN.test(entry.name))
+      .map((entry) => entry.name)
+      .filter((name) => name !== expected)
+    if (incompatible.length > 0) {
+      throw new Error(
+        `[after-pack] PDF Canvas runtime contains incompatible target packages: ${incompatible.join(', ')}`
+      )
+    }
+  }
 }
 
 function projectDir(context) {
@@ -318,6 +382,20 @@ function validateBundledOfficeRuntime(context) {
   if (!Array.isArray(manifest.imports) || OFFICE_RUNTIME_IMPORTS.some((name) => !manifest.imports.includes(name))) {
     throw new Error('[after-pack] Office runtime manifest is missing required Word/Excel/PPT imports')
   }
+  if (normalizePlatform(context.electronPlatformName) === 'win32') {
+    if (context.arch !== 'x64' && Number(context.arch) !== 1) {
+      throw new Error('[after-pack] Fully bundled Windows runtime is supported only for x64')
+    }
+    if (manifest.dataComplianceReady !== true) {
+      throw new Error('[after-pack] Windows runtime is missing bundled data-compliance dependencies')
+    }
+    for (const moduleName of DATA_COMPLIANCE_RUNTIME_IMPORTS) {
+      assertExists(join(sitePackages, moduleName), `data compliance Python module ${moduleName}`)
+      if (!manifest.imports.includes(moduleName)) {
+        throw new Error(`[after-pack] Runtime manifest is missing data compliance import ${moduleName}`)
+      }
+    }
+  }
 }
 
 function validateBundledPdfFonts(context) {
@@ -471,8 +549,10 @@ function stripUnnecessaryMacPermissions(context) {
 
 async function afterPack(context) {
   prunePackedLegalworkDependencies(context)
+  pruneIncompatibleCanvasNativePackages(context)
   restoreBundledOfficeCli(context)
   validateBundledLegalworkRuntime(context)
+  validateBundledPdfParserRuntime(context)
   validateBundledOfficeRuntime(context)
   validateBundledPdfFonts(context)
   validateBundledDataComplianceRuntime(context)
@@ -487,13 +567,13 @@ exports.DATA_COMPLIANCE_REQUIRED_PATHS = DATA_COMPLIANCE_REQUIRED_PATHS
 exports.DATA_COMPLIANCE_OPTIONAL_PATHS = DATA_COMPLIANCE_OPTIONAL_PATHS
 exports.DOCUMENT_OCR_REQUIRED_PATHS = DOCUMENT_OCR_REQUIRED_PATHS
 exports.OFFICE_RUNTIME_IMPORTS = OFFICE_RUNTIME_IMPORTS
+exports.DATA_COMPLIANCE_RUNTIME_IMPORTS = DATA_COMPLIANCE_RUNTIME_IMPORTS
 exports.OFFICE_RUNTIME_PYTHON_LINE = OFFICE_RUNTIME_PYTHON_LINE
 exports.IMA_MCP_SCRIPT_RELATIVE_PATH = IMA_MCP_SCRIPT_RELATIVE_PATH
 exports._internals = {
   appBundlePath,
   packedResourcesDir,
   unpackedAppRoot,
-  npmCommand,
   findInfoPlists,
   macInfoPlistPaths,
   officeRuntimePythonPath,
@@ -502,6 +582,10 @@ exports._internals = {
   prunePackedLegalworkDependencies,
   restoreBundledOfficeCli,
   validateBundledLegalworkRuntime,
+  normalizeArch,
+  expectedCanvasNativePackage,
+  pruneIncompatibleCanvasNativePackages,
+  validateBundledPdfParserRuntime,
   validateBundledAgentLoop,
   validateBundledOfficeRuntime,
   validateBundledPdfFonts,

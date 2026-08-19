@@ -228,6 +228,35 @@ describe('resolveBundledOfficePythonPath', () => {
       arch: 'x64'
     })).toBe(python)
   })
+
+  it('uses a packaged Windows runtime for compliance only when its manifest is complete', async () => {
+    if (!tempRoot) throw new Error('temp root not initialized')
+    const runtimeRoot = join(tempRoot, 'office-runtime')
+    const python = join(runtimeRoot, 'python', 'python.exe')
+    mkdirSync(join(python, '..'), { recursive: true })
+    writeFileSync(python, '')
+    writeFileSync(join(runtimeRoot, 'runtime.json'), JSON.stringify({
+      dataComplianceReady: true,
+      imports: ['paddle', 'paddleocr']
+    }))
+    const module = await import('./legalwork-process')
+
+    expect(module.resolveBundledCompliancePythonPath({
+      appPath: join(tempRoot, 'app.asar.unpacked'),
+      isPackaged: true,
+      resourcesPath: tempRoot,
+      platform: 'win32',
+      arch: 'x64'
+    })).toBe(python)
+
+    expect(module.resolveBundledCompliancePythonPath({
+      appPath: join(tempRoot, 'app.asar.unpacked'),
+      isPackaged: true,
+      resourcesPath: tempRoot,
+      platform: 'win32',
+      arch: 'ia32'
+    })).toBeUndefined()
+  })
 })
 
 describe('reclaimLegalworkPort', () => {
@@ -571,6 +600,8 @@ describe('syncGuiManagedLegalworkConfig', () => {
     const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
     expect(parsed.capabilities.skills.enabled).toBe(true)
     expect(parsed.capabilities.skills.legacySkillMd).toBe(true)
+    expect(parsed.capabilities.skills.autoActivateUserSkills).toBe(false)
+    expect(parsed.capabilities.skills.nativeRoots).toEqual(expect.any(Array))
     expect(parsed.capabilities.skills.roots).toEqual(expect.arrayContaining([
       join(workspaceRoot, '.codex', 'skills'),
       extraRoot

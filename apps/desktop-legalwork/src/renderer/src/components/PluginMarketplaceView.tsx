@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Blocks,
@@ -7,9 +7,12 @@ import {
   BriefcaseBusiness,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Code2,
   Copy,
   Database,
+  Download,
   ExternalLink,
   FileText,
   FolderOpen,
@@ -26,6 +29,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Star,
   Settings,
   Upload,
   Workflow,
@@ -42,7 +46,11 @@ import {
 import { readBrowserStorageItem, writeBrowserStorageItem } from '../lib/browser-storage'
 import { normalizeWorkspaceRoot } from '../lib/workspace-path'
 import { getProvider } from '../agent/registry'
-import type { SkillListItem } from '@shared/ds-gui-api'
+import type {
+  SkillHubCatalogCategory,
+  SkillHubSkillSummary,
+  SkillListItem
+} from '@shared/ds-gui-api'
 import type {
   CoreRuntimeInfoJson,
   CoreRuntimeToolDiagnosticsJson
@@ -99,6 +107,11 @@ type MarketplaceItem = {
   skillInstructions?: string
   skillRoot?: string
   skillEntryPath?: string
+  skillHubNamespace?: string
+  skillHubVersion?: string
+  downloads?: number
+  stars?: number
+  iconUrl?: string
 }
 
 type JsonRecord = Record<string, unknown>
@@ -135,6 +148,25 @@ const YUANDIAN_MCP_ENDPOINTS = [
   { id: 'yuandian-company', url: 'https://open.chineselaw.com/mcp/company/stream' }
 ] as const
 const YUANDIAN_MCP_ENDPOINT_IDS = new Set(YUANDIAN_MCP_ENDPOINTS.map((endpoint) => endpoint.id))
+const WK_MCP_GROUP_ID = 'wk'
+const WK_MCP_ENDPOINTS = [
+  { id: 'wk-integrated', url: 'https://mcp.wkinfo.com.cn/mcp-servers/integrated/' }
+] as const
+const WK_MCP_ENDPOINT_IDS = new Set(WK_MCP_ENDPOINTS.map((endpoint) => endpoint.id))
+const QCC_MCP_GROUP_ID = 'qcc'
+const QCC_MCP_ENDPOINTS = [
+  { id: 'qcc-company', url: 'https://agent.qcc.com/mcp/company/stream' },
+  { id: 'qcc-risk', url: 'https://agent.qcc.com/mcp/risk/stream' },
+  { id: 'qcc-legal-regulation', url: 'https://agent.qcc.com/mcp/regulation/stream' },
+  { id: 'qcc-legal-case', url: 'https://agent.qcc.com/mcp/case/stream' },
+  { id: 'qcc-tender', url: 'https://agent.qcc.com/mcp/tender/stream' }
+] as const
+const QCC_MCP_ENDPOINT_IDS = new Set(QCC_MCP_ENDPOINTS.map((endpoint) => endpoint.id))
+const TYC_MCP_GROUP_ID = 'tyc'
+const TYC_MCP_ENDPOINTS = [
+  { id: 'tyc-mcp', url: 'https://mcp.tianyancha.com/mcp' }
+] as const
+const TYC_MCP_ENDPOINT_IDS = new Set(TYC_MCP_ENDPOINTS.map((endpoint) => endpoint.id))
 
 const CATEGORY_ORDER: PluginCategory[] = [
   'legal',
@@ -192,8 +224,12 @@ const CATEGORY_SCORE_RULES: Array<{ category: PluginCategory; pattern: RegExp; w
 type McpMarketplaceLabels = {
   configured: string
   connected: string
+  connecting: string
   error: string
   disabled: string
+  statusSummary: (status: string) => string
+  toolsSummary: (count: number) => string
+  errorSummary: (message: string) => string
   tokenRequired: string
   tokenRequiredSummary: string
   pkulawTitle: string
@@ -207,6 +243,33 @@ type McpMarketplaceLabels = {
   }) => string
   yuandianTitle: string
   yuandianSummary: (values: {
+    total: number
+    connected: number
+    tools: number
+    errors: number
+    disabled: number
+    lastError: string
+  }) => string
+  wkTitle: string
+  wkSummary: (values: {
+    total: number
+    connected: number
+    tools: number
+    errors: number
+    disabled: number
+    lastError: string
+  }) => string
+  qccTitle: string
+  qccSummary: (values: {
+    total: number
+    connected: number
+    tools: number
+    errors: number
+    disabled: number
+    lastError: string
+  }) => string
+  tycTitle: string
+  tycSummary: (values: {
     total: number
     connected: number
     tools: number
@@ -255,6 +318,18 @@ function isYuandianMcpEndpointId(id: string): boolean {
   return YUANDIAN_MCP_ENDPOINT_IDS.has(id as typeof YUANDIAN_MCP_ENDPOINTS[number]['id'])
 }
 
+function isWkMcpEndpointId(id: string): boolean {
+  return WK_MCP_ENDPOINT_IDS.has(id as typeof WK_MCP_ENDPOINTS[number]['id'])
+}
+
+function isQccMcpEndpointId(id: string): boolean {
+  return QCC_MCP_ENDPOINT_IDS.has(id as typeof QCC_MCP_ENDPOINTS[number]['id'])
+}
+
+function isTycMcpEndpointId(id: string): boolean {
+  return TYC_MCP_ENDPOINT_IDS.has(id as typeof TYC_MCP_ENDPOINTS[number]['id'])
+}
+
 function hasAuthorizationHeader(config: JsonRecord | undefined): boolean {
   const headers = isJsonRecord(config?.headers) ? config.headers : {}
   return Object.keys(headers).some((key) => key.toLowerCase() === 'authorization')
@@ -293,11 +368,11 @@ function parseMcpJsonConfig(content: string): JsonRecord {
 }
 
 /** 读取配置顶层的"首要法律调研源"。缺省为 'pkulaw'。 */
-function readPrimaryLegalSourceFromConfig(content: string): 'pkulaw' | 'yuandian' {
+function readPrimaryLegalSourceFromConfig(content: string): 'pkulaw' | 'yuandian' | 'wk' {
   try {
     const parsed = parseMcpJsonConfig(content)
     const value = parsed.primaryLegalSource
-    return value === 'yuandian' ? 'yuandian' : 'pkulaw'
+    return value === 'yuandian' ? 'yuandian' : value === 'wk' ? 'wk' : 'pkulaw'
   } catch {
     return 'pkulaw'
   }
@@ -419,6 +494,51 @@ function buildYuandianMcpConfig(apiKey: string): JsonRecord {
   return { servers }
 }
 
+/** 为多个远端 MCP 服务生成统一配置：streamable-http + Authorization: Bearer。 */
+function buildBearerAuthServersConfig(
+  endpoints: ReadonlyArray<{ id: string; url: string }>,
+  apiKey: string
+): JsonRecord {
+  const authorization = `Bearer ${normalizeAuthToken(apiKey)}`
+  const servers: JsonRecord = {}
+  for (const { id, url } of endpoints) {
+    servers[id] = {
+      enabled: true,
+      transport: 'streamable-http',
+      url,
+      headers: { Authorization: authorization },
+      trustScope: 'user',
+      timeoutMs: 30000
+    }
+  }
+  return { servers }
+}
+
+export function buildWkMcpConfig(apiKey: string): JsonRecord {
+  return buildBearerAuthServersConfig(WK_MCP_ENDPOINTS, apiKey)
+}
+
+export function buildQccMcpConfig(apiKey: string): JsonRecord {
+  return buildBearerAuthServersConfig(QCC_MCP_ENDPOINTS, apiKey)
+}
+
+/** 天眼查文档要求 Authorization 头直接放 API Key 原文，不加 Bearer 前缀。 */
+export function buildTycMcpConfig(apiKey: string): JsonRecord {
+  const authorization = normalizeAuthToken(apiKey)
+  const servers: JsonRecord = {}
+  for (const { id, url } of TYC_MCP_ENDPOINTS) {
+    servers[id] = {
+      enabled: true,
+      transport: 'streamable-http',
+      url,
+      headers: { Authorization: authorization },
+      trustScope: 'user',
+      timeoutMs: 30000
+    }
+  }
+  return { servers }
+}
+
 function mcpServersFromConfig(config: JsonRecord): JsonRecord {
   if (isJsonRecord(config.servers)) return config.servers
   const capabilities = isJsonRecord(config.capabilities) ? config.capabilities : undefined
@@ -426,8 +546,16 @@ function mcpServersFromConfig(config: JsonRecord): JsonRecord {
   return isJsonRecord(mcp?.servers) ? mcp.servers : {}
 }
 
-function mcpServerDescription(server: JsonRecord | undefined, fallback: string): string {
-  if (!server) return fallback
+function localizedMcpStatus(status: string, labels: McpMarketplaceLabels): string {
+  if (status === 'connected' || status === 'available') return labels.connected
+  if (status === 'connecting') return labels.connecting
+  if (status === 'error' || status === 'unavailable') return labels.error
+  if (status === 'disabled') return labels.disabled
+  return status
+}
+
+function mcpServerDescription(server: JsonRecord | undefined, labels: McpMarketplaceLabels): string {
+  if (!server) return labels.configured
   const transport = typeof server.transport === 'string' ? server.transport : ''
   const command = typeof server.command === 'string' ? server.command : ''
   const url = typeof server.url === 'string' ? server.url : ''
@@ -437,13 +565,13 @@ function mcpServerDescription(server: JsonRecord | undefined, fallback: string):
     ? server.toolCount
     : undefined
   const parts = [
-    status ? `status: ${status}` : '',
+    status ? labels.statusSummary(localizedMcpStatus(status, labels)) : '',
     transport,
     command || url,
-    toolCount != null ? `${toolCount} tools` : '',
-    lastError ? `error: ${lastError}` : ''
+    toolCount != null ? labels.toolsSummary(toolCount) : '',
+    lastError ? labels.errorSummary(lastError) : ''
   ].filter(Boolean)
-  return parts.length ? parts.join(' · ') : fallback
+  return parts.length ? parts.join(' · ') : labels.configured
 }
 
 function mcpServerStatus(diagnostic: JsonRecord | undefined, config: JsonRecord | undefined): string {
@@ -468,6 +596,15 @@ export function mcpConfigHasServer(content: string, id: string): boolean {
     }
     if (id === YUANDIAN_MCP_GROUP_ID) {
       return Object.keys(servers).some((serverId) => isYuandianMcpEndpointId(serverId))
+    }
+    if (id === WK_MCP_GROUP_ID) {
+      return Object.keys(servers).some((serverId) => isWkMcpEndpointId(serverId))
+    }
+    if (id === QCC_MCP_GROUP_ID) {
+      return Object.keys(servers).some((serverId) => isQccMcpEndpointId(serverId))
+    }
+    if (id === TYC_MCP_GROUP_ID) {
+      return Object.keys(servers).some((serverId) => isTycMcpEndpointId(serverId))
     }
     return Object.prototype.hasOwnProperty.call(servers, id)
   } catch {
@@ -593,6 +730,13 @@ function marketplaceCategoryLabel(category: PluginCategory, t: (key: string) => 
   return t(`pluginCategory_${category}`)
 }
 
+function formatCompactMetric(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    notation: 'compact',
+    maximumFractionDigits: value >= 10_000 ? 1 : 0
+  }).format(value)
+}
+
 function categoryRank(category: PluginCategory): number {
   const index = CATEGORY_ORDER.indexOf(category)
   return index >= 0 ? index : CATEGORY_ORDER.length
@@ -635,6 +779,9 @@ function sortMarketplaceItems(items: MarketplaceItem[]): MarketplaceItem[] {
   return [...items].sort((left, right) => {
     const categoryDelta = categoryRank(inferMarketplaceCategory(left)) - categoryRank(inferMarketplaceCategory(right))
     if (categoryDelta !== 0) return categoryDelta
+    if (left.skillHubNamespace && right.skillHubNamespace && left.downloads !== right.downloads) {
+      return (right.downloads ?? 0) - (left.downloads ?? 0)
+    }
     return (left.title ?? left.titleKey ?? left.id).localeCompare(right.title ?? right.titleKey ?? right.id)
   })
 }
@@ -704,6 +851,47 @@ export function skillMarketplaceItemsFromDiscoveredSkills(
   })))
 }
 
+export function skillMarketplaceItemsFromSkillHub(
+  skills: SkillHubSkillSummary[],
+  catalogCategory?: SkillHubCatalogCategory
+): MarketplaceItem[] {
+  const seen = new Set<string>()
+  return skills.flatMap((skill) => {
+    // 不在 SkillHub 展示 ima-skills（应用已内置 IMA 知识库接入，无需用户安装）。
+    if (/^ima[-_ ]?skills?$/.test(skill.slug) || /^ima[-_ ]?skills?$/.test(skill.name)) return []
+    // legalwork 的安装目录以 slug 命名；同一榜单出现同名不同作者时只展示热度更高的一项。
+    if (seen.has(skill.slug)) return []
+    seen.add(skill.slug)
+    return [{
+      id: skill.slug,
+      kind: 'skill' as const,
+      title: skill.name,
+      description: skill.description,
+      group: 'recommended' as const,
+      sourceLabel: 'SkillHub',
+      statusTone: 'default' as const,
+      category: catalogCategory === 'legal'
+        ? 'legal'
+        : catalogCategory === 'office'
+          ? 'productivity'
+          : catalogCategory === 'learning'
+            ? 'research'
+            : inferCategoryFromText([
+                skill.category,
+                skill.slug,
+                skill.name,
+                skill.description,
+                ...skill.tags
+              ].join(' ')),
+      skillHubNamespace: skill.namespace,
+      skillHubVersion: skill.version,
+      downloads: skill.downloads,
+      stars: skill.stars,
+      iconUrl: skill.iconUrl
+    }]
+  })
+}
+
 export function mcpMarketplaceItemsFromConfigAndDiagnostics(
   configText: string,
   diagnostics: CoreRuntimeToolDiagnosticsJson | null,
@@ -740,8 +928,11 @@ export function mcpMarketplaceItemsFromConfigAndDiagnostics(
   const entries = [...servers.values()]
   const pkulawEntries = entries.filter((entry) => isPkulawMcpEndpointId(entry.id))
   const yuandianEntries = entries.filter((entry) => isYuandianMcpEndpointId(entry.id))
+  const wkEntries = entries.filter((entry) => isWkMcpEndpointId(entry.id))
+  const qccEntries = entries.filter((entry) => isQccMcpEndpointId(entry.id))
+  const tycEntries = entries.filter((entry) => isTycMcpEndpointId(entry.id))
   const normalEntries = entries.filter((entry) =>
-    !isPkulawMcpEndpointId(entry.id) && !isYuandianMcpEndpointId(entry.id)
+    !isPkulawMcpEndpointId(entry.id) && !isYuandianMcpEndpointId(entry.id) && !isWkMcpEndpointId(entry.id) && !isQccMcpEndpointId(entry.id) && !isTycMcpEndpointId(entry.id)
   )
   const items: MarketplaceItem[] = normalEntries.map(({ id, config, diagnostic }) => {
     const status = mcpServerStatus(diagnostic, config)
@@ -755,7 +946,7 @@ export function mcpMarketplaceItemsFromConfigAndDiagnostics(
       id,
       kind: 'mcp' as const,
       title: id,
-      description: mcpServerDescription(details, labels.configured),
+      description: mcpServerDescription(details, labels),
       group: 'personal' as const,
       sourceLabel,
       statusTone: mcpStatusTone(status),
@@ -774,6 +965,15 @@ export function mcpMarketplaceItemsFromConfigAndDiagnostics(
   }
   if (yuandianEntries.length > 0) {
     items.push(yuandianMarketplaceItem(yuandianEntries, labels))
+  }
+  if (wkEntries.length > 0) {
+    items.push(wkMarketplaceItem(wkEntries, labels))
+  }
+  if (qccEntries.length > 0) {
+    items.push(qccMarketplaceItem(qccEntries, labels))
+  }
+  if (tycEntries.length > 0) {
+    items.push(tycMarketplaceItem(tycEntries, labels))
   }
   return items.sort((left, right) => (left.title ?? left.id).localeCompare(right.title ?? right.id))
 }
@@ -905,6 +1105,204 @@ function yuandianMarketplaceItem(
   }
 }
 
+function wkMarketplaceItem(
+  entries: Array<{
+    id: string
+    config?: JsonRecord
+    diagnostic?: JsonRecord
+  }>,
+  labels: McpMarketplaceLabels
+): MarketplaceItem {
+  const statuses = entries.map((entry) => mcpServerStatus(entry.diagnostic, entry.config))
+  const errorEntries = entries.filter((entry) => {
+    const details = { ...(entry.config ?? {}), ...(entry.diagnostic ?? {}) }
+    return mcpServerStatus(entry.diagnostic, entry.config) === 'error' ||
+      typeof details.lastError === 'string'
+  })
+  const connected = statuses.filter((status) => status === 'connected' || status === 'available').length
+  const disabled = statuses.filter((status) => status === 'disabled').length
+  const tools = entries.reduce((sum, entry) => {
+    const count = typeof entry.diagnostic?.toolCount === 'number'
+      ? entry.diagnostic.toolCount
+      : typeof entry.config?.toolCount === 'number'
+        ? entry.config.toolCount
+        : 0
+    return Number.isFinite(count) ? sum + count : sum
+  }, 0)
+  const lastError = errorEntries
+    .map((entry) => {
+      const details = { ...(entry.config ?? {}), ...(entry.diagnostic ?? {}) }
+      return typeof details.lastError === 'string' ? details.lastError : ''
+    })
+    .find(Boolean) ?? ''
+  const status =
+    errorEntries.length > 0 ? 'error' :
+    connected > 0 ? 'connected' :
+    disabled === entries.length ? 'disabled' :
+    'configured'
+  const needsToken = entries.some((entry) => !hasAuthorizationHeader(entry.config)) ||
+    authErrorLooksTokenRelated(entries)
+  const sourceLabel =
+    needsToken ? labels.tokenRequired :
+    status === 'connected' ? labels.connected :
+    status === 'error' ? labels.error :
+    status === 'disabled' ? labels.disabled :
+    labels.configured
+  return {
+    id: WK_MCP_GROUP_ID,
+    kind: 'mcp',
+    title: labels.wkTitle,
+    description: needsToken
+      ? labels.tokenRequiredSummary
+      : labels.wkSummary({
+          total: entries.length,
+          connected,
+          tools,
+          errors: errorEntries.length,
+          disabled,
+          lastError
+        }),
+    group: 'personal',
+    category: 'legal',
+    configurable: true,
+    needsToken,
+    sourceLabel,
+    statusTone: needsToken ? 'warning' : mcpStatusTone(status)
+  }
+}
+
+function qccMarketplaceItem(
+  entries: Array<{
+    id: string
+    config?: JsonRecord
+    diagnostic?: JsonRecord
+  }>,
+  labels: McpMarketplaceLabels
+): MarketplaceItem {
+  const statuses = entries.map((entry) => mcpServerStatus(entry.diagnostic, entry.config))
+  const errorEntries = entries.filter((entry) => {
+    const details = { ...(entry.config ?? {}), ...(entry.diagnostic ?? {}) }
+    return mcpServerStatus(entry.diagnostic, entry.config) === 'error' ||
+      typeof details.lastError === 'string'
+  })
+  const connected = statuses.filter((status) => status === 'connected' || status === 'available').length
+  const disabled = statuses.filter((status) => status === 'disabled').length
+  const tools = entries.reduce((sum, entry) => {
+    const count = typeof entry.diagnostic?.toolCount === 'number'
+      ? entry.diagnostic.toolCount
+      : typeof entry.config?.toolCount === 'number'
+        ? entry.config.toolCount
+        : 0
+    return Number.isFinite(count) ? sum + count : sum
+  }, 0)
+  const lastError = errorEntries
+    .map((entry) => {
+      const details = { ...(entry.config ?? {}), ...(entry.diagnostic ?? {}) }
+      return typeof details.lastError === 'string' ? details.lastError : ''
+    })
+    .find(Boolean) ?? ''
+  const status =
+    errorEntries.length > 0 ? 'error' :
+    connected > 0 ? 'connected' :
+    disabled === entries.length ? 'disabled' :
+    'configured'
+  const needsToken = entries.some((entry) => !hasAuthorizationHeader(entry.config)) ||
+    authErrorLooksTokenRelated(entries)
+  const sourceLabel =
+    needsToken ? labels.tokenRequired :
+    status === 'connected' ? labels.connected :
+    status === 'error' ? labels.error :
+    status === 'disabled' ? labels.disabled :
+    labels.configured
+  return {
+    id: QCC_MCP_GROUP_ID,
+    kind: 'mcp',
+    title: labels.qccTitle,
+    description: needsToken
+      ? labels.tokenRequiredSummary
+      : labels.qccSummary({
+          total: entries.length,
+          connected,
+          tools,
+          errors: errorEntries.length,
+          disabled,
+          lastError
+        }),
+    group: 'personal',
+    category: 'data',
+    configurable: true,
+    needsToken,
+    sourceLabel,
+    statusTone: needsToken ? 'warning' : mcpStatusTone(status)
+  }
+}
+
+function tycMarketplaceItem(
+  entries: Array<{
+    id: string
+    config?: JsonRecord
+    diagnostic?: JsonRecord
+  }>,
+  labels: McpMarketplaceLabels
+): MarketplaceItem {
+  const statuses = entries.map((entry) => mcpServerStatus(entry.diagnostic, entry.config))
+  const errorEntries = entries.filter((entry) => {
+    const details = { ...(entry.config ?? {}), ...(entry.diagnostic ?? {}) }
+    return mcpServerStatus(entry.diagnostic, entry.config) === 'error' ||
+      typeof details.lastError === 'string'
+  })
+  const connected = statuses.filter((status) => status === 'connected' || status === 'available').length
+  const disabled = statuses.filter((status) => status === 'disabled').length
+  const tools = entries.reduce((sum, entry) => {
+    const count = typeof entry.diagnostic?.toolCount === 'number'
+      ? entry.diagnostic.toolCount
+      : typeof entry.config?.toolCount === 'number'
+        ? entry.config.toolCount
+        : 0
+    return Number.isFinite(count) ? sum + count : sum
+  }, 0)
+  const lastError = errorEntries
+    .map((entry) => {
+      const details = { ...(entry.config ?? {}), ...(entry.diagnostic ?? {}) }
+      return typeof details.lastError === 'string' ? details.lastError : ''
+    })
+    .find(Boolean) ?? ''
+  const status =
+    errorEntries.length > 0 ? 'error' :
+    connected > 0 ? 'connected' :
+    disabled === entries.length ? 'disabled' :
+    'configured'
+  const needsToken = entries.some((entry) => !hasAuthorizationHeader(entry.config)) ||
+    authErrorLooksTokenRelated(entries)
+  const sourceLabel =
+    needsToken ? labels.tokenRequired :
+    status === 'connected' ? labels.connected :
+    status === 'error' ? labels.error :
+    status === 'disabled' ? labels.disabled :
+    labels.configured
+  return {
+    id: TYC_MCP_GROUP_ID,
+    kind: 'mcp',
+    title: labels.tycTitle,
+    description: needsToken
+      ? labels.tokenRequiredSummary
+      : labels.tycSummary({
+          total: entries.length,
+          connected,
+          tools,
+          errors: errorEntries.length,
+          disabled,
+          lastError
+        }),
+    group: 'personal',
+    category: 'data',
+    configurable: true,
+    needsToken,
+    sourceLabel,
+    statusTone: needsToken ? 'warning' : mcpStatusTone(status)
+  }
+}
+
 function skillNameLooksValid(raw: string): boolean {
   const value = raw.trim()
   return !!value && value !== '.' && value !== '..' && !/[\\/]/.test(value)
@@ -1008,6 +1406,33 @@ const RECOMMENDED_ITEMS: MarketplaceItem[] = [
     configurable: true
   },
   {
+    id: WK_MCP_GROUP_ID,
+    kind: 'mcp',
+    titleKey: 'pluginMcpWkTitle',
+    descriptionKey: 'pluginMcpWkDesc',
+    group: 'recommended',
+    category: 'legal',
+    configurable: true
+  },
+  {
+    id: QCC_MCP_GROUP_ID,
+    kind: 'mcp',
+    titleKey: 'pluginMcpQccTitle',
+    descriptionKey: 'pluginMcpQccDesc',
+    group: 'recommended',
+    category: 'data',
+    configurable: true
+  },
+  {
+    id: TYC_MCP_GROUP_ID,
+    kind: 'mcp',
+    titleKey: 'pluginMcpTycTitle',
+    descriptionKey: 'pluginMcpTycDesc',
+    group: 'recommended',
+    category: 'data',
+    configurable: true
+  },
+  {
     id: ANYSEARCH_ID,
     kind: 'mcp',
     titleKey: 'pluginMcpAnysearchTitle',
@@ -1091,9 +1516,12 @@ export function PluginMarketplaceView({
   const [mcpConfigText, setMcpConfigText] = useState('')
   const [mcpLoaded, setMcpLoaded] = useState(false)
   const [configuringItemId, setConfiguringItemId] = useState<string | null>(null)
-  const [primaryLegalSource, setPrimaryLegalSource] = useState<'pkulaw' | 'yuandian'>('pkulaw')
+  const [primaryLegalSource, setPrimaryLegalSource] = useState<'pkulaw' | 'yuandian' | 'wk'>('pkulaw')
   const [pkulawToken, setPkulawToken] = useState('')
   const [yuandianApiKey, setYuandianApiKey] = useState('')
+  const [wkApiKey, setWkApiKey] = useState('')
+  const [qccApiKey, setQccApiKey] = useState('')
+  const [tycApiKey, setTycApiKey] = useState('')
   const [anysearchApiKey, setAnysearchApiKey] = useState('')
   const [imaLoggedIn, setImaLoggedIn] = useState(false)
   const [imaConnectionStatus, setImaConnectionStatus] = useState<ImaConnectionStatus>('not_configured')
@@ -1108,6 +1536,16 @@ export function PluginMarketplaceView({
   const [discoveredSkills, setDiscoveredSkills] = useState<SkillListItem[]>([])
   const [skillListLoading, setSkillListLoading] = useState(false)
   const [skillListError, setSkillListError] = useState('')
+  const [skillHubSkills, setSkillHubSkills] = useState<SkillHubSkillSummary[]>([])
+  const [skillHubLoading, setSkillHubLoading] = useState(false)
+  const [skillHubError, setSkillHubError] = useState('')
+  const [skillHubCategory, setSkillHubCategory] = useState<SkillHubCatalogCategory>('legal')
+  const [skillHubPage, setSkillHubPage] = useState(1)
+  const [skillHubTotal, setSkillHubTotal] = useState(0)
+  const [skillHubTotalPages, setSkillHubTotalPages] = useState(1)
+  const skillHubRequestId = useRef(0)
+  // 按 分类:页码 缓存 SkillHub 结果，切回已加载分类不再重复拉取，避免页面卡顿。
+  const skillHubCache = useRef<Record<string, { skills: SkillHubSkillSummary[]; total: number; totalPages: number }>>({})
   const [previewItem, setPreviewItem] = useState<MarketplaceItem | null>(null)
   const [previewMarkdown, setPreviewMarkdown] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -1236,10 +1674,61 @@ export function PluginMarketplaceView({
     }
   }, [t, workspaceRoot])
 
+  const refreshSkillHub = useCallback(async (
+    category: SkillHubCatalogCategory,
+    page: number
+  ): Promise<void> => {
+    if (typeof window.dsGui?.listSkillHubSkills !== 'function') {
+      setSkillHubError(t('pluginSkillHubUnavailable'))
+      return
+    }
+    const requestId = ++skillHubRequestId.current
+    const cacheKey = `${category}:${page}`
+    const cached = skillHubCache.current[cacheKey]
+    if (cached) {
+      setSkillHubLoading(false)
+      setSkillHubError('')
+      setSkillHubSkills(cached.skills)
+      setSkillHubTotal(cached.total)
+      setSkillHubTotalPages(cached.totalPages)
+      return
+    }
+    setSkillHubLoading(true)
+    setSkillHubError('')
+    setSkillHubTotal(0)
+    setSkillHubTotalPages(1)
+    try {
+      const result = await window.dsGui.listSkillHubSkills({ category, page, pageSize: 24 })
+      if (requestId !== skillHubRequestId.current) return
+      if (!result.ok) {
+        setSkillHubError(result.message)
+        return
+      }
+      skillHubCache.current[cacheKey] = {
+        skills: result.skills,
+        total: result.total,
+        totalPages: result.totalPages
+      }
+      setSkillHubSkills(result.skills)
+      setSkillHubTotal(result.total)
+      setSkillHubTotalPages(result.totalPages)
+    } catch (error) {
+      if (requestId !== skillHubRequestId.current) return
+      setSkillHubError(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (requestId === skillHubRequestId.current) setSkillHubLoading(false)
+    }
+  }, [t])
+
   useEffect(() => {
     if (activeKind !== 'skill') return
     void refreshSkillList()
   }, [activeKind, refreshSkillList])
+
+  useEffect(() => {
+    if (activeKind !== 'skill') return
+    void refreshSkillHub(skillHubCategory, skillHubPage)
+  }, [activeKind, refreshSkillHub, skillHubCategory, skillHubPage])
 
   useEffect(() => {
     const refreshFromDisk = (): void => {
@@ -1288,18 +1777,32 @@ export function PluginMarketplaceView({
     }),
     [discoveredSkills, t]
   )
+  const skillHubItems = useMemo(
+    () => skillMarketplaceItemsFromSkillHub(skillHubSkills, skillHubCategory),
+    [skillHubCategory, skillHubSkills]
+  )
   const discoveredMcpItems = useMemo(
     () => mcpMarketplaceItemsFromConfigAndDiagnostics(mcpConfigText, toolDiagnostics, {
       configured: t('pluginMcpSourceConfigured'),
       connected: t('pluginMcpSourceConnected'),
+      connecting: t('pluginMcpSourceConnecting'),
       error: t('pluginMcpSourceError'),
       disabled: t('pluginMcpSourceDisabled'),
+      statusSummary: (status) => t('pluginMcpDescriptionStatus', { status }),
+      toolsSummary: (count) => t('pluginMcpDescriptionTools', { count }),
+      errorSummary: (message) => t('pluginMcpDescriptionError', { message }),
       tokenRequired: t('pluginMcpSourceTokenRequired'),
       tokenRequiredSummary: t('pluginMcpTokenRequiredSummary'),
       pkulawTitle: t('pluginMcpPkulawTitle'),
       pkulawSummary: (values) => t('pluginMcpPkulawSummary', values),
       yuandianTitle: t('pluginMcpYuandianTitle'),
-      yuandianSummary: (values) => t('pluginMcpYuandianSummary', values)
+      yuandianSummary: (values) => t('pluginMcpYuandianSummary', values),
+      wkTitle: t('pluginMcpWkTitle'),
+      wkSummary: (values) => t('pluginMcpWkSummary', values),
+      qccTitle: t('pluginMcpQccTitle'),
+      qccSummary: (values) => t('pluginMcpQccSummary', values),
+      tycTitle: t('pluginMcpTycTitle'),
+      tycSummary: (values) => t('pluginMcpTycSummary', values)
     }).filter((item) => item.id !== LEGALWORK_SCHEDULE_MCP_SERVER_ID),
     [mcpConfigText, t, toolDiagnostics]
   )
@@ -1309,9 +1812,9 @@ export function PluginMarketplaceView({
   )
   const marketplaceItems = useMemo(
     () => activeKind === 'skill'
-      ? [...RECOMMENDED_ITEMS, ...discoveredSkillItems]
+      ? mergeMarketplaceCatalogItems([...skillHubItems, ...discoveredSkillItems])
       : [...RECOMMENDED_ITEMS, ...discoveredMcpItems],
-    [activeKind, discoveredMcpItems, discoveredSkillItems]
+    [activeKind, discoveredMcpItems, discoveredSkillItems, skillHubItems]
   )
 
   const isInstalled = useCallback((item: Pick<MarketplaceItem, 'kind' | 'id'>): boolean => {
@@ -1353,6 +1856,9 @@ export function PluginMarketplaceView({
         }
         const categoryDelta = categoryRank(inferMarketplaceCategory(left)) - categoryRank(inferMarketplaceCategory(right))
         if (categoryDelta !== 0) return categoryDelta
+        if (left.skillHubNamespace && right.skillHubNamespace && left.downloads !== right.downloads) {
+          return (right.downloads ?? 0) - (left.downloads ?? 0)
+        }
         return itemTitle(left, t).localeCompare(itemTitle(right, t))
       })
   }, [activeKind, filter, isInstalled, marketplaceItems, query, t])
@@ -1409,7 +1915,7 @@ export function PluginMarketplaceView({
     setNotice({ tone: 'success', message: t('pluginMcpTokenUpdated', { path: result.path }) })
   }
 
-  const applyPrimaryLegalSource = async (source: 'pkulaw' | 'yuandian'): Promise<void> => {
+  const applyPrimaryLegalSource = async (source: 'pkulaw' | 'yuandian' | 'wk'): Promise<void> => {
     // 写 mcp.json 会触发 runtime 重启；若当前有任务在跑（busy），重启会中断它。
     // 此时明确提示用户，让用户决定是否继续。
     const runtimeBusy = useChatStore.getState().busy
@@ -1428,7 +1934,7 @@ export function PluginMarketplaceView({
       setPrimaryLegalSource(source)
       setNotice({
         tone: 'success',
-        message: t(source === 'pkulaw' ? 'pluginMcpPrimarySetPkulaw' : 'pluginMcpPrimarySetYuandian')
+        message: t(source === 'pkulaw' ? 'pluginMcpPrimarySetPkulaw' : source === 'yuandian' ? 'pluginMcpPrimarySetYuandian' : 'pluginMcpPrimarySetWk')
       })
     } catch (error) {
       setNotice({ tone: 'error', message: error instanceof Error ? error.message : String(error) })
@@ -1466,6 +1972,9 @@ export function PluginMarketplaceView({
           if (entry) {
             const match = String(entry[1]).match(/^Bearer\s+(.+)$/i)
             if (match?.[1]) return match[1].trim()
+            // 某些 MCP（如天眼查）Authorization 直接放 raw API Key，无 Bearer 前缀。
+            const raw = String(entry[1]).trim()
+            if (raw) return raw
           }
         }
       }
@@ -1475,7 +1984,7 @@ export function PluginMarketplaceView({
 
   const addItem = async (item: MarketplaceItem): Promise<void> => {
     if (item.configurable) {
-      if (item.id === PKULAW_MCP_GROUP_ID || item.id === YUANDIAN_MCP_GROUP_ID) {
+      if (item.id === PKULAW_MCP_GROUP_ID || item.id === YUANDIAN_MCP_GROUP_ID || item.id === WK_MCP_GROUP_ID) {
         setPrimaryLegalSource(readPrimaryLegalSourceFromConfig(mcpConfigText))
       }
       if (item.id === PKULAW_MCP_GROUP_ID) {
@@ -1484,6 +1993,15 @@ export function PluginMarketplaceView({
       } else if (item.id === YUANDIAN_MCP_GROUP_ID) {
         const existing = readTokenFromConfig(YUANDIAN_MCP_ENDPOINTS[0].url)
         setYuandianApiKey(existing)
+      } else if (item.id === WK_MCP_GROUP_ID) {
+        const existing = readTokenFromConfig(WK_MCP_ENDPOINTS[0].url)
+        setWkApiKey(existing)
+      } else if (item.id === QCC_MCP_GROUP_ID) {
+        const existing = readTokenFromConfig(QCC_MCP_ENDPOINTS[0].url)
+        setQccApiKey(existing)
+      } else if (item.id === TYC_MCP_GROUP_ID) {
+        const existing = readTokenFromConfig(TYC_MCP_ENDPOINTS[0].url)
+        setTycApiKey(existing)
       } else if (item.id === ANYSEARCH_ID) {
         const existing = readTokenFromConfig('https://api.anysearch.com/mcp')
         setAnysearchApiKey(existing)
@@ -1557,6 +2075,23 @@ export function PluginMarketplaceView({
         return
       }
       if (item.group === 'personal') return
+      if (item.skillHubNamespace) {
+        const result = await window.dsGui.installSkillHubSkill({
+          slug: item.id,
+          namespace: item.skillHubNamespace,
+          version: item.skillHubVersion,
+          targetRoot: selectedSkillRoot.path
+        })
+        if (!result.ok) {
+          setNotice({ tone: 'error', message: result.message })
+          return
+        }
+        markInstalled(storageKey('skill', item.id))
+        await refreshSkillList()
+        const installedPath = result.installed[0]?.path || result.userSkillRoot
+        setNotice({ tone: 'success', message: t('pluginSkillHubInstalled', { path: installedPath }) })
+        return
+      }
       const title = itemTitle(item, t)
       const description = itemDescription(item, t)
       const content = buildSkillContent(
@@ -1607,6 +2142,63 @@ export function PluginMarketplaceView({
       await upsertMcpConfig(YUANDIAN_MCP_GROUP_ID, buildYuandianMcpConfig(apiKey))
       setConfiguringItemId(null)
       setYuandianApiKey('')
+    } catch (e) {
+      setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const addWk = async (): Promise<void> => {
+    const apiKey = wkApiKey.trim()
+    if (!apiKey) {
+      setNotice({ tone: 'error', message: t('pluginMcpWkKeyRequired') })
+      return
+    }
+    setBusyId(storageKey('mcp', WK_MCP_GROUP_ID))
+    setNotice(null)
+    try {
+      await upsertMcpConfig(WK_MCP_GROUP_ID, buildWkMcpConfig(apiKey))
+      setConfiguringItemId(null)
+      setWkApiKey('')
+    } catch (e) {
+      setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const addQcc = async (): Promise<void> => {
+    const apiKey = qccApiKey.trim()
+    if (!apiKey) {
+      setNotice({ tone: 'error', message: t('pluginMcpQccKeyRequired') })
+      return
+    }
+    setBusyId(storageKey('mcp', QCC_MCP_GROUP_ID))
+    setNotice(null)
+    try {
+      await upsertMcpConfig(QCC_MCP_GROUP_ID, buildQccMcpConfig(apiKey))
+      setConfiguringItemId(null)
+      setQccApiKey('')
+    } catch (e) {
+      setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const addTyc = async (): Promise<void> => {
+    const apiKey = tycApiKey.trim()
+    if (!apiKey) {
+      setNotice({ tone: 'error', message: t('pluginMcpTycKeyRequired') })
+      return
+    }
+    setBusyId(storageKey('mcp', TYC_MCP_GROUP_ID))
+    setNotice(null)
+    try {
+      await upsertMcpConfig(TYC_MCP_GROUP_ID, buildTycMcpConfig(apiKey))
+      setConfiguringItemId(null)
+      setTycApiKey('')
     } catch (e) {
       setNotice({ tone: 'error', message: e instanceof Error ? e.message : String(e) })
     } finally {
@@ -1856,6 +2448,53 @@ export function PluginMarketplaceView({
         />
       )
     }
+    if (item.id === WK_MCP_GROUP_ID) {
+      return (
+        <WkConfigPanel
+          apiKey={wkApiKey}
+          onApiKeyChange={setWkApiKey}
+          onAdd={() => void addWk()}
+          onCancel={() => {
+            setConfiguringItemId(null)
+            setWkApiKey('')
+          }}
+          busy={busyId === storageKey('mcp', WK_MCP_GROUP_ID)}
+          isPrimary={primaryLegalSource === 'wk'}
+          onSetPrimary={() => void applyPrimaryLegalSource('wk')}
+          t={t}
+        />
+      )
+    }
+    if (item.id === QCC_MCP_GROUP_ID) {
+      return (
+        <QccConfigPanel
+          apiKey={qccApiKey}
+          onApiKeyChange={setQccApiKey}
+          onAdd={() => void addQcc()}
+          onCancel={() => {
+            setConfiguringItemId(null)
+            setQccApiKey('')
+          }}
+          busy={busyId === storageKey('mcp', QCC_MCP_GROUP_ID)}
+          t={t}
+        />
+      )
+    }
+    if (item.id === TYC_MCP_GROUP_ID) {
+      return (
+        <TycConfigPanel
+          apiKey={tycApiKey}
+          onApiKeyChange={setTycApiKey}
+          onAdd={() => void addTyc()}
+          onCancel={() => {
+            setConfiguringItemId(null)
+            setTycApiKey('')
+          }}
+          busy={busyId === storageKey('mcp', TYC_MCP_GROUP_ID)}
+          t={t}
+        />
+      )
+    }
     if (item.id === ANYSEARCH_ID) {
       return (
         <AnysearchConfigPanel
@@ -1922,7 +2561,7 @@ export function PluginMarketplaceView({
               ariaLabel={`${t('pluginTabMcp')} / ${t('pluginTabSkill')}`}
               className="flex flex-row rounded-[10px] border border-[#d2d7de] bg-[#f3f4f6] p-0.5 shadow-none dark:border-white/[0.12] dark:bg-white/[0.06]"
               buttonClassName="inline-flex min-h-[32px] min-w-fit flex-1 items-center justify-center gap-1.5 rounded-[8px] px-3 text-left text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:focus-visible:ring-white/20"
-              indicatorClassName="rounded-[8px] border border-[#d9dde3] bg-white shadow-none dark:border-white/[0.10] dark:bg-white/[0.10]"
+              indicatorClassName="rounded-[8px] border border-[#d9dde3] bg-white shadow-none transition-transform duration-200 ease-out dark:border-white/[0.10] dark:bg-white/[0.10]"
               activeClassName="font-semibold text-[#1f2937] dark:text-white"
               inactiveClassName="font-medium text-[#6b7280] hover:text-[#374151] dark:text-white/55 dark:hover:text-white/80"
             />
@@ -2109,8 +2748,8 @@ export function PluginMarketplaceView({
         {activeKind === 'skill' ? (
           <>
             <PluginSection
-              title={t('pluginRecommended')}
-              emptyText={t('pluginNoResults')}
+              title={t('pluginSkillHubCatalogTitle')}
+              emptyText={skillHubLoading ? t('pluginSkillHubLoading') : skillHubError || t('pluginNoResults')}
               items={recommendedItems}
               busyId={busyId}
               isInstalled={isInstalled}
@@ -2118,6 +2757,86 @@ export function PluginMarketplaceView({
               onPreview={(item) => void openSkillPreview(item)}
               configuringItemId={configuringItemId}
               renderConfig={renderConfigPanel}
+              headerAction={(
+                <div className="flex items-center gap-1.5">
+                  {skillHubError ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void refreshSkillHub(skillHubCategory, skillHubPage)
+                      }}
+                      disabled={skillHubLoading}
+                      className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-[11.5px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${skillHubLoading ? 'animate-spin' : ''}`} />
+                      {t('pluginSkillHubRetry')}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void window.dsGui.openExternal('https://skillhub.cn/skills?sortBy=score')}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-[11.5px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
+                  >
+                    SkillHub
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+              toolbar={(
+                <div className="mb-3 flex flex-col gap-3 rounded-[var(--lg-radius-selection)] border border-ds-border-muted bg-[var(--ds-card-soft)] p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="w-full sm:w-auto" role="tablist" aria-label={t('pluginSkillHubCategoryLabel')}>
+                    <AstryxSegmentedControl<SkillHubCatalogCategory>
+                      value={skillHubCategory}
+                      items={[
+                        { value: 'legal', label: t('pluginSkillHubCategoryLegal') },
+                        { value: 'office', label: t('pluginSkillHubCategoryOffice') },
+                        { value: 'learning', label: t('pluginSkillHubCategoryLearning') }
+                      ]}
+                      onChange={(category) => {
+                        if (category === skillHubCategory) return
+                        setSkillHubCategory(category)
+                        setSkillHubPage(1)
+                      }}
+                      ariaLabel={t('pluginSkillHubCategoryLabel')}
+                      className="flex w-full flex-row rounded-[10px] border border-[#d2d7de] bg-[#f3f4f6] p-0.5 shadow-none dark:border-white/[0.12] dark:bg-white/[0.06]"
+                      buttonClassName="inline-flex h-8 min-w-fit flex-1 items-center justify-center gap-1.5 rounded-[8px] px-3 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:focus-visible:ring-white/20"
+                      indicatorClassName="rounded-[8px] border border-[#d9dde3] bg-white shadow-none transition-transform duration-200 ease-out dark:border-white/[0.10] dark:bg-white/[0.10]"
+                      activeClassName="font-semibold text-[#1f2937] dark:text-white"
+                      inactiveClassName="font-medium text-[#6b7280] hover:text-[#374151] dark:text-white/55 dark:hover:text-white/80"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 sm:justify-end">
+                    <span className="text-[11.5px] tabular-nums text-ds-faint">
+                      {t('pluginSkillHubPaginationSummary', {
+                        total: skillHubTotal,
+                        page: skillHubPage,
+                        totalPages: skillHubTotalPages
+                      })}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        aria-label={t('pluginSkillHubPreviousPage')}
+                        disabled={skillHubLoading || skillHubPage <= 1}
+                        onClick={() => setSkillHubPage((page) => Math.max(1, page - 1))}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-ds-border bg-ds-card text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={t('pluginSkillHubNextPage')}
+                        disabled={skillHubLoading || skillHubPage >= skillHubTotalPages}
+                        onClick={() => setSkillHubPage((page) => Math.min(skillHubTotalPages, page + 1))}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-ds-border bg-ds-card text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              flat
               t={t}
             />
 
@@ -2242,6 +2961,9 @@ function McpRuntimeOverlayPanel({
 function groupedMcpServerIds(serverIds: string[]): string[] {
   let hasPkulaw = false
   let hasYuandian = false
+  let hasWk = false
+  let hasQcc = false
+  let hasTyc = false
   const grouped: string[] = []
   for (const id of serverIds) {
     if (isPkulawMcpEndpointId(id)) {
@@ -2252,10 +2974,25 @@ function groupedMcpServerIds(serverIds: string[]): string[] {
       hasYuandian = true
       continue
     }
+    if (isWkMcpEndpointId(id)) {
+      hasWk = true
+      continue
+    }
+    if (isQccMcpEndpointId(id)) {
+      hasQcc = true
+      continue
+    }
+    if (isTycMcpEndpointId(id)) {
+      hasTyc = true
+      continue
+    }
     grouped.push(id)
   }
   if (hasPkulaw) grouped.push(PKULAW_MCP_GROUP_ID)
   if (hasYuandian) grouped.push(YUANDIAN_MCP_GROUP_ID)
+  if (hasWk) grouped.push(WK_MCP_GROUP_ID)
+  if (hasQcc) grouped.push(QCC_MCP_GROUP_ID)
+  if (hasTyc) grouped.push(TYC_MCP_GROUP_ID)
   return grouped.sort((left, right) => left.localeCompare(right))
 }
 
@@ -2324,6 +3061,9 @@ function PluginSection({
   onPreview,
   configuringItemId,
   renderConfig,
+  headerAction,
+  toolbar,
+  flat = false,
   t
 }: {
   title: string
@@ -2335,21 +3075,30 @@ function PluginSection({
   onPreview?: (item: MarketplaceItem) => void
   configuringItemId?: string | null
   renderConfig?: (item: MarketplaceItem) => ReactNode
+  headerAction?: ReactNode
+  toolbar?: ReactNode
+  flat?: boolean
   t: (key: string, values?: Record<string, unknown>) => string
 }): ReactElement {
-  const categoryGroups = groupMarketplaceItemsByCategory(items)
+  const categoryGroups = flat
+    ? [{ category: 'other' as PluginCategory, items }]
+    : groupMarketplaceItemsByCategory(items)
   return (
     <section className="mt-7">
       <div className="mb-3 flex items-center justify-between px-1">
         <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-ds-ink">
           {title}
         </h2>
-        {items.length > 0 ? (
-          <span className="rounded-full bg-ds-subtle px-2.5 py-1 text-[11px] font-semibold text-ds-muted">
-            {t('pluginItemCount', { count: items.length })}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {headerAction}
+          {items.length > 0 ? (
+            <span className="rounded-full bg-ds-subtle px-2.5 py-1 text-[11px] font-semibold text-ds-muted">
+              {t('pluginItemCount', { count: items.length })}
+            </span>
+          ) : null}
+        </div>
       </div>
+      {toolbar}
       {items.length === 0 ? (
         <div className="rounded-[var(--lg-radius-selection)] border border-dashed border-ds-border bg-[var(--ds-card-soft)] px-5 py-10 text-center text-[14px] text-ds-faint">
           {emptyText}
@@ -2361,7 +3110,7 @@ function PluginSection({
               key={group.category}
               className="rounded-[var(--lg-radius-selection)] border border-ds-border bg-[var(--ds-card-soft)] p-3 shadow-sm md:p-4"
             >
-              <div className="mb-3 flex items-center gap-3 px-1">
+              {!flat ? <div className="mb-3 flex items-center gap-3 px-1">
                 {(() => {
                   const CategoryIcon = CATEGORY_ICONS[group.category]
                   return (
@@ -2378,7 +3127,7 @@ function PluginSection({
                     {t('pluginCategoryItemCount', { count: group.items.length })}
                   </p>
                 </div>
-              </div>
+              </div> : null}
               <div className="grid gap-3 md:grid-cols-2">
                 {group.items.map((item) => {
                   const itemKey = storageKey(item.kind, item.id)
@@ -2414,10 +3163,10 @@ function PluginSection({
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <span className="truncate text-[15px] font-semibold tracking-[-0.01em] text-ds-ink">
-                            {itemTitle(item, t)}
+                              {itemTitle(item, t)}
                             </span>
                             <span
-                              className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${statusTone}`}
+                              className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${statusTone}`}
                             >
                               {statusLabel}
                             </span>
@@ -2425,6 +3174,18 @@ function PluginSection({
                           <p className="mt-1.5 line-clamp-2 text-[13px] leading-5 text-ds-muted">
                             {itemDescription(item, t)}
                           </p>
+                          {item.skillHubNamespace ? (
+                            <div className="mt-2 flex items-center gap-3 text-[11.5px] tabular-nums text-ds-faint">
+                              <span className="inline-flex items-center gap-1">
+                                <Download className="h-3.5 w-3.5" />
+                                {formatCompactMetric(item.downloads ?? 0)}
+                              </span>
+                              <span className="inline-flex items-center gap-1">
+                                <Star className="h-3.5 w-3.5" />
+                                {formatCompactMetric(item.stars ?? 0)}
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
                         <button
                           type="button"
@@ -2434,7 +3195,7 @@ function PluginSection({
                             void onAdd(item)
                           }}
                           title={needsConfiguration ? t('pluginConfigureToken') : installed ? t('pluginAdded') : t('pluginAdd')}
-                          className={`inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[8px] px-2.5 text-[11.5px] font-semibold transition ${
+                          className={`inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[8px] text-[11.5px] font-semibold transition ${item.skillHubNamespace ? 'w-8 px-0' : 'px-2.5'} ${
                             needsConfiguration
                               ? 'border border-ds-border bg-ds-card text-ds-ink shadow-sm hover:bg-ds-hover'
                               : installed
@@ -2457,7 +3218,7 @@ function PluginSection({
                           ) : (
                             <>
                               <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-                              <span>{t('pluginAdd')}</span>
+                              {!item.skillHubNamespace ? <span>{t('pluginAdd')}</span> : null}
                             </>
                           )}
                         </button>
@@ -2997,6 +3758,280 @@ function YuandianConfigPanel({
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Plus className="h-4 w-4" strokeWidth={2} />}
             {apiKey.trim() ? t('pluginMcpPkulawUpdate') : t('pluginMcpYuandianAdd')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function WkConfigPanel({
+  apiKey,
+  onApiKeyChange,
+  onAdd,
+  onCancel,
+  busy,
+  isPrimary,
+  onSetPrimary,
+  t
+}: {
+  apiKey: string
+  onApiKeyChange: (value: string) => void
+  onAdd: () => void
+  onCancel: () => void
+  busy: boolean
+  isPrimary: boolean
+  onSetPrimary: () => void
+  t: (key: string, values?: Record<string, unknown>) => string
+}): ReactElement {
+  const [showKey, setShowKey] = useState(false)
+  return (
+    <div className="rounded-2xl border border-ds-border bg-ds-card/95 p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start">
+        <div className="min-w-0 flex-1">
+          <label className="block text-[12px] font-semibold text-ds-muted">
+            {t('pluginMcpWkKeyLabel')}
+          </label>
+          <div className="relative mt-1.5">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(event) => onApiKeyChange(event.target.value)}
+              placeholder={t('pluginMcpWkKeyPlaceholder')}
+              autoComplete="off"
+              className="w-full rounded-xl border border-ds-border bg-ds-main/45 px-3 py-2 pr-20 text-[14px] text-ds-ink outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/30"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((value) => !value)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-[12px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
+            >
+              {showKey ? t('pluginMcpPkulawTokenHide') : t('pluginMcpPkulawTokenShow')}
+            </button>
+          </div>
+          <p className="mt-2 text-[12px] leading-5 text-ds-faint">
+            {t('pluginMcpWkKeyHint')}
+          </p>
+          <button
+            type="button"
+            onClick={() => void window.dsGui?.openWkConsole?.().catch(() => undefined)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-ds-border bg-ds-card px-2.5 py-1 text-[12px] font-medium text-ds-ink transition hover:bg-ds-hover"
+          >
+            打开威科先行控制台（内置窗口）
+          </button>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {WK_MCP_ENDPOINTS.map((endpoint) => (
+              <span
+                key={endpoint.id}
+                className="rounded-md border border-ds-border-muted bg-ds-subtle px-2 py-0.5 text-[11.5px] font-medium tracking-[-0.006em] text-ds-muted"
+              >
+                {endpoint.id}
+              </span>
+            ))}
+          </div>
+          {isPrimary ? (
+            <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-ds-userbubble/10 px-2.5 py-1 text-[12px] font-semibold text-ds-ink">
+              <Check className="h-3.5 w-3.5" strokeWidth={2} />
+              {t('pluginMcpPrimaryCurrent', { source: t('pluginMcpSourceWk') })}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onSetPrimary}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-ds-border bg-ds-card px-2.5 py-1 text-[12px] font-medium text-ds-ink transition hover:bg-ds-hover"
+            >
+              {t('pluginMcpPrimarySet')}
+            </button>
+          )}
+          <p className="mt-1.5 text-[11px] leading-4 text-ds-faint">{t('pluginMcpPrimaryHint')}</p>
+        </div>
+        <div data-control-hover-root className="flex shrink-0 items-center gap-2 md:pt-5">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[13px] font-medium text-ds-ink shadow-sm transition hover:bg-ds-hover disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {t('pluginMcpPkulawCancel')}
+          </button>
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={busy || !apiKey.trim()}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ds-userbubble px-3 py-2 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Plus className="h-4 w-4" strokeWidth={2} />}
+            {apiKey.trim() ? t('pluginMcpPkulawUpdate') : t('pluginMcpYuandianAdd')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function QccConfigPanel({
+  apiKey,
+  onApiKeyChange,
+  onAdd,
+  onCancel,
+  busy,
+  t
+}: {
+  apiKey: string
+  onApiKeyChange: (value: string) => void
+  onAdd: () => void
+  onCancel: () => void
+  busy: boolean
+  t: (key: string, values?: Record<string, unknown>) => string
+}): ReactElement {
+  const [showKey, setShowKey] = useState(false)
+  return (
+    <div className="rounded-2xl border border-ds-border bg-ds-card/95 p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start">
+        <div className="min-w-0 flex-1">
+          <label className="block text-[12px] font-semibold text-ds-muted">
+            {t('pluginMcpQccKeyLabel')}
+          </label>
+          <div className="relative mt-1.5">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(event) => onApiKeyChange(event.target.value)}
+              placeholder={t('pluginMcpQccKeyPlaceholder')}
+              autoComplete="off"
+              className="w-full rounded-xl border border-ds-border bg-ds-main/45 px-3 py-2 pr-20 text-[14px] text-ds-ink outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/30"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((value) => !value)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-[12px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
+            >
+              {showKey ? t('pluginMcpPkulawTokenHide') : t('pluginMcpPkulawTokenShow')}
+            </button>
+          </div>
+          <p className="mt-2 text-[12px] leading-5 text-ds-faint">
+            {t('pluginMcpQccKeyHint')}
+          </p>
+          <button
+            type="button"
+            onClick={() => void window.dsGui?.openQccConsole?.().catch(() => undefined)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-ds-border bg-ds-card px-2.5 py-1 text-[12px] font-medium text-ds-ink transition hover:bg-ds-hover"
+          >
+            打开企查查控制台（内置窗口）
+          </button>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {QCC_MCP_ENDPOINTS.map((endpoint) => (
+              <span
+                key={endpoint.id}
+                className="rounded-md border border-ds-border-muted bg-ds-subtle px-2 py-0.5 text-[11.5px] font-medium tracking-[-0.006em] text-ds-muted"
+              >
+                {endpoint.id}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div data-control-hover-root className="flex shrink-0 items-center gap-2 md:pt-5">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[13px] font-medium text-ds-ink shadow-sm transition hover:bg-ds-hover disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {t('pluginMcpPkulawCancel')}
+          </button>
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={busy || !apiKey.trim()}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ds-userbubble px-3 py-2 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Plus className="h-4 w-4" strokeWidth={2} />}
+            {apiKey.trim() ? t('pluginMcpPkulawUpdate') : t('pluginMcpPkulawAdd')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TycConfigPanel({
+  apiKey,
+  onApiKeyChange,
+  onAdd,
+  onCancel,
+  busy,
+  t
+}: {
+  apiKey: string
+  onApiKeyChange: (value: string) => void
+  onAdd: () => void
+  onCancel: () => void
+  busy: boolean
+  t: (key: string, values?: Record<string, unknown>) => string
+}): ReactElement {
+  const [showKey, setShowKey] = useState(false)
+  return (
+    <div className="rounded-2xl border border-ds-border bg-ds-card/95 p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start">
+        <div className="min-w-0 flex-1">
+          <label className="block text-[12px] font-semibold text-ds-muted">
+            {t('pluginMcpTycKeyLabel')}
+          </label>
+          <div className="relative mt-1.5">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(event) => onApiKeyChange(event.target.value)}
+              placeholder={t('pluginMcpTycKeyPlaceholder')}
+              autoComplete="off"
+              className="w-full rounded-xl border border-ds-border bg-ds-main/45 px-3 py-2 pr-20 text-[14px] text-ds-ink outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/30"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((value) => !value)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-[12px] font-medium text-ds-muted transition hover:bg-ds-hover hover:text-ds-ink"
+            >
+              {showKey ? t('pluginMcpPkulawTokenHide') : t('pluginMcpPkulawTokenShow')}
+            </button>
+          </div>
+          <p className="mt-2 text-[12px] leading-5 text-ds-faint">
+            {t('pluginMcpTycKeyHint')}
+          </p>
+          <button
+            type="button"
+            onClick={() => void window.dsGui?.openTycConsole?.().catch(() => undefined)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-ds-border bg-ds-card px-2.5 py-1 text-[12px] font-medium text-ds-ink transition hover:bg-ds-hover"
+          >
+            打开天眼查控制台（登录 / OAuth，内置窗口）
+          </button>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {TYC_MCP_ENDPOINTS.map((endpoint) => (
+              <span
+                key={endpoint.id}
+                className="rounded-md border border-ds-border-muted bg-ds-subtle px-2 py-0.5 text-[11.5px] font-medium tracking-[-0.006em] text-ds-muted"
+              >
+                {endpoint.id}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div data-control-hover-root className="flex shrink-0 items-center gap-2 md:pt-5">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-ds-border bg-ds-card px-3 py-2 text-[13px] font-medium text-ds-ink shadow-sm transition hover:bg-ds-hover disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {t('pluginMcpPkulawCancel')}
+          </button>
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={busy || !apiKey.trim()}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ds-userbubble px-3 py-2 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} /> : <Plus className="h-4 w-4" strokeWidth={2} />}
+            {apiKey.trim() ? t('pluginMcpPkulawUpdate') : t('pluginMcpPkulawAdd')}
           </button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -93,6 +93,44 @@ describe('bundled Office runtime packaging contract', () => {
 
     rmSync(join(sitePackages, 'openpyxl'), { recursive: true, force: true })
     expect(() => afterPack._internals.validateBundledOfficeRuntime(context)).toThrow(/openpyxl/)
+  })
+
+  it('requires the complete data-compliance runtime in Windows x64 packages', () => {
+    const root = tempRoot()
+    const context = {
+      appOutDir: join(root, 'win-x64'),
+      electronPlatformName: 'win32',
+      arch: 'x64',
+      packager: { appInfo: { productFilename: 'legalwork' }, projectDir: join(root, 'project') }
+    }
+    const resources = afterPack._internals.packedResourcesDir(context)
+    const python = afterPack._internals.officeRuntimePythonPath(context)
+    const sitePackages = afterPack._internals.officeRuntimeSitePackagesPath(context)
+    ensurePath(python)
+    for (const moduleName of [
+      ...afterPack.OFFICE_RUNTIME_IMPORTS,
+      ...afterPack.DATA_COMPLIANCE_RUNTIME_IMPORTS
+    ]) {
+      ensurePath(join(sitePackages, moduleName), true)
+    }
+    writeFileSync(join(resources, 'office-runtime', 'runtime.json'), JSON.stringify({
+      pythonLine: afterPack.OFFICE_RUNTIME_PYTHON_LINE,
+      dataComplianceReady: true,
+      imports: [
+        ...afterPack.OFFICE_RUNTIME_IMPORTS,
+        ...afterPack.DATA_COMPLIANCE_RUNTIME_IMPORTS
+      ]
+    }), 'utf8')
+
+    expect(() => afterPack._internals.validateBundledOfficeRuntime(context)).not.toThrow()
+    rmSync(join(sitePackages, 'paddle'), { recursive: true, force: true })
+    expect(() => afterPack._internals.validateBundledOfficeRuntime(context)).toThrow(/paddle/)
+  })
+
+  it('never runs npm against the completed package', () => {
+    const source = readFileSync(require.resolve('../../scripts/after-pack.cjs'), 'utf8')
+    expect(source).not.toContain("['prune', '--omit=dev'")
+    expect(source).not.toContain('execFileSync(prune.command')
   })
 
   it('rejects absolute or broken Office runtime symlinks before signing', () => {

@@ -658,6 +658,23 @@ export const skillListPayloadSchema = z
   })
   .strict()
 
+export const skillHubInstallPayloadSchema = z
+  .object({
+    slug: trimmedString(128),
+    namespace: trimmedString(128),
+    version: z.string().trim().max(64).optional(),
+    targetRoot: trimmedString(MAX_PATH_LENGTH)
+  })
+  .strict()
+
+export const skillHubListPayloadSchema = z
+  .object({
+    category: z.enum(['legal', 'office', 'learning']),
+    page: z.number().int().min(1).max(10_000),
+    pageSize: z.number().int().min(12).max(48).optional()
+  })
+  .strict()
+
 export const rootPathSchema = trimmedString(MAX_PATH_LENGTH)
 export const deepseekConfigContentSchema = z.string().max(MAX_CONFIG_FILE_BYTES)
 

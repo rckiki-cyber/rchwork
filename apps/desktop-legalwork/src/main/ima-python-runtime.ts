@@ -11,3 +11,13 @@ export function imaStandalonePythonCandidates(
     join(legalworkDataDir, 'data-compliance', 'python-standalone', executable)
   ]
 }
+
+export async function firstSupportedStandalonePython(
+  candidates: string[],
+  isSupported: (candidate: string) => boolean | Promise<boolean>
+): Promise<string | null> {
+  for (const candidate of candidates) {
+    if (await isSupported(candidate)) return candidate
+  }
+  return null
+}

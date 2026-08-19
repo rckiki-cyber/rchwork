@@ -359,6 +359,41 @@ describe('AgentsSettingsSection Legalwork diagnostics smoke', () => {
     expect(html).toContain('Fallback compaction thresholds')
   })
 
+  it('keeps long MCP identifiers, commands, and errors inside their service card', () => {
+    const serverId = 'service-with-an-extremely-long-identifier-that-has-no-natural-break-point'
+    const command = '/Applications/legalwork.app/Contents/Frameworks/legalwork Helper.app/Contents/MacOS/legalwork Helper'
+    const argument = '/Users/example/Library/Application Support/legalwork/a-very-deep-workspace-path-without-a-short-label'
+    const lastError = 'ENOENT:/Users/example/Library/Application Support/legalwork/a-very-long-missing-runtime-file-name'
+    const ctx = {
+      ...baseCtx(),
+      mcpConfigText: JSON.stringify({
+        servers: {
+          [serverId]: {
+            command,
+            args: [argument]
+          }
+        }
+      }),
+      toolDiagnostics: {
+        mcpServers: [{ id: serverId, status: 'error', lastError }]
+      }
+    }
+
+    const html = renderToStaticMarkup(createElement(AgentsSettingsSection, { ctx }))
+
+    expect(html).toContain('flex w-full min-w-0 flex-col gap-3')
+    expect(html).toContain('grid min-w-0 gap-2')
+    expect(html).toContain('min-w-0 max-w-full overflow-hidden rounded-xl')
+    expect(html).toContain('max-w-full break-all font-mono')
+    expect(html).toContain('mt-1 min-w-0 break-all text-[12px] leading-5')
+    expect(html).toContain('whitespace-pre-wrap break-all text-[12px] leading-5')
+    expect(html).toContain(serverId)
+    expect(html).toContain(command)
+    expect(html).toContain(argument)
+    expect(html).toContain(lastError)
+    expect(html).not.toContain('mt-1 truncate text-[12px] text-ds-muted')
+  })
+
   it('renders MCP, Skill, web, attachment, and memory diagnostics', () => {
     const ctx = {
       ...baseCtx(),

@@ -115,6 +115,26 @@ describe('model provider settings', () => {
     expect(runtime.endpointFormat).toBe('messages')
   })
 
+  it('migrates the official OpenAI provider to Responses for reasoning summaries', () => {
+    const base = settings()
+    base.provider.providers = base.provider.providers.map((provider) =>
+      provider.id === 'openai'
+        ? { ...provider, apiKey: 'sk-openai', endpointFormat: 'chat_completions' }
+        : provider
+    )
+    base.agents.legalwork = {
+      ...base.agents.legalwork,
+      providerId: 'openai',
+      model: 'o3-mini',
+      endpointFormat: 'chat_completions'
+    }
+
+    const runtime = resolveLegalworkRuntimeSettings(base)
+
+    expect(runtime.baseUrl).toBe('https://api.openai.com/v1')
+    expect(runtime.endpointFormat).toBe('responses')
+  })
+
   it.each([
     ['mimo', 'mimo-v2.5-pro', 'https://api.xiaomimimo.com/v1'],
     ['longcat', 'LongCat-2.0', 'https://api.longcat.chat/openai/v1']

@@ -58,7 +58,9 @@ export type AssistantTextTurnItem = z.infer<typeof AssistantTextTurnItem>
 
 export const AssistantReasoningTurnItem = TurnItemBase.extend({
   kind: z.literal('assistant_reasoning'),
-  text: z.string()
+  text: z.string(),
+  /** Provider continuity token for signed reasoning blocks (for example Claude thinking). */
+  signature: z.string().optional()
 })
 export type AssistantReasoningTurnItem = z.infer<typeof AssistantReasoningTurnItem>
 

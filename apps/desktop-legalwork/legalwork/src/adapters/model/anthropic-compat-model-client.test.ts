@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AnthropicCompatModelClient } from './anthropic-compat-model-client.js'
 import type { ModelRequest, ModelToolSpec } from '../../ports/model-client.js'
+import type { ModelCapabilityMetadata } from '../../contracts/capabilities.js'
 
 function fakeAbortSignal(): AbortSignal {
   const controller = new AbortController()
@@ -12,6 +13,7 @@ function createClient(overrides?: {
   apiKey?: string
   model?: string
   fetchImpl?: typeof fetch
+  modelCapabilities?: (model: string) => ModelCapabilityMetadata
 }): AnthropicCompatModelClient {
   return new AnthropicCompatModelClient({
     baseUrl: 'https://api.kimi.com/coding/',
@@ -45,7 +47,8 @@ function okJsonResponse(body: Record<string, unknown>): Response {
 
 function captureRequest(
   fetchImpl: ReturnType<typeof vi.fn>,
-  request: ModelRequest
+  request: ModelRequest,
+  clientOverrides?: Parameters<typeof createClient>[0]
 ): Promise<Record<string, unknown>> {
   let resolveBody: (body: Record<string, unknown>) => void
   const bodyPromise = new Promise<Record<string, unknown>>((resolve) => {
@@ -55,7 +58,10 @@ function captureRequest(
     resolveBody(JSON.parse(init.body as string) as Record<string, unknown>)
     return Promise.resolve(okJsonResponse({ id: 'msg_1', type: 'message', role: 'assistant', model: 'kimi-for-coding', content: [], stop_reason: 'end_turn', stop_sequence: null, usage: {} }))
   })
-  const client = createClient({ fetchImpl: fetchImpl as unknown as typeof fetch })
+  const client = createClient({
+    ...clientOverrides,
+    fetchImpl: fetchImpl as unknown as typeof fetch
+  })
   const consumePromise = (async () => {
     for await (const _ of client.stream(request)) {
       // consume
@@ -157,6 +163,53 @@ describe('AnthropicCompatModelClient', () => {
       }
     ])
     expect(body.tool_choice).toEqual({ type: 'auto' })
+  })
+
+  it('does not inject Anthropic thinking controls for Kimi Code messages', async () => {
+    const fetchImpl = vi.fn()
+    const body = await captureRequest(fetchImpl, baseRequest({ reasoningEffort: 'high' }))
+
+    expect(body).not.toHaveProperty('thinking')
+    expect(body).not.toHaveProperty('output_config')
+  })
+
+  it('requests summarized adaptive thinking from current Claude models', async () => {
+    const fetchImpl = vi.fn()
+    const body = await captureRequest(
+      fetchImpl,
+      baseRequest({
+        model: 'claude-sonnet-4-6',
+        reasoningEffort: 'high',
+        temperature: 0.2
+      }),
+      {
+        baseUrl: 'https://api.anthropic.com/v1',
+        model: 'claude-sonnet-4-6'
+      }
+    )
+
+    expect(body.thinking).toEqual({ type: 'adaptive', display: 'summarized' })
+    expect(body.output_config).toEqual({ effort: 'high' })
+    expect(body).not.toHaveProperty('temperature')
+  })
+
+  it('uses legacy thinking budgets for earlier Claude 4 models', async () => {
+    const fetchImpl = vi.fn()
+    const body = await captureRequest(
+      fetchImpl,
+      baseRequest({
+        model: 'claude-sonnet-4-20250514',
+        reasoningEffort: 'high',
+        maxTokens: 4096,
+        tools: [{ name: 'lookup', description: 'Look up a source', inputSchema: { type: 'object' } }]
+      }),
+      {
+        baseUrl: 'https://api.anthropic.com/v1',
+        model: 'claude-sonnet-4-20250514'
+      }
+    )
+
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 3072 })
   })
 
   it('streams text deltas', async () => {
@@ -261,6 +314,8 @@ describe('AnthropicCompatModelClient', () => {
 
     const reasoningDeltas = chunks.filter((c) => c.kind === 'assistant_reasoning_delta')
     expect(reasoningDeltas.map((c) => c.text)).toEqual(['Let me think'])
+    const signatureDeltas = chunks.filter((c) => c.kind === 'assistant_reasoning_signature_delta')
+    expect(signatureDeltas).toEqual([{ kind: 'assistant_reasoning_signature_delta', signature: 'sig' }])
     const textDeltas = chunks.filter((c) => c.kind === 'assistant_text_delta')
     expect(textDeltas.map((c) => c.text)).toEqual(['Answer'])
   })
@@ -391,5 +446,69 @@ describe('AnthropicCompatModelClient', () => {
     expect(messages[1]?.role).toBe('user')
     const userContent = messages[1]?.content as Record<string, unknown>[]
     expect(userContent[0]).toEqual({ type: 'tool_result', tool_use_id: 'toolu_1', content: 'file contents', is_error: false })
+  })
+
+  it('replays signed reasoning before a Claude tool call', async () => {
+    const fetchImpl = vi.fn()
+    const body = await captureRequest(
+      fetchImpl,
+      baseRequest({
+        model: 'claude-sonnet-4-6',
+        reasoningEffort: 'high',
+        history: [
+          {
+            kind: 'assistant_reasoning',
+            id: 'reasoning-1',
+            turnId: 'u1',
+            threadId: 't1',
+            role: 'assistant',
+            status: 'completed',
+            createdAt: '2024-01-01T00:00:00Z',
+            text: 'I should inspect the source.',
+            signature: 'signed-thinking'
+          },
+          {
+            kind: 'tool_call',
+            id: 'tool-1',
+            turnId: 'u1',
+            threadId: 't1',
+            role: 'assistant',
+            status: 'completed',
+            createdAt: '2024-01-01T00:00:00Z',
+            toolName: 'read_file',
+            callId: 'toolu_1',
+            toolKind: 'tool_call',
+            arguments: { path: '/tmp/test.txt' }
+          },
+          {
+            kind: 'tool_result',
+            id: 'result-1',
+            turnId: 'u1',
+            threadId: 't1',
+            role: 'tool',
+            status: 'completed',
+            createdAt: '2024-01-01T00:00:00Z',
+            toolName: 'read_file',
+            callId: 'toolu_1',
+            toolKind: 'tool_call',
+            output: 'file contents',
+            isError: false
+          }
+        ]
+      }),
+      {
+        baseUrl: 'https://api.anthropic.com/v1',
+        model: 'claude-sonnet-4-6'
+      }
+    )
+
+    const messages = body.messages as Record<string, unknown>[]
+    const assistantContent = messages[0]?.content as Record<string, unknown>[]
+    expect(assistantContent[0]).toEqual({
+      type: 'thinking',
+      thinking: 'I should inspect the source.',
+      signature: 'signed-thinking'
+    })
+    expect(assistantContent[1]).toMatchObject({ type: 'tool_use', id: 'toolu_1' })
   })
 })

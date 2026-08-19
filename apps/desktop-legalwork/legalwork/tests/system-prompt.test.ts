@@ -34,8 +34,15 @@ describe('LEGALWORK_SYSTEM_PROMPT', () => {
     expect(LEGALWORK_SYSTEM_PROMPT).toContain('forget a memory')
   })
 
-  it('uses PKULaw first and keeps official sites browser-free', () => {
-    expect(LEGALWORK_SYSTEM_PROMPT).toContain('北大法宝 (PKULaw) first')
+  it('uses configured legal databases and keeps official sites browser-free', () => {
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('北大法宝 (PKULaw) / 元典 / 威科先行 (WK)')
     expect(LEGALWORK_SYSTEM_PROMPT).toContain('Never open a browser to verify law')
+  })
+
+  it('keeps Legalwork native capabilities ahead of supplemental skills', () => {
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('Capability routing is Legalwork-native first')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('Supplemental skills are fallback extensions, not replacements')
+    expect(LEGALWORK_SYSTEM_PROMPT).toContain('An installed Word/Office skill must not displace that path')
+    expect(LEGALWORK_SYSTEM_PROMPT).not.toContain('user-installed skills take priority on their keywords')
   })
 })

@@ -10,6 +10,11 @@ import { expandHomePath } from './workspace-service'
 export type GuiSkillScope = 'project' | 'global' | 'builtin'
 const execFileAsync = promisify(execFile)
 export const USER_INSTALLED_SKILL_ROOT = join(homedir(), '.legalwork', 'skills')
+// 应用提供的全局技能安装根：~/.legalwork/skills 与 ~/.agents/skills 都算"用户自装"。
+const USER_INSTALLED_SKILL_ROOTS = [
+  join(homedir(), '.legalwork', 'skills'),
+  join(homedir(), '.agents', 'skills')
+]
 
 function isPackagedApp(): boolean {
   try {
@@ -196,10 +201,12 @@ export async function readGuiSkillFile(rootPath: string, entryPath: string): Pro
 
 export async function importGuiSkillFromPath(
   sourcePath: string,
-  targetRoot = USER_INSTALLED_SKILL_ROOT
+  targetRoot = USER_INSTALLED_SKILL_ROOT,
+  preferredSkillName?: string
 ): Promise<GuiSkillImportResult> {
   try {
     const source = resolve(expandHomePath(sourcePath))
+    const destinationRoot = resolve(expandHomePath(targetRoot))
     if (!source || !existsSync(source)) {
       return { ok: false, message: '请选择有效的 Skill 文件夹或 zip 文件。' }
     }
@@ -225,14 +232,18 @@ export async function importGuiSkillFromPath(
         return { ok: false, message: '未找到 SKILL.md 或 skill.json。' }
       }
 
-      await mkdir(targetRoot, { recursive: true })
+      await mkdir(destinationRoot, { recursive: true })
       const installed = []
       for (const skillDir of skillDirs) {
-        installed.push(await installSkillDirectory(skillDir, targetRoot))
+        installed.push(await installSkillDirectory(
+          skillDir,
+          destinationRoot,
+          skillDirs.length === 1 ? preferredSkillName : undefined
+        ))
       }
       return {
         ok: true,
-        userSkillRoot: targetRoot,
+        userSkillRoot: destinationRoot,
         installed
       }
     } finally {
@@ -463,8 +474,12 @@ function isZipFile(path: string): boolean {
   return extname(path).toLowerCase() === '.zip'
 }
 
-async function installSkillDirectory(source: string, targetRoot: string): Promise<{ name: string; path: string; replaced: boolean }> {
-  const name = validateSkillDirectoryName(basename(source))
+async function installSkillDirectory(
+  source: string,
+  targetRoot: string,
+  preferredSkillName?: string
+): Promise<{ name: string; path: string; replaced: boolean }> {
+  const name = validateSkillDirectoryName(preferredSkillName || basename(source))
   const target = join(targetRoot, name)
   let replaced = false
 
@@ -552,8 +567,27 @@ async function extractSkillZip(zipPath: string): Promise<string> {
   const target = await mkdtemp(join(tmpdir(), 'legalwork-skill-import-'))
   try {
     await ensureSafeZipEntries(zipPath)
-    if (process.platform === 'win32') {
-      await execFileAsync('powershell.exe', [
+    const extraction = skillZipExtractionCommand(process.platform, zipPath, target)
+    await execFileAsync(extraction.file, extraction.args, {
+      timeout: 120_000,
+      windowsHide: true
+    })
+    return target
+  } catch (error) {
+    await rm(target, { recursive: true, force: true })
+    throw error
+  }
+}
+
+export function skillZipExtractionCommand(
+  platform: NodeJS.Platform,
+  zipPath: string,
+  target: string
+): { file: string; args: string[] } {
+  if (platform === 'win32') {
+    return {
+      file: 'powershell.exe',
+      args: [
         '-NoProfile',
         '-ExecutionPolicy',
         'Bypass',
@@ -561,14 +595,22 @@ async function extractSkillZip(zipPath: string): Promise<string> {
         'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force',
         zipPath,
         target
-      ], { timeout: 120_000, windowsHide: true })
-    } else {
-      await execFileAsync('unzip', ['-q', zipPath, '-d', target], { timeout: 120_000 })
+      ]
     }
-    return target
-  } catch (error) {
-    await rm(target, { recursive: true, force: true })
-    throw error
+  }
+  if (platform === 'darwin') {
+    // SkillHub contains packages authored on several operating systems. macOS
+    // `unzip` can stop for interactive input when one of those archives has a
+    // non-portable Chinese filename, while Archive Utility's `ditto` handles
+    // the same package non-interactively and preserves the usable Skill files.
+    return {
+      file: '/usr/bin/ditto',
+      args: ['-x', '-k', zipPath, target]
+    }
+  }
+  return {
+    file: 'unzip',
+    args: ['-q', '-o', zipPath, '-d', target]
   }
 }
 
@@ -731,10 +773,12 @@ function comparablePath(path: string): string {
 }
 
 function isUserInstalledSkillPath(path: string): boolean {
-  const root = comparablePath(USER_INSTALLED_SKILL_ROOT)
   const value = comparablePath(resolve(path))
-  const rel = relative(root, value)
-  return value === root || (rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel))
+  return USER_INSTALLED_SKILL_ROOTS.some((rootPath) => {
+    const root = comparablePath(rootPath)
+    const rel = relative(root, value)
+    return value === root || (rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel))
+  })
 }
 
 function errorMessage(error: unknown): string {

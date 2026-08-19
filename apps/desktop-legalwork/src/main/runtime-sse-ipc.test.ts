@@ -63,7 +63,11 @@ function settings(): AppSettingsV1 {
   }
 }
 
-function register(): void {
+function register(options: {
+  ensureRuntime?: () => Promise<void>
+  reconnectBaseMs?: number
+  reconnectMaxMs?: number
+} = {}): void {
   registerRuntimeSseIpc({
     ipcMain: {
       handle: (channel: string, handler: Handler) => {
@@ -71,8 +75,10 @@ function register(): void {
       }
     } as never,
     store: { load: vi.fn(async () => settings()) } as never,
-    ensureRuntime: vi.fn(async () => undefined),
-    logError: vi.fn()
+    ensureRuntime: options.ensureRuntime ?? vi.fn(async () => undefined),
+    logError: vi.fn(),
+    ...(options.reconnectBaseMs !== undefined ? { reconnectBaseMs: options.reconnectBaseMs } : {}),
+    ...(options.reconnectMaxMs !== undefined ? { reconnectMaxMs: options.reconnectMaxMs } : {})
   })
 }
 
@@ -137,7 +143,7 @@ describe('runtime SSE IPC lifecycle', () => {
     const payload = eventCalls[0]?.[1] as { data: { seq: number; item: { text: string } } }
     expect(payload.data.seq).toBe(200)
     expect(payload.data.item.text).toBe('字'.repeat(200))
-    closeStream?.()
+    ;(closeStream as (() => void) | null)?.()
     stopAllRuntimeSse()
   })
 
@@ -175,7 +181,7 @@ describe('runtime SSE IPC lifecycle', () => {
     eventCalls = sender.send.mock.calls.filter(([channel]) => channel === 'runtime:sse-event')
     expect(eventCalls).toHaveLength(3)
     expect((eventCalls[2]?.[1] as { data: unknown[] }).data).toHaveLength(10)
-    closeStream?.()
+    ;(closeStream as (() => void) | null)?.()
     stopAllRuntimeSse()
   })
 
@@ -216,6 +222,42 @@ describe('runtime SSE IPC lifecycle', () => {
     await waitFor(() => first.send.mock.calls.some(([channel]) => channel === 'runtime:sse-end'))
     expect(first.send).toHaveBeenCalledWith('runtime:sse-end', { streamId: 'stream_1' })
     expect(second.send).not.toHaveBeenCalledWith('runtime:sse-end', { streamId: 'stream_2' })
+    stopAllRuntimeSse()
+  })
+
+  it('re-ensures the runtime before reconnecting an interrupted stream', async () => {
+    const encoder = new TextEncoder()
+    let attempts = 0
+    let closeStream: (() => void) | null = null
+    vi.stubGlobal('fetch', vi.fn(() => {
+      attempts += 1
+      if (attempts === 1) return Promise.reject(new Error('fetch failed'))
+      return Promise.resolve(new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          closeStream = () => controller.close()
+          controller.enqueue(encoder.encode(
+            'id: 1\nevent: heartbeat\ndata: {"kind":"heartbeat","seq":1}\n\n'
+          ))
+        }
+      }), { status: 200 }))
+    }))
+    const ensureRuntime = vi.fn(async () => undefined)
+    register({ ensureRuntime, reconnectBaseMs: 1, reconnectMaxMs: 1 })
+    const sender = new WebContentsMock(5)
+
+    await handlers.get('runtime:sse:start')?.({ sender }, {
+      threadId: 'thr_recover',
+      sinceSeq: 0,
+      streamId: 'stream_recover'
+    })
+
+    await waitFor(() => sender.send.mock.calls.some(([channel]) => channel === 'runtime:sse-event'))
+    expect(ensureRuntime).toHaveBeenCalledTimes(2)
+    expect(sender.send).toHaveBeenCalledWith('runtime:sse-event', {
+      streamId: 'stream_recover',
+      data: { kind: 'heartbeat', seq: 1 }
+    })
+    ;(closeStream as (() => void) | null)?.()
     stopAllRuntimeSse()
   })
 })

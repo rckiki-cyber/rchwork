@@ -416,6 +416,11 @@ export class CodexAccountModelClient implements ModelClient {
         baseInstructions: request.systemPrompt ?? '',
         developerInstructions: developerInstructions(request),
         config: {
+          // Codex only emits item/reasoning/summaryTextDelta when reasoning
+          // summaries are explicitly requested.  The GUI already maps that
+          // notification to a visible reasoning block, so keep the request
+          // enabled for every ChatGPT-authenticated reasoning model.
+          model_reasoning_summary: 'detailed',
           agents: { enabled: false },
           features: {
             apps: false,

@@ -4,6 +4,10 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CapabilityRegistry } from '../src/adapters/tool/capability-registry.js'
+import {
+  createLoadSkillTool,
+  createSearchSkillsTool
+} from '../src/adapters/tool/builtin-skill-tools.js'
 import { LocalToolHost } from '../src/adapters/tool/local-tool-host.js'
 import { LegalworkCapabilitiesConfig, type SkillsCapabilityConfig } from '../src/contracts/capabilities.js'
 import type { ModelClient, ModelRequest } from '../src/ports/model-client.js'
@@ -100,6 +104,39 @@ describe('SkillRuntime', () => {
       description: '用测试先行推进实现。',
       legacy: true
     }))
+  })
+
+  it('loads SkillHub manifests with provider-specific fields through SKILL.md fallback', async () => {
+    const skillDir = join(root, 'law-skills')
+    await mkdir(skillDir, { recursive: true })
+    await writeFile(join(skillDir, 'skill.json'), JSON.stringify({
+      skill_id: 'law-consult-complaint-v1',
+      skill_name: '法律咨询 + 起诉状',
+      skill_desc: '一站式法律服务与诉状起草。',
+      version: '6.0',
+      trigger_keywords: ['欠钱不还', '民间借贷', '起诉状']
+    }), 'utf8')
+    await writeFile(join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: law-skills',
+      'description: 法律咨询与民事起诉状工作流。',
+      '---',
+      '# SkillHub law skill',
+      'Use the complaint workflow.'
+    ].join('\n'), 'utf8')
+
+    const runtime = await createRuntime()
+
+    expect(runtime.diagnostics().validationErrors).toEqual([])
+    expect(runtime.search({ query: '对方欠钱不还，我要准备民间借贷起诉状' })[0]).toMatchObject({
+      id: 'law-skills',
+      source: 'supplemental'
+    })
+    expect(runtime.resolveTurn({
+      prompt: '对方欠钱不还，我要准备民间借贷起诉状',
+      workspace: root
+    }).activeSkillIds).toEqual([])
+    expect(runtime.load('law-skills')?.instructions).toContain('SkillHub law skill')
   })
 
   it('keeps skill.json manifests with Chinese names from collapsing to one id', async () => {
@@ -295,6 +332,108 @@ describe('SkillRuntime', () => {
     })
     expect(resolution.activeSkillIds).toEqual([])
     expect(runtime.load('prepare-ipo-risk-factors')?.instructions).toContain('Draft risk-factor disclosure.')
+  })
+
+  it('loads a supplemental Skill only after the native path reports a concrete gap', async () => {
+    const skillDir = join(root, 'legacy-court-archive-import')
+    await mkdir(skillDir, { recursive: true })
+    await writeFile(join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: legacy-court-archive-import',
+      'description: Legacy court archive import that preserves proprietary annotations and metadata.',
+      '---',
+      '# Legacy court archive import',
+      'Use the external archive compatibility workflow after the native importer rejects the format.'
+    ].join('\n'), 'utf8')
+    const skillRuntime = await SkillRuntime.create({
+      enabled: true,
+      roots: [root],
+      nativeRoots: [],
+      legacySkillMd: true,
+      autoActivateUserSkills: false
+    })
+    const requests: ModelRequest[] = []
+    let modelStep = 0
+    const model: ModelClient = {
+      provider: 'fake',
+      model: 'fake',
+      async *stream(request) {
+        requests.push(request)
+        modelStep += 1
+        if (modelStep === 1) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_native_import',
+            toolName: 'native_case_import',
+            arguments: { path: '/tmp/matter.lca' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (modelStep === 2) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_search_skills',
+            toolName: 'search_skills',
+            arguments: { query: 'legacy court archive import proprietary annotations' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        if (modelStep === 3) {
+          yield {
+            kind: 'tool_call_complete',
+            callId: 'call_load_skill',
+            toolName: 'load_skill',
+            arguments: { skill_id: 'legacy-court-archive-import' }
+          }
+          yield { kind: 'completed', stopReason: 'tool_calls' }
+          return
+        }
+        yield { kind: 'assistant_text_delta', text: '原生导入器不支持该格式，已加载兼容 Skill 补充处理。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }
+    const nativeImport = LocalToolHost.defineTool({
+      name: 'native_case_import',
+      description: 'Legalwork native case archive importer.',
+      inputSchema: { type: 'object' },
+      policy: 'auto',
+      execute: async () => ({
+        output: { error: 'Unsupported proprietary .lca annotation format.' },
+        isError: true
+      })
+    })
+    const h = makeHarness(model, {
+      skillRuntime,
+      tools: [
+        nativeImport,
+        createSearchSkillsTool({ skillRuntime }),
+        createLoadSkillTool({ skillRuntime })
+      ]
+    })
+    await bootstrapThread(h, {
+      workspace: root,
+      request: { prompt: '请导入案件归档并完整保留其中的专有批注。' }
+    })
+
+    const status = await h.loop.runTurn(h.threadId, h.turnId)
+
+    expect(status).toBe('completed')
+    expect(requests).toHaveLength(4)
+    expect(requests[0]?.contextInstructions?.join('\n') ?? '').not.toContain('Legacy court archive import')
+    const items = await h.sessionStore.loadItems(h.threadId)
+    const toolResults = items.filter((item) => item.kind === 'tool_result')
+    expect(toolResults.map((item) => item.kind === 'tool_result' ? item.toolName : '')).toEqual([
+      'native_case_import',
+      'search_skills',
+      'load_skill'
+    ])
+    expect(toolResults[0]).toMatchObject({ kind: 'tool_result', isError: true })
+    expect(JSON.stringify(toolResults[1])).toContain('legacy-court-archive-import')
+    expect(JSON.stringify(toolResults[2])).toContain('external archive compatibility workflow')
+    const turn = await h.turns.getTurn(h.threadId, h.turnId)
+    expect(turn?.activeSkillIds).toEqual([])
   })
 
   it('injects active Skills into AgentLoop context and turn metadata', async () => {

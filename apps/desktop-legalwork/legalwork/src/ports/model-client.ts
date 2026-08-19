@@ -9,6 +9,7 @@ import type { UsageSnapshot } from '../contracts/usage.js'
 export type ModelStreamChunk =
   | { kind: 'assistant_text_delta'; text: string }
   | { kind: 'assistant_reasoning_delta'; text: string }
+  | { kind: 'assistant_reasoning_signature_delta'; signature: string }
   | { kind: 'tool_call_delta'; callId: string; toolName?: string; argumentsDelta?: string }
   | { kind: 'tool_call_complete'; callId: string; toolName: string; arguments: Record<string, unknown> }
   | { kind: 'usage'; usage: UsageSnapshot }

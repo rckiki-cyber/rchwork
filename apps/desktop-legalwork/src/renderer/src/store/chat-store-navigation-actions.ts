@@ -83,7 +83,7 @@ type StoreActionContext = {
 let bootPromise: Promise<void> | null = null
 let clawChannelActivityUnsubscribe: (() => void) | null = null
 let runtimeProbeSequence = 0
-export const RUNTIME_PROBE_BUDGET_MS = 5_000
+export const RUNTIME_PROBE_BUDGET_MS = 10_000
 const RUNTIME_RETRY_DELAY_MS = 2_000
 
 export async function withinRuntimeProbeBudget<T>(operation: Promise<T>): Promise<T> {

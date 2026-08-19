@@ -151,8 +151,8 @@ export const McpServerConfig = z
   })
 export type McpServerConfig = z.infer<typeof McpServerConfig>
 
-/** 首要法律调研 MCP 源：北大法宝(pkulaw) 或 元典(yuandian)。 */
-export const LegalResearchPrimarySource = z.enum(['pkulaw', 'yuandian'])
+/** 首要法律调研 MCP 源：北大法宝(pkulaw)、元典(yuandian) 或 威科先行(wk)。 */
+export const LegalResearchPrimarySource = z.enum(['pkulaw', 'yuandian', 'wk'])
 export type LegalResearchPrimarySource = z.infer<typeof LegalResearchPrimarySource>
 
 export const McpCapabilityConfig = CapabilityToggleConfig.extend({
@@ -175,10 +175,14 @@ export type WebCapabilityConfig = z.infer<typeof WebCapabilityConfig>
 
 export const SkillsCapabilityConfig = CapabilityToggleConfig.extend({
   roots: z.array(z.string().min(1)).default([]),
+  // Legalwork 随应用交付并由自身维护的 skill 根。运行时据此将原生 skill
+  // 与用户/项目/插件提供的补充 skill 分层，避免外部同名 skill 抢占内置实现。
+  nativeRoots: z.array(z.string().min(1)).default([]),
   legacySkillMd: z.boolean().default(true),
-  // 用户上传的 skill（~/.legalwork/skills 下）是否在对话提到相关关键词时
-  // 自动激活（注入指令）。默认开；关闭可省 token（改为靠 search_skills 按需加载）。
-  autoActivateUserSkills: z.boolean().default(true)
+  // 是否允许非 Legalwork 原生的用户/项目/插件 skill 仅凭关键词、文件类型或
+  // manifest pattern 自动激活。默认关闭：补充 skill 应在原生能力不足时按需加载。
+  // 保留旧字段名以兼容已有配置。
+  autoActivateUserSkills: z.boolean().default(false)
 }).strict()
 export type SkillsCapabilityConfig = z.infer<typeof SkillsCapabilityConfig>
 

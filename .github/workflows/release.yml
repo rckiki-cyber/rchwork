@@ -241,8 +241,9 @@ jobs:
             shopt -u nullglob
 
             if [[ ${#files[@]} -eq 0 ]]; then
-              echo "Missing release asset: ${label}" >&2
-              exit 1
+              # 某些平台/架构不产出对应资产（如 32 位安装包）时仅跳过，不中断整个上传。
+              echo "Skipping (no assets produced): ${label}" >&2
+              continue
             fi
 
             for file in "${files[@]}"; do

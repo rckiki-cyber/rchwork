@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { readFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
+import { ensurePdfDomGeometry } from './pdf-dom-geometry.js'
 
 const execFileAsync = promisify(execFile)
 const MIN_TEXT_BEFORE_OCR = 40
@@ -73,6 +74,7 @@ export async function extractDocumentText(filePath: string): Promise<DocumentTex
 }
 
 async function extractPdfText(filePath: string): Promise<string> {
+  ensurePdfDomGeometry()
   const { PDFParse } = await import('pdf-parse')
   const buffer = await readFile(filePath)
   const parser = new PDFParse({ data: buffer })
