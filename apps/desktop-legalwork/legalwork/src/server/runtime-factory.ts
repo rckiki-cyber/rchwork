@@ -164,6 +164,10 @@ export async function createLegalworkServeRuntime(
   })
   const threadService = new ThreadService({ threadStore, sessionStore, events, ids, nowIso })
   void seedUsageCarryover({ threadStore, sessionStore, usageService }).catch(() => undefined)
+  const modelProfiles = modelContextProfilesFromConfig({
+    contextCompaction: options.contextCompaction,
+    models: options.models
+  })
   const modelClient = createModelClient({
     authMode: options.authMode,
     codexBinaryPath: options.codexBinaryPath,
@@ -171,11 +175,8 @@ export async function createLegalworkServeRuntime(
     baseUrl: options.baseUrl,
     apiKey: options.apiKey,
     model: options.model,
-    endpointFormat: options.endpointFormat
-  })
-  const modelProfiles = modelContextProfilesFromConfig({
-    contextCompaction: options.contextCompaction,
-    models: options.models
+    endpointFormat: options.endpointFormat,
+    modelCapabilities: (model) => modelCapabilitiesForModel(model, modelProfiles)
   })
   const reviewService = new ReviewService({
     threadStore,
@@ -191,11 +192,21 @@ export async function createLegalworkServeRuntime(
   })
   let mcpProviders = pendingMcpToolProviders(options.capabilities?.mcp)
   const anysearchApiKey = process.env.ANYSEARCH_API_KEY?.trim() || options.capabilities?.web?.anysearchApiKey
+  const useDeepseekServerSearch = shouldUseDeepseekServerSearch({
+    apiKey: options.apiKey,
+    baseUrl: options.baseUrl,
+    model: options.model,
+    provider: options.capabilities?.web?.provider
+  })
   const webProviders = buildWebToolProviders(options.capabilities?.web, {
     anysearchApiKey,
-    deepseekApiKey: options.apiKey,
-    deepseekBaseUrl: options.baseUrl,
-    deepseekModel: options.model
+    ...(useDeepseekServerSearch
+      ? {
+          deepseekApiKey: options.apiKey,
+          deepseekBaseUrl: options.baseUrl,
+          deepseekModel: options.model
+        }
+      : {})
   })
   const skillRuntime = await SkillRuntime.create(options.capabilities?.skills, {
     deferDiscovery: true,
@@ -585,6 +596,36 @@ export function shouldAwaitPkulawMcpInitialization(
   return /北大法宝|PKULaw|法律调研|多源调研/i.test(prompt)
 }
 
+/**
+ * DeepSeek's server-side web search uses a provider-specific Anthropic
+ * compatibility route. Generic OpenAI/Anthropic-compatible credentials must
+ * never be sent to that route merely because the runtime has an API key.
+ *
+ * Official DeepSeek configurations are detected conservatively. Private
+ * DeepSeek-compatible gateways can opt in explicitly through web.provider.
+ */
+export function shouldUseDeepseekServerSearch(input: {
+  apiKey: string | undefined
+  baseUrl: string | undefined
+  model: string | undefined
+  provider?: string
+}): boolean {
+  if (!input.apiKey?.trim()) return false
+
+  const provider = input.provider?.trim().toLowerCase()
+  if (provider) {
+    return provider === 'deepseek' || provider === 'deepseek-server-search'
+  }
+
+  if (!input.model?.trim().toLowerCase().includes('deepseek')) return false
+
+  try {
+    return new URL(input.baseUrl?.trim() || '').hostname.toLowerCase() === 'api.deepseek.com'
+  } catch {
+    return false
+  }
+}
+
 export async function waitForAtMost(
   promise: Promise<void> | undefined,
   timeoutMs: number
@@ -611,6 +652,7 @@ function createModelClient(input: {
   apiKey: string
   model: string
   endpointFormat?: string
+  modelCapabilities?: (model: string) => ReturnType<typeof modelCapabilitiesForModel>
 }): ModelClient {
   if (input.authMode === 'chatgpt') {
     return new CodexAccountModelClient({

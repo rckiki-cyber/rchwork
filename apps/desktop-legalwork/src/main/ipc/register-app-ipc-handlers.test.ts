@@ -16,6 +16,10 @@ import {
 } from '../../shared/app-settings'
 
 const handlers = new Map<string, (event: unknown, payload?: unknown) => Promise<unknown>>()
+const skillHubMocks = vi.hoisted(() => ({
+  install: vi.fn(),
+  list: vi.fn()
+}))
 
 vi.mock('electron', () => ({
   app: {
@@ -29,6 +33,11 @@ vi.mock('electron', () => ({
       handlers.set(channel, handler)
     })
   }
+}))
+
+vi.mock('../services/skillhub-service', () => ({
+  installSkillHubSkill: skillHubMocks.install,
+  listSkillHubSkills: skillHubMocks.list
 }))
 
 function settings(): AppSettingsV1 {
@@ -85,6 +94,8 @@ function registerOptions(overrides: Partial<Parameters<typeof import('./register
 describe('registerAppIpcHandlers', () => {
   beforeEach(() => {
     handlers.clear()
+    skillHubMocks.install.mockReset()
+    skillHubMocks.list.mockReset()
   })
 
   it('rejects invalid settings patches at the handler boundary', async () => {
@@ -162,6 +173,40 @@ describe('registerAppIpcHandlers', () => {
     expect(handler).toBeTypeOf('function')
     await expect(handler?.({})).resolves.toEqual(settings())
     expect(reconnectRuntime).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for the runtime Skill refresh before a SkillHub install reports success', async () => {
+    const { registerAppIpcHandlers } = await import('./register-app-ipc-handlers')
+    let finishRefresh: (() => void) | undefined
+    const runtimeRequest = vi.fn(() => new Promise<void>((resolve) => {
+      finishRefresh = resolve
+    }))
+    skillHubMocks.install.mockResolvedValue({
+      ok: true,
+      userSkillRoot: '/tmp/user-skills',
+      installed: [{
+        name: 'md-only-remote-skill',
+        path: '/tmp/user-skills/md-only-remote-skill',
+        replaced: false
+      }]
+    })
+    registerAppIpcHandlers(registerOptions({ runtimeRequest: runtimeRequest as never }))
+
+    const resultPromise = handlers.get('skillhub:install')?.({}, {
+      slug: 'md-only-remote-skill',
+      namespace: 'publisher',
+      targetRoot: '/tmp/user-skills'
+    })
+    let settled = false
+    void resultPromise?.then(() => { settled = true })
+    await vi.waitFor(() => {
+      expect(runtimeRequest).toHaveBeenCalledWith('/v1/skills/refresh', 'POST')
+    })
+    expect(settled).toBe(false)
+
+    finishRefresh?.()
+    await expect(resultPromise).resolves.toMatchObject({ ok: true })
+    expect(settled).toBe(true)
   })
 
   it('accepts the full settings snapshot emitted by SettingsView auto-apply', async () => {

@@ -88,9 +88,9 @@ const HIDDEN_START_ARG = '--hidden'
 const startupTraceEnabled = process.env.DEEPSEEK_GUI_STARTUP_TRACE === '1'
 const startupTraceStart = Date.now()
 const RUNTIME_ENSURE_SLOW_MS = 2_500
-const RUNTIME_EXISTING_HEALTH_FAST_MS = 200
+const RUNTIME_EXISTING_HEALTH_FAST_MS = 3_000
 const RUNTIME_PORT_CONFLICT_HEALTH_RECHECK_MS = 2_000
-const RUNTIME_THREAD_API_PROBE_TIMEOUT_MS = 800
+const RUNTIME_THREAD_API_PROBE_TIMEOUT_MS = 2_000
 
 function traceStartup(label: string, detail?: unknown): void {
   if (!startupTraceEnabled) return
@@ -1081,9 +1081,12 @@ app.whenReady().then(async () => {
     githubToken: (process.env[ERROR_REPORT_GITHUB_TOKEN_ENV] || '').trim() || undefined,
     githubLabels: (process.env[ERROR_REPORT_GITHUB_LABEL_ENV] || '').split(',').map((s) => s.trim()).filter(Boolean),
     endpoint: (process.env[ERROR_REPORT_ENDPOINT_ENV] || '').trim() || undefined,
+    // Development builds may have the release config in the repository root,
+    // but local hot-reload/chunk errors must not be uploaded as user reports.
+    // Developers can still opt in explicitly through the environment variables.
     configPath: app.isPackaged
       ? join(process.resourcesPath || '', 'error-report.config.json')
-      : join(__dirname, '..', '..', '..', 'error-report.config.json')
+      : undefined
   })
   setLogErrorReporter((input) => reportError(input))
   registerGlobalErrorHandlers()

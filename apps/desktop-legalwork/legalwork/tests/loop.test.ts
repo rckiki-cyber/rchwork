@@ -25,7 +25,10 @@ import {
   requestsDocumentMutation,
   requestsAcademicCitationVerification,
   resolveMaxAgentLoopSteps,
+  isStalledTurnProgress,
+  shouldReportToolError,
   skillRoutingPrompt,
+  turnProgressSnapshot,
   turnBudgetCompletionToolSpecs
 } from '../src/loop/agent-loop.js'
 import { resolveModelContextProfile } from '../src/loop/model-context-profile.js'
@@ -451,6 +454,56 @@ describe('AgentLoop', () => {
       .toBe(DEFAULT_MAX_AGENT_LOOP_STEPS)
     expect(resolveMaxAgentLoopSteps({ [MAX_AGENT_LOOP_STEPS_ENV]: '999999' } as NodeJS.ProcessEnv))
       .toBe(MAX_AGENT_LOOP_STEPS_ENV_CAP)
+  })
+
+  it('distinguishes a stalled threshold window from a complex turn making tool progress', () => {
+    const items: TurnItem[] = [
+      makeToolCallItem({
+        id: 'call-item',
+        turnId: 'turn-progress',
+        threadId: 'thread-progress',
+        callId: 'call-1',
+        toolName: 'read',
+        arguments: { path: 'brief.txt' }
+      }),
+      makeToolResultItem({
+        id: 'result-item',
+        turnId: 'turn-progress',
+        threadId: 'thread-progress',
+        callId: 'call-1',
+        toolName: 'read',
+        output: { text: 'evidence' }
+      })
+    ]
+    const current = turnProgressSnapshot(items, 'turn-progress')
+
+    expect(current).toEqual({ toolCalls: 1, successfulToolResults: 1 })
+    expect(isStalledTurnProgress({ toolCalls: 0, successfulToolResults: 0 }, current)).toBe(false)
+    expect(isStalledTurnProgress(current, current)).toBe(true)
+  })
+
+  it('does not upload recoverable model tool-policy misses as product incidents', () => {
+    expect(shouldReportToolError('read', {
+      error: 'tool read is not advertised by active tool policy'
+    })).toBe(false)
+    expect(shouldReportToolError('mcp_search', {
+      error: 'tool mcp_search is not advertised in this turn context'
+    })).toBe(false)
+    expect(shouldReportToolError('web_fetch', { error: 'HTTP 503' })).toBe(false)
+    expect(shouldReportToolError('web_search', {
+      error: { code: 'search_failed', message: 'provider returned no results' }
+    })).toBe(false)
+    expect(shouldReportToolError('mcp_pkulaw_law_keyword_get_law_list', {
+      error: '90001 remaining points exhausted'
+    })).toBe(false)
+    expect(shouldReportToolError('document_skill_execute', {
+      error: 'expected .doc, .xls, or .ppt input, got .txt'
+    })).toBe(false)
+    expect(shouldReportToolError('mcp_node_repl_js', { error: 'native pipe startup failed' })).toBe(false)
+    expect(shouldReportToolError('read', { error: "ENOENT: no such file or directory, stat '/missing'" })).toBe(false)
+    expect(shouldReportToolError('mcp_yuandian_case_search', {
+      error: 'MCP arguments do not match the schema'
+    })).toBe(false)
   })
 
   it('falls back to a bounded visible notice at the loop step limit', async () => {
@@ -1044,7 +1097,7 @@ describe('AgentLoop', () => {
     expect(items.some((item) => item.kind === 'assistant_text' && item.text === answer)).toBe(true)
   })
 
-  it('fails instead of completing after bounded repeated work announcements', async () => {
+  it('keeps the visible partial response after bounded repeated work announcements', async () => {
     const requests: ModelRequest[] = []
     const h = makeHarness({
       provider: 'repeated-unfinished-announcement',
@@ -1057,7 +1110,7 @@ describe('AgentLoop', () => {
     })
     await bootstrapThread(h)
 
-    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('failed')
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
     expect(requests).toHaveLength(3)
     expect(requests[1]?.contextInstructions?.join('\n')).toContain('不要再预告步骤')
   })

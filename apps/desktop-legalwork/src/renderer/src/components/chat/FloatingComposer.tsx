@@ -682,6 +682,11 @@ export function FloatingComposer({
   const focusComposer = draft.focusComposer
   const selectedSkillId = selectedSkill?.id
   const slashQuery = getSlashQuery(input)
+  // / 单独输入时，技能收纳为一个"选择 Skill"入口；点击后展开常用技能。
+  const [skillMenuExpanded, setSkillMenuExpanded] = useState(false)
+  useEffect(() => {
+    if (slashQuery) setSkillMenuExpanded(false)
+  }, [slashQuery])
   const [composerCursor, setComposerCursor] = useState(() => input.length)
   const [interruptChoice, setInterruptChoice] = useState<'queue' | 'guide'>('queue')
   const prevBusyRef = useRef(busy)
@@ -753,12 +758,12 @@ export function FloatingComposer({
       const dynamicSkillCommands = skillCommands
         .filter((skill) => skill.id.trim() && skill.name.trim())
         .sort((left, right) => {
-          const leftProject = isProjectSkill(left, effectiveWorkspaceRoot)
-          const rightProject = isProjectSkill(right, effectiveWorkspaceRoot)
-          if (leftProject !== rightProject) return leftProject ? -1 : 1
+          // 内置 + 项目技能视为"常用"，排前；其余按名称排序。
+          const leftCommon = left.scope === 'builtin' || isProjectSkill(left, effectiveWorkspaceRoot)
+          const rightCommon = right.scope === 'builtin' || isProjectSkill(right, effectiveWorkspaceRoot)
+          if (leftCommon !== rightCommon) return leftCommon ? -1 : 1
           return left.name.localeCompare(right.name)
         })
-        .slice(0, 40)
         .map<SlashCommand>((skill) => {
           const prompt = `/skill:${skill.id} `
           const skillScopeLabel = isProjectSkill(skill, effectiveWorkspaceRoot)
@@ -878,12 +883,47 @@ export function FloatingComposer({
 
   const filteredSlashCommands = useMemo(() => {
     if (slashQuery == null) return []
-    if (!slashQuery) return slashCommands
-    return slashCommands.filter((command) => {
-      const haystack = [command.id, command.title, command.description, ...command.keywords]
-      return haystack.some((part) => part.toLowerCase().includes(slashQuery))
-    })
-  }, [slashCommands, slashQuery])
+    if (!slashQuery) {
+      if (skillMenuExpanded) {
+        // 点击"选择 Skill"后展开：常用技能（内置/项目优先，已排序），限量避免刷屏。
+        return slashCommands.filter((command) => command.kind === 'skill').slice(0, 30)
+      }
+      // 单独输入 /：常用命令 + 一个"选择 Skill"入口，把零散技能收纳起来。
+      const skillMenuEntry: SlashCommand = {
+        id: 'skill-menu',
+        kind: 'skill',
+        title: t('slashSelectSkill'),
+        description: t('slashSelectSkillHint'),
+        keywords: ['skill', '技能'],
+        icon: <Sparkles className="h-4 w-4" strokeWidth={1.9} />,
+        badge: '/skill',
+        typeLabel: t('slashCommandTypeSkill'),
+        skillPrompt: undefined,
+        disabled: undefined
+      }
+      // "选择 Skill"放在常用命令后的第 3 位，方便点击，而不是沉到底部。
+      const nonSkillCommands = slashCommands.filter((command) => command.kind !== 'skill')
+      const result = [...nonSkillCommands]
+      result.splice(Math.min(2, result.length), 0, skillMenuEntry)
+      return result
+    }
+    const q = slashQuery
+    return slashCommands
+      .map((command) => {
+        const haystack = [command.id, command.title, command.description, ...command.keywords]
+        const title = command.title.toLowerCase()
+        let score = -1
+        if (title === q) score = 100
+        else if (title.startsWith(q)) score = 80
+        else if (title.includes(q)) score = 60
+        else if (haystack.some((part) => part.toLowerCase().includes(q))) score = 40
+        return score >= 0 ? { command, score } : null
+      })
+      .filter((entry): entry is { command: SlashCommand; score: number } => entry !== null)
+      .sort((a, b) => b.score - a.score || a.command.title.localeCompare(b.command.title))
+      .slice(0, 20)
+      .map((entry) => entry.command)
+  }, [slashCommands, slashQuery, skillMenuExpanded, t])
 
   const highlightedSlashCommand =
     filteredSlashCommands.length > 0
@@ -1066,6 +1106,13 @@ export function FloatingComposer({
   }, [busy, activeThreadGoal?.createdAt, activeThreadGoal?.objective, activeThreadGoal?.status])
 
   const applySlashCommand = (commandId: SlashCommandId): void => {
+    if (commandId === 'skill-menu') {
+      // "选择 Skill"入口：展开常用/最新技能菜单，而不是插入命令。
+      setSkillMenuExpanded(true)
+      setSelectedCommandIndex(0)
+      draft.focusComposer()
+      return
+    }
     if (commandId.startsWith('skill:')) {
       const command = slashCommands.find((item) => item.id === commandId)
       if (command?.skillPrompt) {
@@ -1081,6 +1128,8 @@ export function FloatingComposer({
         } else {
           setInput(command.skillPrompt)
         }
+        // 先 blur 结束输入法（IME）组合，清掉正在打的字，再重新聚焦输入框。
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
         draft.focusComposer()
       }
       return

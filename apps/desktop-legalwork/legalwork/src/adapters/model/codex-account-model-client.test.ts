@@ -133,6 +133,35 @@ describe('CodexAccountModelClient', () => {
     expect(chunks).toContainEqual({ kind: 'completed', stopReason: 'stop' })
   })
 
+  it('requests and maps detailed Codex reasoning summaries', async () => {
+    const rpc = new FakeCodexRpc()
+    const originalRequest = rpc.request.bind(rpc)
+    rpc.request = async <T = unknown>(method: string, params?: unknown): Promise<T> => {
+      if (method === 'turn/start') {
+        queueMicrotask(() => {
+          rpc.notificationHandler?.('item/reasoning/summaryTextDelta', {
+            threadId: 'codex-thread',
+            turnId: 'codex-turn',
+            delta: 'Inspect the source, then draft the answer.'
+          })
+        })
+      }
+      return originalRequest<T>(method, params)
+    }
+    const client = new CodexAccountModelClient({ binaryPath: 'codex', model: 'gpt-test', rpc })
+    const chunks = []
+    for await (const chunk of client.stream(request())) chunks.push(chunk)
+
+    const threadStart = rpc.requests.find((entry) => entry.method === 'thread/start')
+    expect(threadStart?.params).toEqual(expect.objectContaining({
+      config: expect.objectContaining({ model_reasoning_summary: 'detailed' })
+    }))
+    expect(chunks).toContainEqual({
+      kind: 'assistant_reasoning_delta',
+      text: 'Inspect the source, then draft the answer.'
+    })
+  })
+
   it('delegates Codex dynamic tools back to the Legalwork tool loop', async () => {
     const rpc = new FakeCodexRpc()
     rpc.toolMode = true

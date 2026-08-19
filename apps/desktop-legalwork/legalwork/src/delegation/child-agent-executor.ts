@@ -4,7 +4,7 @@ import { InMemorySessionStore } from '../adapters/in-memory-session-store.js'
 import { InMemoryThreadStore } from '../adapters/in-memory-thread-store.js'
 import { InMemoryUserInputGate } from '../adapters/in-memory-user-input-gate.js'
 import type { ImmutablePrefix } from '../cache/immutable-prefix.js'
-import type { ModelCapabilityMetadata } from '../contracts/capabilities.js'
+import type { LegalResearchPrimarySource, ModelCapabilityMetadata } from '../contracts/capabilities.js'
 import type { TurnItem } from '../contracts/items.js'
 import type { ApprovalPolicy, SandboxMode } from '../contracts/policy.js'
 import type { RuntimeTuningConfig } from '../config/legalwork-config.js'
@@ -42,7 +42,7 @@ export type ChildAgentExecutorOptions = {
   skillRuntime?: SkillRuntime
   memoryStore?: MemoryStore
   /** 首选的法律调研 MCP 源。透传给子 agent 的 AgentLoop，保持首要源指引一致。 */
-  primaryLegalSource?: 'pkulaw' | 'yuandian'
+  primaryLegalSource?: LegalResearchPrimarySource
 }
 
 export function createChildAgentExecutor(options: ChildAgentExecutorOptions): ChildRunExecutor {

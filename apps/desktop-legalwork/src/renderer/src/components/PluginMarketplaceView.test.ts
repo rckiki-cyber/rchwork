@@ -4,6 +4,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   buildFlintChartMcpConfig,
   buildPkulawMcpConfig,
+  buildWkMcpConfig,
+  buildQccMcpConfig,
+  buildTycMcpConfig,
   buildMcpConfig,
   customMcpConfigFragment,
   ImaConfigPanel,
@@ -13,14 +16,19 @@ import {
   mergeMarketplaceCatalogItems,
   mergeMcpJsonConfig,
   upsertMcpJsonConfig,
-  skillMarketplaceItemsFromDiscoveredSkills
+  skillMarketplaceItemsFromDiscoveredSkills,
+  skillMarketplaceItemsFromSkillHub
 } from './PluginMarketplaceView'
 
 const mcpLabels = {
   configured: 'Configured',
   connected: 'Connected',
+  connecting: 'Connecting',
   error: 'Error',
   disabled: 'Disabled',
+  statusSummary: (status: string) => `Status: ${status}`,
+  toolsSummary: (count: number) => `${count} tools`,
+  errorSummary: (message: string) => `Error: ${message}`,
   pkulawTitle: 'PKULaw',
   pkulawSummary: (values: {
     total: number
@@ -33,6 +41,36 @@ const mcpLabels = {
     `${values.total} sub-services · ${values.connected} connected · ${values.tools} tools · ${values.errors} errors · ${values.disabled} disabled${values.lastError ? ` · ${values.lastError}` : ''}`,
   yuandianTitle: 'Yuandian Legal Intelligence',
   yuandianSummary: (values: {
+    total: number
+    connected: number
+    tools: number
+    errors: number
+    disabled: number
+    lastError: string
+  }) =>
+    `${values.total} sub-services · ${values.connected} connected · ${values.tools} tools · ${values.errors} errors · ${values.disabled} disabled${values.lastError ? ` · ${values.lastError}` : ''}`,
+  wkTitle: 'Wolters Kluwer (WK)',
+  wkSummary: (values: {
+    total: number
+    connected: number
+    tools: number
+    errors: number
+    disabled: number
+    lastError: string
+  }) =>
+    `${values.total} sub-services · ${values.connected} connected · ${values.tools} tools · ${values.errors} errors · ${values.disabled} disabled${values.lastError ? ` · ${values.lastError}` : ''}`,
+  qccTitle: 'Qichacha',
+  qccSummary: (values: {
+    total: number
+    connected: number
+    tools: number
+    errors: number
+    disabled: number
+    lastError: string
+  }) =>
+    `${values.total} sub-services · ${values.connected} connected · ${values.tools} tools · ${values.errors} errors · ${values.disabled} disabled${values.lastError ? ` · ${values.lastError}` : ''}`,
+  tycTitle: 'Tianyancha',
+  tycSummary: (values: {
     total: number
     connected: number
     tools: number
@@ -206,6 +244,91 @@ describe('PluginMarketplaceView MCP config helpers', () => {
     })
 
     expect(mcpConfigHasServer(content, 'yuandian')).toBe(true)
+  })
+
+  it('treats Wolters Kluwer endpoint servers as the single WK install', () => {
+    const content = JSON.stringify({
+      servers: {
+        'wk-integrated': {
+          transport: 'streamable-http',
+          url: 'https://mcp.wkinfo.com.cn/mcp-servers/integrated/'
+        }
+      }
+    })
+
+    expect(mcpConfigHasServer(content, 'wk')).toBe(true)
+  })
+
+  it('builds Wolters Kluwer MCP config with a Bearer token', () => {
+    const config = buildWkMcpConfig('secret')
+    const server = (config.servers as Record<string, any>)['wk-integrated']
+
+    expect(server).toMatchObject({
+      enabled: true,
+      transport: 'streamable-http',
+      url: 'https://mcp.wkinfo.com.cn/mcp-servers/integrated/',
+      headers: { Authorization: 'Bearer secret' },
+      trustScope: 'user'
+    })
+  })
+
+  it('treats Qichacha endpoint servers as the single QCC install', () => {
+    const content = JSON.stringify({
+      servers: {
+        'qcc-company': {
+          transport: 'streamable-http',
+          url: 'https://agent.qcc.com/mcp/company/stream'
+        }
+      }
+    })
+
+    expect(mcpConfigHasServer(content, 'qcc')).toBe(true)
+  })
+
+  it('builds Qichacha MCP config with a Bearer token on every server', () => {
+    const config = buildQccMcpConfig('secret')
+    const servers = config.servers as Record<string, any>
+
+    expect(Object.keys(servers)).toEqual([
+      'qcc-company',
+      'qcc-risk',
+      'qcc-legal-regulation',
+      'qcc-legal-case',
+      'qcc-tender'
+    ])
+    expect(servers['qcc-risk']).toMatchObject({
+      enabled: true,
+      transport: 'streamable-http',
+      url: 'https://agent.qcc.com/mcp/risk/stream',
+      headers: { Authorization: 'Bearer secret' },
+      trustScope: 'user'
+    })
+  })
+
+  it('treats Tianyancha endpoint servers as the single TYC install', () => {
+    const content = JSON.stringify({
+      servers: {
+        'tyc-mcp': {
+          transport: 'streamable-http',
+          url: 'https://mcp.tianyancha.com/mcp'
+        }
+      }
+    })
+
+    expect(mcpConfigHasServer(content, 'tyc')).toBe(true)
+  })
+
+  it('builds Tianyancha MCP config with a raw Authorization header', () => {
+    const config = buildTycMcpConfig('tyc_secret')
+    const server = (config.servers as Record<string, any>)['tyc-mcp']
+
+    expect(server).toMatchObject({
+      enabled: true,
+      transport: 'streamable-http',
+      url: 'https://mcp.tianyancha.com/mcp',
+      headers: { Authorization: 'tyc_secret' },
+      trustScope: 'user'
+    })
   })
 
   it('detects duplicate MCP servers instead of appending old-style snippets', () => {
@@ -385,6 +508,41 @@ describe('PluginMarketplaceView MCP config helpers', () => {
     ])
   })
 
+  it('localizes MCP status and tool-count summaries while preserving technical values', () => {
+    const items = mcpMarketplaceItemsFromConfigAndDiagnostics(
+      JSON.stringify({
+        servers: {
+          playwright: {
+            transport: 'stdio',
+            command: '/opt/homebrew/bin/npx'
+          }
+        }
+      }),
+      {
+        mcpServers: [{ id: 'playwright', status: 'connected', toolCount: 24 }]
+      },
+      {
+        ...mcpLabels,
+        configured: '已配置',
+        connected: '已连接',
+        connecting: '连接中',
+        error: '异常',
+        disabled: '未启用',
+        statusSummary: (status) => `状态：${status}`,
+        toolsSummary: (count) => `${count} 个工具`,
+        errorSummary: (message) => `错误：${message}`
+      }
+    )
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: 'playwright',
+        sourceLabel: '已连接',
+        description: '状态：已连接 · stdio · /opt/homebrew/bin/npx · 24 个工具'
+      })
+    ])
+  })
+
   it('groups PKULaw child endpoints into one marketplace item', () => {
     const items = mcpMarketplaceItemsFromConfigAndDiagnostics(
       JSON.stringify({
@@ -543,5 +701,73 @@ describe('skillMarketplaceItemsFromDiscoveredSkills', () => {
       id: 'bug-hunt',
       category: 'coding'
     }))
+  })
+})
+
+describe('skillMarketplaceItemsFromSkillHub', () => {
+  it('turns hot-list entries into one-click install cards and deduplicates slugs', () => {
+    const items = skillMarketplaceItemsFromSkillHub([
+      {
+        slug: 'legal-research',
+        name: 'Legal Research',
+        description: '检索法规、案例与学术观点。',
+        category: 'legal',
+        downloads: 439000,
+        installs: 12000,
+        stars: 42,
+        score: 100,
+        version: '1.2.0',
+        namespace: 'publisher_a',
+        namespaceDisplayName: 'Publisher A',
+        tags: ['law', 'research']
+      },
+      {
+        slug: 'legal-research',
+        name: 'Duplicate',
+        description: '',
+        category: 'other',
+        downloads: 1,
+        installs: 0,
+        stars: 0,
+        score: 0,
+        version: '1.0.0',
+        namespace: 'publisher_b',
+        namespaceDisplayName: 'Publisher B',
+        tags: []
+      }
+    ])
+
+    expect(items).toEqual([expect.objectContaining({
+      id: 'legal-research',
+      title: 'Legal Research',
+      group: 'recommended',
+      sourceLabel: 'SkillHub',
+      category: 'legal',
+      skillHubNamespace: 'publisher_a',
+      skillHubVersion: '1.2.0',
+      downloads: 439000,
+      stars: 42
+    })])
+  })
+
+  it('maps the curated catalog tabs to legal, office, and learning presentation groups', () => {
+    const base = {
+      slug: 'generic-skill',
+      name: 'Generic Skill',
+      description: 'Generic description',
+      category: 'professional',
+      downloads: 10,
+      installs: 1,
+      stars: 1,
+      score: 1,
+      version: '1.0.0',
+      namespace: 'publisher',
+      namespaceDisplayName: 'Publisher',
+      tags: []
+    }
+
+    expect(skillMarketplaceItemsFromSkillHub([base], 'legal')[0]?.category).toBe('legal')
+    expect(skillMarketplaceItemsFromSkillHub([base], 'office')[0]?.category).toBe('productivity')
+    expect(skillMarketplaceItemsFromSkillHub([base], 'learning')[0]?.category).toBe('research')
   })
 })

@@ -600,6 +600,8 @@ describe('syncGuiManagedLegalworkConfig', () => {
     const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as any
     expect(parsed.capabilities.skills.enabled).toBe(true)
     expect(parsed.capabilities.skills.legacySkillMd).toBe(true)
+    expect(parsed.capabilities.skills.autoActivateUserSkills).toBe(false)
+    expect(parsed.capabilities.skills.nativeRoots).toEqual(expect.any(Array))
     expect(parsed.capabilities.skills.roots).toEqual(expect.arrayContaining([
       join(workspaceRoot, '.codex', 'skills'),
       extraRoot

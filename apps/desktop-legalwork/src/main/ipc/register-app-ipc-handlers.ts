@@ -61,6 +61,8 @@ import {
   scheduleTaskFromTextPayloadSchema,
   shellOpenExternalUrlSchema,
   skillListPayloadSchema,
+  skillHubInstallPayloadSchema,
+  skillHubListPayloadSchema,
   skillReadFilePayloadSchema,
   skillSaveFilePayloadSchema,
   settingsPatchSchema,
@@ -156,6 +158,7 @@ import {
 import { fillDocxTemplateWithMarkdown } from '../services/template-docx-export-service'
 import { exportMarkdownDocument } from '../services/markdown-export-service'
 import { importGuiSkillFromPath, listGuiSkills, readGuiSkillFile } from '../services/skill-service'
+import { installSkillHubSkill, listSkillHubSkills } from '../services/skillhub-service'
 import { CodexAuthManager } from '../codex-auth-manager'
 import { DEFAULT_PKULAW_MCP_CONFIG_TEXT } from '../pkulaw-default-servers'
 import {
@@ -174,6 +177,9 @@ import {
   type PkulawClaimResult
 } from '../pkulaw-auth-manager'
 import { openYuandianConsoleWindow } from '../yuandian-auth-manager'
+import { openTycConsoleWindow } from '../tyc-auth-manager'
+import { openQccConsoleWindow } from '../qcc-auth-manager'
+import { openWkConsoleWindow } from '../wk-auth-manager'
 import {
   getPkulawAutoClaimState,
   setPkulawAutoClaimEnabled,
@@ -1563,8 +1569,9 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
           name: skillName,
           description: skillDescriptionFromFrontmatter(request.content) ?? skillName
         }, null, 2)}\n`, 'utf8')
-        // 通知运行中的 runtime 重新扫描 skill 根，让新 skill 立即可用。
-        void refreshRuntimeSkills().catch(() => {})
+        // 等待 runtime 完成重扫后再向界面报告成功，避免用户立刻发起任务时
+        // 新安装的 Skill 还没进入运行时目录。
+        await refreshRuntimeSkills()
         return { ok: true as const, path: filePath }
       } catch (error) {
         return {
@@ -1609,9 +1616,24 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     const imported = await importGuiSkillFromPath(sourcePath)
     if (imported.ok) {
       // 导入成功 → 通知运行中的 runtime 重新扫描，让新 skill 立即可用。
-      void refreshRuntimeSkills().catch(() => {})
+      await refreshRuntimeSkills()
     }
     return imported
+  })
+
+  ipcMain.handle('skillhub:list', async (_, payload: unknown) => {
+    const request = parseIpcPayload('skillhub:list', skillHubListPayloadSchema, payload)
+    return listSkillHubSkills(request)
+  })
+
+  ipcMain.handle('skillhub:install', async (_, payload: unknown) => {
+    const request = parseIpcPayload('skillhub:install', skillHubInstallPayloadSchema, payload)
+    const installed = await installSkillHubSkill(request)
+    if (installed.ok) {
+      // 远程安装与本地导入保持一致：完成后立即让运行时重扫技能目录。
+      await refreshRuntimeSkills()
+    }
+    return installed
   })
 
   ipcMain.handle('skill:open-root', async (_, rootPath: unknown) => {
@@ -2079,6 +2101,36 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
   ipcMain.handle('yuandian:open-console', async (): Promise<{ ok: true } | { ok: false; message: string }> => {
     try {
       openYuandianConsoleWindow()
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, message }
+    }
+  })
+
+  ipcMain.handle('tyc:open-console', async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    try {
+      openTycConsoleWindow()
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, message }
+    }
+  })
+
+  ipcMain.handle('wk:open-console', async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    try {
+      openWkConsoleWindow()
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, message }
+    }
+  })
+
+  ipcMain.handle('qcc:open-console', async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    try {
+      openQccConsoleWindow()
       return { ok: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

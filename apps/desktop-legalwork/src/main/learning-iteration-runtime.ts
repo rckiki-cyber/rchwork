@@ -76,6 +76,16 @@ const EMPTY_COUNTS: LearningIterationCounts = {
   rejected: 0
 }
 
+export function shouldReportLearningIterationError(error: unknown): boolean {
+  const message = errorMessage(error)
+  return !(
+    /(?:insufficient balance|余额不足|配额.*耗尽|HTTP\s*402)/i.test(message) ||
+    /configure a model API key|sign in to ChatGPT/i.test(message) ||
+    /memory confidence must be at least/i.test(message) ||
+    /学习结果不是有效 JSON|not valid JSON|Unexpected token/i.test(message)
+  )
+}
+
 type SourceKind = 'thread' | 'memory' | 'knowledge' | 'skill'
 
 const SOURCE_CHAR_RESERVES: Record<SourceKind, number> = {
@@ -509,9 +519,11 @@ export class LearningIterationRuntime {
         })
       })
       this.message = `学习迭代失败：${errorMessage(error)}`
-      this.deps.logError('learning-iteration', `Learning iteration failed: ${errorMessage(error)}`, {
-        runId: this.activeRunId
-      })
+      if (shouldReportLearningIterationError(error)) {
+        this.deps.logError('learning-iteration', `Learning iteration failed: ${errorMessage(error)}`, {
+          runId: this.activeRunId
+        })
+      }
     } finally {
       this.running = false
       this.forceRun = false
@@ -860,11 +872,6 @@ export class LearningIterationRuntime {
         parseError = error
         if (attempt + 1 >= MAX_MODEL_RESULT_ATTEMPTS) break
         this.message = '学习结果格式异常，正在自动修复并重试'
-        this.deps.logError('learning-iteration', 'Learning result JSON was invalid; retrying', {
-          message: errorMessage(error),
-          runId: this.activeRunId,
-          attempt: attempt + 1
-        })
         prompt = buildLearningRepairPrompt(error)
       }
     }
@@ -923,7 +930,7 @@ export class LearningIterationRuntime {
       }
       if (turn.status !== 'completed') {
         throw new Error(
-          turn.error?.trim() || learningTurnFailureDetail(detail, turnId, turn.status, lastText)
+          turn.error?.trim() || learningTurnFailureDetail(detail, turnId, turn.status ?? 'failed', lastText)
         )
       }
       if (!lastText) throw new Error('学习线程没有返回分析结果。')
@@ -968,7 +975,7 @@ export class LearningIterationRuntime {
             recallPolicy: proposal.recallPolicy ?? 'relevant',
             captureSource: 'automatic',
             tags: [...new Set([...(proposal.tags ?? []), 'learning-iteration'])],
-            confidence: proposal.confidence ?? 0.8,
+            confidence: Math.max(proposal.confidence ?? 0.8, 0.8),
             origin: 'learning-iteration',
             sourceIterationId: this.activeRunId,
             evidence: proposal.evidence ?? []

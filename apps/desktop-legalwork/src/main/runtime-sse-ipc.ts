@@ -261,8 +261,13 @@ export function registerRuntimeSseIpc(options: {
   store: JsonSettingsStore
   ensureRuntime: (settings: AppSettingsV1) => Promise<void>
   logError: (category: string, message: string, detail?: unknown) => void
+  /** Test-only timing override; production uses the bounded defaults above. */
+  reconnectBaseMs?: number
+  reconnectMaxMs?: number
 }): void {
   const { ipcMain, store, ensureRuntime, logError } = options
+  const reconnectBaseMs = options.reconnectBaseMs ?? SSE_RECONNECT_BASE_MS
+  const reconnectMaxMs = options.reconnectMaxMs ?? SSE_RECONNECT_MAX_MS
   ipcMain.handle('runtime:sse:start', async (event, args: unknown) => {
     const request = sseStartPayloadSchema.parse(args)
     const s = await store.load()
@@ -283,7 +288,6 @@ export function registerRuntimeSseIpc(options: {
       batchTimer: null
     }
     sseControllers.set(id, state)
-    const base = getRuntimeBaseUrlForSettings(s)
     const onSenderDestroyed = (): void => {
       abortSseState(state, { stoppedByClient: true })
     }
@@ -291,15 +295,29 @@ export function registerRuntimeSseIpc(options: {
 
     ;(async () => {
       const wc = event.sender
-      const headers: Record<string, string> = { Accept: 'text/event-stream' }
-      runtimeAuthHeaders(s).forEach((value, key) => {
-        headers[key] = value
-      })
       let nextSinceSeq = request.sinceSeq
-      let reconnectDelayMs = SSE_RECONNECT_BASE_MS
+      let reconnectDelayMs = reconnectBaseMs
       let reconnectAttempts = 0
+      const recoverRuntime = async (): Promise<void> => {
+        if (state.stoppedByClient || ac.signal.aborted) return
+        try {
+          await ensureRuntime(await store.load())
+        } catch {
+          // The reconnect budget owns the terminal user-visible error. A
+          // failed recovery probe here is expected while a child restarts.
+        }
+      }
       try {
         while (!state.stoppedByClient && !ac.signal.aborted) {
+          // Reload on every attempt: ensureRuntime can reclaim a conflicting
+          // port and persist a new one, and settings changes can rotate the
+          // runtime token while the renderer keeps the same stream id.
+          const connectionSettings = await store.load()
+          const base = getRuntimeBaseUrlForSettings(connectionSettings)
+          const headers: Record<string, string> = { Accept: 'text/event-stream' }
+          runtimeAuthHeaders(connectionSettings).forEach((value, key) => {
+            headers[key] = value
+          })
           const url = new URL(`${base}${legalworkThreadEventsPath(request.threadId)}`)
           url.searchParams.set('since_seq', String(nextSinceSeq))
           const requestHeaders = { ...headers }
@@ -330,8 +348,9 @@ export function registerRuntimeSseIpc(options: {
                 })
                 return
               }
+              await recoverRuntime()
               await sleepWithAbort(reconnectDelayMs, ac.signal)
-              reconnectDelayMs = Math.min(reconnectDelayMs * 2, SSE_RECONNECT_MAX_MS)
+              reconnectDelayMs = Math.min(reconnectDelayMs * 2, reconnectMaxMs)
               continue
             }
             const reader = res.body.getReader()
@@ -341,7 +360,7 @@ export function registerRuntimeSseIpc(options: {
             const markConnectionHealthy = (): void => {
               if (receivedEventOnConnection) return
               receivedEventOnConnection = true
-              reconnectDelayMs = SSE_RECONNECT_BASE_MS
+              reconnectDelayMs = reconnectBaseMs
               reconnectAttempts = 0
             }
             while (true) {
@@ -389,8 +408,9 @@ export function registerRuntimeSseIpc(options: {
                 })
                 return
               }
+              await recoverRuntime()
               await sleepWithAbort(reconnectDelayMs, ac.signal)
-              reconnectDelayMs = Math.min(reconnectDelayMs * 2, SSE_RECONNECT_MAX_MS)
+              reconnectDelayMs = Math.min(reconnectDelayMs * 2, reconnectMaxMs)
             }
           } catch (e) {
             if (state.stoppedByClient || ac.signal.aborted) return
@@ -416,8 +436,9 @@ export function registerRuntimeSseIpc(options: {
                 })
                 return
               }
+              await recoverRuntime()
               await sleepWithAbort(reconnectDelayMs, ac.signal)
-              reconnectDelayMs = Math.min(reconnectDelayMs * 2, SSE_RECONNECT_MAX_MS)
+              reconnectDelayMs = Math.min(reconnectDelayMs * 2, reconnectMaxMs)
               continue
             }
             flushAllSseEventBatches(state, wc, id)

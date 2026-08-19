@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 import type { ReviewTarget } from '../../agent/types'
 
-export type BuiltinSlashCommandId = 'plan' | 'goal' | 'review' | 'compact' | 'fork' | 'archive' | 'restore' | 'btw'
+export type BuiltinSlashCommandId = 'plan' | 'goal' | 'review' | 'compact' | 'fork' | 'archive' | 'restore' | 'btw' | 'skill-menu'
 export type SkillSlashCommandId = `skill:${string}`
 export type SlashCommandId = BuiltinSlashCommandId | SkillSlashCommandId
 

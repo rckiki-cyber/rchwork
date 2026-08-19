@@ -1483,16 +1483,6 @@ export class ClawRuntime {
             channelId: target.id
           })
         })
-        bridge.on('reconnecting', () => {
-          this.deps.logError('claw-feishu', 'Feishu channel reconnecting', {
-            channelId: target.id
-          })
-        })
-        bridge.on('reconnected', () => {
-          this.deps.logError('claw-feishu', 'Feishu channel reconnected', {
-            channelId: target.id
-          })
-        })
         await bridge.connect()
         if (version !== this.feishuSyncVersion) {
           await bridge.disconnect().catch(() => undefined)

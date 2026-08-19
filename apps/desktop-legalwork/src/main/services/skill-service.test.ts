@@ -16,6 +16,7 @@ import {
   computerWideSkillSearchRoots,
   importGuiSkillFromPath,
   listGuiSkills,
+  skillZipExtractionCommand,
   shouldSkipSkillScanEntry
 } from './skill-service'
 
@@ -165,6 +166,39 @@ describe('skill-service', () => {
     ])
     await expect(readFile(join(targetRoot, 'source-skill', 'SKILL.md'), 'utf8'))
       .resolves.toContain('Imported from disk.')
+  })
+
+  it('uses a validated preferred directory name for a single remote-style package', async () => {
+    const sourceRoot = join(tempRoot, 'random-extraction-directory')
+    const targetRoot = join(tempRoot, 'user-skills')
+    await mkdir(sourceRoot, { recursive: true })
+    await writeFile(join(sourceRoot, 'SKILL.md'), [
+      '---',
+      'name: Remote Skill',
+      'description: Downloaded package.',
+      '---',
+      '',
+      'Use this workflow.'
+    ].join('\n'), 'utf8')
+
+    const result = await importGuiSkillFromPath(sourceRoot, targetRoot, 'remote-skill')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.installed[0]?.path).toBe(join(targetRoot, 'remote-skill'))
+    await expect(readFile(join(targetRoot, 'remote-skill', 'SKILL.md'), 'utf8'))
+      .resolves.toContain('Downloaded package.')
+  })
+
+  it('uses the non-interactive macOS archive extractor for SkillHub zip files', () => {
+    expect(skillZipExtractionCommand('darwin', '/tmp/skill.zip', '/tmp/target')).toEqual({
+      file: '/usr/bin/ditto',
+      args: ['-x', '-k', '/tmp/skill.zip', '/tmp/target']
+    })
+    expect(skillZipExtractionCommand('linux', '/tmp/skill.zip', '/tmp/target')).toEqual({
+      file: 'unzip',
+      args: ['-q', '-o', '/tmp/skill.zip', '-d', '/tmp/target']
+    })
   })
 
   it('auto-generates a minimal skill.json with triggers for legacy SKILL.md-only skills', async () => {

@@ -90,25 +90,39 @@ export async function runtimeRequestViaHost(
   ensureRuntime: (settings: AppSettingsV1) => Promise<void>
 ): Promise<{ ok: boolean; status: number; body: string }> {
   await ensureRuntime(settings)
-  const base = getRuntimeBaseUrlForSettings(settings)
   const pathNorm = pathAndQuery.startsWith('/') ? pathAndQuery : `/${pathAndQuery}`
-  const url = `${base}${pathNorm}`
-  const hdrs = runtimeAuthHeaders(settings)
-  for (const [key, value] of Object.entries(init.headers ?? {})) {
-    hdrs.set(key, value)
+  const method = (init.method ?? 'GET').toUpperCase()
+  const send = async (): Promise<{ ok: boolean; status: number; body: string }> => {
+    const base = getRuntimeBaseUrlForSettings(settings)
+    const hdrs = runtimeAuthHeaders(settings)
+    for (const [key, value] of Object.entries(init.headers ?? {})) {
+      hdrs.set(key, value)
+    }
+    hdrs.set('Accept', 'application/json')
+    if (init.body && !hdrs.has('Content-Type')) {
+      hdrs.set('Content-Type', 'application/json')
+    }
+    const res = await fetch(`${base}${pathNorm}`, {
+      method,
+      headers: hdrs,
+      body: init.body,
+      signal: AbortSignal.timeout(method === 'POST' ? 60_000 : 15_000)
+    })
+    const text = await res.text()
+    return { ok: res.ok, status: res.status, body: text }
   }
-  hdrs.set('Accept', 'application/json')
-  if (init.body && !hdrs.has('Content-Type')) {
-    hdrs.set('Content-Type', 'application/json')
+
+  try {
+    return await send()
+  } catch (error) {
+    // A managed runtime can exit in the narrow window between ensureRunning's
+    // health probe and this request. Retrying only idempotent reads is safe;
+    // mutating requests may already have reached the server and must never be
+    // replayed automatically.
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) throw error
+    await ensureRuntime(settings)
+    return send()
   }
-  const res = await fetch(url, {
-    method: init.method ?? 'GET',
-    headers: hdrs,
-    body: init.body,
-    signal: AbortSignal.timeout(init.method === 'POST' ? 60_000 : 15_000)
-  })
-  const text = await res.text()
-  return { ok: res.ok, status: res.status, body: text }
 }
 
 export { buildLegalworkServeArgs, resolveLegalworkExecutable }

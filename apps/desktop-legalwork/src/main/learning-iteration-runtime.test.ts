@@ -32,7 +32,8 @@ import {
   extractLearningThreadText,
   learningTurnFailureDetail,
   parseLearningModelResult,
-  repairLearningModelJson
+  repairLearningModelJson,
+  shouldReportLearningIterationError
 } from './learning-iteration-runtime'
 
 const tempRoots: string[] = []
@@ -197,6 +198,13 @@ describe('LearningIterationRuntime scheduling', () => {
 })
 
 describe('learning model result parsing', () => {
+  it('does not upload recoverable model/configuration failures', () => {
+    expect(shouldReportLearningIterationError(new Error('Insufficient Balance (HTTP 402)'))).toBe(false)
+    expect(shouldReportLearningIterationError(new Error('Memory confidence must be at least 0.8 for automatic capture.'))).toBe(false)
+    expect(shouldReportLearningIterationError(new Error('学习结果不是有效 JSON。'))).toBe(false)
+    expect(shouldReportLearningIterationError(new Error('Legalwork did not report ready within 12000ms'))).toBe(true)
+  })
+
   it('repairs unescaped double quotes inside long Markdown string values', () => {
     const response = [
       'BEGIN_LEARNING_RESULT',

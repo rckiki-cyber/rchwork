@@ -181,6 +181,7 @@ describe('HTTP server', () => {
           version: '1.0.0',
           root: '/tmp/skills/review',
           legacy: false,
+          source: 'native',
           triggers: { commands: ['/review'], promptPatterns: [], fileTypes: [] },
           allowedTools: ['read']
         }

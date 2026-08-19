@@ -849,15 +849,29 @@ async function skillCapabilityConfigForRuntime(
   existing: Record<string, unknown>,
   settings?: AppSettingsV1
 ): Promise<Record<string, unknown>> {
+  const guiRoots = await guiSkillRootsForRuntime(settings)
+  const nativeRoots = guiRoots
+    .filter((root) => root.scope === 'builtin')
+    .map((root) => root.path)
   const roots = uniqueStrings([
-    ...stringArrayValue(existing.roots).map(normalizeSkillRootPath),
-    ...(await guiSkillRootsForRuntime(settings)).map((root) => root.path)
+    // 原生根放在最前面；SkillRuntime 仍会用 nativeRoots 做来源判定和冲突保护，
+    // 此处排序也让旧版本或其他顺序敏感的读取方保持 native-first。
+    ...nativeRoots,
+    ...guiRoots.filter((root) => root.scope !== 'builtin').map((root) => root.path),
+    ...stringArrayValue(existing.roots).map(normalizeSkillRootPath)
   ])
   return {
     ...existing,
     enabled: existing.enabled === false ? false : roots.length > 0 || existing.enabled === true,
     roots,
-    legacySkillMd: existing.legacySkillMd === false ? false : true
+    nativeRoots: uniqueStrings([
+      ...nativeRoots,
+      ...stringArrayValue(existing.nativeRoots).map(normalizeSkillRootPath)
+    ]),
+    legacySkillMd: existing.legacySkillMd === false ? false : true,
+    // GUI 管理的 Legalwork agent 固定采用 native-first；补充 skill 只能在确认
+    // 能力缺口后按需 load，不能沿用旧版“关键词命中即自动抢占”的配置值。
+    autoActivateUserSkills: false
   }
 }
 

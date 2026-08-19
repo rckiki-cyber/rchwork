@@ -218,6 +218,44 @@ export type SkillListItem = {
 export type SkillListResult =
   | { ok: true; skills: SkillListItem[]; validationErrors: Array<{ root: string; message: string }> }
   | { ok: false; message: string }
+export type SkillHubSkillSummary = {
+  slug: string
+  name: string
+  description: string
+  category: string
+  downloads: number
+  installs: number
+  stars: number
+  score: number
+  version: string
+  namespace: string
+  namespaceDisplayName: string
+  iconUrl?: string
+  tags: string[]
+}
+export type SkillHubCatalogCategory = 'legal' | 'office' | 'learning'
+export type SkillHubListRequest = {
+  category: SkillHubCatalogCategory
+  page: number
+  pageSize?: number
+}
+export type SkillHubListResult =
+  | {
+      ok: true
+      skills: SkillHubSkillSummary[]
+      total: number
+      page: number
+      pageSize: number
+      totalPages: number
+    }
+  | { ok: false; message: string }
+export type SkillHubInstallRequest = {
+  slug: string
+  namespace: string
+  version?: string
+  targetRoot: string
+}
+export type SkillHubInstallResult = SkillImportResult
 export type LegalworkConfigFileResult = { path: string; content: string; exists: boolean }
 export type LegalworkConfigSaveResult = { ok: true; path: string }
 export type OptionalMcpInstallResult =
@@ -431,6 +469,8 @@ export type DsGuiApi = {
   readSkillFile: (rootPath: string, entryPath: string) => Promise<SkillReadResult>
   saveSkillFile: (rootPath: string, skillName: string, content: string) => Promise<SkillSaveResult>
   importSkill: () => Promise<SkillImportResult>
+  listSkillHubSkills: (request: SkillHubListRequest) => Promise<SkillHubListResult>
+  installSkillHubSkill: (request: SkillHubInstallRequest) => Promise<SkillHubInstallResult>
   openSkillRoot: (rootPath: string) => Promise<PathOpenResult>
   getDeepseekConfigFile: () => Promise<LegalworkConfigFileResult>
   setDeepseekConfigFile: (content: string) => Promise<LegalworkConfigSaveResult>
@@ -567,6 +607,9 @@ export type DsGuiApi = {
   getPkulawAutoClaim: () => Promise<{ enabled: boolean; lastClaimDate: string | null }>
   setPkulawAutoClaim: (enabled: boolean) => Promise<{ enabled: boolean; lastClaimDate: string | null }>
   openYuandianConsole: () => Promise<{ ok: boolean; message?: string }>
+  openWkConsole: () => Promise<{ ok: boolean; message?: string }>
+  openTycConsole: () => Promise<{ ok: boolean; message?: string }>
+  openQccConsole: () => Promise<{ ok: boolean; message?: string }>
   imaLogout: () => Promise<void>
   imaGetConfig: () => Promise<{
     cookie: boolean

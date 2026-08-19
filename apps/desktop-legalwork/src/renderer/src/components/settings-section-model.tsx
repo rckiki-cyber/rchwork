@@ -15,6 +15,7 @@ import {
   SecretInput
 } from './settings-controls'
 import { ModelListPicker } from './settings-model-list-picker'
+import { getCodexQuotaRemainingPercent } from './settings-utils'
 
 function formatCodexQuotaDuration(minutes: number, locale: string): string {
   const language = locale.startsWith('zh') ? 'zh-CN' : 'en-US'
@@ -284,7 +285,9 @@ export function ModelSettingsSection({ ctx }: { ctx: Record<string, any> }): Rea
                           ) : null}
                           {bucket.primary ? (
                             <span>
-                              {t('codexQuotaUsed', { percent: bucket.primary.usedPercent })}
+                              {t('codexQuotaRemaining', {
+                                percent: getCodexQuotaRemainingPercent(bucket.primary.usedPercent)
+                              })}
                               {' · '}
                               {t('codexQuotaWindow', {
                                 duration: formatCodexQuotaDuration(bucket.primary.windowDurationMins, navigator.language)

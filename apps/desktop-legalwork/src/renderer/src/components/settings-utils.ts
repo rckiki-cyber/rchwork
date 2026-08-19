@@ -30,6 +30,11 @@ type SettingsPatch = AppSettingsPatch
 
 export const DEFAULT_WORKSPACE_ROOT = '~/Desktop'
 
+export function getCodexQuotaRemainingPercent(usedPercent: number): number {
+  const clampedUsedPercent = Math.min(100, Math.max(0, usedPercent))
+  return Math.round((100 - clampedUsedPercent) * 100) / 100
+}
+
 export function splitSettingsList(raw: string): string[] {
   return raw
     .split(/[\n,]/)
