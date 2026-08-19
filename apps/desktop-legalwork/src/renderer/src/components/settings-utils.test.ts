@@ -11,7 +11,7 @@ import {
   defaultWriteSettings,
   type AppSettingsV1
 } from '@shared/app-settings'
-import { mergeSettings } from './settings-utils'
+import { getCodexQuotaRemainingPercent, mergeSettings } from './settings-utils'
 
 function settings(providerId: string, model: string): AppSettingsV1 {
   const provider = defaultModelProviderSettings()
@@ -68,4 +68,16 @@ describe('mergeSettings', () => {
     )
     }
   )
+})
+
+describe('getCodexQuotaRemainingPercent', () => {
+  it('converts used quota into remaining quota', () => {
+    expect(getCodexQuotaRemainingPercent(39)).toBe(61)
+    expect(getCodexQuotaRemainingPercent(73.25)).toBe(26.75)
+  })
+
+  it('keeps the remaining percentage within the quota range', () => {
+    expect(getCodexQuotaRemainingPercent(-5)).toBe(100)
+    expect(getCodexQuotaRemainingPercent(130)).toBe(0)
+  })
 })

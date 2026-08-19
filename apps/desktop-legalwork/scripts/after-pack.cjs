@@ -53,6 +53,7 @@ const BUNDLED_PDF_FONT_SOURCE_SHA256 = '050080d9255a86808f2945bffac582b31ef32bc3
 const BUNDLED_PDF_FONT_PREPARATION_VERSION = 2
 const BUNDLED_PDF_FONT_NAMES = ['NotoSerifSC-Regular.ttf', 'NotoSerifSC-Bold.ttf']
 const IMA_MCP_SCRIPT_RELATIVE_PATH = 'scripts/ima-mcp-server.py'
+const CANVAS_NATIVE_PACKAGE_PATTERN = /^canvas-(?:android|darwin|freebsd|linux|win32)-/
 
 // legalwork 不使用相机 / 麦克风 / 蓝牙 / 相册。Electron 框架默认在 Info.plist 里塞了这些
 // 权限用途串，会导致 macOS 在相关 API 被触达时弹出无谓的权限请求（如相册访问）。
@@ -68,6 +69,30 @@ const MAC_UNUSED_PERMISSION_KEYS = [
 
 function normalizePlatform(platform) {
   return platform === 'win' ? 'win32' : platform
+}
+
+function normalizeArch(arch) {
+  if (typeof arch === 'string' && ['ia32', 'x64', 'arm64'].includes(arch)) return arch
+  const numeric = Number(arch)
+  if (numeric === 0) return 'ia32'
+  if (numeric === 1) return 'x64'
+  if (numeric === 3) return 'arm64'
+  return String(arch)
+}
+
+function expectedCanvasNativePackage(context) {
+  const platform = normalizePlatform(context.electronPlatformName)
+  const arch = normalizeArch(context.arch)
+  if (platform === 'darwin' && (arch === 'arm64' || arch === 'x64')) {
+    return `canvas-darwin-${arch}`
+  }
+  if (platform === 'win32' && (arch === 'arm64' || arch === 'x64' || arch === 'ia32')) {
+    return `canvas-win32-${arch}-msvc`
+  }
+  if (platform === 'linux' && (arch === 'arm64' || arch === 'x64')) {
+    return `canvas-linux-${arch}-gnu`
+  }
+  return null
 }
 
 function appBundlePath(context) {
@@ -115,6 +140,56 @@ function prunePackedLegalworkDependencies(context) {
     'root better-sqlite3 dependency'
   )
   rmSync(join(legalworkDir, 'node_modules', 'better-sqlite3'), { recursive: true, force: true })
+}
+
+function canvasPackageRoots(context) {
+  const root = unpackedAppRoot(context)
+  return [
+    join(root, 'node_modules', '@napi-rs'),
+    join(root, 'node_modules', 'pdf-parse', 'node_modules', '@napi-rs'),
+    join(root, 'legalwork', 'node_modules', '@napi-rs'),
+    join(root, 'legalwork', 'node_modules', 'pdf-parse', 'node_modules', '@napi-rs')
+  ]
+}
+
+/** Remove host-architecture Canvas binaries from cross-architecture artifacts. */
+function pruneIncompatibleCanvasNativePackages(context) {
+  const expected = expectedCanvasNativePackage(context)
+  for (const packageRoot of canvasPackageRoots(context)) {
+    if (!existsSync(packageRoot)) continue
+    for (const entry of readdirSync(packageRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      if (!CANVAS_NATIVE_PACKAGE_PATTERN.test(entry.name)) continue
+      if (entry.name === expected) continue
+      rmSync(join(packageRoot, entry.name), { recursive: true, force: true })
+    }
+  }
+}
+
+function validateBundledPdfParserRuntime(context) {
+  const root = unpackedAppRoot(context)
+  assertExists(
+    join(root, 'node_modules', '@napi-rs', 'canvas', 'geometry.js'),
+    'root PDF DOM geometry fallback'
+  )
+  assertExists(
+    join(root, 'legalwork', 'node_modules', '@napi-rs', 'canvas', 'geometry.js'),
+    'Legalwork PDF DOM geometry fallback'
+  )
+
+  const expected = expectedCanvasNativePackage(context)
+  for (const packageRoot of canvasPackageRoots(context)) {
+    if (!existsSync(packageRoot)) continue
+    const incompatible = readdirSync(packageRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && CANVAS_NATIVE_PACKAGE_PATTERN.test(entry.name))
+      .map((entry) => entry.name)
+      .filter((name) => name !== expected)
+    if (incompatible.length > 0) {
+      throw new Error(
+        `[after-pack] PDF Canvas runtime contains incompatible target packages: ${incompatible.join(', ')}`
+      )
+    }
+  }
 }
 
 function projectDir(context) {
@@ -479,8 +554,10 @@ function stripUnnecessaryMacPermissions(context) {
 
 async function afterPack(context) {
   prunePackedLegalworkDependencies(context)
+  pruneIncompatibleCanvasNativePackages(context)
   restoreBundledOfficeCli(context)
   validateBundledLegalworkRuntime(context)
+  validateBundledPdfParserRuntime(context)
   validateBundledOfficeRuntime(context)
   validateBundledPdfFonts(context)
   validateBundledDataComplianceRuntime(context)
@@ -510,6 +587,10 @@ exports._internals = {
   prunePackedLegalworkDependencies,
   restoreBundledOfficeCli,
   validateBundledLegalworkRuntime,
+  normalizeArch,
+  expectedCanvasNativePackage,
+  pruneIncompatibleCanvasNativePackages,
+  validateBundledPdfParserRuntime,
   validateBundledAgentLoop,
   validateBundledOfficeRuntime,
   validateBundledPdfFonts,

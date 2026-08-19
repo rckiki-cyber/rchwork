@@ -1,6 +1,7 @@
 import type { ModelClient, ModelRequest, ModelStreamChunk, ModelToolSpec } from '../../ports/model-client.js'
 import type { TurnItem } from '../../contracts/items.js'
 import { emptyUsageSnapshot, type UsageSnapshot } from '../../contracts/usage.js'
+import type { ModelCapabilityMetadata } from '../../contracts/capabilities.js'
 import { stableToolResultText, truncateToolResultContent } from '../../domain/item.js'
 
 /**
@@ -23,6 +24,8 @@ export type AnthropicCompatConfig = {
   streamIdleTimeoutMs?: number
   /** Maximum number of messages to send. Defaults to the entire history. */
   historyLimit?: number
+  /** Optional model capability resolver used for provider-specific thinking controls. */
+  modelCapabilities?: (model: string) => ModelCapabilityMetadata
 }
 
 type AnthropicMessage =
@@ -108,6 +111,8 @@ const DEFAULT_MAX_TOKENS = 4096
  */
 const DEFAULT_HISTORY_LIMIT = 240
 
+type NormalizedAnthropicEffort = 'auto' | 'off' | 'low' | 'medium' | 'high' | 'max' | 'xhigh'
+
 /**
  * Anthropic-compatible model client.
  *
@@ -137,7 +142,7 @@ export class AnthropicCompatModelClient implements ModelClient {
     const url = buildMessagesUrl(this.config.baseUrl)
     const stream = request.stream ?? !this.config.nonStreaming
     const body = this.buildRequestBody(request, stream)
-    const headers = this.buildHeaders(stream)
+    const headers = this.buildHeaders(stream, body)
     const init: RequestInit = {
       method: 'POST',
       headers,
@@ -181,7 +186,7 @@ export class AnthropicCompatModelClient implements ModelClient {
     yield* this.streamSse(response.body, request.abortSignal)
   }
 
-  private buildHeaders(stream: boolean): Record<string, string> {
+  private buildHeaders(stream: boolean, body: Record<string, unknown>): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: stream ? 'text/event-stream' : 'application/json',
@@ -189,6 +194,10 @@ export class AnthropicCompatModelClient implements ModelClient {
     }
     if (this.config.apiKey) {
       headers.Authorization = `Bearer ${this.config.apiKey}`
+    }
+    const thinking = asObject(body.thinking)
+    if (thinking.type === 'enabled' && Array.isArray(body.tools) && body.tools.length > 0) {
+      headers['anthropic-beta'] = 'interleaved-thinking-2025-05-14'
     }
     return { ...headers, ...(this.config.headers ?? {}) }
   }
@@ -212,6 +221,9 @@ export class AnthropicCompatModelClient implements ModelClient {
     if (request.topP !== undefined) {
       body.top_p = request.topP
     }
+    applyAnthropicThinking(body, model, request.reasoningEffort, request.maxTokens ?? DEFAULT_MAX_TOKENS, {
+      capabilities: this.config.modelCapabilities?.(model)
+    })
     const tools = normalizeToolSpecs(request.tools)
     if (tools.length > 0) {
       body.tools = tools
@@ -292,12 +304,19 @@ export class AnthropicCompatModelClient implements ModelClient {
     const seenResultIds = new Set<string>()
     const toolResultBlocks: AnthropicContentBlock[] = []
     const assistantTextParts: string[] = []
+    const signedReasoningBlocks: AnthropicContentBlock[] = []
     let bridgeIndex = startIndex - 1
     while (bridgeIndex >= 0) {
       const item = items[bridgeIndex]
       if (!item || !this.isPreToolCallBridgeItem(item, turnId)) break
       if (item.kind === 'assistant_text' && item.text.trim()) {
         assistantTextParts.unshift(item.text)
+      } else if (item.kind === 'assistant_reasoning' && item.text.trim() && item.signature?.trim()) {
+        signedReasoningBlocks.unshift({
+          type: 'thinking',
+          thinking: item.text,
+          signature: item.signature
+        })
       }
       bridgeIndex -= 1
     }
@@ -334,6 +353,7 @@ export class AnthropicCompatModelClient implements ModelClient {
     }
 
     const assistantContent: AnthropicContentBlock[] = []
+    assistantContent.push(...signedReasoningBlocks)
     if (assistantTextParts.length > 0) {
       assistantContent.push({ type: 'text', text: assistantTextParts.join('\n') })
     }
@@ -518,6 +538,8 @@ export class AnthropicCompatModelClient implements ModelClient {
           chunks.push({ kind: 'assistant_text_delta', text: delta.text })
         } else if (delta.type === 'thinking_delta' && delta.thinking) {
           chunks.push({ kind: 'assistant_reasoning_delta', text: delta.thinking })
+        } else if (delta.type === 'signature_delta' && delta.signature) {
+          chunks.push({ kind: 'assistant_reasoning_signature_delta', signature: delta.signature })
         } else if (delta.type === 'input_json_delta') {
           const pending = pendingToolCalls.get(event.index)
           if (pending) {
@@ -573,6 +595,9 @@ export class AnthropicCompatModelClient implements ModelClient {
         yield { kind: 'assistant_text_delta', text: block.text }
       } else if (block.type === 'thinking' && block.thinking) {
         yield { kind: 'assistant_reasoning_delta', text: block.thinking }
+        if (block.signature) {
+          yield { kind: 'assistant_reasoning_signature_delta', signature: block.signature }
+        }
       } else if (block.type === 'tool_use') {
         yield {
           kind: 'tool_call_complete',
@@ -640,6 +665,92 @@ function normalizeToolSpecs(tools: ModelToolSpec[]): AnthropicToolSpec[] {
       input_schema: canonicalizeSchema(tool.inputSchema)
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function applyAnthropicThinking(
+  body: Record<string, unknown>,
+  model: string,
+  rawEffort: string | undefined,
+  maxTokens: number,
+  options: { capabilities?: ModelCapabilityMetadata } = {}
+): void {
+  const protocol = options.capabilities?.reasoning?.requestProtocol
+  const isClaudeModel = /^claude-/i.test(model.trim())
+  if (protocol && protocol !== 'anthropic-thinking') return
+  if (!protocol && !isClaudeModel) return
+
+  const effort = normalizeAnthropicEffort(rawEffort)
+  if (!effort) return
+  if (effort === 'off') {
+    body.thinking = { type: 'disabled' }
+    return
+  }
+
+  // Thinking-capable Anthropic requests only accept the default sampling
+  // temperature. Omitting it is safer than forwarding an incompatible value.
+  delete body.temperature
+  if (supportsAdaptiveAnthropicThinking(model, protocol)) {
+    body.thinking = { type: 'adaptive', display: 'summarized' }
+    if (effort !== 'auto') {
+      body.output_config = { effort: effort === 'max' ? 'max' : effort }
+    }
+    return
+  }
+
+  // Claude 4.5 and earlier use the legacy token-budget form. Keep at least
+  // 1K tokens for the visible answer and honor Anthropic's 1K minimum budget.
+  const maximumBudget = Math.floor(maxTokens) - 1_024
+  if (maximumBudget < 1_024) return
+  const ratio = effort === 'low' ? 0.25 : effort === 'medium' ? 0.5 : 0.75
+  const budgetTokens = Math.max(1_024, Math.min(maximumBudget, Math.floor(maxTokens * ratio)))
+  body.thinking = { type: 'enabled', budget_tokens: budgetTokens }
+}
+
+function normalizeAnthropicEffort(value: string | undefined): NormalizedAnthropicEffort | null {
+  switch (value?.trim().toLowerCase()) {
+    case 'auto':
+    case 'adaptive':
+      return 'auto'
+    case 'off':
+    case 'disabled':
+    case 'none':
+    case 'false':
+      return 'off'
+    case 'low':
+    case 'minimal':
+      return 'low'
+    case 'medium':
+    case 'mid':
+      return 'medium'
+    case 'high':
+      return 'high'
+    case 'max':
+    case 'maximum':
+      return 'max'
+    case 'xhigh':
+      return 'xhigh'
+    default:
+      return null
+  }
+}
+
+function supportsAdaptiveAnthropicThinking(model: string, protocol: string | undefined): boolean {
+  const normalized = model.trim().toLowerCase()
+  if (!normalized.startsWith('claude-')) {
+    return protocol === 'anthropic-thinking'
+  }
+  if (normalized.includes('mythos') || normalized.includes('fable')) return true
+  const version = /claude-(?:opus|sonnet|haiku)-(\d+)(?:-(\d)(?=-|$))?/.exec(normalized)
+  if (!version) return false
+  const major = Number(version[1])
+  const minor = version[2] ? Number(version[2]) : 0
+  return major > 4 || (major === 4 && minor >= 6)
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }
 
 function buildMessagesUrl(baseUrl: string): string {

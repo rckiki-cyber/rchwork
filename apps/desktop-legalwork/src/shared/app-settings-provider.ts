@@ -141,16 +141,22 @@ export function resolveLegalworkRuntimeSettings(settings: AppSettingsV1): Legalw
   const runtimeApiKey = runtime.apiKey?.trim() ?? ''
   const runtimeBaseUrl = runtime.baseUrl?.trim() ?? ''
   const providerBaseUrl = provider.baseUrl.trim() || DEFAULT_DEEPSEEK_BASE_URL
+  const baseUrl =
+    runtimeBaseUrl && runtimeBaseUrl !== DEFAULT_DEEPSEEK_BASE_URL
+      ? normalizeDeepseekBaseUrl(runtimeBaseUrl)
+      : normalizeDeepseekBaseUrl(providerBaseUrl)
   const preset = getBuiltinModelProviderPreset(runtime.providerId || provider.id)
+  const configuredEndpointFormat =
+    runtime.endpointFormat?.trim() || provider.endpointFormat?.trim() || preset?.endpointFormat || 'chat_completions'
+  const endpointFormat = shouldUseOpenAiResponses(provider.id, baseUrl, configuredEndpointFormat)
+    ? 'responses'
+    : configuredEndpointFormat
 
   return {
     ...runtime,
     apiKey: runtimeApiKey || provider.apiKey.trim(),
-    baseUrl:
-      runtimeBaseUrl && runtimeBaseUrl !== DEFAULT_DEEPSEEK_BASE_URL
-        ? normalizeDeepseekBaseUrl(runtimeBaseUrl)
-        : normalizeDeepseekBaseUrl(providerBaseUrl),
-    endpointFormat: runtime.endpointFormat?.trim() || provider.endpointFormat?.trim() || preset?.endpointFormat || 'chat_completions'
+    baseUrl,
+    endpointFormat
   }
 }
 
@@ -248,9 +254,12 @@ function normalizeModelProviderProfile(
       ? normalizeDeepseekBaseUrl(input.baseUrl)
       : preset?.baseUrl ?? DEFAULT_DEEPSEEK_BASE_URL
   const models = normalizeProviderModels(input?.models, preset?.models)
-  const endpointFormat = typeof input?.endpointFormat === 'string' && input.endpointFormat.trim()
+  const configuredEndpointFormat = typeof input?.endpointFormat === 'string' && input.endpointFormat.trim()
     ? input.endpointFormat.trim()
     : preset?.endpointFormat ?? inferEndpointFormatFromBaseUrl(baseUrl, id)
+  const endpointFormat = shouldUseOpenAiResponses(id, baseUrl, configuredEndpointFormat)
+    ? 'responses'
+    : configuredEndpointFormat
   return {
     id,
     name,
@@ -258,6 +267,15 @@ function normalizeModelProviderProfile(
     baseUrl,
     endpointFormat,
     models
+  }
+}
+
+function shouldUseOpenAiResponses(id: string, baseUrl: string, endpointFormat: string): boolean {
+  if (id !== 'openai' || endpointFormat !== 'chat_completions') return false
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === 'api.openai.com'
+  } catch {
+    return false
   }
 }
 

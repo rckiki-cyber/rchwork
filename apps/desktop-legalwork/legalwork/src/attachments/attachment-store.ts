@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, dirname, join, normalize, resolve } from 'node:path'
 import type { AttachmentsCapabilityConfig } from '../contracts/capabilities.js'
 import type { AttachmentDiagnostics, AttachmentMetadata, AttachmentTextFallback } from '../contracts/attachments.js'
 import { AttachmentMetadata as AttachmentMetadataSchema } from '../contracts/attachments.js'
@@ -190,10 +191,19 @@ function mergeUnique(values: string[], value: string | undefined): string[] {
   return value && !values.includes(value) ? [...values, value] : values
 }
 
+/** 展开 ~ 并按当前平台规范化，使 "~/Desktop" 与 "/Users/xiangyang/Desktop" 视为同一路径。 */
+function normalizeWorkspacePath(path: string): string {
+  const expanded = path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
+  return normalize(resolve(expanded))
+}
+
 function isAuthorized(metadata: AttachmentMetadata, scope: { threadId?: string; workspace?: string }): boolean {
   if (metadata.threadIds.length === 0 && metadata.workspaces.length === 0) return true
   if (scope.threadId && metadata.threadIds.includes(scope.threadId)) return true
-  if (scope.workspace && metadata.workspaces.includes(scope.workspace)) return true
+  if (scope.workspace) {
+    const scopeWs = normalizeWorkspacePath(scope.workspace)
+    return metadata.workspaces.some((ws) => normalizeWorkspacePath(ws) === scopeWs)
+  }
   return false
 }
 

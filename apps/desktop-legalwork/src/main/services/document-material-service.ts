@@ -4,6 +4,8 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { delimiter, dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { ensurePdfDomGeometry } from './pdf-dom-geometry'
+import { logError } from '../logger'
 
 export type DocumentMaterialExtractionRequest = {
   fileName: string
@@ -43,6 +45,7 @@ function decodeBase64(dataBase64: string): Buffer {
 async function extractPdfTextLayer(buffer: Buffer): Promise<DocumentMaterialExtractionResult> {
   let parser: PdfParser | null = null
   try {
+    ensurePdfDomGeometry()
     const pdfModule = await import('pdf-parse') as { PDFParse?: PdfParseConstructor }
     if (!pdfModule.PDFParse) {
       return { ok: false, message: '当前环境缺少 PDF 文本解析能力。' }
@@ -52,10 +55,29 @@ async function extractPdfTextLayer(buffer: Buffer): Promise<DocumentMaterialExtr
     return { ok: true, content: result.text?.trim() ?? '' }
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
+    const runtimeFailure = pdfParserRuntimeFailure(error)
+    if (runtimeFailure) {
+      // Do not include the attachment name, file bytes or an arbitrary parser
+      // stack in the report. This stable classification is enough to diagnose
+      // a missing/incompatible packaged PDF runtime without exposing user data.
+      logError('document-material-pdf-runtime', `PDF text extraction runtime failure: ${runtimeFailure}`)
+      return { ok: false, message: 'PDF 文本解析组件加载失败，请更新或重新安装 Legalwork。' }
+    }
     return { ok: false, message: `PDF 文本解析失败：${detail}` }
   } finally {
     await parser?.destroy().catch(() => undefined)
   }
+}
+
+export function pdfParserRuntimeFailure(error: unknown): string | null {
+  const detail = error instanceof Error ? error.message : String(error)
+  if (/\bDOMMatrix\b/i.test(detail)) return 'DOMMatrix unavailable'
+  if (/\b(?:ImageData|Path2D)\b/i.test(detail)) return 'PDF DOM graphics unavailable'
+  if (/@napi-rs[\\/]canvas|canvas-[a-z0-9-]+/i.test(detail)) return 'Canvas module unavailable'
+  if (/incompatible architecture|wrong architecture|mach-o.*wrong architecture|dlopen/i.test(detail)) {
+    return 'Canvas native architecture mismatch'
+  }
+  return null
 }
 
 function uniqueExistingDirs(paths: string[]): string[] {

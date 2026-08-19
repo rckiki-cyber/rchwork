@@ -33,7 +33,7 @@ afterEach(() => {
 })
 
 describe('normalize-windows-latest', () => {
-  it('removes nonexistent Windows updater files and keeps both real architectures', () => {
+  it('removes obsolete Windows updater files and keeps the supported x64 installer', () => {
     const distDir = tempRoot()
     writeFile(join(distDir, 'legalwork-0.2.9-win-x64.exe'))
     writeFile(join(distDir, 'legalwork-0.2.9-win-ia32.exe'))
@@ -62,31 +62,31 @@ describe('normalize-windows-latest', () => {
 
     const latest = readFileSync(join(distDir, 'latest.yml'), 'utf8')
     expect(latest).toContain('url: legalwork-0.2.9-win-x64.exe')
-    expect(latest).toContain('url: legalwork-0.2.9-win-ia32.exe')
+    expect(latest).not.toContain('url: legalwork-0.2.9-win-ia32.exe')
     expect(latest).toContain('path: legalwork-0.2.9-win-x64.exe')
     expect(latest).not.toContain('legalwork-0.2.9-win.exe')
   })
 
-  it('fails when either Windows installer architecture is missing', () => {
+  it('fails when the Windows x64 installer is missing', () => {
     const distDir = tempRoot()
     mkdirSync(distDir, { recursive: true })
-    writeFile(join(distDir, 'legalwork-0.2.9-win-x64.exe'))
+    writeFile(join(distDir, 'legalwork-0.2.9-win-ia32.exe'))
     writeFile(
       join(distDir, 'latest.yml'),
       [
         'version: 0.2.9',
         'files:',
-        '  - url: legalwork-0.2.9-win-x64.exe',
-        '    sha512: x64sha',
-        '    size: 200',
-        'path: legalwork-0.2.9-win-x64.exe',
-        'sha512: x64sha',
+        '  - url: legalwork-0.2.9-win-ia32.exe',
+        '    sha512: ia32sha',
+        '    size: 100',
+        'path: legalwork-0.2.9-win-ia32.exe',
+        'sha512: ia32sha',
         ''
       ].join('\n')
     )
 
     expect(() => runNormalizeWindowsLatest(distDir)).toThrow(
-      /Windows in-app updates require x64 and ia32 installers/
+      /Windows in-app updates require an x64 installer/
     )
   })
 })

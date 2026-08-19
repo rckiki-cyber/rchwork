@@ -47,11 +47,13 @@ function writeInfoPlist(path: string): void {
 function createMacPackContext(root: string): {
   appOutDir: string
   electronPlatformName: string
+  arch: string
   packager: { appInfo: { productFilename: string } }
 } {
   return {
     appOutDir: join(root, 'mac-arm64'),
     electronPlatformName: 'darwin',
+    arch: 'arm64',
     packager: {
       appInfo: {
         productFilename: 'legalwork'
@@ -78,7 +80,8 @@ describe('electron-builder Legalwork packaging', () => {
     expect(builderConfig.asarUnpack).toEqual(expect.arrayContaining([
       '**/legalwork/dist/**/*',
       '**/legalwork/package*.json',
-      '**/legalwork/node_modules/**/*'
+      '**/legalwork/node_modules/**/*',
+      '**/node_modules/@napi-rs/canvas/**/*'
     ]))
     expect(builderConfig.asarUnpack).not.toEqual(expect.arrayContaining([
       '**/node_modules/node-bin-darwin-*/*',
@@ -90,6 +93,51 @@ describe('electron-builder Legalwork packaging', () => {
     expect(builderConfig.files).toEqual(expect.arrayContaining([
       '!**/node_modules/openclaw/**/*'
     ]))
+  })
+
+  it('packages the pure-JavaScript PDF geometry fallback and removes wrong-arch Canvas binaries', () => {
+    const root = tempRoot()
+    const context = createMacPackContext(root)
+    const unpackedRoot = afterPack._internals.unpackedAppRoot(context)
+    const rootCanvas = join(unpackedRoot, 'node_modules/@napi-rs/canvas')
+    const legalworkCanvas = join(unpackedRoot, 'legalwork/node_modules/@napi-rs/canvas')
+    const arm64Package = join(unpackedRoot, 'node_modules/@napi-rs/canvas-darwin-arm64')
+    const x64Package = join(unpackedRoot, 'node_modules/@napi-rs/canvas-darwin-x64')
+
+    touch(join(rootCanvas, 'geometry.js'))
+    touch(join(legalworkCanvas, 'geometry.js'))
+    touch(join(arm64Package, 'skia.darwin-arm64.node'))
+    touch(join(x64Package, 'skia.darwin-x64.node'))
+
+    afterPack._internals.pruneIncompatibleCanvasNativePackages(context)
+
+    expect(existsSync(arm64Package)).toBe(true)
+    expect(existsSync(x64Package)).toBe(false)
+    expect(() => afterPack._internals.validateBundledPdfParserRuntime(context)).not.toThrow()
+  })
+
+  it('rejects an installer that omits the PDF geometry fallback', () => {
+    const root = tempRoot()
+    const context = createMacPackContext(root)
+
+    expect(() => afterPack._internals.validateBundledPdfParserRuntime(context)).toThrow(
+      /PDF DOM geometry fallback/
+    )
+  })
+
+  it('maps Electron target architectures to their Canvas native package', () => {
+    expect(afterPack._internals.expectedCanvasNativePackage({
+      electronPlatformName: 'darwin',
+      arch: 'x64'
+    })).toBe('canvas-darwin-x64')
+    expect(afterPack._internals.expectedCanvasNativePackage({
+      electronPlatformName: 'darwin',
+      arch: 3
+    })).toBe('canvas-darwin-arm64')
+    expect(afterPack._internals.expectedCanvasNativePackage({
+      electronPlatformName: 'win32',
+      arch: 'x64'
+    })).toBe('canvas-win32-x64-msvc')
   })
 
   it('validates the unpacked Legalwork runtime before release artifacts are created', () => {
@@ -289,14 +337,10 @@ describe('electron-builder Legalwork packaging', () => {
     }
   })
 
-  it('runs npm through cmd.exe during Windows afterPack hooks', () => {
-    expect(afterPack._internals.npmCommand(['prune'], 'win32')).toEqual({
-      command: 'cmd.exe',
-      args: ['/d', '/s', '/c', 'npm', 'prune']
-    })
-    expect(afterPack._internals.npmCommand(['prune'], 'darwin')).toEqual({
-      command: 'npm',
-      args: ['prune']
-    })
+  it('does not run npm against an already completed package', () => {
+    expect(afterPack._internals.npmCommand).toBeUndefined()
+    const source = readFileSync(require.resolve('../../scripts/after-pack.cjs'), 'utf8')
+    expect(source).not.toContain("['prune', '--omit=dev'")
+    expect(source).not.toContain('execFileSync(prune.command')
   })
 })

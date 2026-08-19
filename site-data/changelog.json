@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-16T15:37:41.677Z",
+  "generated_at": "2026-08-16T21:41:57.487Z",
   "repository": "rckiki-cyber/rchwork",
   "releases": [
     {
@@ -10,11 +10,11 @@
       "prerelease": false,
       "summary": "本次更新包括：数据合规、桌面端、修复优化。",
       "highlights": [
-        "使用体验更新：基于上游 legalwork 0.3.24 的 RCH 首个完整依赖版。",
-        "数据合规和附件上传体验优化，处理图片和材料时操作反馈更明确。",
-        "修复了使用中的稳定性问题：修复重复安装时 DLL 文件锁导致的 EPERM 失败",
-        "使用体验更新：更新源切换至 rckiki-cyber/rchwork，后续 RCH 版本从本仓库检查并下载更新",
-        "使用体验更新：首次使用请下载安装 legalwork-0.3.24-rch.1-win-x64.exe。"
+        "修复了使用中的稳定性问题：这是基于上游 legalwork 0.3.24 制作的首个 RCH 正式发布版，重点解决 Windows 环境首次安装依赖失败、重复安装文件锁，以及后续更新来源的问题。",
+        "使用体验更新：主要更新",
+        "使用体验更新：内置 Windows Python 3.11 运行环境。",
+        "文件脱敏能力优化，处理客户材料和敏感信息时更稳妥。",
+        "使用体验更新：安装完成后无需在首次使用时联网下载 Python 或依赖包。"
       ],
       "categories": [
         "数据合规",
@@ -23,10 +23,40 @@
       ],
       "assets": [
         {
+          "name": "legalwork-0.3.24-rch.1-mac-arm64.dmg",
+          "browser_download_url": "https://github.com/rckiki-cyber/rchwork/releases/download/v0.3.24-rch.1/legalwork-0.3.24-rch.1-mac-arm64.dmg",
+          "download_count": 0,
+          "size": 408352636
+        },
+        {
+          "name": "legalwork-0.3.24-rch.1-mac-x64.dmg",
+          "browser_download_url": "https://github.com/rckiki-cyber/rchwork/releases/download/v0.3.24-rch.1/legalwork-0.3.24-rch.1-mac-x64.dmg",
+          "download_count": 0,
+          "size": 412373289
+        },
+        {
           "name": "legalwork-0.3.24-rch.1-win-x64.exe",
           "browser_download_url": "https://github.com/rckiki-cyber/rchwork/releases/download/v0.3.24-rch.1/legalwork-0.3.24-rch.1-win-x64.exe",
           "download_count": 0,
-          "size": 578359355
+          "size": 578140362
+        },
+        {
+          "name": "legalwork-0.3.24-rch.1-mac-arm64.zip",
+          "browser_download_url": "https://github.com/rckiki-cyber/rchwork/releases/download/v0.3.24-rch.1/legalwork-0.3.24-rch.1-mac-arm64.zip",
+          "download_count": 0,
+          "size": 417077503
+        },
+        {
+          "name": "legalwork-0.3.24-rch.1-mac-x64.zip",
+          "browser_download_url": "https://github.com/rckiki-cyber/rchwork/releases/download/v0.3.24-rch.1/legalwork-0.3.24-rch.1-mac-x64.zip",
+          "download_count": 0,
+          "size": 421159208
+        },
+        {
+          "name": "legalwork-0.3.24-rch.1-linux-x86_64.AppImage",
+          "browser_download_url": "https://github.com/rckiki-cyber/rchwork/releases/download/v0.3.24-rch.1/legalwork-0.3.24-rch.1-linux-x86_64.AppImage",
+          "download_count": 0,
+          "size": 432831939
         }
       ]
     },

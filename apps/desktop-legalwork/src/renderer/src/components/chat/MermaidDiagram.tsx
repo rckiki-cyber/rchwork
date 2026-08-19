@@ -187,6 +187,44 @@ export function adaptiveFontSize(source: string): number {
   return Math.round((DEFAULT_FONT_SIZE - (DEFAULT_FONT_SIZE - MIN_FONT_SIZE) * t) * 10) / 10
 }
 
+/**
+ * 轻量修复 agent 生成 Mermaid 的常见语法错误（仅在原语法渲染失败时调用，
+ * 成功的图不会被改动）：
+ * 1. 首行/图表开头只有方向（TD/LR/TB/BT/RL）→ 补成 `flowchart <方向>`。
+ * 2. `subgraph 中文标签（全角符号）` 未加引号 → 包一层合法 ID 与引号标签。
+ */
+function repairMermaidSource(source: string): string {
+  const lines = source.split('\n')
+  // 跳过开头的 YAML frontmatter 注释，找第一个非空、非注释行。
+  let firstIdx = 0
+  for (let i = 0; i < lines.length; i += 1) {
+    const trimmed = lines[i].trim()
+    if (trimmed === '' || trimmed.startsWith('---') || trimmed.startsWith('%%') || trimmed.startsWith('//')) continue
+    firstIdx = i
+    break
+  }
+  const first = lines[firstIdx]?.trim() ?? ''
+  if (/^(?:TD|LR|TB|BT|RL)$/.test(first)) {
+    lines[firstIdx] = `flowchart ${first}`
+  }
+
+  const repaired = lines
+    .map((line) => {
+      const match = line.match(/^(\s*subgraph\s+)(.+?)(\s*)$/)
+      if (!match) return line
+      const [, prefix, rawLabel, suffix] = match
+      const label = rawLabel.trim()
+      // 已是合法 ID 或带引号/方括号的标签则不动。
+      if (/^[A-Za-z0-9_-]+$/.test(label)) return line
+      if (/^[\["']/.test(label) || /[\]"']$/.test(label)) return line
+      // 含全角符号等易导致 Lexical error 的字符 → 用引号包裹并给个稳定 ID。
+      const safeId = label.replace(/[^\w一-龥]/g, '_').replace(/^_+|_+$/g, '') || 's'
+      return `${prefix}${safeId}["${label}"]${suffix}`
+    })
+    .join('\n')
+  return repaired === source ? source : repaired
+}
+
 function mermaidConfig(
   theme: DiagramTheme,
   fontSize: number = DEFAULT_FONT_SIZE
@@ -232,7 +270,8 @@ function mermaidConfig(
         },
     flowchart: {
       curve: 'linear',
-      htmlLabels: false,
+      // 用 HTML 标签渲染节点文本，中文长标签可自动换行，避免文字堆叠/重叠。
+      htmlLabels: true,
       nodeSpacing: Math.round(42 * spacing),
       rankSpacing: Math.round(54 * spacing),
       useMaxWidth: false
@@ -257,9 +296,20 @@ async function renderMermaid(
     const plugin = createMermaidPlugin({
       config: mermaidConfig(theme, adaptiveFontSize(source))
     })
-    const result = await plugin.getMermaid().render(id, source)
-    const svg = expandSvgViewBox(ensureMermaidLabelVisibility(result.svg))
-    return { svg, width: diagramWidthFromSvg(svg) }
+    try {
+      const result = await plugin.getMermaid().render(id, source)
+      const svg = expandSvgViewBox(ensureMermaidLabelVisibility(result.svg))
+      return { svg, width: diagramWidthFromSvg(svg) }
+    } catch (originalError) {
+      // 原语法渲染失败：尝试轻量修复常见错误（方向行、subgraph 中文标签）。
+      const repaired = repairMermaidSource(source)
+      if (repaired !== source) {
+        const result = await plugin.getMermaid().render(`${id}-r`, repaired)
+        const svg = expandSvgViewBox(ensureMermaidLabelVisibility(result.svg))
+        return { svg, width: diagramWidthFromSvg(svg) }
+      }
+      throw originalError
+    }
   })
 }
 

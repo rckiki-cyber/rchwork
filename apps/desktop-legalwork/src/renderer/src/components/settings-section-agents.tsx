@@ -61,6 +61,22 @@ const YUANDIAN_MCP_SERVERS = [
   { id: 'yuandian-company', labelKey: 'mcpYuandianCompany', url: 'https://open.chineselaw.com/mcp/company/stream' }
 ] as const
 
+const WK_MCP_SERVERS = [
+  { id: 'wk-integrated', labelKey: 'mcpWkIntegrated', url: 'https://mcp.wkinfo.com.cn/mcp-servers/integrated/' }
+] as const
+
+const QCC_MCP_SERVERS = [
+  { id: 'qcc-company', labelKey: 'mcpQccCompany', url: 'https://agent.qcc.com/mcp/company/stream' },
+  { id: 'qcc-risk', labelKey: 'mcpQccRisk', url: 'https://agent.qcc.com/mcp/risk/stream' },
+  { id: 'qcc-legal-regulation', labelKey: 'mcpQccLegalRegulation', url: 'https://agent.qcc.com/mcp/regulation/stream' },
+  { id: 'qcc-legal-case', labelKey: 'mcpQccLegalCase', url: 'https://agent.qcc.com/mcp/case/stream' },
+  { id: 'qcc-tender', labelKey: 'mcpQccTender', url: 'https://agent.qcc.com/mcp/tender/stream' }
+] as const
+
+const TYC_MCP_SERVERS = [
+  { id: 'tyc-mcp', labelKey: 'mcpTycMcp', url: 'https://mcp.tianyancha.com/mcp' }
+] as const
+
 function isJsonRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -108,6 +124,7 @@ function legalMcpLikelyRequiresToken(id: string): boolean {
   const normalized = id.toLowerCase()
   return normalized.startsWith('yuandian-') ||
     normalized.startsWith('pkulaw-') ||
+    normalized.startsWith('wk-') ||
     normalized.includes('faxin')
 }
 
@@ -408,6 +425,9 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
   const [mcpNewHeaders, setMcpNewHeaders] = useState('')
   const [mcpNewEnv, setMcpNewEnv] = useState('')
   const [mcpYuandianApiKey, setMcpYuandianApiKey] = useState('')
+  const [mcpWkApiKey, setMcpWkApiKey] = useState('')
+  const [mcpQccApiKey, setMcpQccApiKey] = useState('')
+  const [mcpTycApiKey, setMcpTycApiKey] = useState('')
   const [mcpFormError, setMcpFormError] = useState('')
   const updateMcpServersText = (servers: JsonRecord): void => {
     setMcpConfigText(formatMcpConfig(mcpParsed.config, servers))
@@ -476,6 +496,72 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
     }
     updateMcpServersText(servers)
     setMcpYuandianApiKey('')
+    setMcpFormError('')
+  }
+  const addWkMcp = (): void => {
+    const apiKey = mcpWkApiKey.trim()
+    if (!apiKey) {
+      setMcpFormError(t('mcpWkKeyRequired'))
+      return
+    }
+    const authorization = 'Bearer ' + apiKey
+    const servers = { ...mcpParsed.servers }
+    for (const server of WK_MCP_SERVERS) {
+      servers[server.id] = {
+        enabled: true,
+        transport: 'streamable-http',
+        url: server.url,
+        headers: { Authorization: authorization },
+        trustScope: 'user',
+        timeoutMs: 30000
+      }
+    }
+    updateMcpServersText(servers)
+    setMcpWkApiKey('')
+    setMcpFormError('')
+  }
+  const addQccMcp = (): void => {
+    const apiKey = mcpQccApiKey.trim()
+    if (!apiKey) {
+      setMcpFormError(t('mcpQccKeyRequired'))
+      return
+    }
+    const authorization = 'Bearer ' + apiKey
+    const servers = { ...mcpParsed.servers }
+    for (const server of QCC_MCP_SERVERS) {
+      servers[server.id] = {
+        enabled: true,
+        transport: 'streamable-http',
+        url: server.url,
+        headers: { Authorization: authorization },
+        trustScope: 'user',
+        timeoutMs: 30000
+      }
+    }
+    updateMcpServersText(servers)
+    setMcpQccApiKey('')
+    setMcpFormError('')
+  }
+  const addTycMcp = (): void => {
+    const apiKey = mcpTycApiKey.trim()
+    if (!apiKey) {
+      setMcpFormError(t('mcpTycKeyRequired'))
+      return
+    }
+    // 天眼查文档要求 Authorization 头直接放 API Key 原文，不加 Bearer 前缀。
+    const servers = { ...mcpParsed.servers }
+    for (const server of TYC_MCP_SERVERS) {
+      servers[server.id] = {
+        enabled: true,
+        transport: 'streamable-http',
+        url: server.url,
+        headers: { Authorization: apiKey },
+        trustScope: 'user',
+        timeoutMs: 30000
+      }
+    }
+    updateMcpServersText(servers)
+    setMcpTycApiKey('')
     setMcpFormError('')
   }
   const toggleMcpServer = (id: string, enabled: boolean): void => {
@@ -1566,53 +1652,53 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                     description={t('mcpServersDesc')}
                     wideControl
                     control={
-                      <div className="flex w-full flex-col gap-3">
+                      <div className="flex w-full min-w-0 flex-col gap-3">
                         {mcpSummary.error ? (
                           <div className="rounded-xl border border-red-300/50 bg-red-500/10 px-3 py-2 text-[12.5px] text-red-700 dark:text-red-200">
                             {mcpSummary.error}
                           </div>
                         ) : null}
-                        <div className="grid gap-2">
+                        <div className="grid min-w-0 gap-2">
                           {mcpSummary.servers.length === 0 ? (
                             <div className="rounded-xl border border-ds-border-muted bg-ds-main/40 px-3 py-3 text-[13px] text-ds-faint">
                               {t('mcpServersEmpty')}
                             </div>
                           ) : (
                             mcpSummary.servers.map((server: McpServerSummary) => (
-                              <div key={server.id} className="rounded-xl border border-ds-border-muted bg-ds-main/40 px-3 py-2">
+                              <div key={server.id} className="min-w-0 max-w-full overflow-hidden rounded-xl border border-ds-border-muted bg-ds-main/40 px-3 py-2">
                                 <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                  <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="font-mono text-[13px] font-semibold text-ds-ink">{server.id}</span>
-                                      <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${server.enabled ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'bg-ds-subtle text-ds-faint'}`}>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                      <span className="min-w-0 max-w-full break-all font-mono text-[13px] font-semibold leading-5 text-ds-ink" title={server.id}>{server.id}</span>
+                                      <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${server.enabled ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'bg-ds-subtle text-ds-faint'}`}>
                                         {server.enabled ? t('mcpServerEnabled') : t('mcpServerDisabled')}
                                       </span>
                                       {server.diagnosticStatus ? (
-                                        <span className="rounded-md bg-ds-subtle px-2 py-0.5 text-[11px] font-semibold text-ds-muted">
+                                        <span className="shrink-0 rounded-md bg-ds-subtle px-2 py-0.5 text-[11px] font-semibold text-ds-muted">
                                           {server.diagnosticStatus}
                                         </span>
                                       ) : null}
                                       {server.hasAuthHeader ? (
-                                        <span className="rounded-md bg-ds-subtle px-2 py-0.5 text-[11px] font-semibold text-ds-muted">
+                                        <span className="shrink-0 rounded-md bg-ds-subtle px-2 py-0.5 text-[11px] font-semibold text-ds-muted">
                                           {t('mcpServerAuth')}
                                         </span>
                                       ) : null}
                                       {server.needsToken ? (
-                                        <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-200">
+                                        <span className="shrink-0 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-200">
                                           {t('mcpServerTokenRequired')}
                                         </span>
                                       ) : null}
                                     </div>
-                                    <div className="mt-1 truncate text-[12px] text-ds-muted">
+                                    <div className="mt-1 min-w-0 break-all text-[12px] leading-5 text-ds-muted">
                                       <span className="font-mono">{server.transport || 'auto'}</span>
-                                      {server.target ? <span> · {server.target}</span> : null}
+                                      {server.target ? <span className="font-mono" title={server.target}> · {server.target}</span> : null}
                                       {server.toolCount != null ? <span> · {t('mcpServerTools', { count: server.toolCount })}</span> : null}
                                     </div>
                                     {server.lastError ? (
-                                      <div className="mt-1 truncate text-[12px] text-red-700 dark:text-red-300">{server.lastError}</div>
+                                      <div className="mt-1 min-w-0 whitespace-pre-wrap break-all text-[12px] leading-5 text-red-700 dark:text-red-300" title={server.lastError}>{server.lastError}</div>
                                     ) : null}
                                     {server.needsToken ? (
-                                      <div className="mt-1 text-[12px] leading-5 text-amber-700 dark:text-amber-200">
+                                      <div className="mt-1 min-w-0 break-words text-[12px] leading-5 text-amber-700 dark:text-amber-200">
                                         {t('mcpServerTokenRequiredHint')}
                                       </div>
                                     ) : null}
@@ -1669,6 +1755,108 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {YUANDIAN_MCP_SERVERS.map((server) => (
+                            <span key={server.id} className="rounded-md border border-ds-border-muted bg-ds-card px-2 py-0.5 font-mono text-[11px] text-ds-muted">
+                              {server.id}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    }
+                  />
+                  <SettingRow
+                    title={t('mcpWk')}
+                    description={t('mcpWkDesc')}
+                    wideControl
+                    control={
+                      <div className="grid gap-3 rounded-xl border border-ds-border-muted bg-ds-main/35 p-3">
+                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                          <input
+                            type="password"
+                            value={mcpWkApiKey}
+                            onChange={(event) => setMcpWkApiKey(event.target.value)}
+                            placeholder={t('mcpWkKeyPlaceholder')}
+                            autoComplete="off"
+                            className="h-10 min-w-0 rounded-xl border border-ds-border bg-ds-card px-3 text-[13px] text-ds-ink shadow-sm outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/30"
+                          />
+                          <button
+                            type="button"
+                            onClick={addWkMcp}
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-ds-userbubble px-3 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90"
+                          >
+                            <Plus className="h-3.5 w-3.5" strokeWidth={1.9} />
+                            {t('mcpWkAdd')}
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {WK_MCP_SERVERS.map((server) => (
+                            <span key={server.id} className="rounded-md border border-ds-border-muted bg-ds-card px-2 py-0.5 font-mono text-[11px] text-ds-muted">
+                              {server.id}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    }
+                  />
+                  <SettingRow
+                    title={t('mcpQcc')}
+                    description={t('mcpQccDesc')}
+                    wideControl
+                    control={
+                      <div className="grid gap-3 rounded-xl border border-ds-border-muted bg-ds-main/35 p-3">
+                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                          <input
+                            type="password"
+                            value={mcpQccApiKey}
+                            onChange={(event) => setMcpQccApiKey(event.target.value)}
+                            placeholder={t('mcpQccKeyPlaceholder')}
+                            autoComplete="off"
+                            className="h-10 min-w-0 rounded-xl border border-ds-border bg-ds-card px-3 text-[13px] text-ds-ink shadow-sm outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/30"
+                          />
+                          <button
+                            type="button"
+                            onClick={addQccMcp}
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-ds-userbubble px-3 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90"
+                          >
+                            <Plus className="h-3.5 w-3.5" strokeWidth={1.9} />
+                            {t('mcpQccAdd')}
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {QCC_MCP_SERVERS.map((server) => (
+                            <span key={server.id} className="rounded-md border border-ds-border-muted bg-ds-card px-2 py-0.5 font-mono text-[11px] text-ds-muted">
+                              {server.id}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    }
+                  />
+                  <SettingRow
+                    title={t('mcpTyc')}
+                    description={t('mcpTycDesc')}
+                    wideControl
+                    control={
+                      <div className="grid gap-3 rounded-xl border border-ds-border-muted bg-ds-main/35 p-3">
+                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                          <input
+                            type="password"
+                            value={mcpTycApiKey}
+                            onChange={(event) => setMcpTycApiKey(event.target.value)}
+                            placeholder={t('mcpTycKeyPlaceholder')}
+                            autoComplete="off"
+                            className="h-10 min-w-0 rounded-xl border border-ds-border bg-ds-card px-3 text-[13px] text-ds-ink shadow-sm outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/30"
+                          />
+                          <button
+                            type="button"
+                            onClick={addTycMcp}
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-ds-userbubble px-3 text-[13px] font-semibold text-ds-userbubbleFg shadow-sm transition hover:opacity-90"
+                          >
+                            <Plus className="h-3.5 w-3.5" strokeWidth={1.9} />
+                            {t('mcpTycAdd')}
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {TYC_MCP_SERVERS.map((server) => (
                             <span key={server.id} className="rounded-md border border-ds-border-muted bg-ds-card px-2 py-0.5 font-mono text-[11px] text-ds-muted">
                               {server.id}
                             </span>

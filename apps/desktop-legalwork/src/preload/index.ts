@@ -59,6 +59,10 @@ const api = {
     ipcRenderer.invoke('skill:save-file', { rootPath, skillName, content }),
   importSkill: () =>
     ipcRenderer.invoke('skill:import'),
+  listSkillHubSkills: (request) =>
+    ipcRenderer.invoke('skillhub:list', request),
+  installSkillHubSkill: (request) =>
+    ipcRenderer.invoke('skillhub:install', request),
   openSkillRoot: (rootPath) =>
     ipcRenderer.invoke('skill:open-root', rootPath),
   getDeepseekConfigFile: () =>
@@ -276,6 +280,13 @@ const api = {
 
   // 元典内置控制台
   openYuandianConsole: () => ipcRenderer.invoke('yuandian:open-console'),
+
+  // 威科先行内置控制台
+  openWkConsole: () => ipcRenderer.invoke('wk:open-console'),
+
+  // 天眼查 / 企查查 内置控制台
+  openTycConsole: () => ipcRenderer.invoke('tyc:open-console'),
+  openQccConsole: () => ipcRenderer.invoke('qcc:open-console'),
 } satisfies DsGuiApi
 
 contextBridge.exposeInMainWorld('dsGui', api)

@@ -9,6 +9,7 @@ const DEFAULT_ACTIVE_LIMIT = 3
 const DEFAULT_INSTRUCTION_BUDGET_BYTES = 24_000
 const DEFAULT_DISCOVERY_DEPTH = 5
 export const DEFAULT_USER_SKILL_ROOT = join(homedir(), '.legalwork', 'skills')
+export type SkillSource = 'native' | 'supplemental'
 
 const LEGALWORK_SKILL_EXECUTION_CONTRACT = [
   'Legalwork Skill Execution Contract:',
@@ -51,6 +52,7 @@ export type LoadedSkill = {
   assets: string[]
   priority: number
   legacy: boolean
+  source: SkillSource
   keywords: string[]
   /** 内容以英文为主且属于外国/国际法律领域的技能。默认不注入，仅当用户明确提到外国法时才触发。 */
   foreignLawOnly?: boolean
@@ -77,6 +79,7 @@ export type SkillSearchResult = {
   root: string
   entryPath: string
   legacy: boolean
+  source: SkillSource
   triggers: LoadedSkill['triggers']
   allowedTools: string[]
   score: number
@@ -97,6 +100,7 @@ export type SkillRuntimeDiagnostics = {
     version: string
     root: string
     legacy: boolean
+    source: SkillSource
     triggers: LoadedSkill['triggers']
     allowedTools: string[]
   }>
@@ -135,14 +139,18 @@ export class SkillRuntime {
   }
 
   static async create(
-    config: SkillsCapabilityConfig | Omit<SkillsCapabilityConfig, 'autoActivateUserSkills'> | undefined,
+    config:
+      | SkillsCapabilityConfig
+      | Omit<SkillsCapabilityConfig, 'autoActivateUserSkills' | 'nativeRoots'>
+      | undefined,
     options: SkillRuntimeOptions = {}
   ): Promise<SkillRuntime> {
     const autoActivate =
-      config && 'autoActivateUserSkills' in config ? config.autoActivateUserSkills : true
+      config && 'autoActivateUserSkills' in config ? config.autoActivateUserSkills : false
     const normalized: SkillsCapabilityConfig = {
       enabled: config?.enabled ?? false,
       roots: config?.roots ?? [],
+      nativeRoots: config && 'nativeRoots' in config ? config.nativeRoots : [],
       legacySkillMd: config?.legacySkillMd ?? true,
       autoActivateUserSkills: autoActivate
     }
@@ -281,6 +289,7 @@ export class SkillRuntime {
         version: skill.version,
         root: skill.root,
         legacy: skill.legacy,
+        source: skill.source,
         triggers: skill.triggers,
         allowedTools: skill.allowedTools
       })),
@@ -323,14 +332,24 @@ export class SkillRuntime {
         return null
       })
       .filter((match): match is SkillSearchResult => match !== null)
-      .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+      .sort(compareSkillSearchResults)
 
     return matches.slice(0, limit)
   }
 
   load(skillId: string): LoadedSkillInstructions | undefined {
     const normalized = slug(skillId)
-    const skill = this.skills.find((candidate) => candidate.id === normalized || candidate.id === skillId)
+    // Plugin-qualified ids (for example `browser:control-in-app-browser`)
+    // can leak into model context from connector catalogs while LegalWork's
+    // local skill runtime stores the same package by its terminal id. Accept
+    // that stable suffix without making fuzzy matches that could load an
+    // unrelated skill.
+    const terminalId = slug(skillId.split(':').filter(Boolean).at(-1) ?? '')
+    const skill = this.skills.find((candidate) =>
+      candidate.id === normalized ||
+      candidate.id === skillId ||
+      (terminalId.length > 0 && candidate.id === terminalId)
+    )
     if (!skill) return undefined
     return {
       id: skill.id,
@@ -339,6 +358,7 @@ export class SkillRuntime {
       root: skill.root,
       entryPath: skill.entryPath,
       legacy: skill.legacy,
+      source: skill.source,
       triggers: skill.triggers,
       allowedTools: skill.allowedTools,
       instructions: skillInstructionText(skill, 'loaded_by_tool')
@@ -367,6 +387,12 @@ export class SkillRuntime {
         matches.push({ skill, skillId: skill.id, reason: explicit, score: 1_000 + skill.priority })
         continue
       }
+      // 非原生 skill 是补充能力。默认不因 pattern / 文件类型 / 关键词自动注入，
+      // 避免用户安装的 Word 等 skill 在任务开始时抢占 Legalwork 内置执行器。
+      // 确认原生能力缺口后仍可通过 search_skills + load_skill 按需加载。
+      if (skill.source === 'supplemental' && this.config.autoActivateUserSkills !== true) {
+        continue
+      }
       if (
         prompt.includes('<inline_document_response>') &&
         skill.id === 'legal-document-formatting'
@@ -388,9 +414,10 @@ export class SkillRuntime {
         matches.push({ skill, skillId: skill.id, reason: `fileType:${fileType}`, score: 300 + skill.priority })
         continue
       }
-      // 用户上传 skill（~/.legalwork/skills 下）在对话提到相关关键词时自动激活，
-      // 让 agent 无需用户强调即可用上自定义 skill。可用 autoActivateUserSkills 关闭（省 token）。
-      if (this.config.autoActivateUserSkills !== false && isUnderUserSkillRoot(skill.root)) {
+      // 兼容旧开关：只有 Legalwork 用户安装根中的补充 skill 才能靠关键词
+      // 自动激活。原生 skill 依其随包 manifest 的明确 triggers 激活；无 manifest
+      // 的大批 legacy 内容仍只参与 search_skills，避免泛关键词注入。
+      if (skill.source === 'supplemental' && isUnderUserSkillRoot(skill.root)) {
         const promptTerms = tokenizeForSkillMatch(prompt)
         const keywordScore = scoreKeywordMatch(skill.keywords, promptTerms, lowerPrompt)
         if (keywordScore > 0) {
@@ -399,7 +426,7 @@ export class SkillRuntime {
         }
       }
     }
-    return matches.sort((a, b) => b.score - a.score || a.skill.id.localeCompare(b.skill.id))
+    return matches.sort(compareSkillActivations)
   }
 }
 
@@ -416,7 +443,11 @@ async function discoverSkills(config: SkillsCapabilityConfig): Promise<{
       return []
     })
     for (const candidate of candidates) {
-      const loaded = await loadSkillPackage(candidate, config.legacySkillMd).catch((error) => {
+      const loaded = await loadSkillPackage(
+        candidate,
+        config.legacySkillMd,
+        sourceForSkillRoot(candidate, config.nativeRoots)
+      ).catch((error) => {
         validationErrors.push({ root: candidate, message: errorMessage(error) })
         return null
       })
@@ -430,15 +461,27 @@ async function discoverSkills(config: SkillsCapabilityConfig): Promise<{
       unique.set(skill.id, skill)
       continue
     }
-    if (
-      skill.id === 'legal-document-formatting' &&
-      !(await exists(join(current.root, 'scripts', 'skill_runner.py'))) &&
-      await exists(join(skill.root, 'scripts', 'skill_runner.py'))
-    ) {
-      unique.set(skill.id, skill)
+    if (skill.id === 'legal-document-formatting') {
+      const currentComplete = await exists(join(current.root, 'scripts', 'skill_runner.py'))
+      const incomingComplete = await exists(join(skill.root, 'scripts', 'skill_runner.py'))
+      if (currentComplete !== incomingComplete) {
+        const complete = incomingComplete ? skill : current
+        const incomplete = incomingComplete ? current : skill
+        unique.set(skill.id, complete)
+        validationErrors.push({
+          root: incomplete.root,
+          message: `ignored incomplete duplicate Skill id: ${skill.id} (scripts/skill_runner.py is missing)`
+        })
+        continue
+      }
+    }
+    if (current.source !== skill.source) {
+      const native = current.source === 'native' ? current : skill
+      const supplemental = current.source === 'supplemental' ? current : skill
+      unique.set(skill.id, native)
       validationErrors.push({
-        root: current.root,
-        message: `ignored incomplete duplicate Skill id: ${skill.id} (scripts/skill_runner.py is missing)`
+        root: supplemental.root,
+        message: `ignored supplemental duplicate Skill id: ${skill.id}; Legalwork native skill takes priority`
       })
       continue
     }
@@ -468,32 +511,47 @@ async function packageCandidates(root: string, maxDepth: number): Promise<string
   return [...candidates]
 }
 
-async function loadSkillPackage(root: string, allowLegacy: boolean): Promise<LoadedSkill | null> {
+async function loadSkillPackage(
+  root: string,
+  allowLegacy: boolean,
+  source: SkillSource
+): Promise<LoadedSkill | null> {
   const manifestPath = join(root, 'skill.json')
   if (await exists(manifestPath)) {
-    const manifest = SkillManifest.parse(JSON.parse(await readFile(manifestPath, 'utf8')))
-    const entryPath = resolve(root, manifest.entry)
-    const entry = await readFile(entryPath, 'utf8')
-    return {
-      id: slug(manifest.id ?? manifest.name),
-      name: manifest.name,
-      description: manifest.description,
-      version: manifest.version,
-      root,
-      entryPath,
-      entry,
-      triggers: manifest.triggers,
-      allowedTools: manifest.allowedTools,
-      assets: manifest.assets.map((asset) => resolve(root, asset)),
-      priority: manifest.priority,
-      legacy: false,
-      foreignLawOnly: isForeignLawOnlySkill(entry),
-      keywords: skillKeywords({
-        id: manifest.id ?? manifest.name,
-        name: manifest.name,
-        description: manifest.description,
-        path: root
-      })
+    let rawManifest: unknown
+    try {
+      rawManifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+      const parsed = SkillManifest.safeParse(rawManifest)
+      if (parsed.success) {
+        const manifest = parsed.data
+        const entryPath = resolve(root, manifest.entry)
+        const entry = await readFile(entryPath, 'utf8')
+        return {
+          id: slug(manifest.id ?? manifest.name),
+          name: manifest.name,
+          description: manifest.description,
+          version: manifest.version,
+          root,
+          entryPath,
+          entry,
+          triggers: manifest.triggers,
+          allowedTools: manifest.allowedTools,
+          assets: manifest.assets.map((asset) => resolve(root, asset)),
+          priority: manifest.priority,
+          legacy: false,
+          source,
+          foreignLawOnly: isForeignLawOnlySkill(entry),
+          keywords: skillKeywords({
+            id: manifest.id ?? manifest.name,
+            name: manifest.name,
+            description: manifest.description,
+            path: root
+          })
+        }
+      }
+      if (!allowLegacy || !await exists(join(root, 'SKILL.md'))) throw parsed.error
+    } catch (error) {
+      if (!allowLegacy || !await exists(join(root, 'SKILL.md'))) throw error
     }
   }
   if (!allowLegacy) return null
@@ -501,14 +559,16 @@ async function loadSkillPackage(root: string, allowLegacy: boolean): Promise<Loa
   if (!await exists(legacyPath)) return null
   const entry = await readFile(legacyPath, 'utf8')
   const frontmatter = readFrontmatter(entry)
+  const supplementalManifest = await readSupplementalManifest(manifestPath)
   const folderName = basename(root)
-  const name = frontmatter.name || folderName
+  const name = frontmatter.name || supplementalManifest.name || folderName
   const taskId = frontmatter.taskId
+  const description = frontmatter.description || supplementalManifest.description
   return {
     id: slug(frontmatter.id || taskId || folderName),
     name,
-    description: frontmatter.description,
-    version: 'legacy',
+    description,
+    version: supplementalManifest.version || 'legacy',
     root,
     entryPath: legacyPath,
     entry,
@@ -517,14 +577,46 @@ async function loadSkillPackage(root: string, allowLegacy: boolean): Promise<Loa
     assets: [],
     priority: 0,
     legacy: true,
+    source,
     foreignLawOnly: isForeignLawOnlySkill(entry),
     keywords: skillKeywords({
       id: frontmatter.id || taskId || folderName,
       name,
-      description: frontmatter.description,
+      description,
       taskId,
-      path: root
+      path: root,
+      extraKeywords: supplementalManifest.keywords
     })
+  }
+}
+
+async function readSupplementalManifest(manifestPath: string): Promise<{
+  name?: string
+  description?: string
+  version?: string
+  keywords: string[]
+}> {
+  if (!await exists(manifestPath)) return { keywords: [] }
+  try {
+    const value = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>
+    const stringField = (...keys: string[]): string | undefined => {
+      for (const key of keys) {
+        const candidate = value[key]
+        if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
+      }
+      return undefined
+    }
+    const rawKeywords = value.trigger_keywords
+    return {
+      name: stringField('skill_name', 'name'),
+      description: stringField('skill_desc', 'description'),
+      version: stringField('version'),
+      keywords: Array.isArray(rawKeywords)
+        ? rawKeywords.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : []
+    }
+  } catch {
+    return { keywords: [] }
   }
 }
 
@@ -562,6 +654,7 @@ function buildInjection(
 function skillInstructionText(skill: LoadedSkill, activation: string): string {
   return [
     `Active Skill: ${skill.name} (${skill.id})`,
+    `Skill source: ${skill.source === 'native' ? 'Legalwork native' : 'supplemental fallback'}`,
     `Activation: ${activation}`,
     `Skill root (resolve all relative Skill paths here; never guess ~/.legalwork/skills): ${skill.root}`,
     LEGALWORK_SKILL_EXECUTION_CONTRACT,
@@ -580,6 +673,7 @@ function skillSearchResult(skill: LoadedSkill, score: number, reason: string): S
     root: skill.root,
     entryPath: skill.entryPath,
     legacy: skill.legacy,
+    source: skill.source,
     triggers: skill.triggers,
     allowedTools: skill.allowedTools,
     score,
@@ -678,11 +772,45 @@ function shouldSkipSkillDiscoveryDirectory(name: string): boolean {
     name === '_template'
 }
 
-/** 判断 skill 是否位于用户 skill 根（~/.legalwork/skills）下，用于自动激活判定。 */
+function sourceForSkillRoot(skillRoot: string, nativeRoots: readonly string[]): SkillSource {
+  return isUnderAnyRoot(skillRoot, nativeRoots) ? 'native' : 'supplemental'
+}
+
 function isUnderUserSkillRoot(skillRoot: string): boolean {
-  const resolvedSkillRoot = resolve(skillRoot)
-  const resolvedUserRoot = resolve(DEFAULT_USER_SKILL_ROOT)
-  return resolvedSkillRoot === resolvedUserRoot || resolvedSkillRoot.startsWith(`${resolvedUserRoot}${sep}`)
+  return isUnderAnyRoot(skillRoot, [DEFAULT_USER_SKILL_ROOT])
+}
+
+function isUnderAnyRoot(path: string, roots: readonly string[]): boolean {
+  const resolvedPath = resolve(path)
+  return roots.some((root) => {
+    const resolvedRoot = resolve(root)
+    return resolvedPath === resolvedRoot || resolvedPath.startsWith(`${resolvedRoot}${sep}`)
+  })
+}
+
+function compareSkillSearchResults(a: SkillSearchResult, b: SkillSearchResult): number {
+  const explicitDifference = Number(isExplicitActivation(b.reason)) - Number(isExplicitActivation(a.reason))
+  if (explicitDifference !== 0) return explicitDifference
+  const sourceDifference = skillSourceRank(b.source) - skillSourceRank(a.source)
+  return sourceDifference || b.score - a.score || a.id.localeCompare(b.id)
+}
+
+function compareSkillActivations(
+  a: SkillActivation & { skill: LoadedSkill },
+  b: SkillActivation & { skill: LoadedSkill }
+): number {
+  const explicitDifference = Number(isExplicitActivation(b.reason)) - Number(isExplicitActivation(a.reason))
+  if (explicitDifference !== 0) return explicitDifference
+  const sourceDifference = skillSourceRank(b.skill.source) - skillSourceRank(a.skill.source)
+  return sourceDifference || b.score - a.score || a.skill.id.localeCompare(b.skill.id)
+}
+
+function skillSourceRank(source: SkillSource): number {
+  return source === 'native' ? 1 : 0
+}
+
+function isExplicitActivation(reason: string): boolean {
+  return reason.startsWith('explicit:')
 }
 
 function scoreKeywordMatch(keywords: readonly string[], promptTerms: Set<string>, lowerPrompt: string): number {
@@ -720,12 +848,14 @@ function skillKeywords(input: {
   description?: string
   taskId?: string
   path?: string
+  extraKeywords?: readonly string[]
 }): string[] {
   const source = [
     input.id,
     input.name,
     input.taskId,
     input.description,
+    ...(input.extraKeywords ?? []),
     input.path ? relative(process.cwd(), input.path) : undefined
   ].filter(Boolean).join(' ')
   return [...tokenizeForSkillMatch(source)]

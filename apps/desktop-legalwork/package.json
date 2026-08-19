@@ -1,11 +1,12 @@
 {
   "name": "legalwork",
   "productName": "legalwork",
-  "version": "0.3.24",
+  "version": "0.3.26",
   "description": "Electron workbench for the Legalwork runtime (HTTP/SSE)",
   "main": "./out/main/index.cjs",
   "type": "module",
   "dependencies": {
+    "@napi-rs/canvas": "0.1.100",
     "@aws-sdk/client-s3": "^3.1049.0",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-markdown": "^6.5.0",
