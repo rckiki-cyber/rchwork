@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { CapabilityRegistry } from '../src/adapters/tool/capability-registry.js'
 import { LocalToolHost } from '../src/adapters/tool/local-tool-host.js'
-import { buildWebToolProviders } from '../src/adapters/tool/web-tool-provider.js'
+import {
+  FallbackSearchWebProvider,
+  buildWebToolProviders
+} from '../src/adapters/tool/web-tool-provider.js'
 import {
   buildRuntimeCapabilityManifest,
   LegalworkCapabilitiesConfig
 } from '../src/contracts/capabilities.js'
 import { modelCapabilitiesForModel } from '../src/loop/model-context-profile.js'
 import { DeterministicWebProvider } from '../src/ports/web-provider.js'
+import type { WebProvider } from '../src/ports/web-provider.js'
 import type { ToolHostContext } from '../src/ports/tool-host.js'
 
 function buildContext(): ToolHostContext {
@@ -48,6 +52,92 @@ function deterministicProvider() {
 }
 
 describe('Web tool provider', () => {
+  it('falls back after the primary search provider fails', async () => {
+    const calls: string[] = []
+    const primary: WebProvider = {
+      id: 'primary',
+      async search() {
+        calls.push('primary')
+        throw new Error('HTTP 404 NOT_FOUND')
+      }
+    }
+    const fallback: WebProvider = {
+      id: 'fallback',
+      async search() {
+        calls.push('fallback')
+        return [{
+          sourceId: 'fallback-source',
+          url: 'https://example.test/fallback',
+          title: 'Fallback result',
+          snippet: 'Recovered search result',
+          provider: 'fallback',
+          rank: 1,
+          retrievedAt: '2026-08-21T00:00:00.000Z'
+        }]
+      }
+    }
+    const provider = new FallbackSearchWebProvider(primary, fallback, 10)
+
+    const results = await provider.search({
+      query: 'current legal policy',
+      limit: 5,
+      timeoutMs: 100,
+      signal: new AbortController().signal
+    })
+
+    expect(calls).toEqual(['primary', 'fallback'])
+    expect(results[0]?.provider).toBe('fallback')
+  })
+
+  it('bounds a hanging primary provider before using the fallback', async () => {
+    const primary: WebProvider = {
+      id: 'hanging-primary',
+      async search() {
+        return await new Promise(() => undefined)
+      }
+    }
+    const fallback: WebProvider = {
+      id: 'fast-fallback',
+      async search() {
+        return [{
+          sourceId: 'fast-source',
+          url: 'https://example.test/fast',
+          title: 'Fast fallback',
+          snippet: '',
+          provider: 'fast-fallback',
+          rank: 1,
+          retrievedAt: '2026-08-21T00:00:00.000Z'
+        }]
+      }
+    }
+    const provider = new FallbackSearchWebProvider(primary, fallback, 10)
+    const startedAt = Date.now()
+
+    const results = await provider.search({
+      query: 'bounded search',
+      limit: 5,
+      timeoutMs: 100,
+      signal: new AbortController().signal
+    })
+
+    expect(Date.now() - startedAt).toBeLessThan(500)
+    expect(results[0]?.provider).toBe('fast-fallback')
+  })
+
+  it('builds DeepSeek search with an AnySearch fallback provider', () => {
+    const config = LegalworkCapabilitiesConfig.parse({
+      web: { enabled: true, searchEnabled: true }
+    })
+    const built = buildWebToolProviders(config.web, {
+      deepseekApiKey: 'sk-test',
+      deepseekBaseUrl: 'https://api.deepseek.com',
+      deepseekModel: 'deepseek-v4-flash'
+    })
+
+    expect(built.searchAvailable).toBe(true)
+    expect(built.provider).toBe('deepseek-server-search+anysearch')
+  })
+
   it('does not advertise web tools when web access is disabled', async () => {
     const config = LegalworkCapabilitiesConfig.parse({})
     const built = buildWebToolProviders(config.web, { provider: deterministicProvider() })

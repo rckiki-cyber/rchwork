@@ -84,6 +84,41 @@ export function requiresWebSearch(prompt: string): boolean {
   return /(?:法考|公考|国考|省考|公务员).{0,12}(?:政策|公告|通知|考纲|大纲|报名条件|报名时间|考试时间|考察要素|考查要素|考察内容|考查内容)|(?:政策|公告|通知|考纲|大纲|报名条件|报名时间|考试时间|考察要素|考查要素|考察内容|考查内容).{0,12}(?:法考|公考|国考|省考|公务员)/.test(compact)
 }
 
+/**
+ * Turn routing may prepend an earlier substantive request and append control
+ * sections such as "后续要求" / "当前追问". Those sections are useful to the
+ * model but make poor search queries and have previously been sent verbatim to
+ * providers. Keep the substantive anchor, remove runtime markup, and apply a
+ * conservative length cap before deterministic runtime-prefetch.
+ */
+export function buildWebSearchQuery(prompt: string, maxChars = 240): string {
+  const normalized = prompt
+    .replace(/<knowledge_context>[\s\S]*?<\/knowledge_context>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\r\n?/g, '\n')
+  const anchor = normalized.split(/\n\s*(?:后续要求|当前追问)\s*[：:]/)[0] ?? ''
+  const cleaned = anchor
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !/^(?:后续要求|当前追问|runtime|system|assistant)\s*[：:]/i.test(line))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const fallback = normalized.replace(/\s+/g, ' ').trim()
+  const query = cleaned || fallback
+  if (query.length <= maxChars) return query
+  const clipped = query.slice(0, Math.max(1, maxChars))
+  const sentenceEnd = Math.max(
+    clipped.lastIndexOf('。'),
+    clipped.lastIndexOf('；'),
+    clipped.lastIndexOf('？'),
+    clipped.lastIndexOf('?')
+  )
+  return (sentenceEnd >= Math.floor(maxChars / 2)
+    ? clipped.slice(0, sentenceEnd + 1)
+    : clipped).trim()
+}
+
 export function factVerificationContract(
   prompt: string,
   options?: { primaryLegalSource?: LegalResearchPrimarySource }

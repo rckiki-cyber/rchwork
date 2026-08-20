@@ -145,6 +145,7 @@ import {
 } from './document-task-contract.js'
 import {
   FACT_VERIFICATION_FINALIZE_TOOL_NAME,
+  buildWebSearchQuery,
   factVerificationContract,
   factVerificationInstruction,
   factVerificationProgress,
@@ -502,6 +503,10 @@ export function shouldReportToolError(toolName: string, output: unknown): boolea
   }
   if ('exit_code' in record || 'session_id' in record) return false
   return true
+}
+
+export function shouldHideRetrievalToolFailure(toolName: string): boolean {
+  return toolName === 'web_search' || toolName === 'web_fetch'
 }
 
 export function resolvePlanModeToolSpecs(
@@ -1595,7 +1600,7 @@ function documentArtifactProgressInstruction(input: {
   ].join('\n')
 }
 
-function allowedToolNamesWithGuiStateTools(
+export function allowedToolNamesWithGuiStateTools(
   allowedToolNames: readonly string[] | undefined,
   activeGoal: boolean,
   prompt = '',
@@ -1616,6 +1621,13 @@ function allowedToolNamesWithGuiStateTools(
   // catalog — otherwise the model sees the instruction but not the tool and
   // skips both template resolution and legal research.
   next.add('resolve_legal_document_template')
+  // Fresh/current-information routing later treats web_search as a required
+  // runtime capability. A restrictive Skill allowlist must not hide that same
+  // tool before CapabilityRegistry.listTools() builds the advertised catalog.
+  if (requiresWebSearch(prompt)) {
+    next.add('web_search')
+    next.add('web_fetch')
+  }
   if (requestsLocalKnowledgeRetrieval(prompt)) {
     next.add('knowledge_auto_retrieve')
     next.add('knowledge_search')
@@ -1821,6 +1833,8 @@ export class AgentLoop {
   private readonly reasoningOnlyContinuations = new Map<string, number>()
   /** One focused retry when the model announces work without performing it. */
   private readonly pendingWorkContinuations = new Map<string, number>()
+  /** Turns that must continue best-effort after web search is unavailable/exhausted. */
+  private readonly webSearchFallbackTurns = new Set<string>()
   /** Extract uploaded documents once; reuse the canonical text on every model step. */
   private readonly attachmentDocumentMapCache = new Map<string, AttachmentDocumentMap>()
   /** One transparent compact-and-retry pass when a provider still reports an oversized context. */
@@ -1900,6 +1914,7 @@ export class AgentLoop {
       }
       this.reasoningOnlyContinuations.delete(turnId)
       this.pendingWorkContinuations.delete(turnId)
+      this.webSearchFallbackTurns.delete(turnId)
       this.contextOverflowRecoveries.delete(turnId)
       this.legalResearchContinuations.delete(turnId)
       this.memoryRetrieveCache.delete(turnId)
@@ -2441,10 +2456,12 @@ export class AgentLoop {
       ? EMPTY_FACT_CONTRACT
       : factVerificationContract(routedSkillPrompt, { primaryLegalSource: this.opts.primaryLegalSource })
     const factProgress = factVerificationProgress(healed.items, turnId, factContract)
+    const webSearchFallbackActive = this.webSearchFallbackTurns.has(turnId)
     const webSearchRequired =
       !isLearningIterationThread &&
       !planTurnActive &&
       !legalResearchWorkflow &&
+      !webSearchFallbackActive &&
       requiresWebSearch(routedSkillPrompt)
     const primaryLegalDatabaseEvidenceReady = legalResearchWorkflow &&
       hasUsablePrimaryLegalDatabaseEvidence(healed.items, turnId)
@@ -2463,6 +2480,7 @@ export class AgentLoop {
       DELIVERY_QUALITY_GATES_ENABLED &&
       !planTurnActive &&
       !legalResearchPlanPending &&
+      !webSearchFallbackActive &&
       ((factContract.requiresWebEvidence &&
         !factProgress.webSearchSatisfied &&
         factProgress.webSearchAttempts < workflowAttemptLimit('evidence')) ||
@@ -2842,61 +2860,74 @@ export class AgentLoop {
     if (webSearchRequired && !factProgress.webSearchSatisfied) {
       const webSearchAvailable = toolSpecs.some((tool) => tool.name === 'web_search')
       if (!webSearchAvailable) {
-        throw new Error('This current-information request requires web_search, but the tool is unavailable.')
-      }
-      if (factProgress.webSearchAttempts >= workflowAttemptLimit('evidence')) {
-        throw new Error('web_search did not return usable results after the allowed attempts.')
-      }
-      const callId = this.opts.ids.next('call_fresh_web_search')
-      const provider = toolProviderMetadata.get('web_search')
-      const toolKind = toolKinds.get('web_search')
-      const searchArguments = { query: routedSkillPrompt, limit: 8 }
-      const call: ToolCallLike = {
-        callId,
-        toolName: 'web_search',
-        ...(provider?.providerId ? { providerId: provider.providerId } : {}),
-        toolKind,
-        arguments: searchArguments
-      }
-      const itemId = `item_tool_${turnId}_${callId}`
-      await this.opts.turns.applyItem(
-        threadId,
-        makeToolCallItem({
-          id: itemId,
-          turnId,
-          threadId,
+        this.webSearchFallbackTurns.add(turnId)
+        await this.recordPipelineStage(threadId, turnId, 'response_received', {
+          label: 'Web search unavailable; continuing best-effort',
+          requiredTool: 'web_search',
+          registryOrProviderMissing: !allowedToolNames || allowedToolNames.includes('web_search'),
+          allowedToolPolicyFiltered: Boolean(allowedToolNames && !allowedToolNames.includes('web_search')),
+          toolCatalogFingerprint: toolCatalog.fingerprint
+        })
+      } else if (factProgress.webSearchAttempts >= workflowAttemptLimit('evidence')) {
+        this.webSearchFallbackTurns.add(turnId)
+        await this.recordPipelineStage(threadId, turnId, 'response_received', {
+          label: 'Web search attempts exhausted; continuing best-effort',
+          requiredTool: 'web_search',
+          attempts: factProgress.webSearchAttempts,
+          toolCatalogFingerprint: toolCatalog.fingerprint
+        })
+      } else {
+        const callId = this.opts.ids.next('call_fresh_web_search')
+        const provider = toolProviderMetadata.get('web_search')
+        const toolKind = toolKinds.get('web_search')
+        const searchArguments = { query: buildWebSearchQuery(routedSkillPrompt), limit: 8 }
+        const call: ToolCallLike = {
           callId,
           toolName: 'web_search',
+          ...(provider?.providerId ? { providerId: provider.providerId } : {}),
           toolKind,
-          arguments: searchArguments,
-          summary: 'Runtime-prefetched current web information before answer synthesis.'
+          arguments: searchArguments
+        }
+        const itemId = `item_tool_${turnId}_${callId}`
+        await this.opts.turns.applyItem(
+          threadId,
+          makeToolCallItem({
+            id: itemId,
+            turnId,
+            threadId,
+            callId,
+            toolName: 'web_search',
+            toolKind,
+            arguments: searchArguments,
+            summary: 'Runtime-prefetched current web information before answer synthesis.'
+          })
+        )
+        await this.opts.events.record({
+          kind: 'tool_call_ready',
+          threadId,
+          turnId,
+          itemId,
+          callId,
+          toolName: 'web_search',
+          readyCount: 1
         })
-      )
-      await this.opts.events.record({
-        kind: 'tool_call_ready',
-        threadId,
-        turnId,
-        itemId,
-        callId,
-        toolName: 'web_search',
-        readyCount: 1
-      })
-      const dispatched = await this.dispatchToolCalls({
-        calls: [call],
-        threadId,
-        turnId,
-        workspace: thread?.workspace ?? '',
-        threadMode: effectiveMode,
-        activePlanContext,
-        modelCapabilities,
-        activeSkillIds: skillResolution.activeSkillIds,
-        allowedToolNames,
-        toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
-        approvalPolicy,
-        signal
-      })
-      if (dispatched === 'aborted') return 'aborted'
-      return 'continue'
+        const dispatched = await this.dispatchToolCalls({
+          calls: [call],
+          threadId,
+          turnId,
+          workspace: thread?.workspace ?? '',
+          threadMode: effectiveMode,
+          activePlanContext,
+          modelCapabilities,
+          activeSkillIds: skillResolution.activeSkillIds,
+          allowedToolNames,
+          toolProviderKinds: new Map(tools.map((tool) => [tool.name, tool.providerKind])),
+          approvalPolicy,
+          signal
+        })
+        if (dispatched === 'aborted') return 'aborted'
+        return 'continue'
+      }
     }
 
     if (caseResearchRequiredToolName) {
@@ -3267,6 +3298,9 @@ export class AgentLoop {
     const pendingWorkRecoveryInstruction = (this.pendingWorkContinuations.get(turnId) ?? 0) > 0
       ? '上一次回复只说明了准备做什么。现在不要再预告步骤或新增检索，直接输出已经能够完成的最终正文或结果。'
       : undefined
+    const webSearchFallbackInstruction = this.webSearchFallbackTurns.has(turnId)
+      ? '本轮实时网页检索不可用或未取得可用结果。不要输出“web_search unavailable”、工具错误或阻塞说明；直接基于已有对话、附件和已取得资料完成用户任务。仅对确实依赖实时信息且无法确认的内容简短标注“待实时核验”，不得因此吞掉其余可交付结果。'
+      : undefined
     const deliveryFailureInstruction = deliveryAttemptsExhausted
       ? '文件生成工具已达到有界重试次数。立即停止重试，输出可用正文或大纲，并简洁说明未能生成请求的文件。'
       : undefined
@@ -3321,6 +3355,7 @@ export class AgentLoop {
       ...(researchStageInstruction ? [researchStageInstruction] : []),
       ...(reasoningOnlyRecoveryInstruction ? [reasoningOnlyRecoveryInstruction] : []),
       ...(pendingWorkRecoveryInstruction ? [pendingWorkRecoveryInstruction] : []),
+      ...(webSearchFallbackInstruction ? [webSearchFallbackInstruction] : []),
       ...(deliveryFailureInstruction ? [deliveryFailureInstruction] : []),
       ...(turnBudgetWrapUp ? [TURN_BUDGET_WRAPUP_INSTRUCTION] : []),
       // 工具目录漂移提示只存在单步、下一步即消失，放易变段（history 后），
@@ -4421,31 +4456,46 @@ export class AgentLoop {
     call: ToolCallLike,
     result: ToolHostResult
   ): Promise<void> {
+    let persistedResult: ToolHostResult = result
+    if (
+      result.item.kind === 'tool_result' &&
+      result.item.isError === true &&
+      shouldHideRetrievalToolFailure(call.toolName)
+    ) {
+      persistedResult = {
+        ...result,
+        item: {
+          ...result.item,
+          isError: false,
+          status: 'completed'
+        }
+      }
+    }
     // 工具调用返回错误 → 通过 onToolError 回调上报（仅工具名+错误摘要，
     // 不含工具参数/对话内容，避免敏感信息外传）。
-    if (result.item.kind === 'tool_result' && result.item.isError === true && shouldReportToolError(call.toolName, result.item.output)) {
+    if (persistedResult.item.kind === 'tool_result' && persistedResult.item.isError === true && shouldReportToolError(call.toolName, persistedResult.item.output)) {
       try {
         this.opts.onToolError?.({
           threadId,
           turnId,
           toolName: call.toolName,
-          error: extractToolError(result.item.output)
+          error: extractToolError(persistedResult.item.output)
         })
       } catch {
         // 上报失败绝不影响 agent 主流程
       }
     }
     await this.opts.turns.updateItem(threadId, `item_tool_${turnId}_${call.callId}`, {
-      status: result.item.kind === 'tool_result' && result.item.isError ? 'failed' : 'completed',
+      status: persistedResult.item.kind === 'tool_result' && persistedResult.item.isError ? 'failed' : 'completed',
       finishedAt: this.opts.nowIso()
     } as Partial<TurnItem>)
-    if (result.item.kind === 'tool_result' && !result.item.isError && RESUMABLE_RESULT_TOOL_NAMES.has(call.toolName)) {
+    if (persistedResult.item.kind === 'tool_result' && !persistedResult.item.isError && RESUMABLE_RESULT_TOOL_NAMES.has(call.toolName)) {
       // 只对可续读工具（read/grep/bash）做持久化裁剪；无法续读的工具保留完整结果，
       // 避免模型永远看不到大结果的中间段。
-      result.item.output = pruneToolResultOutput(result.item.output)
+      persistedResult.item.output = pruneToolResultOutput(persistedResult.item.output)
     }
-    await this.opts.turns.applyItem(threadId, result.item)
-    await this.afterToolResultPersisted(threadId, turnId, call, result)
+    await this.opts.turns.applyItem(threadId, persistedResult.item)
+    await this.afterToolResultPersisted(threadId, turnId, call, persistedResult)
   }
 
   private async afterToolResultPersisted(
