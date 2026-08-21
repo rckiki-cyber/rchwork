@@ -1835,6 +1835,8 @@ export class AgentLoop {
   private readonly pendingWorkContinuations = new Map<string, number>()
   /** Turns that must continue best-effort after web search is unavailable/exhausted. */
   private readonly webSearchFallbackTurns = new Set<string>()
+  /** Turns where the runtime already auto-prefetched web search once; never blocked on a second attempt. */
+  private readonly webSearchPrefetchedTurns = new Set<string>()
   /** Extract uploaded documents once; reuse the canonical text on every model step. */
   private readonly attachmentDocumentMapCache = new Map<string, AttachmentDocumentMap>()
   /** One transparent compact-and-retry pass when a provider still reports an oversized context. */
@@ -1915,6 +1917,7 @@ export class AgentLoop {
       this.reasoningOnlyContinuations.delete(turnId)
       this.pendingWorkContinuations.delete(turnId)
       this.webSearchFallbackTurns.delete(turnId)
+      this.webSearchPrefetchedTurns.delete(turnId)
       this.contextOverflowRecoveries.delete(turnId)
       this.legalResearchContinuations.delete(turnId)
       this.memoryRetrieveCache.delete(turnId)
@@ -2852,12 +2855,15 @@ export class AgentLoop {
       await this.syncAutomaticTaskPlan(threadId, turnId, automaticPlan)
     }
 
-    // Freshness is a correctness prerequisite, not an advisory quality gate.
-    // Dispatch search in the runtime so completion never depends on a provider
-    // honoring tool_choice (or on the model remembering to emit tool_use after
-    // saying "I'll search"). The normal tool-call/result history is persisted,
-    // then the next loop step asks the model to synthesize the retrieved facts.
-    if (webSearchRequired && !factProgress.webSearchSatisfied) {
+    // Retrieval is a best-effort assist, never a precondition for answering.
+    // The runtime auto-prefetches web information at most once per turn so a
+    // fresh-news request still gets current facts when the search succeeds; the
+    // model is then free to answer from whatever it has — attachments, local
+    // knowledge, or the search result — and to decide for itself whether to
+    // call more tools. A failed or unavailable search never blocks the turn and
+    // never becomes a reason to error out; the model just adapts its approach.
+    if (webSearchRequired && !this.webSearchPrefetchedTurns.has(turnId)) {
+      this.webSearchPrefetchedTurns.add(turnId)
       const webSearchAvailable = toolSpecs.some((tool) => tool.name === 'web_search')
       if (!webSearchAvailable) {
         this.webSearchFallbackTurns.add(turnId)
@@ -2866,14 +2872,6 @@ export class AgentLoop {
           requiredTool: 'web_search',
           registryOrProviderMissing: !allowedToolNames || allowedToolNames.includes('web_search'),
           allowedToolPolicyFiltered: Boolean(allowedToolNames && !allowedToolNames.includes('web_search')),
-          toolCatalogFingerprint: toolCatalog.fingerprint
-        })
-      } else if (factProgress.webSearchAttempts >= workflowAttemptLimit('evidence')) {
-        this.webSearchFallbackTurns.add(turnId)
-        await this.recordPipelineStage(threadId, turnId, 'response_received', {
-          label: 'Web search attempts exhausted; continuing best-effort',
-          requiredTool: 'web_search',
-          attempts: factProgress.webSearchAttempts,
           toolCatalogFingerprint: toolCatalog.fingerprint
         })
       } else {
@@ -3298,9 +3296,11 @@ export class AgentLoop {
     const pendingWorkRecoveryInstruction = (this.pendingWorkContinuations.get(turnId) ?? 0) > 0
       ? '上一次回复只说明了准备做什么。现在不要再预告步骤或新增检索，直接输出已经能够完成的最终正文或结果。'
       : undefined
-    const webSearchFallbackInstruction = this.webSearchFallbackTurns.has(turnId)
-      ? '本轮实时网页检索不可用或未取得可用结果。不要输出“web_search unavailable”、工具错误或阻塞说明；直接基于已有对话、附件和已取得资料完成用户任务。仅对确实依赖实时信息且无法确认的内容简短标注“待实时核验”，不得因此吞掉其余可交付结果。'
-      : undefined
+    const webSearchFallbackInstruction =
+      this.webSearchFallbackTurns.has(turnId) ||
+      (this.webSearchPrefetchedTurns.has(turnId) && !factProgress.webSearchSatisfied)
+        ? '本轮实时网页检索不可用或未取得可用结果。不要输出“web_search unavailable”、工具错误或阻塞说明；直接基于已有对话、附件和已取得资料完成用户任务。仅对确实依赖实时信息且无法确认的内容简短标注“待实时核验”，不得因此吞掉其余可交付结果。'
+        : undefined
     const deliveryFailureInstruction = deliveryAttemptsExhausted
       ? '文件生成工具已达到有界重试次数。立即停止重试，输出可用正文或大纲，并简洁说明未能生成请求的文件。'
       : undefined

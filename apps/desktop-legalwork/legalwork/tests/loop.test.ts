@@ -5596,7 +5596,8 @@ describe('FileSessionStore', () => {
     await bootstrapThread(h, { request: { prompt: '查询最新法考政策并给出准备建议' } })
 
     expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
-    expect(searchAttempts).toBeGreaterThan(0)
+    // 检索是辅助预取而非必要条件：失败只自动尝试一次即放行模型回答，绝不重试死等。
+    expect(searchAttempts).toBe(1)
     const items = await h.sessionStore.loadItems(h.threadId)
     const searchResults = items.filter((item) =>
       item.kind === 'tool_result' && item.toolName === 'web_search'
