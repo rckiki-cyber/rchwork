@@ -13,6 +13,7 @@ import {
   DEFAULT_MAX_AGENT_LOOP_STEPS,
   MAX_AGENT_LOOP_STEPS_ENV,
   MAX_AGENT_LOOP_STEPS_ENV_CAP,
+  allowedToolNamesWithGuiStateTools,
   assistantAnnouncesPendingToolWork,
   attachResolvedAttachmentContextToHistory,
   deliveredWordLocationAnswer,
@@ -27,12 +28,17 @@ import {
   resolveMaxAgentLoopSteps,
   isStalledTurnProgress,
   shouldReportToolError,
+  shouldHideRetrievalToolFailure,
   skillRoutingPrompt,
   turnProgressSnapshot,
   turnBudgetCompletionToolSpecs
 } from '../src/loop/agent-loop.js'
 import { resolveModelContextProfile } from '../src/loop/model-context-profile.js'
-import { requiresFreshWebSearch, requiresWebSearch } from '../src/loop/fact-verification.js'
+import {
+  buildWebSearchQuery,
+  requiresFreshWebSearch,
+  requiresWebSearch
+} from '../src/loop/fact-verification.js'
 import { makeAssistantTextItem, makeToolCallItem, makeToolResultItem, makeUserItem } from '../src/domain/item.js'
 import { createThreadRecord } from '../src/domain/thread.js'
 import { createImmutablePrefix, setSystemPrompt } from '../src/cache/immutable-prefix.js'
@@ -504,6 +510,33 @@ describe('AgentLoop', () => {
     expect(shouldReportToolError('mcp_yuandian_case_search', {
       error: 'MCP arguments do not match the schema'
     })).toBe(false)
+  })
+
+  it('keeps required web tools advertised through a restrictive Skill allowlist', () => {
+    const allowed = allowedToolNamesWithGuiStateTools(
+      ['read'],
+      false,
+      '帮我网上搜索一下最新规定',
+      ['restrictive-test-skill']
+    )
+
+    expect(allowed).toEqual(expect.arrayContaining(['read', 'web_search', 'web_fetch']))
+    expect(shouldHideRetrievalToolFailure('web_search')).toBe(true)
+    expect(shouldHideRetrievalToolFailure('web_fetch')).toBe(true)
+    expect(shouldHideRetrievalToolFailure('read')).toBe(false)
+  })
+
+  it('builds a bounded search query without routed follow-up control text', () => {
+    const prompt = [
+      '2026年法考报名政策和考试时间',
+      '',
+      '后续要求：不执行，并总结这个报告有什么作用',
+      '',
+      '当前追问：全部删去吧'
+    ].join('\n')
+
+    expect(buildWebSearchQuery(prompt)).toBe('2026年法考报名政策和考试时间')
+    expect(buildWebSearchQuery(`最新政策 ${'很长'.repeat(200)}`).length).toBeLessThanOrEqual(240)
   })
 
   it('falls back to a bounded visible notice at the loop step limit', async () => {
@@ -5505,6 +5538,71 @@ describe('FileSessionStore', () => {
     expect(items.some((item) =>
       item.kind === 'tool_result' && item.toolName === 'web_search'
     )).toBe(true)
+  })
+
+  it('continues without a user-visible error when required web_search is not registered', async () => {
+    let modelRequests = 0
+    const h = makeHarness({
+      provider: 'missing-web-search-fallback',
+      model: 'missing-web-search-fallback',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        modelRequests += 1
+        expect(request.contextInstructions?.join('\n')).toContain('不得因此吞掉其余可交付结果')
+        yield { kind: 'assistant_text_delta', text: '先根据现有材料完成分析；实时变化部分标记为待核验。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [] })
+    await bootstrapThread(h, { request: { prompt: '帮我网上搜索一下最新司法解释并分析案件' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(modelRequests).toBe(1)
+    const events = await h.sessionStore.loadEventsSince(h.threadId, 0)
+    expect(events.some((event) => event.kind === 'turn_failed')).toBe(false)
+    expect(events.some((event) =>
+      event.kind === 'pipeline_stage' &&
+      event.details?.label === 'Web search unavailable; continuing best-effort'
+    )).toBe(true)
+  })
+
+  it('keeps failed web_search attempts out of the visible error count and still answers', async () => {
+    let searchAttempts = 0
+    const webSearch = LocalToolHost.defineTool({
+      name: 'web_search',
+      description: 'Search current web information.',
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' }, limit: { type: 'number' } },
+        required: ['query'],
+        additionalProperties: false
+      },
+      policy: 'auto',
+      execute: async () => {
+        searchAttempts += 1
+        return {
+          output: { error: { code: 'search_failed', message: 'HTTP 404 NOT_FOUND' } },
+          isError: true
+        }
+      }
+    })
+    const h = makeHarness({
+      provider: 'failed-web-search-fallback',
+      model: 'failed-web-search-fallback',
+      async *stream(request): AsyncIterable<ModelStreamChunk> {
+        expect(request.contextInstructions?.join('\n')).toContain('待实时核验')
+        yield { kind: 'assistant_text_delta', text: '已完成不依赖实时检索的部分。' }
+        yield { kind: 'completed', stopReason: 'stop' }
+      }
+    }, { tools: [webSearch] })
+    await bootstrapThread(h, { request: { prompt: '查询最新法考政策并给出准备建议' } })
+
+    expect(await h.loop.runTurn(h.threadId, h.turnId)).toBe('completed')
+    expect(searchAttempts).toBeGreaterThan(0)
+    const items = await h.sessionStore.loadItems(h.threadId)
+    const searchResults = items.filter((item) =>
+      item.kind === 'tool_result' && item.toolName === 'web_search'
+    )
+    expect(searchResults.length).toBeGreaterThan(0)
+    expect(searchResults.every((item) => item.kind === 'tool_result' && item.isError !== true)).toBe(true)
   })
 
   it('keeps mandatory searches isolated across three concurrent conversations', async () => {

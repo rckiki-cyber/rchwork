@@ -1,5 +1,5 @@
 import type { LegalworkCapabilitiesConfig, WebCapabilityConfig } from '../../contracts/capabilities.js'
-import type { WebFetchResult, WebProvider, WebSearchResult } from '../../ports/web-provider.js'
+import type { WebFetchResult, WebProvider, WebSearchRequest, WebSearchResult } from '../../ports/web-provider.js'
 import { sourceIdFor, UnavailableWebProvider } from '../../ports/web-provider.js'
 import type { CapabilityToolProvider } from './capability-registry.js'
 import { LocalToolHost } from './local-tool-host.js'
@@ -10,6 +10,7 @@ const DEFAULT_WEB_TIMEOUT_MS = 15_000
 // 服务端搜索(deepseek-server-search)单次请求需完成 LLM 推理+多次 web search+生成，
 // 15s 频繁误杀真实搜索（search_failed/aborted），单独放宽到 60s
 const DEFAULT_SEARCH_TIMEOUT_MS = 60_000
+const DEEPSEEK_PRIMARY_SEARCH_TIMEOUT_MS = 35_000
 // Cap web_fetch at ~96KB (~24K tokens) instead of 1MB: a full page can
 // otherwise inject up to ~250K tokens into the context as a single tool
 // result and dominate turn cost, especially during research tool loops.
@@ -46,6 +47,54 @@ export type WebToolProviderOptions = {
   deepseekModel?: string
 }
 
+/**
+ * Prefer the cheap DeepSeek server-side search, but do not let a 404, timeout,
+ * empty response, or route mismatch fail the whole turn. The fallback shares
+ * one total deadline with the primary so two providers cannot multiply latency.
+ */
+export class FallbackSearchWebProvider implements WebProvider {
+  readonly id: string
+
+  constructor(
+    private readonly primary: WebProvider,
+    private readonly fallback: WebProvider,
+    private readonly primaryTimeoutMs = DEEPSEEK_PRIMARY_SEARCH_TIMEOUT_MS
+  ) {
+    this.id = `${primary.id}+${fallback.id}`
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResult[]> {
+    if (!this.primary.search || !this.fallback.search) {
+      throw new Error('web search fallback provider is unavailable')
+    }
+    const totalTimeoutMs = Math.max(1, request.timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS)
+    const startedAt = Date.now()
+    const primaryBudget = Math.min(
+      totalTimeoutMs,
+      Math.max(1, Math.min(this.primaryTimeoutMs, Math.floor(totalTimeoutMs * 0.7)))
+    )
+    let primaryError = 'primary provider returned no results'
+    try {
+      const results = await searchWithDeadline(this.primary, request, primaryBudget)
+      if (results.length > 0) return results
+    } catch (error) {
+      primaryError = errorMessage(error)
+    }
+
+    const remainingMs = totalTimeoutMs - (Date.now() - startedAt)
+    if (remainingMs <= 0) {
+      throw new Error(`primary web search failed and exhausted the deadline: ${primaryError}`)
+    }
+    try {
+      const results = await searchWithDeadline(this.fallback, request, remainingMs)
+      if (results.length > 0) return results
+      throw new Error('fallback provider returned no results')
+    } catch (error) {
+      throw new Error(`web search providers failed; primary: ${primaryError}; fallback: ${errorMessage(error)}`)
+    }
+  }
+}
+
 export function buildWebToolProviders(
   config: LegalworkCapabilitiesConfig['web'] | undefined,
   options: WebToolProviderOptions = {}
@@ -76,14 +125,17 @@ export function buildWebToolProviders(
   const fetchProvider: WebProvider = options.provider ?? (web.fetchEnabled
     ? new FetchWebProvider(options.nowIso)
     : new UnavailableWebProvider(web.provider))
-  const searchProvider: WebProvider = options.provider ?? (
-    options.deepseekApiKey?.trim()
-      ? new DeepseekServerSearchProvider({
+  const deepseekSearchProvider = options.deepseekApiKey?.trim()
+    ? new DeepseekServerSearchProvider({
           apiKey: options.deepseekApiKey,
           baseUrl: options.deepseekBaseUrl,
           model: options.deepseekModel,
           nowIso: options.nowIso
         })
+    : undefined
+  const searchProvider: WebProvider = options.provider ?? (
+    deepseekSearchProvider
+      ? new FallbackSearchWebProvider(deepseekSearchProvider, anysearchProvider)
       : (!web.provider || web.provider === 'anysearch'
           ? anysearchProvider
           : new UnavailableWebProvider(web.provider))
@@ -206,12 +258,12 @@ function createSearchTool(config: WebCapabilityConfig, provider: WebProvider) {
       // 搜索超时用独立上限（服务端搜索一次请求耗时较长），与 web_fetch 的 15s 分开
       const timeoutMs = boundedInt(args.timeout_ms, DEFAULT_SEARCH_TIMEOUT_MS, 1, DEFAULT_SEARCH_TIMEOUT_MS)
       try {
-        const results = await provider.search({
+        const results = await searchWithDeadline(provider, {
           query,
           limit,
           timeoutMs,
           signal: context.abortSignal
-        })
+        }, timeoutMs)
         return {
           output: searchOutput(query, provider.id, results, telemetry({
             startedAt,
@@ -231,6 +283,38 @@ function createSearchTool(config: WebCapabilityConfig, provider: WebProvider) {
       }
     }
   })
+}
+
+async function searchWithDeadline(
+  provider: WebProvider,
+  request: WebSearchRequest,
+  timeoutMs: number
+): Promise<WebSearchResult[]> {
+  if (!provider.search) throw new Error('web search provider is unavailable')
+  if (request.signal.aborted) throw new Error('web search was aborted')
+  const controller = new AbortController()
+  let rejectDeadline: ((error: Error) => void) | undefined
+  const deadline = new Promise<never>((_resolve, reject) => {
+    rejectDeadline = reject
+  })
+  const onAbort = (): void => {
+    controller.abort()
+    rejectDeadline?.(new Error('web search was aborted'))
+  }
+  request.signal.addEventListener('abort', onAbort, { once: true })
+  const timer = setTimeout(() => {
+    controller.abort()
+    rejectDeadline?.(new Error(`web search timed out after ${timeoutMs}ms`))
+  }, timeoutMs)
+  try {
+    return await Promise.race([
+      provider.search({ ...request, timeoutMs, signal: controller.signal }),
+      deadline
+    ])
+  } finally {
+    clearTimeout(timer)
+    request.signal.removeEventListener('abort', onAbort)
+  }
 }
 
 class FetchWebProvider implements WebProvider {
