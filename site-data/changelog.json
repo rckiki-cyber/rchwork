@@ -1,7 +1,29 @@
 {
-  "generated_at": "2026-08-19T01:52:04.799Z",
+  "generated_at": "2026-08-22T01:33:52.500Z",
   "repository": "rckiki-cyber/rchwork",
   "releases": [
+    {
+      "tag_name": "v0.3.28-rch.1",
+      "name": "LegalWork 0.3.28-RCH.1",
+      "published_at": "2026-08-22T01:33:41Z",
+      "html_url": "https://github.com/rckiki-cyber/rchwork/releases/tag/v0.3.28-rch.1",
+      "prerelease": false,
+      "summary": "本次更新包括：修复优化。",
+      "highlights": [
+        "LegalWork 0.3.28-RCH.1 已上线，安装后即可使用这一版的新能力与体验优化。"
+      ],
+      "categories": [
+        "修复优化"
+      ],
+      "assets": [
+        {
+          "name": "LegalWork-0.3.28-RCH-win-x64.exe",
+          "browser_download_url": "https://github.com/rckiki-cyber/rchwork/releases/download/v0.3.28-rch.1/LegalWork-0.3.28-RCH-win-x64.exe",
+          "download_count": 0,
+          "size": 578575289
+        }
+      ]
+    },
     {
       "tag_name": "v0.3.26-rch.1",
       "name": "LegalWork 0.3.26-rch.1",
@@ -31,7 +53,7 @@
         {
           "name": "legalwork-0.3.26-rch.1-win-x64.exe",
           "browser_download_url": "https://github.com/rckiki-cyber/rchwork/releases/download/v0.3.26-rch.1/legalwork-0.3.26-rch.1-win-x64.exe",
-          "download_count": 0,
+          "download_count": 1,
           "size": 578308641
         },
         {
