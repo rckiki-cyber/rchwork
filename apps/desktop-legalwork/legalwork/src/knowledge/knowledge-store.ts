@@ -100,7 +100,21 @@ const MANAGED_FILE_EXTENSIONS = new Set([
   '.rar',
   '.7z'
 ])
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', 'out', '.next', '.vite'])
+const SKIP_DIRS = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  'build',
+  'out',
+  '.next',
+  '.vite',
+  '.venv',
+  'venv',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.tox'
+])
 export const DEFAULT_KNOWLEDGE_SYNC_MAX_FILES = 20_000
 export const AUTO_SQLITE_FILE_THRESHOLD = 2_000
 const CHUNK_SIZE = 2400
@@ -275,6 +289,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
       if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1
       return a.name.localeCompare(b.name)
     })) {
+      if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) continue
       const fullPath = join(dir, entry.name)
       const relativePath = relative(this.managedRoot, fullPath)
       if (entry.isDirectory()) {

@@ -510,6 +510,13 @@ describe('AgentLoop', () => {
     expect(shouldReportToolError('mcp_yuandian_case_search', {
       error: 'MCP arguments do not match the schema'
     })).toBe(false)
+    expect(shouldReportToolError('edit', {
+      error: 'read-before-edit guard blocked edit for brief.md. Read the current file contents in this turn.'
+    })).toBe(false)
+    expect(shouldReportToolError('bash', {
+      error: 'bash session expired or the runtime restarted; rerun the original command with action="run"',
+      code: 'bash_session_not_found'
+    })).toBe(false)
   })
 
   it('keeps required web tools advertised through a restrictive Skill allowlist', () => {
