@@ -190,7 +190,7 @@ module.exports = {
     '!legalwork/node_modules/esbuild*/**/*',
     '!legalwork/node_modules/.bin/**/*'
   ],
-  artifactName: `legalwork-${artifactVersion}-\${os}-\${arch}.\${ext}`,
+  artifactName: `LegalWork-${artifactVersion}-RCH-\${os}-\${arch}.\${ext}`,
   publish: [
     {
       provider: 'github'
