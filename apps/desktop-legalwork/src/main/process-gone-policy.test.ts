@@ -20,8 +20,17 @@ describe('process-gone reporting policy', () => {
     expect(policy.shouldReport(details, false, 3_000)).toBe(true)
   })
 
-  it('still reports non-GPU child crashes immediately', () => {
+  it('debounces isolated Utility crashes because Chromium restarts those helper processes too', () => {
+    const policy = new ChildProcessGoneReportPolicy(3, 60_000)
+    const details = { type: 'Utility', reason: 'crashed', exitCode: -1073741205 }
+
+    expect(policy.shouldReport(details, false, 1_000)).toBe(false)
+    expect(policy.shouldReport(details, false, 2_000)).toBe(false)
+    expect(policy.shouldReport(details, false, 3_000)).toBe(true)
+  })
+
+  it('still reports other child crashes immediately', () => {
     const policy = new ChildProcessGoneReportPolicy()
-    expect(policy.shouldReport({ type: 'Utility', reason: 'crashed', exitCode: 1 }, false)).toBe(true)
+    expect(policy.shouldReport({ type: 'Audio Service', reason: 'crashed', exitCode: 1 }, false)).toBe(true)
   })
 })

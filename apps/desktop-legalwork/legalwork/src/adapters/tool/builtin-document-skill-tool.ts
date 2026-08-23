@@ -256,7 +256,15 @@ export function createDocumentSkillExecuteTool(options: SkillToolsOptions = {}):
           isError: true
         }
       }
-      const skill = options.skillRuntime?.load(LEGAL_DOCUMENT_FORMATTING_SKILL_ID)
+      let skill = options.skillRuntime?.load(LEGAL_DOCUMENT_FORMATTING_SKILL_ID)
+      if (!skill && options.skillRuntime) {
+        // Runtime startup intentionally defers Skill discovery so the HTTP API
+        // becomes available quickly. A document request can arrive during that
+        // short window; refresh once on demand before declaring the bundled
+        // managed Skill unavailable.
+        await options.skillRuntime.refresh().catch(() => undefined)
+        skill = options.skillRuntime.load(LEGAL_DOCUMENT_FORMATTING_SKILL_ID)
+      }
       if (!skill) {
         return { output: { status: 'error', error: 'legal-document-formatting Skill is unavailable' }, isError: true }
       }

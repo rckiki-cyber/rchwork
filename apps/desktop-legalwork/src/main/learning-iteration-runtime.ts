@@ -34,6 +34,7 @@ import {
   runtimeErrorMessage,
   sleep,
   type RuntimeRequestFn,
+  type RuntimeRequestResult,
   type ThreadDetailJson
 } from './schedule-runtime-helpers'
 import {
@@ -76,13 +77,19 @@ const EMPTY_COUNTS: LearningIterationCounts = {
   rejected: 0
 }
 
+export function isRecoverableLearningRuntimeError(error: unknown): boolean {
+  const message = errorMessage(error)
+  return /(?:fetch failed|Runtime restarted before this turn completed|ECONNRESET|ECONNREFUSED|socket hang up|network (?:error|failure|failed)|connection (?:reset|refused))/i.test(message)
+}
+
 export function shouldReportLearningIterationError(error: unknown): boolean {
   const message = errorMessage(error)
   return !(
     /(?:insufficient balance|余额不足|配额.*耗尽|HTTP\s*402)/i.test(message) ||
     /configure a model API key|sign in to ChatGPT/i.test(message) ||
     /memory confidence must be at least/i.test(message) ||
-    /学习结果不是有效 JSON|not valid JSON|Unexpected token/i.test(message)
+    /学习结果不是有效 JSON|not valid JSON|Unexpected token|Unexpected non-whitespace character after JSON/i.test(message) ||
+    isRecoverableLearningRuntimeError(error)
   )
 }
 
@@ -485,6 +492,16 @@ export class LearningIterationRuntime {
     try {
       await this.run(settings, state)
     } catch (error) {
+      if (isRecoverableLearningRuntimeError(error)) {
+        await this.writeState(settings, {
+          ...state,
+          lastCheckedAt: this.now().toISOString(),
+          pendingRunId: this.activeRunId || state.pendingRunId
+        })
+        this.queued = true
+        this.message = '运行时连接暂时中断，已保留本轮并等待恢复'
+        return
+      }
       if (error instanceof LearningPausedError) {
         await this.writeState(settings, {
           ...state,
@@ -906,6 +923,7 @@ export class LearningIterationRuntime {
 
     const deadline = Date.now() + TURN_TIMEOUT_MS
     let lastText = ''
+    let consecutiveTransientPollFailures = 0
     while (Date.now() < deadline) {
       if (this.cancelRequested) {
         await this.interruptLearningTurn(settings, threadId, turnId)
@@ -915,11 +933,24 @@ export class LearningIterationRuntime {
       // Always poll the thread status — isBusy() should not prevent us from
       // seeing that the AI has finished, otherwise the loop can time out even
       // though the turn completed successfully.
-      const detailResponse = await this.request(
-        settings,
-        `/v1/threads/${encodeURIComponent(threadId)}`,
-        'GET'
-      )
+      let detailResponse: RuntimeRequestResult
+      try {
+        detailResponse = await this.request(
+          settings,
+          `/v1/threads/${encodeURIComponent(threadId)}`,
+          'GET'
+        )
+        consecutiveTransientPollFailures = 0
+      } catch (error) {
+        if (isRecoverableLearningRuntimeError(error)) {
+          consecutiveTransientPollFailures += 1
+          if (consecutiveTransientPollFailures <= 5) {
+            this.message = '运行时连接恢复中，正在继续等待本轮学习'
+            continue
+          }
+        }
+        throw error
+      }
       const detail = JSON.parse(detailResponse.body) as ThreadDetailJson
       lastText = latestAssistantText(detail, { turnId }) || lastText
       const turn = detail.turns?.find((item) => item.id === turnId)
@@ -1403,17 +1434,69 @@ export function parseLearningModelResult(text: string): LearningModelResult {
 }
 
 function parseLearningModelJson(jsonText: string): Partial<LearningModelResult> {
+  let originalError: unknown
   try {
     return JSON.parse(jsonText) as Partial<LearningModelResult>
-  } catch (originalError) {
-    const repaired = repairLearningModelJson(jsonText)
-    if (repaired === jsonText) throw originalError
+  } catch (error) {
+    originalError = error
+  }
+
+  const repaired = repairLearningModelJson(jsonText)
+  const candidates = repaired === jsonText ? [jsonText] : [repaired, jsonText]
+  for (const candidate of candidates) {
+    if (candidate !== jsonText) {
+      try {
+        return JSON.parse(candidate) as Partial<LearningModelResult>
+      } catch {
+        // Fall through to prefix recovery below.
+      }
+    }
+    const firstObject = extractFirstCompleteJsonObject(candidate)
+    if (!firstObject || firstObject.trim() === candidate.trim()) continue
     try {
-      return JSON.parse(repaired) as Partial<LearningModelResult>
+      return JSON.parse(firstObject) as Partial<LearningModelResult>
     } catch {
-      throw originalError
+      // Keep the original parser error so the repair turn sees the real fault.
     }
   }
+  throw originalError
+}
+
+function extractFirstCompleteJsonObject(text: string): string | undefined {
+  const start = text.indexOf('{')
+  if (start < 0) return undefined
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+      if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === '{') {
+      depth += 1
+      continue
+    }
+    if (char === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(start, index + 1)
+      if (depth < 0) return undefined
+    }
+  }
+  return undefined
 }
 
 /**
