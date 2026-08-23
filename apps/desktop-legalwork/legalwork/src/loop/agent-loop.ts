@@ -135,6 +135,7 @@ import {
   officeDocumentWorkflowInstruction
 } from './office-document-workflow.js'
 import {
+  documentFactualFidelityInstruction,
   documentTaskContract,
   hasSuccessfulDesensitization,
   normalizedFinalDraft,
@@ -3278,6 +3279,9 @@ export class AgentLoop {
       readPdfCount: readKnowledgePdfPaths.size,
       desensitizationCompleted: desensitizationSatisfied
     })
+    const documentFidelityInstruction = documentMutationRequested
+      ? documentFactualFidelityInstruction(latestUserMessageText(healed.items, turnId) || turn?.prompt || '')
+      : undefined
     const factContractInstruction = factVerificationInstruction(factContract, factProgress)
     const requiredToolMissKey = requiredToolName ? `${turnId}:${requiredToolName}` : ''
     const requiredToolMissCount = requiredToolMissKey
@@ -3353,6 +3357,7 @@ export class AgentLoop {
       ...(officeWorkflowInstruction ? [officeWorkflowInstruction] : []),
       ...(artifactProgressInstruction ? [artifactProgressInstruction] : []),
       ...(explicitContractInstruction ? [explicitContractInstruction] : []),
+      ...(documentFidelityInstruction ? [documentFidelityInstruction] : []),
       ...(factContractInstruction ? [factContractInstruction] : []),
       ...(automaticPlan ? [automaticTaskPlanInstruction(automaticPlan)] : []),
       ...(workflowAction ? [workflowActionInstruction(workflowAction)] : []),

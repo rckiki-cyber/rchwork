@@ -186,8 +186,36 @@ const removeArticleQuery = (query: string): string =>
     .replace(/\s+/g, ' ')
     .trim()
 
+const canonicalLawTitle = (value: string): string => {
+  const title = value
+    .replace(/[《》「」“”"'`]/g, '')
+    .replace(/^(?:请|帮我|核实|验证|查询|检索|查找|查一下)+/u, '')
+    .replace(/\s+/g, '')
+    .trim()
+  if (!title || title.startsWith('中华人民共和国')) return title
+  if (title === '民法典' || /法$/u.test(title)) return `中华人民共和国${title}`
+  return title
+}
+
+const explicitCanonicalLawTitles = (query: string): string[] => {
+  const titles: string[] = []
+  for (const match of query.matchAll(/《([^》\n]{2,60})》/g)) {
+    const title = canonicalLawTitle(match[1] ?? '')
+    if (title && !titles.includes(title)) titles.push(title)
+  }
+  const articleLinked = query.match(
+    /([\u4e00-\u9fff]{2,40}(?:法典|法|条例|办法|规定|解释))\s*第?\s*[零〇一二三四五六七八九十百千万两\d]+\s*条/u
+  )?.[1]
+  if (articleLinked) {
+    const title = canonicalLawTitle(articleLinked)
+    if (title && !titles.includes(title)) titles.push(title)
+  }
+  return titles.slice(0, 2)
+}
+
 const buildQueryCandidates = (query: string): string[] => {
   const raw = query.trim()
+  const canonicalTitles = explicitCanonicalLawTitles(raw)
   const withoutArticle = removeArticleQuery(raw)
   const withoutBookMarks = withoutArticle.replace(/[《》「」“”"'`]/g, ' ').replace(/\s+/g, ' ').trim()
   const cleaned = withoutBookMarks
@@ -195,11 +223,11 @@ const buildQueryCandidates = (query: string): string[] => {
     .replace(/\s+/g, ' ')
     .trim()
 
-  const candidates = [withoutArticle, withoutBookMarks, cleaned, raw]
+  const candidates = [...canonicalTitles, withoutArticle, withoutBookMarks, cleaned, raw]
     .map((item) => item.trim())
     .filter((item) => item.length >= 2)
 
-  return [...new Set(candidates)].slice(0, 3)
+  return [...new Set(candidates)].slice(0, 4)
 }
 
 const shouldIncludeHistoricalStatus = (query: string): boolean =>

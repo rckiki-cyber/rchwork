@@ -40,6 +40,8 @@ describe('fact verification contract', () => {
     expect(requiresWebSearch('公务员具体的考察要素')).toBe(true)
     expect(requiresWebSearch('法考政策')).toBe(true)
     expect(requiresWebSearch('不要联网，仅根据上传附件总结')).toBe(false)
+    expect(requiresWebSearch('以下事实均为虚构，仅用于测试，不需要联网检索，请直接撰写法律备忘录')).toBe(false)
+    expect(requiresWebSearch('不需要上网查询，只根据我给的事实起草文书')).toBe(false)
     expect(requiresWebSearch('检索本地知识库里的行政法论文')).toBe(false)
     expect(requiresWebSearch('请查询北大法宝中的现行法条')).toBe(false)
     expect(requiresWebSearch('请基于以下从知识库中检索到的相关内容回答：知识库有什么文件？\n\nRAG 检索上下文：共十二个文件。')).toBe(false)

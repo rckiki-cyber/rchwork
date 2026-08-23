@@ -2,6 +2,10 @@ import type {
   CoreRuntimeInfoJson,
   CoreRuntimeToolDiagnosticsJson
 } from '../agent/legalwork-contract'
+import {
+  isLenientMcpServer,
+  normalizeMcpServerDiagnostic
+} from '../mcp-server-policy'
 
 export type McpMarketplaceOverlayStatus =
   | 'offline'
@@ -34,7 +38,29 @@ export function buildMcpMarketplaceOverlay(input: {
 }): McpMarketplaceOverlay {
   const capability = input.runtimeInfo?.capabilities?.mcp
   const managedServers = input.managedServers ?? []
-  const diagnosticServers = input.toolDiagnostics?.mcpServers ?? []
+  const rawDiagnosticServers = input.toolDiagnostics?.mcpServers ?? []
+  // 降噪：lenient 服务器（context7/playwright）强制显示为已连接；网络依赖服务器
+  // （github）的网络类错误从 errorCount / 顶部 lastError 中排除，只在对应项显示"需要网络环境"。
+  const diagnosticServers = rawDiagnosticServers.map((server) => {
+    const id = stringField(server, 'id')
+    const enabled = server.enabled === false || server.disabled === true ? false : true
+    const policy = normalizeMcpServerDiagnostic(id, {
+      status: stringField(server, 'status'),
+      lastError: stringField(server, 'lastError'),
+      enabled
+    })
+    return {
+      ...server,
+      status: policy.status,
+      lastError: policy.lastError,
+      requiresNetwork: policy.requiresNetwork
+    }
+  })
+  const lenientForcedConnected = rawDiagnosticServers.filter((server) => {
+    const rawStatus = stringField(server, 'status')
+    return isLenientMcpServer(stringField(server, 'id')) &&
+      rawStatus !== 'connected' && rawStatus !== 'available'
+  }).length
   const diagnosticServerIds = new Set(diagnosticServers.map((server) => stringField(server, 'id')).filter(Boolean))
   const servers = [
     ...diagnosticServers,
@@ -50,14 +76,16 @@ export function buildMcpMarketplaceOverlay(input: {
   const search = input.toolDiagnostics?.mcpSearch ?? capability?.search
   const serverIds = servers.map((server) => stringField(server, 'id')).filter(Boolean)
   const configuredServers = Math.max(capability?.configuredServers ?? 0, servers.length)
-  const connectedServers =
-    capability?.connectedServers ??
-    servers.filter((server) => stringField(server, 'status') === 'connected').length
+  const capabilityConnected = capability?.connectedServers
+  const connectedServers = capabilityConnected != null
+    ? capabilityConnected + lenientForcedConnected
+    : servers.filter((server) => stringField(server, 'status') === 'connected').length
   const toolCount =
     capability?.toolCount ??
     servers.reduce((sum, server) => sum + numberField(server, 'toolCount'), 0)
   const serverErrors = servers.filter((server) =>
-    stringField(server, 'status') === 'error' || Boolean(stringField(server, 'lastError'))
+    !booleanField(server, 'requiresNetwork') &&
+    (stringField(server, 'status') === 'error' || Boolean(stringField(server, 'lastError')))
   )
   const searchRecord = search as Record<string, unknown> | undefined
   const searchError = stringField(searchRecord, 'lastError')

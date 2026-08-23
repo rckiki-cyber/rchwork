@@ -28,7 +28,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),
-          'claw-schedule-mcp-node-entry': resolve('src/main/claw-schedule-mcp-node-entry.ts')
+          'claw-schedule-mcp-node-entry': resolve('src/main/claw-schedule-mcp-node-entry.ts'),
+          'filesystem-mcp-node-entry': resolve('src/main/filesystem-mcp-node-entry.ts')
         },
         output: {
           format: 'cjs',

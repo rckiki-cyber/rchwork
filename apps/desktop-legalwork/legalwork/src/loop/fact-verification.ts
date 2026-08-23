@@ -63,7 +63,7 @@ export function requiresWebSearch(prompt: string): boolean {
   // search request.
   if (/(?:RAG检索上下文|从知识库中检索到的相关内容|<knowledge_context>)/i.test(compact)) return false
 
-  const optsOut = /(?:不要|无需|不用|禁止)(?:联网|上网|搜索|检索|查询|查找|使用网页|使用网络)|(?:仅|只)(?:根据|依据|使用)(?:已有内容|当前内容|附件|上传文件|本地文件)/.test(compact)
+  const optsOut = /(?:不要|无需|不用|不需要|禁止)(?:联网|上网|搜索|检索|查询|查找|使用网页|使用网络)|(?:仅|只)(?:根据|依据|使用)(?:已有内容|当前内容|附件|上传文件|本地文件)/.test(compact)
   if (optsOut) return false
 
   const dedicatedSource = /(?:本地知识库|本地资料库|上传(?:的)?(?:附件|文件)|当前附件|IMA|北大法宝|元典)(?:中|内|里)?(?:查|搜|检索|查询|查找|寻找|获取|研究)/i.test(compact) ||

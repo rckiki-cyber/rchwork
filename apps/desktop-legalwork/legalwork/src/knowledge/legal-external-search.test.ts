@@ -31,6 +31,24 @@ describe('legalExternalSearch', () => {
     expect(result.summary).not.toContain('建议 web_search 查询')
   })
 
+  it('searches an explicit canonical law title before broad article-keyword candidates', async () => {
+    const seenBodies: Array<Record<string, unknown>> = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      if (typeof init?.body === 'string') {
+        seenBodies.push(JSON.parse(init.body) as Record<string, unknown>)
+      }
+      return jsonResponse({ rows: [] })
+    })
+
+    await legalExternalSearch('请核实民法典第五百八十五条关于违约金调整的现行规则')
+
+    expect(seenBodies).toContainEqual(expect.objectContaining({
+      searchRange: 1,
+      searchType: 1,
+      searchContent: '中华人民共和国民法典'
+    }))
+  })
+
   it('returns deduplicated and ranked NPC records with detail metadata', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input)

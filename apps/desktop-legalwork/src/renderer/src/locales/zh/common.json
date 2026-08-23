@@ -688,6 +688,7 @@
   "pluginMcpSourceConnected": "已连接",
   "pluginMcpSourceConnecting": "连接中",
   "pluginMcpSourceError": "异常",
+  "pluginMcpSourceNetwork": "需要网络环境",
   "pluginMcpSourceDisabled": "未启用",
   "pluginMcpDescriptionStatus": "状态：{{status}}",
   "pluginMcpDescriptionTools": "{{count}} 个工具",

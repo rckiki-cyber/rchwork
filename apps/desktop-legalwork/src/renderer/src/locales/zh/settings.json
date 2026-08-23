@@ -387,6 +387,8 @@
   "mcpServerDisabled": "未启用",
   "mcpServerAuth": "鉴权",
   "mcpServerTools": "{{count}} 个工具",
+  "mcpServerRequiresNetwork": "需要网络环境",
+  "mcpServerRequiresNetworkHint": "该服务需要访问境外网络，请连接 VPN 或更换网络后重试。",
   "mcpEnable": "启用",
   "mcpDisable": "停用",
   "mcpRemove": "删除",

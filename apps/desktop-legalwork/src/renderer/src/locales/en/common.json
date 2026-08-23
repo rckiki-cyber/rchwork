@@ -688,6 +688,7 @@
   "pluginMcpSourceConnected": "Connected",
   "pluginMcpSourceConnecting": "Connecting",
   "pluginMcpSourceError": "Error",
+  "pluginMcpSourceNetwork": "Network required",
   "pluginMcpSourceDisabled": "Disabled",
   "pluginMcpDescriptionStatus": "Status: {{status}}",
   "pluginMcpDescriptionTools": "{{count}} tools",

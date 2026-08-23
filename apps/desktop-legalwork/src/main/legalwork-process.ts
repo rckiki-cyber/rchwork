@@ -39,6 +39,7 @@ import {
   resolveLegalworkMcpJsonPath,
   type ClawScheduleMcpLaunchConfig
 } from './claw-schedule-mcp-config'
+import { rewriteNpxFilesystemMcpServer } from './filesystem-mcp-config'
 import { defaultLegalworkDataDir } from './runtime/legalwork-adapter'
 import { getLegalworkBaseUrl } from './legalwork-base-url'
 import { DEFAULT_PKULAW_MCP_SERVERS } from './pkulaw-default-servers'
@@ -578,7 +579,10 @@ export async function syncGuiManagedLegalworkConfig(
   const configPath = join(dataDir, 'config.json')
   const existing = sanitizeLegalworkConfigSections(await readJsonObjectIfExists(configPath))
   const guiMcpConfigPath = options?.mcpConfigPath ?? resolveLegalworkMcpJsonPath()
-  const importedMcpServers = await readGuiManagedMcpServers(guiMcpConfigPath)
+  const importedMcpServers = await readGuiManagedMcpServers(
+    guiMcpConfigPath,
+    options?.scheduleMcp?.launch
+  )
   const guiPrimaryLegalSource = await readGuiManagedPrimaryLegalSource(guiMcpConfigPath)
   const hasImportedEnabledMcpServer = Object.values(importedMcpServers).some(
     (server) => objectValue(server).enabled !== false
@@ -910,7 +914,10 @@ async function readGuiManagedPrimaryLegalSource(
   }
 }
 
-async function readGuiManagedMcpServers(path: string): Promise<Record<string, unknown>> {
+async function readGuiManagedMcpServers(
+  path: string,
+  launch?: ClawScheduleMcpLaunchConfig
+): Promise<Record<string, unknown>> {
   const parsed = await readJsonObjectIfExists(path)
   if (!parsed) return {}
 
@@ -923,6 +930,15 @@ async function readGuiManagedMcpServers(path: string): Promise<Record<string, un
     .filter((entry): entry is readonly [string, Record<string, unknown>] => entry !== null)
 
   const servers = Object.fromEntries(normalizedEntries)
+
+  // filesystem 离线化：把 npx 方式（每次启动联网查 npm registry）改写为
+  // legalwork 自带 node 直接启动的本地入口，杜绝间歇性 connect 超时。
+  if (launch) {
+    for (const [serverId, server] of Object.entries(servers)) {
+      const rewritten = rewriteNpxFilesystemMcpServer(server, launch)
+      if (rewritten) servers[serverId] = rewritten
+    }
+  }
 
   // 北大法宝默认预装：mcp.json 未配置任何 pkulaw server 时自动补齐，
   // 保证装好即连（headers 为空 → runtime 注入随包 fallback token）。

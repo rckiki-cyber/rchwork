@@ -1629,6 +1629,7 @@ describe('AgentLoop', () => {
 
   it('generates an explicitly requested Word file without forcing research or citation verification', async () => {
     const executed: string[] = []
+    const requests: ModelRequest[] = []
     const define = (
       name: string,
       output: unknown
@@ -1647,6 +1648,7 @@ describe('AgentLoop', () => {
       provider: 'citation-evidence-barrier',
       model: 'citation-evidence-barrier',
       async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
         const required = request.requiredToolName
         if (required) {
           yield {
@@ -1697,6 +1699,8 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(executed).toEqual(['document_skill_execute'])
+    expect(requests[0]?.contextInstructions?.join('\n')).toContain('只能把用户明确提供')
+    expect(requests[0]?.contextInstructions?.join('\n')).toContain('不得自行补写用户未提供的案件事实')
   })
 
   it('does not inject forced retrieval batches when the model answers directly', async () => {
