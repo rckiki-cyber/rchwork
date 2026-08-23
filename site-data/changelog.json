@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-23T15:23:16.066Z",
+  "generated_at": "2026-08-23T15:24:17.347Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
@@ -8,11 +8,18 @@
       "published_at": "2026-08-23T15:22:57Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.29",
       "prerelease": false,
-      "summary": "本次更新包括：修复优化。",
+      "summary": "本次更新包括：法规知识库、插件市场、对话体验。",
       "highlights": [
-        "LegalWork 0.3.29 已上线，安装后即可使用这一版的新能力与体验优化。"
+        "修复了使用中的稳定性问题：SSE 首连超时根因修复：服务端在流式响应建立后立即 flush headers，不再让 15 秒 heartbeat 与 15 秒客户端启动超时卡在同一临界点，避免偶发 sse start timeout。",
+        "修复了使用中的稳定性问题：Runtime 瞬时断连可恢复：学习迭代遇到 fetch failed、连接重置或 Runtime 重启时保留当前轮次并等待恢复，不再直接写入失败记录或上报错误；轮询阶段允许有限次数的瞬时断连恢复。",
+        "修复了使用中的稳定性问题：学习迭代 JSON 容错增强：模型在结果标记内输出“一个有效 JSON + 重复/尾随 JSON”时可提取首个完整对象，不再因 Unexpected non-whitespace character after JSON 直接失败。",
+        "修复了使用中的稳定性问题：文档 Skill 启动竞态修复：document_skill_execute 在延迟发现 Skill 尚未完成时会主动 refresh 后重试，避免启动早期误报 legal-document-formatting Skill is unavailable。",
+        "法规检索更及时：可以直接查询国家法律法规数据库，查找法律依据更方便。"
       ],
       "categories": [
+        "法规知识库",
+        "插件市场",
+        "对话体验",
         "修复优化"
       ],
       "assets": [
