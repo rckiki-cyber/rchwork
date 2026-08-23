@@ -122,6 +122,27 @@ describe('FileKnowledgeStore', () => {
     }
   })
 
+  it('omits dependency and Python environment directories from the managed tree', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-tree-skip-'))
+    const indexRoot = join(root, 'index')
+    try {
+      const store = new FileKnowledgeStore({ rootDir: indexRoot, sourceRoots: [] })
+      await store.writeFile({ path: 'matter/brief.md', content: '案情摘要', encoding: 'utf8' })
+      await mkdir(join(indexRoot, 'files', '.venv', 'Lib', 'site-packages'), { recursive: true })
+      await writeFile(join(indexRoot, 'files', '.venv', 'Lib', 'site-packages', 'noise.md'), 'noise', 'utf8')
+      await mkdir(join(indexRoot, 'files', 'node_modules', 'package'), { recursive: true })
+      await writeFile(join(indexRoot, 'files', 'node_modules', 'package', 'noise.md'), 'noise', 'utf8')
+
+      const tree = await store.tree()
+
+      expect(tree.map((node) => node.name)).toContain('matter')
+      expect(tree.map((node) => node.name)).not.toContain('.venv')
+      expect(tree.map((node) => node.name)).not.toContain('node_modules')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('syncs local files and searches Chinese legal terms', async () => {
     const root = await mkdtemp(join(tmpdir(), 'legalwork-kb-'))
     const sourceRoot = join(root, 'knowledge-base')

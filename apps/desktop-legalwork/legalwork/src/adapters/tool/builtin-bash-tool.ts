@@ -528,7 +528,14 @@ export function createBashLocalTool(options: BashLocalToolOptions = {}): LocalTo
         }
         const session = sessionById(args.session_id)
         if (!session) {
-          return { output: { error: 'bash session not found', session_id: args.session_id ?? null }, isError: true }
+          return {
+            output: {
+              error: 'bash session expired or the runtime restarted; rerun the original command with action="run"',
+              code: 'bash_session_not_found',
+              session_id: args.session_id ?? null
+            },
+            isError: true
+          }
         }
         if (action === 'write') {
           if (session.status !== 'running') {
