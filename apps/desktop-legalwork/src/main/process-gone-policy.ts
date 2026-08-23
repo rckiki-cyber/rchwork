@@ -12,10 +12,11 @@ export function shouldReportRenderProcessGone(
   return details.reason !== 'clean-exit' && details.reason !== 'killed'
 }
 
-/** Electron normally restarts an isolated GPU process crash. Report only a
- * repeated crash burst, which is actionable evidence of a persistent fault. */
+/** Electron normally restarts isolated GPU and Utility helper processes.
+ * Report only a repeated crash burst for those helpers; a single crash is
+ * usually Chromium self-recovery rather than an actionable app failure. */
 export class ChildProcessGoneReportPolicy {
-  private gpuCrashTimes: number[] = []
+  private recoverableCrashTimes = new Map<string, number[]>()
 
   constructor(
     private readonly gpuCrashThreshold = 3,
@@ -25,12 +26,17 @@ export class ChildProcessGoneReportPolicy {
   shouldReport(details: ProcessGoneDetails, isQuitting: boolean, now = Date.now()): boolean {
     if (isQuitting) return false
     if (details.reason === 'clean-exit' || details.reason === 'killed') return false
-    if (details.type !== 'GPU' || details.reason !== 'crashed') return true
+    if (!['GPU', 'Utility'].includes(details.type ?? '') || details.reason !== 'crashed') return true
 
-    this.gpuCrashTimes = this.gpuCrashTimes.filter((time) => now - time <= this.gpuCrashWindowMs)
-    this.gpuCrashTimes.push(now)
-    if (this.gpuCrashTimes.length < this.gpuCrashThreshold) return false
-    this.gpuCrashTimes = []
+    const type = details.type ?? 'unknown'
+    const recent = (this.recoverableCrashTimes.get(type) ?? [])
+      .filter((time) => now - time <= this.gpuCrashWindowMs)
+    recent.push(now)
+    if (recent.length < this.gpuCrashThreshold) {
+      this.recoverableCrashTimes.set(type, recent)
+      return false
+    }
+    this.recoverableCrashTimes.delete(type)
     return true
   }
 }

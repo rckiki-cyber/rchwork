@@ -195,6 +195,44 @@ describe('LearningIterationRuntime scheduling', () => {
     )
     runtime.stop()
   })
+
+  it('keeps a transient runtime disconnect queued instead of recording a failed learning iteration', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'legalwork-learning-transient-runtime-'))
+    tempRoots.push(dataDir)
+    const appSettings = settings(dataDir)
+    const runtimeRequest = vi.fn(async (_settings: AppSettingsV1, path: string) => {
+      if (path.startsWith('/v1/threads')) {
+        return {
+          ok: false,
+          status: 0,
+          body: JSON.stringify({ code: 'fetch_failed', message: 'fetch failed' })
+        }
+      }
+      return { ok: true, status: 200, body: '{}' }
+    })
+    const logError = vi.fn()
+    const runtime = createLearningIterationRuntime({
+      store: { load: vi.fn(async () => appSettings) } as never,
+      runtimeRequest,
+      getSystemIdleSeconds: () => 60 * 60,
+      getExternalBusy: async () => false,
+      logError
+    })
+
+    await runtime.queue()
+    await vi.waitFor(async () => {
+      const status = await runtime.status()
+      expect(status.status).toBe('waiting')
+      expect(status.message).toContain('运行时连接暂时中断')
+    })
+    const records = await runtime.list()
+    if (records.ok) expect(records.records).toEqual([])
+    expect(logError).not.toHaveBeenCalledWith(
+      'learning-iteration',
+      expect.stringContaining('fetch failed')
+    )
+    runtime.stop()
+  })
 })
 
 describe('learning model result parsing', () => {
@@ -202,6 +240,9 @@ describe('learning model result parsing', () => {
     expect(shouldReportLearningIterationError(new Error('Insufficient Balance (HTTP 402)'))).toBe(false)
     expect(shouldReportLearningIterationError(new Error('Memory confidence must be at least 0.8 for automatic capture.'))).toBe(false)
     expect(shouldReportLearningIterationError(new Error('学习结果不是有效 JSON。'))).toBe(false)
+    expect(shouldReportLearningIterationError(new Error('Unexpected non-whitespace character after JSON at position 493'))).toBe(false)
+    expect(shouldReportLearningIterationError(new Error('fetch failed'))).toBe(false)
+    expect(shouldReportLearningIterationError(new Error('Runtime restarted before this turn completed.'))).toBe(false)
     expect(shouldReportLearningIterationError(new Error('Legalwork did not report ready within 12000ms'))).toBe(true)
   })
 
@@ -239,6 +280,28 @@ describe('learning model result parsing', () => {
     const parsed = JSON.parse(repaired) as { summary: string }
 
     expect(parsed.summary).toBe('路径 C:\\legal\\quote\n第二行')
+  })
+
+  it('accepts the first complete learning JSON object when the model appends duplicate output', () => {
+    const first = JSON.stringify({
+      title: '第一次有效结果',
+      summary: '应保留第一个完整对象',
+      reportMarkdown: '',
+      memories: [],
+      skills: [],
+      rejected: []
+    })
+    const response = [
+      'BEGIN_LEARNING_RESULT',
+      first,
+      '{"title":"重复输出","memories":[],"skills":[],"rejected":[]}',
+      'END_LEARNING_RESULT'
+    ].join('\n')
+
+    expect(parseLearningModelResult(response)).toMatchObject({
+      title: '第一次有效结果',
+      summary: '应保留第一个完整对象'
+    })
   })
 
   it('does not alter already valid learning JSON', () => {

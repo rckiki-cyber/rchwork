@@ -91,6 +91,10 @@ async function writeFetchResponse(outgoing: ServerResponse, response: Response):
     outgoing.end()
     return
   }
+  // Streaming responses such as SSE may legitimately have no body bytes for
+  // several seconds. Flush the status line + headers immediately so fetch()
+  // resolves on the client before the first heartbeat/event arrives.
+  outgoing.flushHeaders()
   const reader = response.body.getReader()
   try {
     while (true) {
