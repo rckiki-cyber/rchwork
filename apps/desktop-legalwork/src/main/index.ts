@@ -40,7 +40,8 @@ import {
   runtimeAuthHeaders,
   runtimeRequestViaHost
 } from './runtime/legalwork-adapter'
-import { findAvailableLegalworkPort } from './legalwork-process'
+import { findAvailableLegalworkPort, resolveBundledOfficePythonPath } from './legalwork-process'
+import { ensureOfficeRuntimeHealthy } from './office-runtime-repair'
 import { configureLogger, logError, logWarn, pruneOnStartup, setLogErrorReporter } from './logger'
 import {
   configureErrorReporting,
@@ -1106,6 +1107,25 @@ app.whenReady().then(async () => {
   setLogErrorReporter((input) => reportError(input))
   registerGlobalErrorHandlers()
   traceStartup('logger configured')
+
+  // Self-check the bundled Office Python and repair it in place when only its
+  // packages are missing. A Windows upgrade over a running LegalWork cannot
+  // replace files that are in use, and the resulting half-installed runtime
+  // used to tell the user to reinstall — which is the same overwrite-install
+  // that broke it. Deliberately not awaited: startup must not wait on pip.
+  if (app.isPackaged) {
+    void ensureOfficeRuntimeHealthy({
+      python: resolveBundledOfficePythonPath({
+        appPath: app.getAppPath(),
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath
+      }),
+      resourcesPath: process.resourcesPath || '',
+      log: (message) => console.info(message)
+    }).catch((error) => {
+      console.error('[office-runtime] self-check failed:', error)
+    })
+  }
   scheduleRuntime = createScheduleRuntime({ store, runtimeRequest, logError, powerSaveBlocker })
   scheduleRuntime.sync(initial)
   clawRuntime = createClawRuntime({

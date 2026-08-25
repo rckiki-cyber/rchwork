@@ -149,10 +149,19 @@ def bundled_office_python() -> str | None:
         env = bundled_office_python_env(command)
         if python_version_ok(command, env) and imports_ok(command, env):
             return command
+        # Do not tell the user to "reinstall" and stop there: on Windows this
+        # state is *caused* by installing over a running LegalWork, so plain
+        # reinstalling reproduces it. LegalWork repairs this in place at the
+        # next startup; if that cannot help (stale python.exe), the install
+        # must happen with the app fully closed.
         emit({
             "status": "error",
             "stage": "runtime",
-            "error": f"Bundled Office Python is incomplete or incompatible: {path}. Reinstall LegalWork.",
+            "error": (
+                f"Bundled Office Python is incomplete or incompatible: {path}. "
+                "请完全退出 LegalWork（含系统托盘图标）后重新启动，程序会自动尝试就地修复；"
+                "若仍失败，请在完全退出的状态下重新安装。"
+            ),
             "office_fallback_allowed": False,
         }, 1)
 
