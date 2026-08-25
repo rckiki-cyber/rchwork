@@ -44,9 +44,7 @@ const DATA_COMPLIANCE_RUNTIME_IMPORTS = [
   'paddle',
   'paddleocr',
   'pypdf',
-  'pandas',
-  'presidio_analyzer',
-  'presidio_anonymizer'
+  'pandas'
 ]
 const OFFICE_RUNTIME_PYTHON_LINE = '3.11'
 const BUNDLED_PDF_FONT_SOURCE_SHA256 = '050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9'

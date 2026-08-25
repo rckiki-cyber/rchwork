@@ -104,6 +104,15 @@ import {
   firstSupportedStandalonePython,
   imaStandalonePythonCandidates
 } from '../ima-python-runtime'
+import {
+  describePipIndexes,
+  pipIndexArgs,
+  resolvePipIndexCandidates,
+  resolvePythonStandaloneUrls,
+  runPipInstallWithFallback,
+  selectReachablePipIndexes,
+  type PipIndexCandidate
+} from '../../../legalwork/src/shared/python-install-sources.js'
 import { createAndSwitchGitBranch, getGitBranches, switchGitBranch } from '../services/git-service'
 import {
   createWorkspaceDirectory,
@@ -633,9 +642,7 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         'PIL',
         'paddle',
         'paddleocr',
-        'pytesseract',
-        'presidio_analyzer',
-        'presidio_anonymizer'
+        'pytesseract'
       ]
       let rebuildCount = 0
       for (;;) {
@@ -660,24 +667,22 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
         }
 
         // 3. Install dependencies via pip with per-package progress.
-        //    Retry once on failure: PaddlePaddle/spacy are large and download
-        //    intermittently fails (esp. in regions with slow PyPI access). An
-        //    optional mirror index (LEGALWORK_PIP_INDEX_URL) sidesteps that.
+        //    PaddlePaddle/PaddleOCR are large and a slow or blocked index is
+        //    by far the most common reason this fails. Probing first tells
+        //    "mirror is dead" apart from "mirror is slow", so the pip attempts
+        //    we do spend land on hosts that actually answered.
         if (!existsSync(requirementsPath)) break
         const reqText = readFileSync(requirementsPath, 'utf8')
         const reqLines = reqText.split('\n').filter((l: string) => l.trim() && !l.trim().startsWith('#')).length
-        const pipIndexUrl = (process.env.LEGALWORK_PIP_INDEX_URL || '').trim()
-        const pipArgs = ['-m', 'pip', 'install', '-r', requirementsPath, '--verbose']
-        if (pipIndexUrl) {
-          pipArgs.push('-i', pipIndexUrl, '--trusted-host', new URL(pipIndexUrl).hostname)
-        }
+        sendProgress({ step: 'installing', percent: 35, message: '正在检测可用的依赖下载源…' })
+        const pipCandidates = await selectReachablePipIndexes(resolvePipIndexCandidates())
 
-        const runPipInstall = async (attempt: number): Promise<boolean> => {
-          sendProgress({ step: 'installing', percent: 36, message: `正在下载并安装 ${reqLines} 个 Python 依赖包（首次需要几分钟）${attempt > 1 ? '，重试中…' : ''}` })
+        const runPipInstall = async (candidate: PipIndexCandidate): Promise<boolean> => {
+          sendProgress({ step: 'installing', percent: 36, message: `正在从 ${candidate.label} 下载并安装 ${reqLines} 个 Python 依赖包（首次需要几分钟）…` })
           let completedPkgs = 0
           const result = await runCommand(
             venvPython,
-            pipArgs,
+            ['-m', 'pip', 'install', '-r', requirementsPath, '--verbose', ...pipIndexArgs(candidate)],
             {
               cwd: webRoot,
               timeout: 900_000,
@@ -694,16 +699,19 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
           return result.exitCode === 0
         }
 
-        let installed = await runPipInstall(1)
-        if (!installed) {
-          sendProgress({ step: 'installing', percent: 36, message: '首次安装失败，正在重试一次…' })
-          installed = await runPipInstall(2)
-        }
-        if (!installed) {
+        const pipOutcome = await runPipInstallWithFallback({
+          candidates: pipCandidates,
+          attempt: runPipInstall,
+          succeeded: (ok) => ok,
+          onSwitch: () => {
+            sendProgress({ step: 'installing', percent: 36, message: '当前下载源不可用，正在切换备用下载源…' })
+          }
+        })
+        if (!pipOutcome.succeededWith) {
           sendProgress({
             step: 'error',
             percent: 0,
-            message: `安装 Python 依赖失败。若为网络原因，可设置 LEGALWORK_PIP_INDEX_URL 使用镜像源（如 https://pypi.tuna.tsinghua.edu.cn/simple）后重试。`
+            message: `安装 Python 依赖失败：已依次尝试 ${describePipIndexes(pipOutcome.attempted)} 均未成功。请检查网络后重试，或设置 LEGALWORK_PIP_INDEX_URL 指定可用的镜像源。`
           })
           return false
         }
@@ -775,36 +783,9 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     return downloadAndInstallPythonBuildStandalone(sendProgress, 'Windows')
   }
 
-  function getPythonBuildStandaloneUrl(): string | null {
-    const releaseTag = '20240415'
-    const pythonVersion = '3.11.9'
-    const baseUrl = `https://github.com/astral-sh/python-build-standalone/releases/download/${releaseTag}`
-    const mapping: Record<string, Record<string, string>> = {
-      darwin: {
-        arm64: `${baseUrl}/cpython-${pythonVersion}+${releaseTag}-aarch64-apple-darwin-install_only.tar.gz`,
-        x64: `${baseUrl}/cpython-${pythonVersion}+${releaseTag}-x86_64-apple-darwin-install_only.tar.gz`
-      },
-      linux: {
-        arm64: `${baseUrl}/cpython-${pythonVersion}+${releaseTag}-aarch64-unknown-linux-gnu-install_only.tar.gz`,
-        x64: `${baseUrl}/cpython-${pythonVersion}+${releaseTag}-x86_64-unknown-linux-gnu-install_only.tar.gz`
-      },
-      win32: {
-        // python-build-standalone ships only x86_64 Windows builds for this release tag;
-        // arm64 Windows runs the x64 build transparently via emulation.
-        arm64: `${baseUrl}/cpython-${pythonVersion}+${releaseTag}-x86_64-pc-windows-msvc-install_only.tar.gz`,
-        x64: `${baseUrl}/cpython-${pythonVersion}+${releaseTag}-x86_64-pc-windows-msvc-install_only.tar.gz`
-      }
-    }
-    const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
-    const direct = mapping[process.platform]?.[arch]
-    if (!direct) return null
-    // Optional GitHub mirror prefix. python-build-standalone lives on GitHub,
-    // which is intermittently slow/blocked in some regions (common for Chinese
-    // users). A mirror prefix like "https://ghproxy.com/" retries via a faster
-    // path. Set LEGALWORK_PYTHON_MIRROR_PREFIX to opt in.
-    const mirror = (process.env.LEGALWORK_PYTHON_MIRROR_PREFIX || '').trim()
-    return mirror ? `${mirror.replace(/\/+$/, '')}/${direct}` : direct
-  }
+  // Standalone CPython sources (domestic mirror first, GitHub last) live in
+  // ../../../legalwork/src/shared/python-install-sources.ts so the embedded
+  // legalwork server resolves them the same way.
 
   async function downloadFileWithProgress(
     url: string,
@@ -1030,54 +1011,64 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
     const installDir = join(app.getPath('userData'), 'data-compliance', 'python-standalone')
     mkdirSync(tmpDir, { recursive: true })
 
-    const url = getPythonBuildStandaloneUrl()
-    if (!url) {
+    const urls = resolvePythonStandaloneUrls()
+    if (urls.length === 0) {
       throw new Error(`当前平台 ${process.platform} (${process.arch}) 不支持自动安装 Python。`)
     }
 
     const fileName = `python-standalone-${process.platform}-${process.arch}.tar.gz`
     const tarPath = join(tmpDir, fileName)
 
-    // Download if not cached. Retry a few times: the tarball comes from
-    // GitHub, which is intermittently slow/blocked in some regions — a single
-    // transient failure would otherwise abort the whole environment install.
-    if (!existsSync(tarPath)) {
-      sendProgress({ step: 'detecting', percent: 10, message: `未找到 Python，正在下载 ${platformLabel} 版 Python…` })
-      const MAX_DOWNLOAD_ATTEMPTS = 3
+    // Walk every source in turn (domestic mirror first, GitHub last) and retry
+    // each one twice: a single host that is slow or blocked would otherwise
+    // abort the whole environment install.
+    const downloadPythonTarball = async (
+      onProgress: (downloaded: number, total: number) => void
+    ): Promise<void> => {
+      const ATTEMPTS_PER_URL = 2
       let lastDownloadError: unknown = null
-      for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt += 1) {
-        try {
-          await downloadFileWithProgress(url, tarPath, (downloaded, total) => {
-            const percent = Math.round((downloaded / total) * 20) // 10-30%
-            sendProgress({
-              step: 'detecting',
-              percent,
-              message: `正在下载 Python (${Math.round(downloaded / 1024 / 1024)}MB / ${Math.round(total / 1024 / 1024)}MB)…`
-            })
-          })
-          lastDownloadError = null
-          break
-        } catch (error) {
-          lastDownloadError = error
-          // Clean up partial download so the next attempt starts fresh.
+      for (const [urlIndex, url] of urls.entries()) {
+        for (let attempt = 1; attempt <= ATTEMPTS_PER_URL; attempt += 1) {
           try {
-            rmSync(tarPath, { force: true })
-          } catch {
-            // ignore
-          }
-          if (attempt < MAX_DOWNLOAD_ATTEMPTS) {
-            sendProgress({
-              step: 'detecting',
-              percent: 10 + attempt * 2,
-              message: `下载失败，正在重试 (${attempt}/${MAX_DOWNLOAD_ATTEMPTS})…`
-            })
-            await new Promise((resolve) => setTimeout(resolve, 1_000 * attempt))
+            await downloadFileWithProgress(url, tarPath, onProgress)
+            return
+          } catch (error) {
+            lastDownloadError = error
+            // Clean up partial download so the next attempt starts fresh.
+            try {
+              rmSync(tarPath, { force: true })
+            } catch {
+              // ignore
+            }
+            const moreAttemptsHere = attempt < ATTEMPTS_PER_URL
+            const moreSourcesLeft = urlIndex < urls.length - 1
+            if (moreAttemptsHere || moreSourcesLeft) {
+              sendProgress({
+                step: 'detecting',
+                percent: 10 + Math.min(urlIndex * 2 + attempt, 8),
+                message: moreAttemptsHere
+                  ? `下载失败，正在重试 (${attempt}/${ATTEMPTS_PER_URL})…`
+                  : '当前下载源不可用，正在切换备用下载源…'
+              })
+              await new Promise((resolve) => setTimeout(resolve, 1_000 * attempt))
+            }
           }
         }
       }
-      if (lastDownloadError) {
-        throw lastDownloadError
-      }
+      throw lastDownloadError ?? new Error('Python 下载失败')
+    }
+
+    // Download if not cached.
+    if (!existsSync(tarPath)) {
+      sendProgress({ step: 'detecting', percent: 10, message: `未找到 Python，正在下载 ${platformLabel} 版 Python…` })
+      await downloadPythonTarball((downloaded, total) => {
+        const percent = Math.round((downloaded / total) * 20) // 10-30%
+        sendProgress({
+          step: 'detecting',
+          percent,
+          message: `正在下载 Python (${Math.round(downloaded / 1024 / 1024)}MB / ${Math.round(total / 1024 / 1024)}MB)…`
+        })
+      })
     }
 
     // Stop any running data-compliance subprocess that may lock the DLLs
@@ -1106,7 +1097,7 @@ export function registerAppIpcHandlers(options: RegisterAppIpcHandlersOptions): 
             percent: 32,
             message: `Python 压缩包损坏，正在重新下载 (${attempt}/${MAX_EXTRACT_ATTEMPTS})…`
           })
-          await downloadFileWithProgress(url, tarPath, () => {})
+          await downloadPythonTarball(() => {})
           lastExtractError = null
           continue
         } catch (error) {

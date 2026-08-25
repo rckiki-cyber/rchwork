@@ -53,9 +53,7 @@ const DATA_COMPLIANCE_REQUIRED_IMPORTS = [
   'paddle',
   'paddleocr',
   'pypdf',
-  'pandas',
-  'presidio_analyzer',
-  'presidio_anonymizer'
+  'pandas'
 ]
 const RELEASE_REPOS = ['astral-sh/python-build-standalone', 'indygreg/python-build-standalone']
 const SUPPORTED_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64', 'win-ia32', 'linux-x64'])

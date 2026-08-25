@@ -3,10 +3,14 @@ python-docx>=1.1.0,<2.0.0
 pypdf==6.10.0
 Werkzeug==3.0.1
 openai>=1.30.0
-presidio-analyzer==2.2.359
-presidio-anonymizer==2.2.359
-spacy==3.7.5
-thinc==8.2.5
+# presidio-analyzer / presidio-anonymizer / spacy / thinc 曾在此处安装，现已移除：
+# desensitize_engine.py 只在 COMPLIANCEAI_USE_PRESIDIO=1 且能 import en_core_web_sm
+# 时才启用 presidio，而这两个条件在发行版里都不成立（环境变量无处设置，spacy 模型
+# 从未列入依赖），实际脱敏走的是本文件同目录的中文正则规则 + RedactionDetector。
+# 这四个包连同其依赖树（blis/cymem/preshed/srsly/thinc 等）占用上百 MB 下载量，
+# 是"环境安装失败"的主要来源之一，且 presidio 的实体映射面向英文/美国证件，
+# 对中文法律文书无收益。desensitize_engine.py 对 presidio 的 import 有 try/except
+# 兜底，缺包不影响运行。若将来要启用 presidio，需同时补回这些包和对应语言模型。
 pandas>=2.2.0
 openpyxl>=3.1.2
 xlrd>=2.0.1
