@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-25T13:48:09.892Z",
+  "generated_at": "2026-08-25T13:48:51.044Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
@@ -8,11 +8,16 @@
       "published_at": "2026-08-25T13:47:53Z",
       "html_url": "https://github.com/sunyifeisb-art/legalwork/releases/tag/v0.3.30",
       "prerelease": false,
-      "summary": "本次更新包括：修复优化。",
+      "summary": "本次更新包括：数据合规、修复优化。",
       "highlights": [
-        "LegalWork 0.3.30 已上线，安装后即可使用这一版的新能力与体验优化。"
+        "数据合规和附件上传体验优化，处理图片和材料时操作反馈更明确。",
+        "修复了使用中的稳定性问题：修复",
+        "使用体验更新：pip 索引和 standalone CPython 下载源改为国内镜像优先（清华 / 阿里云 pypi、npmmirror），上游（pypi.org、GitHub）仅作兜底",
+        "使用体验更新：安装前先做轻量可达性探测（死源约 400ms 即判定），不再让每个不可用镜像各耗掉一整个 pip 超时；配合尝试次数上限，最坏等待从约 90 分钟降回 30 分钟",
+        "修复了使用中的稳定性问题：修复 pip 参数的两个回归：--trusted-host 只在用户显式配置 LEGALWORK_PIP_INDEX_URL 时使用，镜像与 pypi.org 全程保持 TLS 校验；不再无条件强制 -i，用户自己的 pip.conf / PIP_INDEX_URL 仍生效（内网环境原本能装的不会装不上）"
       ],
       "categories": [
+        "数据合规",
         "修复优化"
       ],
       "assets": [
