@@ -243,6 +243,7 @@ describe('learning model result parsing', () => {
     expect(shouldReportLearningIterationError(new Error('Unexpected non-whitespace character after JSON at position 493'))).toBe(false)
     expect(shouldReportLearningIterationError(new Error('fetch failed'))).toBe(false)
     expect(shouldReportLearningIterationError(new Error('Runtime restarted before this turn completed.'))).toBe(false)
+    expect(shouldReportLearningIterationError(new Error('Learning iteration failed: The operation was aborted due to timeout'))).toBe(false)
     expect(shouldReportLearningIterationError(new Error('Legalwork did not report ready within 12000ms'))).toBe(true)
   })
 

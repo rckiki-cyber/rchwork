@@ -79,7 +79,7 @@ const EMPTY_COUNTS: LearningIterationCounts = {
 
 export function isRecoverableLearningRuntimeError(error: unknown): boolean {
   const message = errorMessage(error)
-  return /(?:fetch failed|Runtime restarted before this turn completed|ECONNRESET|ECONNREFUSED|socket hang up|network (?:error|failure|failed)|connection (?:reset|refused))/i.test(message)
+  return /(?:fetch failed|Runtime restarted before this turn completed|ECONNRESET|ECONNREFUSED|socket hang up|network (?:error|failure|failed)|connection (?:reset|refused)|aborted due to timeout|timed? ?out)/i.test(message)
 }
 
 export function shouldReportLearningIterationError(error: unknown): boolean {

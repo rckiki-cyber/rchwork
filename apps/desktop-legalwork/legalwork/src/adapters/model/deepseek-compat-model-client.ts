@@ -2141,11 +2141,18 @@ function requiresReasoningRoundTrip(
     // even when the model profile says it is a thinking producer.
     return isDeepSeekHost(baseUrl) && isThinkingProducerModel(model)
   }
-  // Thinking-mode round trip is a DeepSeek-specific protocol extension.
-  // OpenAI-compat providers (OpenRouter, llama.cpp, relay stations, etc.)
-  // may reject or misinterpret the `thinking` field, so we only
-  // auto-enable it on the official DeepSeek host. User-selected
-  // reasoningEffort still forces the path (opt-in). See issue #26.
+  // Thinking-mode round trip injects the DeepSeek-only `reasoning_content`
+  // field into message-level assistant records. OpenAI-compat providers
+  // (GLM, OpenRouter, llama.cpp, relay stations, etc.) reject that field
+  // outright (e.g. bigmodel returns 400 "messages 参数非法"), so the round
+  // trip is only ever enabled for a DeepSeek-family model. For others the
+  // reasoning effort is handled at the body layer via reasoning_effort /
+  // thinking (see applyOfficialCompatibleProviderReasoningEffort), and the
+  // message-level `reasoning_content` is never injected. A user-selected
+  // reasoningEffort still forces the path, but only within the DeepSeek
+  // family; the default auto-enable on the official host is preserved.
+  const isDeepSeekFamily = isDeepSeekFamilyModel(model) || isDeepSeekHost(baseUrl)
+  if (!isDeepSeekFamily) return false
   return isThinkingMode(effort) || (isDeepSeekHost(baseUrl) && isThinkingProducerModel(model))
 }
 
@@ -2157,6 +2164,17 @@ function isThinkingProducerModel(model: string | undefined): boolean {
     normalized.includes('deepseek-reasoner') ||
     normalized.endsWith('/deepseek-v4-pro') ||
     normalized.endsWith('/deepseek-v4-flash')
+}
+
+// True when the model belongs to the DeepSeek family, on the official host or
+// behind a relay that passes DeepSeek models through. Message-level
+// `reasoning_content` injection is a DeepSeek-only protocol extension, so it
+// must only ever be applied to these models — never to OpenAI-compat providers
+// (GLM, OpenRouter, llama.cpp, relay stations) that reject the field.
+function isDeepSeekFamilyModel(model: string | undefined): boolean {
+  const normalized = normalizeModelId(model)
+  if (!normalized) return false
+  return normalized.startsWith('deepseek') || normalized.includes('/deepseek')
 }
 
 function reasoningContentOrSpace(text: string): string {

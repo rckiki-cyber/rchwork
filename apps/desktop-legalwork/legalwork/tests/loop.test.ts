@@ -507,6 +507,14 @@ describe('AgentLoop', () => {
     })).toBe(false)
     expect(shouldReportToolError('mcp_node_repl_js', { error: 'native pipe startup failed' })).toBe(false)
     expect(shouldReportToolError('read', { error: "ENOENT: no such file or directory, stat '/missing'" })).toBe(false)
+    expect(shouldReportToolError('ls', { error: 'permission denied while listing: /secret' })).toBe(false)
+    expect(shouldReportToolError('read', { error: "EACCES: permission denied, open '/secret/brief.md'" })).toBe(false)
+    expect(shouldReportToolError('update_goal', {
+      error: 'cannot update goal because this thread does not have a goal'
+    })).toBe(false)
+    expect(shouldReportToolError('create_goal', {
+      error: 'cannot create a new goal because this thread already has a goal'
+    })).toBe(false)
     expect(shouldReportToolError('mcp_yuandian_case_search', {
       error: 'MCP arguments do not match the schema'
     })).toBe(false)

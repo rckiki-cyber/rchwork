@@ -494,7 +494,15 @@ export function shouldReportToolError(toolName: string, output: unknown): boolea
     return false
   }
   if (/^(?:read|ls|find|grep|knowledge_read_file)$/i.test(toolName) && (
-    /\b(?:ENOENT|EISDIR)\b|does not exist|no such file|not a (?:text )?file|only supports text files|no readable text/i.test(message)
+    /\b(?:ENOENT|EISDIR|EPERM|EACCES)\b|does not exist|no such file|not a (?:text )?file|only supports text files|no readable text|permission denied/i.test(message)
+  )) {
+    return false
+  }
+  // create_goal/update_goal return these to the model as recovery hints when
+  // the agent misread the current goal state. They are agent-visible guard
+  // outcomes, not runtime incidents; reporting them is noise.
+  if (/^(?:create_goal|update_goal)$/i.test(toolName) && (
+    /cannot (?:create a new goal because this thread already has a goal|update goal because this thread does not have a goal)/i.test(message)
   )) {
     return false
   }
