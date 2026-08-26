@@ -110,11 +110,8 @@ module.exports = {
       to: 'office-fonts',
       filter: ['NotoSerifSC-Regular.ttf', 'NotoSerifSC-Bold.ttf', 'OFL.txt', 'fonts.json']
     },
-    {
-      from: 'vendor/ocr-runtime',
-      to: 'ocr-runtime',
-      filter: ['**/*']
-    },
+    // ocr-runtime(paddle-models)已改为从腾讯云 COS 的合规环境包下载,不进安装包(瘦身)。
+    // OCR/脱敏首次用时由 data-compliance-runtime 从 COS 拉取,见 ensureComplianceBundle。
     {
       from: '../../ocr_agent.py',
       to: 'ocr_agent.py'
@@ -218,7 +215,8 @@ module.exports = {
   },
   win: {
     icon: './src/asset/img/legalwork.png',
-    target: [{ target: 'nsis', arch: ['x64'] }]
+    // 4 个版本:win x64 + win ia32(32位),mac arm64 + mac x64
+    target: [{ target: 'nsis', arch: ['x64', 'ia32'] }]
   },
   nsis: {
     include: 'build/installer.nsh',

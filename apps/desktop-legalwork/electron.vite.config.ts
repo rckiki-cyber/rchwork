@@ -23,6 +23,15 @@ function copyPdfJsAssetsPlugin() {
 
 export default defineConfig({
   main: {
+    // 打包时把自动更新源注入为 process.env.LEGALWORK_UPDATE_URL,
+    // 否则打包后读不到 env,应用会回落走 GitHub(国内更新到一半断)。
+    // 可从构建环境 LEGALWORK_UPDATE_URL 覆盖;默认指向腾讯云 COS。
+    define: {
+      'process.env.LEGALWORK_UPDATE_URL': JSON.stringify(
+        (process.env.LEGALWORK_UPDATE_URL || '').trim() ||
+          'https://legalwork-1318565101.cos.ap-guangzhou.myqcloud.com/legalwork/channels/{channel}/latest/'
+      )
+    },
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
