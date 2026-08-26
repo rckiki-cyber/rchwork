@@ -444,7 +444,8 @@ function validateBundledDocumentOcrRuntime(context) {
   for (const relativePath of DOCUMENT_OCR_REQUIRED_PATHS) {
     assertExists(join(root, relativePath), relativePath)
   }
-  assertExists(join(root, 'ocr-runtime'), 'ocr-runtime')
+  // ocr-runtime(paddle-models)已改从腾讯云 COS 的合规环境包下载,不再打进安装包(瘦身)。
+  // 运行时由 data-compliance-runtime 首次用时拉取,故此处不再校验其存在。
 }
 
 function validateBundledImaMcpServer(context) {
