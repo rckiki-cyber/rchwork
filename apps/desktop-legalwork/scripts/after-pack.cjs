@@ -40,6 +40,7 @@ const OFFICE_RUNTIME_IMPORTS = ['docx', 'openpyxl', 'pptx', 'lxml', 'PIL', 'repo
 const DATA_COMPLIANCE_RUNTIME_IMPORTS = [
   'flask',
   'fitz',
+  'odf',
   'openai',
   'paddle',
   'paddleocr',

@@ -1,7 +1,7 @@
 name: Build Win-only (slim) and publish to Tencent COS
 
 # 用于"只重新构建 Windows 安装包并覆盖 COS"的通道(不动 mac/linux)。
-# 可复用同一个版本号(如 v0.3.30),把最新的 slim win-x64 覆盖到 COS latest。
+# 只允许从不可变 tag 重建，避免同一版本号指向不同源码和二进制。
 on:
   workflow_dispatch:
     inputs:
@@ -27,6 +27,19 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Verify immutable release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag_name }}"
+          VERSION="${TAG#v}"
+          PACKAGE_VERSION=$(node -p "require('./apps/desktop-legalwork/package.json').version")
+          test "$PACKAGE_VERSION" = "$VERSION"
+          test "$(git rev-parse HEAD)" = "$(git rev-list -n 1 "$TAG")"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

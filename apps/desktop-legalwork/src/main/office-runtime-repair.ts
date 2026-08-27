@@ -7,12 +7,12 @@
  * or incompatible … Reinstall LegalWork" — and reinstalling is the very
  * overwrite-install that produced the state, so the user is stuck in a loop.
  *
- * `installer.nsh` force-kills the process tree before installing, which stops
- * new machines entering that state, but it cannot help a machine that is
- * already broken. This module does: at startup we import-check the bundled
- * runtime and, when only the packages are missing, reinstall them in place
- * (mirror-first, via python-install-sources) instead of sending the user back
- * to the installer.
+ * electron-builder's NSIS process check closes processes whose executable lives
+ * under the install directory before replacing files, which stops new machines
+ * entering that state. It cannot help a machine that is already broken, so this
+ * module import-checks the bundled runtime at startup and, when only packages are
+ * missing, reinstalls them in place (mirror-first, via python-install-sources)
+ * instead of sending the user back to the installer.
  *
  * A stale interpreter cannot be repaired from here — the correct python.exe
  * simply is not on disk — so that case is reported with instructions that

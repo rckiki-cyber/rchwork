@@ -219,7 +219,6 @@ module.exports = {
     target: [{ target: 'nsis', arch: ['x64', 'ia32'] }]
   },
   nsis: {
-    include: 'build/installer.nsh',
     oneClick: false,
     allowToChangeInstallationDirectory: true,
     perMachine: false,
