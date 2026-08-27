@@ -47,7 +47,9 @@ jobs:
           LEGALWORK_ERROR_REPORT_GITHUB_REPO: ${{ secrets.ERROR_REPORT_REPO }}
           LEGALWORK_ERROR_REPORT_GITHUB_TOKEN: ${{ secrets.ERROR_REPORT_TOKEN }}
           LEGALWORK_ERROR_REPORT_GITHUB_LABEL: ${{ secrets.ERROR_REPORT_LABEL }}
-        run: npm run dist -- --win nsis,zip --x64
+        run: |
+          npm run dist:win
+          npx --yes electron-builder@26.8.1 --config electron-builder.config.cjs --publish never --win zip --x64
 
       # 把 Windows 安装包同步到腾讯云 COS(国内直下),覆盖同版本号的 win。
       - name: Publish Windows installer to Tencent COS
