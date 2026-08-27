@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-27T10:51:52.911Z",
+  "generated_at": "2026-08-27T11:01:47.202Z",
   "repository": "sunyifeisb-art/legalwork",
   "releases": [
     {
@@ -32,6 +32,12 @@
           "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.30/legalwork-0.3.30-mac-x64.dmg",
           "download_count": 2,
           "size": 378613728
+        },
+        {
+          "name": "legalwork-0.3.30-win-x64.exe",
+          "browser_download_url": "https://github.com/sunyifeisb-art/legalwork/releases/download/v0.3.30/legalwork-0.3.30-win-x64.exe",
+          "download_count": 0,
+          "size": 508418676
         },
         {
           "name": "legalwork-0.3.30-mac-arm64.zip",
