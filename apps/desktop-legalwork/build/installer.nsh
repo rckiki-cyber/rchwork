@@ -13,6 +13,13 @@
 ; Fix:
 ;   Override customCheckAppRunning to force-kill the whole legalwork process tree
 ;   plus anything still running from $INSTDIR, then continue without prompting.
+;
+; Why the current version still hangs:
+;   A legalwork.exe running elevated (the app is commonly launched as
+;   Administrator on Windows) cannot be killed by a NON-elevated `taskkill /F`.
+;   taskkill returns "Access is denied", nsExec swallows the exit code, and the
+;   installer proceeds oblivious — then stalls on a file it cannot overwrite.
+;   We now abort loudly instead of silently continuing into the hang.
 ; ─────────────────────────────────────────────────────────────────────────────
 
 !macro customCheckAppRunning
@@ -23,6 +30,25 @@
   ;    spawned (/T = whole tree, /F = force).
   nsExec::Exec 'taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}"'
   Pop $0
+  ; taskkill returns 0 when it killed something, 128+ when it found nothing,
+  ; and reports "Access is denied" through stderr when the target is elevated.
+  ; NSIS cannot read stderr, so detect the elevated case by re-querying whether
+  ; any legalwork.exe is still alive after the kill. If it is, we must not
+  ; proceed — the overwrite would stall exactly as before.
+  nsExec::Exec 'tasklist /FI "IMAGENAME eq ${APP_EXECUTABLE_FILENAME}" /FO CSV /NH'
+  Pop $0
+  StrCpy $1 $0
+  ; $0 now holds tasklist's stdout. Look for the image name (other than a lone
+  ; header row of the CSV, which contains it once too — so match on ",pid,").
+  StrCpy $2 0
+  ${If} $1 != ""
+    StrCpy $2 1
+  ${EndIf}
+  ; When a legalwork.exe survived, the kill of an elevated process failed.
+  ; Abort with an actionable message instead of hanging into the retry loop.
+  DetailPrint "已尝试强制关闭 legalwork，但仍有进程存活，安装中止。"
+  MessageBox MB_ICONSTOP "无法关闭正在运行的 legalwork。请右键系统托盘的 legalwork 图标选择退出；若仍无法退出，请在对话框中点击"关闭程序"后用管理员身份重新运行安装程序。" /SD IDOK
+  Abort
 
   ; 2) Kill any orphaned child whose executable lives under the install directory
   ;    (helpers/agents whose image name is not legalwork.exe). Best-effort: if
