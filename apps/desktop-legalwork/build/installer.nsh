@@ -38,17 +38,15 @@
   nsExec::Exec 'tasklist /FI "IMAGENAME eq ${APP_EXECUTABLE_FILENAME}" /FO CSV /NH'
   Pop $0
   StrCpy $1 $0
-  ; $0 now holds tasklist's stdout. Look for the image name (other than a lone
-  ; header row of the CSV, which contains it once too — so match on ",pid,").
-  StrCpy $2 0
-  ${If} $1 != ""
-    StrCpy $2 1
+  ; tasklist 在无匹配进程时输出 "INFO: No tasks are running which match the
+  ; specified criteria."；有存活进程则输出含镜像名的 CSV 行。据此只在确有
+  ; legalwork.exe 存活(说明 taskkill 未能杀干净,多为以管理员运行的实例)时才中止,
+  ; 避免误伤全新安装。
+  ${If} $1 MATCHES "${APP_EXECUTABLE_FILENAME}"
+    DetailPrint "已尝试强制关闭 legalwork，但仍有进程存活，安装中止。"
+    MessageBox MB_ICONSTOP "无法关闭正在运行的 legalwork。请先退出 legalwork 再安装；若它以管理员身份运行，请用管理员身份重新运行安装程序。" /SD IDOK
+    Abort
   ${EndIf}
-  ; When a legalwork.exe survived, the kill of an elevated process failed.
-  ; Abort with an actionable message instead of hanging into the retry loop.
-  DetailPrint "已尝试强制关闭 legalwork，但仍有进程存活，安装中止。"
-  MessageBox MB_ICONSTOP "无法关闭正在运行的 legalwork。请右键系统托盘的 legalwork 图标选择退出；若仍无法退出，请在对话框中点击"关闭程序"后用管理员身份重新运行安装程序。" /SD IDOK
-  Abort
 
   ; 2) Kill any orphaned child whose executable lives under the install directory
   ;    (helpers/agents whose image name is not legalwork.exe). Best-effort: if
