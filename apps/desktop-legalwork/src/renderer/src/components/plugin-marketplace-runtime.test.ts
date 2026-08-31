@@ -174,3 +174,90 @@ describe('buildMcpMarketplaceOverlay', () => {
     })
   })
 })
+
+describe('buildMcpMarketplaceOverlay denoising', () => {
+  const capabilityWithConnected = (connected: number) => ({
+    mcp: {
+      enabled: true,
+      configuredServers: 4,
+      connectedServers: connected,
+      toolCount: 30
+    }
+  })
+
+  it('shows lenient servers (context7/playwright) as connected and excludes their errors', () => {
+    const overlay = buildMcpMarketplaceOverlay({
+      runtimeInfo: { capabilities: capabilityWithConnected(1) } as never,
+      toolDiagnostics: {
+        mcpServers: [
+          { id: 'filesystem', status: 'connected', toolCount: 14 },
+          { id: 'context7', status: 'error', lastError: 'MCP error -32001: Request timed out' },
+          { id: 'playwright', status: 'error', lastError: 'MCP error -32001: Request timed out' }
+        ]
+      } as never
+    })
+
+    expect(overlay).toMatchObject({
+      status: 'connected',
+      configuredServers: 4,
+      connectedServers: 3,
+      errorCount: 0,
+      serverIds: ['filesystem', 'context7', 'playwright']
+    })
+    expect(overlay.lastError).toBeUndefined()
+  })
+
+  it('excludes a github network error from errorCount and lastError', () => {
+    const overlay = buildMcpMarketplaceOverlay({
+      runtimeInfo: { capabilities: capabilityWithConnected(2) } as never,
+      toolDiagnostics: {
+        mcpServers: [
+          { id: 'filesystem', status: 'connected', toolCount: 14 },
+          { id: 'github', status: 'error', lastError: 'MCP error -32001: Request timed out' }
+        ]
+      } as never
+    })
+
+    expect(overlay).toMatchObject({
+      status: 'connected',
+      errorCount: 0,
+      connectedServers: 2
+    })
+    expect(overlay.lastError).toBeUndefined()
+  })
+
+  it('keeps a github auth error as a real error', () => {
+    const overlay = buildMcpMarketplaceOverlay({
+      runtimeInfo: { capabilities: capabilityWithConnected(2) } as never,
+      toolDiagnostics: {
+        mcpServers: [
+          { id: 'github', status: 'error', lastError: 'HTTP 401 unauthorized' }
+        ]
+      } as never
+    })
+
+    expect(overlay).toMatchObject({
+      status: 'error',
+      errorCount: 1,
+      lastError: 'HTTP 401 unauthorized'
+    })
+  })
+
+  it('falls back to the normalized list when capability counts are absent', () => {
+    const overlay = buildMcpMarketplaceOverlay({
+      toolDiagnostics: {
+        mcpServers: [
+          { id: 'filesystem', status: 'connected', toolCount: 14 },
+          { id: 'playwright', status: 'error', lastError: 'timed out' }
+        ]
+      } as never
+    })
+
+    expect(overlay).toMatchObject({
+      status: 'connected',
+      configuredServers: 2,
+      connectedServers: 2,
+      errorCount: 0
+    })
+  })
+})

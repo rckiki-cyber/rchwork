@@ -40,7 +40,8 @@ import {
   runtimeAuthHeaders,
   runtimeRequestViaHost
 } from './runtime/legalwork-adapter'
-import { findAvailableLegalworkPort } from './legalwork-process'
+import { findAvailableLegalworkPort, resolveBundledOfficePythonPath } from './legalwork-process'
+import { ensureOfficeRuntimeHealthy } from './office-runtime-repair'
 import { configureLogger, logError, logWarn, pruneOnStartup, setLogErrorReporter } from './logger'
 import {
   configureErrorReporting,
@@ -81,7 +82,13 @@ import {
 import { webhookUrl } from './claw-runtime-helpers'
 import { isLegalworkHealthResponseBody } from './legalwork-health'
 import { FingerprintedSingleFlight } from './runtime/fingerprinted-single-flight'
+import { recoverUnhealthyOwnedRuntime } from './runtime/unhealthy-owned-runtime'
+import { isRuntimeProbePath } from './runtime/runtime-probe-path'
 import { continueAppQuitAfterCleanup } from './continue-app-quit'
+import {
+  ChildProcessGoneReportPolicy,
+  shouldReportRenderProcessGone
+} from './process-gone-policy'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const HIDDEN_START_ARG = '--hidden'
@@ -636,12 +643,21 @@ async function ensureRuntimeOnce(settings: AppSettingsV1): Promise<void> {
 async function ensureLegalworkRuntime(settings: AppSettingsV1): Promise<void> {
   const runtime = getLegalworkRuntimeSettings(settings)
   const hasModelAuth = hasConfiguredModelAuth(settings)
+  const adapter = legalworkRuntimeAdapter
 
   const healthy = await waitForLegalworkHealth(settings, RUNTIME_EXISTING_HEALTH_FAST_MS)
   if (healthy) {
     const threadApi = await probeThreadApi(settings)
     if (threadApi.ok) return
-    throw runtimeJsonError(threadApi.error, threadApi.message)
+    // An externally managed runtime must not be terminated by this app. An
+    // owned child, however, is unhealthy if its core API fails even while the
+    // shallow /health endpoint still responds, so let it enter recovery below.
+    if (!adapter.isChildRunning()) {
+      throw runtimeJsonError(threadApi.error, threadApi.message)
+    }
+    logWarn('runtime-ensure', 'Owned Legalwork child passed health but failed the thread API probe.', {
+      message: threadApi.message
+    })
   }
 
   if (!hasModelAuth) {
@@ -657,7 +673,17 @@ async function ensureLegalworkRuntime(settings: AppSettingsV1): Promise<void> {
     )
   }
 
-  const adapter = legalworkRuntimeAdapter
+  const ownedRecovery = await recoverUnhealthyOwnedRuntime(adapter, async () => {
+    const lateHealthy = await waitForLegalworkHealth(settings, RUNTIME_PORT_CONFLICT_HEALTH_RECHECK_MS)
+    if (!lateHealthy) return false
+    return (await probeThreadApi(settings)).ok
+  })
+  if (ownedRecovery === 'became-healthy') return
+  if (ownedRecovery === 'stopped') {
+    logWarn('runtime-ensure', 'Stopped an owned Legalwork child after its health probe failed.', {
+      port: runtime.port
+    })
+  }
   const reclaim = await adapter.reclaimPort(runtime.port)
   if (!reclaim.ok) {
     const lateHealthy = await waitForLegalworkHealth(settings, RUNTIME_PORT_CONFLICT_HEALTH_RECHECK_MS)
@@ -932,25 +958,6 @@ async function restartManagedRuntimeForMcpConfigChange(settings: AppSettingsV1):
   }
 }
 
-/**
- * 健康/探测类端点在 runtime 启动竞态（服务尚未就绪或正在重启）期间失败是预期行为，
- * 用路径白名单 + 仅 GET 判定，命中时只记录 warn 日志、不触发错误上报，避免刷屏；
- * 业务写入（POST）失败仍正常上报。
- */
-function isRuntimeProbePath(pathAndQuery: string): boolean {
-  const pathname = pathAndQuery.split('?')[0] ?? ''
-  return (
-    pathname === '/health' ||
-    pathname === '/v1/runtime/info' ||
-    pathname === '/v1/runtime/tools' ||
-    pathname === '/v1/threads' ||
-    pathname.startsWith('/v1/threads/') ||
-    pathname === '/v1/memory' ||
-    pathname === '/v1/usage' ||
-    pathname.startsWith('/data-compliance/')
-  )
-}
-
 async function runtimeRequest(
   settings: AppSettingsV1,
   pathAndQuery: string,
@@ -974,6 +981,7 @@ async function runtimeRequest(
 }
 
 function registerGlobalErrorHandlers(): void {
+  const childProcessGonePolicy = new ChildProcessGoneReportPolicy()
   const report = (input: { category: string; message: string; stack?: string }): void => {
     // logError writes the local log AND (via the injected reporter) triggers
     // the silent error report. Never let this path itself throw.
@@ -1006,6 +1014,10 @@ function registerGlobalErrorHandlers(): void {
   })
 
   app.on('render-process-gone', (_event, _webContents, details) => {
+    if (!shouldReportRenderProcessGone(details, isQuitting)) {
+      logWarn('render-process-gone', 'Renderer process exited without an actionable crash.', details)
+      return
+    }
     report({
       category: 'render-process-gone',
       message: `${details.reason} (exit code ${details.exitCode})`
@@ -1013,6 +1025,10 @@ function registerGlobalErrorHandlers(): void {
   })
 
   app.on('child-process-gone', (_event, details) => {
+    if (!childProcessGonePolicy.shouldReport(details, isQuitting)) {
+      logWarn('child-process-gone', 'Child process exited without a persistent actionable crash.', details)
+      return
+    }
     report({
       category: 'child-process-gone',
       message: `${details.type} ${details.reason} (${details.exitCode ?? ''})`
@@ -1091,6 +1107,25 @@ app.whenReady().then(async () => {
   setLogErrorReporter((input) => reportError(input))
   registerGlobalErrorHandlers()
   traceStartup('logger configured')
+
+  // Self-check the bundled Office Python and repair it in place when only its
+  // packages are missing. A Windows upgrade over a running LegalWork cannot
+  // replace files that are in use, and the resulting half-installed runtime
+  // used to tell the user to reinstall — which is the same overwrite-install
+  // that broke it. Deliberately not awaited: startup must not wait on pip.
+  if (app.isPackaged) {
+    void ensureOfficeRuntimeHealthy({
+      python: resolveBundledOfficePythonPath({
+        appPath: app.getAppPath(),
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath
+      }),
+      resourcesPath: process.resourcesPath || '',
+      log: (message) => console.info(message)
+    }).catch((error) => {
+      console.error('[office-runtime] self-check failed:', error)
+    })
+  }
   scheduleRuntime = createScheduleRuntime({ store, runtimeRequest, logError, powerSaveBlocker })
   scheduleRuntime.sync(initial)
   clawRuntime = createClawRuntime({

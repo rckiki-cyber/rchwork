@@ -63,7 +63,7 @@ export function createEditLocalTool(_options: EditLocalToolOptions = {}): LocalT
   const writeFileOp = _options.operations?.writeFile ?? defaultEditLocalToolOperations.writeFile!
   return LocalToolHost.defineTool({
     name: 'edit',
-    description: 'Edit a local filesystem file using exact text replacement. Relative paths resolve against the current workspace; absolute paths may point anywhere on the computer. Supports multiple disjoint edits in one call.',
+    description: 'Edit a local filesystem file using exact text replacement. You MUST first read this exact path in the current turn and copy every oldText value exactly from that read output. If the file changed or the read was from an earlier turn, read it again before editing. Relative paths resolve against the current workspace; absolute paths may point anywhere on the computer. Supports multiple disjoint edits in one call.',
     inputSchema: {
       type: 'object',
       properties: {

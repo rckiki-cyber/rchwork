@@ -13,7 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Iterable
 
 RUNTIME_VERSION = "v5"
@@ -68,7 +68,19 @@ def marker_path(venv_root: Path) -> Path:
     return venv_root / f".legalwork-document-skill-{RUNTIME_VERSION}"
 
 
-def bundled_office_python_env(command: str) -> dict:
+def bundled_office_python_home(command: str, platform_name: str | None = None) -> str:
+    """Return the relocatable runtime root for a bundled interpreter.
+
+    The packaged layouts differ intentionally: Windows places python.exe at
+    ``python/python.exe`` while Unix places it at ``python/bin/python3``.
+    Walking two parents works only for the Unix layout.
+    """
+    if (platform_name or os.name) == "nt":
+        return str(PureWindowsPath(command).parent)
+    return str(Path(command).resolve().parent.parent)
+
+
+def bundled_office_python_env(command: str, platform_name: str | None = None) -> dict:
     """python-build-standalone hard-codes sys.prefix at build time and is not
     relocatable by default: once the tree is packaged under office-runtime/,
     the python still looks for its stdlib/site-packages under the build-time
@@ -76,9 +88,17 @@ def bundled_office_python_env(command: str) -> dict:
     fails on end-user machines and reports "incomplete or incompatible".
     """
     env = dict(os.environ)
-    home = str(Path(command).resolve().parent.parent)
-    env["PYTHONHOME"] = home
+    env["PYTHONHOME"] = bundled_office_python_home(command, platform_name)
     return env
+
+
+def is_bundled_office_python(command: str) -> bool:
+    explicit = os.environ.get("LEGALWORK_OFFICE_PYTHON", "").strip()
+    candidates = [office_runtime_python(resources_root() / "office-runtime")]
+    if explicit:
+        candidates.append(Path(explicit).expanduser())
+    normalized = os.path.normcase(os.path.realpath(command))
+    return any(normalized == os.path.normcase(os.path.realpath(str(candidate))) for candidate in candidates)
 
 
 def python_version_ok(command: str, env: dict | None = None) -> bool:
@@ -129,10 +149,19 @@ def bundled_office_python() -> str | None:
         env = bundled_office_python_env(command)
         if python_version_ok(command, env) and imports_ok(command, env):
             return command
+        # Do not tell the user to "reinstall" and stop there: on Windows this
+        # state is *caused* by installing over a running LegalWork, so plain
+        # reinstalling reproduces it. LegalWork repairs this in place at the
+        # next startup; if that cannot help (stale python.exe), the install
+        # must happen with the app fully closed.
         emit({
             "status": "error",
             "stage": "runtime",
-            "error": f"Bundled Office Python is incomplete or incompatible: {path}. Reinstall LegalWork.",
+            "error": (
+                f"Bundled Office Python is incomplete or incompatible: {path}. "
+                "请完全退出 LegalWork（含系统托盘图标）后重新启动，程序会自动尝试就地修复；"
+                "若仍失败，请在完全退出的状态下重新安装。"
+            ),
             "office_fallback_allowed": False,
         }, 1)
 
@@ -283,6 +312,7 @@ def worker_path(kind: str) -> Path:
 def dispatch(kind: str, worker_args: list[str]) -> None:
     python = choose_bootstrap_python() if kind == "legacy" else ensure_runtime()
     worker = worker_path(kind)
+    env = bundled_office_python_env(python) if is_bundled_office_python(python) else None
     try:
         completed = subprocess.run(
             [python, str(worker), *worker_args],
@@ -291,6 +321,7 @@ def dispatch(kind: str, worker_args: list[str]) -> None:
             text=True,
             timeout=300,
             check=False,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         emit({

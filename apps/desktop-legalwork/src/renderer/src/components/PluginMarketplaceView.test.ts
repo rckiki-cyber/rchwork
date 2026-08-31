@@ -25,6 +25,7 @@ const mcpLabels = {
   connected: 'Connected',
   connecting: 'Connecting',
   error: 'Error',
+  network: 'Network required',
   disabled: 'Disabled',
   statusSummary: (status: string) => `Status: ${status}`,
   toolsSummary: (count: number) => `${count} tools`,
@@ -539,6 +540,89 @@ describe('PluginMarketplaceView MCP config helpers', () => {
         id: 'playwright',
         sourceLabel: '已连接',
         description: '状态：已连接 · stdio · /opt/homebrew/bin/npx · 24 个工具'
+      })
+    ])
+  })
+
+  it('shows lenient servers (context7/playwright) as connected even when the runtime reports errors', () => {
+    const items = mcpMarketplaceItemsFromConfigAndDiagnostics(
+      JSON.stringify({
+        servers: {
+          context7: { transport: 'stdio', command: '/opt/homebrew/bin/npx' },
+          playwright: { transport: 'stdio', command: '/opt/homebrew/bin/npx' }
+        }
+      }),
+      {
+        mcpServers: [
+          { id: 'context7', status: 'error', lastError: 'MCP error -32001: Request timed out' },
+          { id: 'playwright', status: 'error', lastError: 'MCP error -32001: Request timed out' }
+        ]
+      },
+      mcpLabels
+    )
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: 'context7',
+        sourceLabel: 'Connected',
+        statusTone: 'success',
+        description: expect.not.stringContaining('timed out')
+      }),
+      expect.objectContaining({
+        id: 'playwright',
+        sourceLabel: 'Connected',
+        statusTone: 'success',
+        description: expect.not.stringContaining('timed out')
+      })
+    ])
+  })
+
+  it('shows a github network failure as "network required" instead of a red error', () => {
+    const items = mcpMarketplaceItemsFromConfigAndDiagnostics(
+      JSON.stringify({
+        servers: {
+          github: { transport: 'stdio', command: 'github-mcp' }
+        }
+      }),
+      {
+        mcpServers: [
+          { id: 'github', status: 'error', lastError: 'MCP error -32001: Request timed out' }
+        ]
+      },
+      mcpLabels
+    )
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: 'github',
+        sourceLabel: 'Network required',
+        statusTone: 'warning',
+        description: expect.not.stringContaining('timed out')
+      })
+    ])
+  })
+
+  it('keeps a github auth error as a red error', () => {
+    const items = mcpMarketplaceItemsFromConfigAndDiagnostics(
+      JSON.stringify({
+        servers: {
+          github: { transport: 'stdio', command: 'github-mcp' }
+        }
+      }),
+      {
+        mcpServers: [
+          { id: 'github', status: 'error', lastError: 'HTTP 401 unauthorized' }
+        ]
+      },
+      mcpLabels
+    )
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: 'github',
+        sourceLabel: 'Error',
+        statusTone: 'error',
+        description: expect.stringContaining('401')
       })
     ])
   })

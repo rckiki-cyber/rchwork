@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  documentFactualFidelityInstruction,
   documentTaskContract,
   requiredTopicTerms,
   successfullyVerifiedDraft,
@@ -18,6 +19,18 @@ describe('document task contract', () => {
     '分析 2-3 个典型案例，文件名含「数字行政法体系建构研究报告」。',
     '禁止省略号和占位符。'
   ].join('\n')
+
+  it('warns document drafting to preserve the boundary between known and missing facts', () => {
+    const instruction = documentFactualFidelityInstruction(
+      '以下事实均为虚构，仅用于测试：甲公司欠付10万元。请生成 Word 法律备忘录。'
+    )
+
+    expect(instruction).toContain('只能把用户明确提供')
+    expect(instruction).toContain('不得自行补写')
+    expect(instruction).toContain('验收')
+    expect(instruction).toContain('质量异议')
+    expect(instruction).toContain('待确认')
+  })
 
   it('extracts the explicit requirements from a multi-stage prompt', () => {
     expect(documentTaskContract(prompt)).toEqual({
