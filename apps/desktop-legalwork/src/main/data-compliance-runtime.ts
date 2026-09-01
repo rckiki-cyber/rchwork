@@ -2,6 +2,7 @@ import { spawn, spawnSync, execSync, type ChildProcess } from 'node:child_proces
 import { existsSync, createWriteStream, rmSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, delimiter } from 'node:path'
+import { tmpdir } from 'node:os'
 import { app } from 'electron'
 import type { AppSettingsV1 } from '../shared/app-settings'
 import { resolveLegalworkRuntimeSettings } from '../shared/app-settings-provider'
@@ -61,10 +62,9 @@ const REQUIRED_PYTHON_IMPORTS = [
   'docx',
   'pypdf',
   'openai',
-  'presidio_analyzer',
-  'presidio_anonymizer',
-  'spacy',
-  'thinc',
+  // presidio_analyzer / presidio_anonymizer / spacy / thinc 已从 requirements.txt 移除:
+  // 发行版从未启用 presidio 路径,脱敏实际走中文正则 + RedactionDetector。
+  // 若这里仍校验它们,会导致 pip 装完仍判"缺包"报错(issue #1086),故一并移除。
   'pandas',
   'openpyxl',
   'xlrd',
@@ -129,6 +129,40 @@ function runtimeVenvRoot(): string {
 function pythonExecutable(venvRoot: string = runtimeVenvRoot()): string {
   if (process.platform === 'win32') return join(venvRoot, 'Scripts', 'python.exe')
   return join(venvRoot, 'bin', 'python')
+}
+
+// ── 合规环境包(COS 下载,方式B)──
+// 不再依赖系统 Python + PyPI 联网;首次用时从腾讯云 COS 下载解压,直接跑脱敏。
+const COMPLIANCE_BUNDLE_VERSION =
+  process.env.LEGALWORK_COMPLIANCE_BUNDLE_VERSION || '0.3.30'
+const COMPLIANCE_BUNDLE_COS_BASE =
+  process.env.LEGALWORK_COMPLIANCE_COS_BASE ||
+  'https://legalwork-1318565101.cos.ap-guangzhou.myqcloud.com'
+const COMPLIANCE_BUNDLE_MARKER = '.legalwork-compliance-ready'
+
+function complianceBundleRoot(): string {
+  return join(app.getPath('userData'), 'data-compliance', `runtime-v${COMPLIANCE_BUNDLE_VERSION}`)
+}
+
+function complianceBundlePython(bundleRoot: string = complianceBundleRoot()): string {
+  if (process.platform === 'win32') return join(bundleRoot, 'python', 'python.exe')
+  return join(bundleRoot, 'python', 'bin', 'python3')
+}
+
+function complianceBundleModelRoot(bundleRoot: string = complianceBundleRoot()): string {
+  return join(bundleRoot, 'paddle-models')
+}
+
+function complianceBundleReady(bundleRoot: string = complianceBundleRoot()): boolean {
+  return (
+    existsSync(join(bundleRoot, COMPLIANCE_BUNDLE_MARKER)) &&
+    existsSync(complianceBundlePython(bundleRoot))
+  )
+}
+
+function complianceBundleSitePackages(bundleRoot: string = complianceBundleRoot()): string {
+  if (process.platform === 'win32') return join(bundleRoot, 'python', 'Lib', 'site-packages')
+  return join(bundleRoot, 'python', 'lib', 'python3.11', 'site-packages')
 }
 
 function canRunSupportedPython(command: string, env: NodeJS.ProcessEnv = buildOcrRuntimeEnvironment()): boolean {
@@ -612,6 +646,76 @@ export class DataComplianceRuntime {
   }
 
   private async ensurePythonEnvironment(): Promise<void> {
+    // 方式B:优先用从腾讯云 COS 下载的合规环境包(无需系统 Python / PyPI / 外网)。
+    if (complianceBundleReady()) {
+      await this.ensureOcrRuntime(
+        complianceBundlePython(),
+        join(this.logDir, 'data-compliance-runtime.log'),
+        this.buildComplianceBundleEnv()
+      )
+      return
+    }
+    try {
+      await this.ensureComplianceBundle()
+      await this.ensureOcrRuntime(
+        complianceBundlePython(),
+        join(this.logDir, 'data-compliance-runtime.log'),
+        this.buildComplianceBundleEnv()
+      )
+      return
+    } catch (error) {
+      console.warn('[data-compliance-runtime] COS 合规环境包不可用,回落系统 Python 路径:', error)
+      // 回落:老逻辑(系统 Python + venv + pip)。若 COS/外网均不可达,脱敏走正则兜底。
+      await this.ensurePythonEnvironmentLegacy()
+    }
+  }
+
+  // 从腾讯云 COS 下载并解压合规环境包(内置 python + 依赖 + paddle-models)。方式B。
+  private async ensureComplianceBundle(): Promise<void> {
+    if (complianceBundleReady()) return
+    const bundleRoot = complianceBundleRoot()
+    const marker = join(bundleRoot, COMPLIANCE_BUNDLE_MARKER)
+    const machine = process.env.LEGALWORK_COMPLIANCE_MACHINE || 'win-x64'
+    const url = `${COMPLIANCE_BUNDLE_COS_BASE}/legalwork/compliance/env/${machine}/legalwork-compliance-env-${machine}-v${COMPLIANCE_BUNDLE_VERSION}.tar.gz`
+    const logPath = join(this.logDir, 'data-compliance-runtime.log')
+    const tarPath = join(tmpdir(), `legalwork-compliance-${machine}-v${COMPLIANCE_BUNDLE_VERSION}.tar.gz`)
+    this.installing = true
+    try {
+      await mkdir(bundleRoot, { recursive: true })
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`下载合规环境包失败: HTTP ${res.status}`)
+      await writeFile(tarPath, Buffer.from(await res.arrayBuffer()))
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn('tar', ['-xzf', tarPath, '-C', bundleRoot], { shell: false })
+        child.on('error', reject)
+        child.on('exit', (code) =>
+          code === 0 ? resolve() : reject(new Error(`环境包解压失败(exit ${code})`))
+        )
+      })
+      await writeFile(marker, new Date().toISOString(), 'utf-8')
+    } catch (error) {
+      await writeFile(
+        logPath,
+        `[${new Date().toISOString()}] 合规环境包下载/解压失败: ${error instanceof Error ? error.message : String(error)}\n`,
+        { flag: 'a' }
+      ).catch(() => {})
+      throw error
+    } finally {
+      this.installing = false
+    }
+  }
+
+  private buildComplianceBundleEnv(bundleRoot: string = complianceBundleRoot()): NodeJS.ProcessEnv {
+    return {
+      ...buildOcrRuntimeEnvironment([this.webRoot, this.projectRoot]),
+      PYTHONHOME: join(bundleRoot, 'python'),
+      PYTHONPATH: complianceBundleSitePackages(bundleRoot),
+      LEGALWORK_PADDLEOCR_MODEL_ROOT: complianceBundleModelRoot(bundleRoot)
+    }
+  }
+
+  // 旧流程:系统 Python + venv + pip(PyPI)。仅在 COS 环境包不可用时回落。
+  private async ensurePythonEnvironmentLegacy(): Promise<void> {
     const venvRoot = runtimeVenvRoot()
     const python = pythonExecutable(venvRoot)
     const marker = join(venvRoot, DEPENDENCY_MARKER)
@@ -716,11 +820,15 @@ export class DataComplianceRuntime {
       }
     }
 
-    const venvPython = pythonExecutable()
+    const usesBundle = complianceBundleReady()
+    const venvPython = usesBundle ? complianceBundlePython() : pythonExecutable()
+    const baseEnv = usesBundle
+      ? this.buildComplianceBundleEnv()
+      : buildOcrRuntimeEnvironment([this.webRoot, this.projectRoot])
     const child = spawn(venvPython, ['server_entry.py', '--port', String(PORT)], {
       cwd: this.webRoot,
       env: {
-        ...buildOcrRuntimeEnvironment([this.webRoot, this.projectRoot]),
+        ...baseEnv,
         ...agentEnv,
         COMPLIANCEAI_PYTHON: venvPython,
         COMPLIANCEAI_LOG_PATH: logPath

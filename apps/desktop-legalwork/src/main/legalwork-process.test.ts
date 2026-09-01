@@ -37,7 +37,8 @@ function createSettings(binaryPath: string, port = 8899): AppSettingsV1 {
       legalwork: {
         ...defaultLegalworkRuntimeSettings(port),
         binaryPath,
-        autoStart: true
+        autoStart: true,
+        dataDir: join(tempRoot ?? tmpdir(), 'runtime-data')
       }
     },
     workspaceRoot: '/tmp/workspace',
@@ -98,6 +99,12 @@ afterEach(async () => {
 })
 
 describe('startLegalworkChild', () => {
+  it('keeps child runtime data inside the per-test temporary directory', () => {
+    const runtime = createSettings('/tmp/fake-legalwork-child.js').agents.legalwork
+    expect(tempRoot).toBeTruthy()
+    expect(runtime.dataDir).toBe(join(tempRoot!, 'runtime-data'))
+  })
+
   it('waits for the explicit Legalwork ready marker before resolving', async () => {
     const port = await findFreeTcpPort()
     const script = writeScript(

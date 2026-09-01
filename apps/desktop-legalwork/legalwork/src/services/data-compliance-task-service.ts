@@ -14,6 +14,14 @@ import {
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, normalize, relative as pathRelative, resolve } from 'node:path'
 import { Readable } from 'node:stream'
+import {
+  describePipIndexes,
+  pipIndexArgs,
+  resolvePipIndexCandidates,
+  runPipInstallWithFallback,
+  selectReachablePipIndexes,
+  type PipIndexCandidate
+} from '../shared/python-install-sources.js'
 
 const DATA_COMPLIANCE_VENV_DIR_NAME = 'python-venv'
 const DATA_COMPLIANCE_CORE_DEPENDENCY_MARKER = '.legalwork-core-deps-v2-installed'
@@ -143,9 +151,7 @@ const CORE_REQUIRED_PYTHON_PACKAGES = [
   'pptx',
   'pypdf',
   'pandas',
-  'PIL',
-  'presidio_analyzer',
-  'presidio_anonymizer'
+  'PIL'
 ]
 
 const OPTIONAL_OCR_PYTHON_PACKAGES = [
@@ -430,27 +436,32 @@ export class DataComplianceTaskService {
         return
       }
 
-      // PaddlePaddle/spacy are large; download intermittently fails (esp. in
-      // regions with slow PyPI access). Retry once, and honor an optional mirror
-      // index (LEGALWORK_PIP_INDEX_URL) to sidestep network issues.
-      const pipIndexUrl = (process.env.LEGALWORK_PIP_INDEX_URL || '').trim()
-      const pipArgs = ['-m', 'pip', 'install', '-r', requirementsPath]
-      if (pipIndexUrl) {
-        pipArgs.push('-i', pipIndexUrl, '--trusted-host', new URL(pipIndexUrl).hostname)
-      }
-      const pipInstall = async (): Promise<{ exitCode: number | null; stderr: string }> => {
-        const result = await this.runCommand(venvPython, pipArgs, { cwd: this.webRoot })
+      // PaddlePaddle/PaddleOCR are large and a slow or blocked index is the
+      // most common reason this fails. Unreachable indexes are probed out
+      // first; the retry policy itself lives in python-install-sources so the
+      // desktop installer and this service cannot drift apart.
+      const pipCandidates = await selectReachablePipIndexes(resolvePipIndexCandidates())
+      const pipInstall = async (
+        candidate: PipIndexCandidate
+      ): Promise<{ exitCode: number | null; stderr: string }> => {
+        const result = await this.runCommand(
+          venvPython,
+          ['-m', 'pip', 'install', '-r', requirementsPath, ...pipIndexArgs(candidate)],
+          { cwd: this.webRoot }
+        )
         return { exitCode: result.exitCode, stderr: result.stderr || result.stdout || '' }
       }
 
-      let pipResult = await pipInstall()
-      if (pipResult.exitCode !== 0) {
-        pipResult = await pipInstall()
-      }
-      if (pipResult.exitCode !== 0) {
+      const pipOutcome = await runPipInstallWithFallback({
+        candidates: pipCandidates,
+        attempt: pipInstall,
+        succeeded: (result) => result.exitCode === 0
+      })
+      if (!pipOutcome.succeededWith) {
         throw new Error(
-          `安装依赖失败: ${pipResult.stderr}. ` +
-          '若为网络原因，可设置 LEGALWORK_PIP_INDEX_URL 使用镜像源（如 https://pypi.tuna.tsinghua.edu.cn/simple）后重试。'
+          `安装依赖失败: ${pipOutcome.result?.stderr ?? ''}. ` +
+          `已依次尝试 ${describePipIndexes(pipOutcome.attempted)} 均未成功，请检查网络后重试，` +
+          '或设置 LEGALWORK_PIP_INDEX_URL 指定可用的镜像源。'
         )
       }
 

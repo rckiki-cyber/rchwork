@@ -504,6 +504,19 @@ describe('Legalwork built-in tools', () => {
     expect(String(polled.output)).toContain('done')
   })
 
+  it('tells the agent how to recover when a bash session expired', async () => {
+    const output = await executeTool(host, workspace, 'bash', {
+      action: 'poll',
+      session_id: 'missing-session'
+    })
+
+    expect(output).toMatchObject({
+      code: 'bash_session_not_found',
+      session_id: 'missing-session'
+    })
+    expect(String(output.error)).toContain('rerun the original command')
+  })
+
   it('includes the active shell in bash partial updates', async () => {
     const updates: TurnItem[] = []
     const result = await host.execute(
