@@ -3014,8 +3014,8 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
 
         // 腾讯云 COS/CDN 直链下载入口（国内可达）。发布脚本把安装包同步到
         // COS，URL 形如 <base>/legalwork/channels/<channel>/latest/<文件名>。
-        const COS_BASE = 'https://download.example.com'; // TODO: 改为你的已备案 CDN 域名
-        const COS_CHANNEL = 'frontier'; // 发布默认 channel（与 release.local.env 的 RELEASE_CHANNEL 一致）
+        const COS_BASE = 'https://legalwork-1318565101.cos.ap-guangzhou.myqcloud.com'; // 腾讯云 COS 默认域名(无需备案、国内直下);如需 CDN 加速,换成已备案的加速域名即可
+        const COS_CHANNEL = 'stable'; // 发布默认 channel(与应用 DEFAULT_GUI_UPDATE_CHANNEL=stable、CI 构建的 LEGALWORK_UPDATE_CHANNEL=stable 一致)
         function buildCosUrl(assetName) {
             return assetName ? COS_BASE + '/legalwork/channels/' + COS_CHANNEL + '/latest/' + assetName : '';
         }
@@ -3549,8 +3549,16 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
             text.textContent = `下载 ${tag || '最新版'} · ${profile.label}`;
             const dlCount = getTotalDownloadCount();
             const dlText = dlCount > 0 ? `<span class="dl-count">累计下载 ${dlCount.toLocaleString()}</span>` : '';
-            meta.innerHTML = `GitHub Release ${dlText} · <span style="color:var(--text-muted)">${asset.name}</span>`;
-            btn.href = asset.browser_download_url;
+            // 优先走腾讯云 COS 国内直连（无需梯子）；未配置 COS 时才回落 GitHub。
+            const cosUrl = buildCosUrl(asset.name);
+            const cosReady = cosUrl && !cosUrl.startsWith('https://download.example.com');
+            if (cosReady) {
+                meta.innerHTML = `腾讯云 CDN 国内直连 ${dlText} · <span style="color:var(--text-muted)">${asset.name}</span>`;
+                btn.href = cosUrl;
+            } else {
+                meta.innerHTML = `GitHub Release ${dlText} · <span style="color:var(--text-muted)">${asset.name}</span>`;
+                btn.href = asset.browser_download_url;
+            }
             btn.removeAttribute('download');
             btn.removeAttribute('target');
 
@@ -3572,11 +3580,10 @@ legalwork serve --data-dir ~/.legalwork</code></pre>
             }
             if (mirrorHint) mirrorHint.style.display = 'block';
 
-            // 腾讯云 CDN 直链下载（国内可达，发布脚本会把安装包同步到 COS）。
+            // 腾讯云 COS 备用入口（与主下载同源）：主下载已优先 COS，这里仅在 COS 可用时展示。
             const cosBtn = document.getElementById('cosDownloadBtn');
             const cosHint = document.getElementById('cosHint');
-            const cosUrl = buildCosUrl(asset.name);
-            if (cosBtn && cosUrl && !cosUrl.startsWith('https://download.example.com')) {
+            if (cosBtn && cosReady) {
                 cosBtn.href = cosUrl;
                 cosBtn.target = '_blank';
                 cosBtn.style.display = 'inline-flex';

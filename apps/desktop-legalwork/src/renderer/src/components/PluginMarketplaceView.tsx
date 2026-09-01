@@ -55,6 +55,7 @@ import type {
   CoreRuntimeInfoJson,
   CoreRuntimeToolDiagnosticsJson
 } from '../agent/legalwork-contract'
+import { normalizeMcpServerDiagnostic } from '../mcp-server-policy'
 import { useChatStore } from '../store/chat-store'
 import { NoticeView, type MarketplaceNotice } from './PluginMarketplaceParts'
 import { AstryxSegmentedControl } from './astryx/AstryxSegmentedControl'
@@ -226,6 +227,7 @@ type McpMarketplaceLabels = {
   connected: string
   connecting: string
   error: string
+  network: string
   disabled: string
   statusSummary: (status: string) => string
   toolsSummary: (count: number) => string
@@ -935,10 +937,22 @@ export function mcpMarketplaceItemsFromConfigAndDiagnostics(
     !isPkulawMcpEndpointId(entry.id) && !isYuandianMcpEndpointId(entry.id) && !isWkMcpEndpointId(entry.id) && !isQccMcpEndpointId(entry.id) && !isTycMcpEndpointId(entry.id)
   )
   const items: MarketplaceItem[] = normalEntries.map(({ id, config, diagnostic }) => {
-    const status = mcpServerStatus(diagnostic, config)
-    const details = { ...(config ?? {}), ...(diagnostic ?? {}) }
+    const rawStatus = mcpServerStatus(diagnostic, config)
+    const policy = normalizeMcpServerDiagnostic(id, {
+      status: rawStatus,
+      lastError: typeof diagnostic?.lastError === 'string' ? diagnostic.lastError : '',
+      enabled: !(config?.enabled === false || config?.disabled === true)
+    })
+    const status = policy.requiresNetwork ? 'network' : policy.status
+    const details: Record<string, unknown> = {
+      ...(config ?? {}),
+      ...(diagnostic ?? {}),
+      lastError: policy.lastError,
+      ...(policy.requiresNetwork ? { status: '' } : {})
+    }
     const sourceLabel =
       status === 'connected' || status === 'available' ? labels.connected :
+      status === 'network' ? labels.network :
       status === 'error' || status === 'unavailable' ? labels.error :
       status === 'disabled' ? labels.disabled :
       labels.configured
@@ -949,7 +963,7 @@ export function mcpMarketplaceItemsFromConfigAndDiagnostics(
       description: mcpServerDescription(details, labels),
       group: 'personal' as const,
       sourceLabel,
-      statusTone: mcpStatusTone(status),
+      statusTone: status === 'network' ? 'warning' : mcpStatusTone(status),
       category: inferCategoryFromText([
         id,
         details.transport,
@@ -1787,6 +1801,7 @@ export function PluginMarketplaceView({
       connected: t('pluginMcpSourceConnected'),
       connecting: t('pluginMcpSourceConnecting'),
       error: t('pluginMcpSourceError'),
+      network: t('pluginMcpSourceNetwork'),
       disabled: t('pluginMcpSourceDisabled'),
       statusSummary: (status) => t('pluginMcpDescriptionStatus', { status }),
       toolsSummary: (count) => t('pluginMcpDescriptionTools', { count }),

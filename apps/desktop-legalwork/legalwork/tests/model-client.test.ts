@@ -1209,4 +1209,70 @@ describe('DeepseekCompatModelClient', () => {
     expect(serialized).toContain('newest user message')
   })
 
+  // Regression: GLM (zhipu bigmodel) is an OpenAI-compat provider that rejects
+  // DeepSeek's message-level `reasoning_content` field with 400
+  // "messages 参数非法". After tool results are fed back, the request must NOT
+  // carry that field on assistant records — even when reasoning effort is set.
+  it('never injects message-level reasoning_content for an OpenAI-compat GLM model', async () => {
+    const sentBodies: Array<{ messages?: Array<Record<string, unknown>>; thinking?: unknown; reasoning_effort?: unknown }> = []
+    const response = {
+      id: 'glm1',
+      model: 'glm-5.2',
+      choices: [
+        { index: 0, finish_reason: 'stop', message: { role: 'assistant', content: '报告已完成。' } }
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+    }
+    const fetchImpl: typeof fetch = async (_url, init) => {
+      sentBodies.push(JSON.parse(String(init?.body ?? '{}')))
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    }
+    const client = new DeepseekCompatModelClient({
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      apiKey: 'k',
+      model: 'glm-5.2',
+      fetchImpl,
+      nonStreaming: true
+    })
+    const request = buildRequest(new AbortController().signal)
+    request.model = 'glm-5.2'
+    request.reasoningEffort = 'high'
+    // Tool calls that already succeeded, with their results fed back — the
+    // exact shape that previously triggered the 1214 rejection.
+    request.history = [
+      makeToolCallItem({
+        id: 'call_1',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        callId: 'call_1',
+        toolName: 'echo',
+        arguments: { text: 'a' }
+      }),
+      makeToolResultItem({
+        id: 'result_1',
+        turnId: 'turn_1',
+        threadId: 'thr_1',
+        callId: 'call_1',
+        toolName: 'echo',
+        output: { text: 'a' }
+      })
+    ]
+
+    for await (const _chunk of client.stream(request)) {
+      // drain
+    }
+
+    const messages = sentBodies[0]?.messages ?? []
+    const serialized = JSON.stringify(messages)
+    // The DeepSeek-only field must never leak to GLM.
+    expect(serialized).not.toContain('reasoning_content')
+    // Assistant + tool-call sequence should still be present and well-formed.
+    expect(messages.some((m) => m.role === 'assistant' && Array.isArray(m.tool_calls))).toBe(true)
+    const assistantText = messages.find((m) => m.role === 'assistant' && typeof m.content === 'string' && !Array.isArray(m.tool_calls))
+    expect(assistantText).toBeUndefined()
+  })
+
 })

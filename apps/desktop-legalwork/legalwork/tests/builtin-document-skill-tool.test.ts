@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createDocumentSkillExecuteTool,
   deterministicPdfPayloadError,
@@ -34,6 +34,37 @@ describe('document_skill_execute', () => {
     expect(properties.outputPath?.description).toContain('thread workspace')
     expect(tool.description).toContain('Do not probe with help/list')
     expect(tool.description).toContain('never pass cache-hygiene text')
+  })
+
+  it('refreshes deferred Skill discovery once before declaring the managed document Skill unavailable', async () => {
+    const skillRoot = join(root, 'managed-document-skill')
+    let refreshed = false
+    const refresh = vi.fn(async () => {
+      refreshed = true
+    })
+    const load = vi.fn(() => refreshed
+      ? {
+          id: 'legal-document-formatting',
+          name: 'legal-document-formatting',
+          root: skillRoot,
+          entryPath: join(skillRoot, 'SKILL.md'),
+          legacy: false,
+          source: 'native',
+          triggers: { commands: [], promptPatterns: [], fileTypes: [] },
+          allowedTools: [],
+          instructions: ''
+        }
+      : undefined)
+    const tool = createDocumentSkillExecuteTool({
+      skillRuntime: { load, refresh } as never
+    })
+
+    const result = await tool.execute({ kind: 'profile', operation: 'profiles' }, context())
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(load).toHaveBeenCalledTimes(2)
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result.output)).not.toContain('legal-document-formatting Skill is unavailable')
   })
 
   it('prepares a Word worker invocation from inline Markdown without a bash intermediate file', async () => {

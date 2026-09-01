@@ -135,6 +135,7 @@ import {
   officeDocumentWorkflowInstruction
 } from './office-document-workflow.js'
 import {
+  documentFactualFidelityInstruction,
   documentTaskContract,
   hasSuccessfulDesensitization,
   normalizedFinalDraft,
@@ -465,6 +466,9 @@ function extractToolError(output: unknown): string {
  */
 export function shouldReportToolError(toolName: string, output: unknown): boolean {
   const message = extractToolError(output)
+  const code = output && typeof output === 'object' && typeof (output as Record<string, unknown>).code === 'string'
+    ? (output as Record<string, string>).code
+    : ''
   // A model may serialize a stale or hallucinated tool name even though the
   // current request's schema did not advertise it. The tool result already
   // tells the model to use the active catalog; this is a recoverable model
@@ -472,6 +476,11 @@ export function shouldReportToolError(toolName: string, output: unknown): boolea
   if (/not advertised by active tool policy|not advertised in this turn context|unknown tool:/i.test(message)) {
     return false
   }
+  // These guards intentionally reject stale model actions and tell the model
+  // how to recover. They protect user files/sessions; they do not indicate a
+  // product incident and must not create automatic GitHub reports.
+  if (code === 'read_before_edit_required' || /read-before-edit guard blocked edit/i.test(message)) return false
+  if (toolName === 'bash' && (code === 'bash_session_not_found' || /bash session (?:not found|expired)/i.test(message))) return false
   // Remote pages, search providers, and legal databases routinely reject an
   // individual URL/query. Those failures are returned to the model so it can
   // try another source; they are not evidence that the desktop runtime broke.
@@ -485,7 +494,15 @@ export function shouldReportToolError(toolName: string, output: unknown): boolea
     return false
   }
   if (/^(?:read|ls|find|grep|knowledge_read_file)$/i.test(toolName) && (
-    /\b(?:ENOENT|EISDIR)\b|does not exist|no such file|not a (?:text )?file|only supports text files|no readable text/i.test(message)
+    /\b(?:ENOENT|EISDIR|EPERM|EACCES)\b|does not exist|no such file|not a (?:text )?file|only supports text files|no readable text|permission denied/i.test(message)
+  )) {
+    return false
+  }
+  // create_goal/update_goal return these to the model as recovery hints when
+  // the agent misread the current goal state. They are agent-visible guard
+  // outcomes, not runtime incidents; reporting them is noise.
+  if (/^(?:create_goal|update_goal)$/i.test(toolName) && (
+    /cannot (?:create a new goal because this thread already has a goal|update goal because this thread does not have a goal)/i.test(message)
   )) {
     return false
   }
@@ -3270,6 +3287,9 @@ export class AgentLoop {
       readPdfCount: readKnowledgePdfPaths.size,
       desensitizationCompleted: desensitizationSatisfied
     })
+    const documentFidelityInstruction = documentMutationRequested
+      ? documentFactualFidelityInstruction(latestUserMessageText(healed.items, turnId) || turn?.prompt || '')
+      : undefined
     const factContractInstruction = factVerificationInstruction(factContract, factProgress)
     const requiredToolMissKey = requiredToolName ? `${turnId}:${requiredToolName}` : ''
     const requiredToolMissCount = requiredToolMissKey
@@ -3345,6 +3365,7 @@ export class AgentLoop {
       ...(officeWorkflowInstruction ? [officeWorkflowInstruction] : []),
       ...(artifactProgressInstruction ? [artifactProgressInstruction] : []),
       ...(explicitContractInstruction ? [explicitContractInstruction] : []),
+      ...(documentFidelityInstruction ? [documentFidelityInstruction] : []),
       ...(factContractInstruction ? [factContractInstruction] : []),
       ...(automaticPlan ? [automaticTaskPlanInstruction(automaticPlan)] : []),
       ...(workflowAction ? [workflowActionInstruction(workflowAction)] : []),

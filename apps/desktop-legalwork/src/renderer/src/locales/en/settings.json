@@ -387,6 +387,8 @@
   "mcpServerDisabled": "Disabled",
   "mcpServerAuth": "Auth",
   "mcpServerTools": "{{count}} tools",
+  "mcpServerRequiresNetwork": "Network required",
+  "mcpServerRequiresNetworkHint": "This service needs overseas network access. Connect to a VPN or switch networks to retry.",
   "mcpEnable": "Enable",
   "mcpDisable": "Disable",
   "mcpRemove": "Remove",

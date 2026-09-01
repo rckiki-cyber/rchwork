@@ -69,6 +69,21 @@ export function requiredTopicTerms(prompt: string): string[] {
  * judging writing quality. This turns long, multi-stage prompts into durable
  * completion gates instead of relying on the model to remember a checklist.
  */
+export function documentFactualFidelityInstruction(prompt: string): string {
+  const compact = prompt.replace(/\s+/g, '').trim()
+  if (!compact) return ''
+  return [
+    '<document_factual_fidelity>',
+    '文书事实边界：',
+    '- 只能把用户明确提供、附件中明确记载或工具已经核验的内容写成既成事实。',
+    '- 不得自行补写用户未提供的案件事实，也不得把常见情形、推测或法律分析改写成已经发生的事实。',
+    '- 特别不得擅自补充验收、签收、质量异议、催告或沟通经过、付款条件、具体日期、主体身份、损失金额等事实。',
+    '- 对法律分析所必需但材料缺失的事实，使用“待确认”“如……则……”或“若实际情况为……”等明确的条件表述。',
+    '- 生成终稿前逐项检查事实主语、义务主体、金额和时间，避免把甲乙方或权利义务主体写反。',
+    '</document_factual_fidelity>'
+  ].join('\n')
+}
+
 export function documentTaskContract(prompt: string): DocumentTaskContract {
   const lengthMatch = prompt.match(/(?:不少于|至少|不低于)\s*([\d,，]+)\s*(?:个)?\s*(?:中文)?\s*字/i)
   const parsedMinimum = lengthMatch?.[1]

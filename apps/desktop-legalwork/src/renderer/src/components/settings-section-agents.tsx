@@ -15,6 +15,7 @@ import {
 } from '@shared/app-settings'
 import type { GuiUpdateChannel } from '@shared/gui-update'
 import type { SkillRootId } from '../lib/skill-root-preference'
+import { normalizeMcpServerDiagnostic } from '../mcp-server-policy'
 import { Ban, CheckCircle2, ChevronDown, FolderOpen, Loader2, LogIn, LogOut, Plus, RefreshCw, Settings, Trash2 } from 'lucide-react'
 import { GuiUpdateControl } from './settings-gui-update'
 import {
@@ -53,6 +54,7 @@ type McpServerSummary = {
   diagnosticStatus: string
   toolCount: number | null
   lastError: string
+  requiresNetwork: boolean
 }
 
 const YUANDIAN_MCP_SERVERS = [
@@ -165,17 +167,24 @@ function summarizeMcpServers(
       const toolCount = typeof diagnostic.toolCount === 'number' && Number.isFinite(diagnostic.toolCount)
         ? diagnostic.toolCount
         : null
+      const enabled = config.enabled !== false && config.disabled !== true
+      const policy = normalizeMcpServerDiagnostic(id, {
+        status: typeof diagnostic.status === 'string' ? diagnostic.status : '',
+        lastError: typeof diagnostic.lastError === 'string' ? diagnostic.lastError : '',
+        enabled
+      })
       return {
         id,
-        enabled: config.enabled !== false && config.disabled !== true,
+        enabled,
         transport,
         target: mcpServerTarget(config),
         hasAuthHeader,
         needsToken: (legalMcpLikelyRequiresToken(id) && !hasAuthHeader) ||
           mcpDiagnosticLooksTokenRelated(diagnostic),
-        diagnosticStatus: typeof diagnostic.status === 'string' ? diagnostic.status : '',
+        diagnosticStatus: policy.status,
         toolCount,
-        lastError: typeof diagnostic.lastError === 'string' ? diagnostic.lastError : ''
+        lastError: policy.lastError,
+        requiresNetwork: policy.requiresNetwork
       }
     })
   }
@@ -1673,7 +1682,11 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                                       <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${server.enabled ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' : 'bg-ds-subtle text-ds-faint'}`}>
                                         {server.enabled ? t('mcpServerEnabled') : t('mcpServerDisabled')}
                                       </span>
-                                      {server.diagnosticStatus ? (
+                                      {server.requiresNetwork ? (
+                                        <span className="shrink-0 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-200">
+                                          {t('mcpServerRequiresNetwork')}
+                                        </span>
+                                      ) : server.diagnosticStatus ? (
                                         <span className="shrink-0 rounded-md bg-ds-subtle px-2 py-0.5 text-[11px] font-semibold text-ds-muted">
                                           {server.diagnosticStatus}
                                         </span>
@@ -1694,7 +1707,11 @@ export function AgentsSettingsSection({ ctx }: { ctx: Record<string, any> }): Re
                                       {server.target ? <span className="font-mono" title={server.target}> · {server.target}</span> : null}
                                       {server.toolCount != null ? <span> · {t('mcpServerTools', { count: server.toolCount })}</span> : null}
                                     </div>
-                                    {server.lastError ? (
+                                    {server.requiresNetwork ? (
+                                      <div className="mt-1 min-w-0 break-words text-[12px] leading-5 text-amber-700 dark:text-amber-200">
+                                        {t('mcpServerRequiresNetworkHint')}
+                                      </div>
+                                    ) : server.lastError ? (
                                       <div className="mt-1 min-w-0 whitespace-pre-wrap break-all text-[12px] leading-5 text-red-700 dark:text-red-300" title={server.lastError}>{server.lastError}</div>
                                     ) : null}
                                     {server.needsToken ? (

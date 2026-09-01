@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 const require = createRequire(import.meta.url)
@@ -70,6 +70,19 @@ afterEach(() => {
 })
 
 describe('electron-builder Legalwork packaging', () => {
+  it('uses electron-builder process detection for Windows upgrades', () => {
+    // Defining nsis.include with a customCheckAppRunning macro replaces the
+    // upstream process detection completely. The old override ignored failed
+    // taskkill/PowerShell exit codes and then attempted to overwrite locked
+    // files, producing the misleading "app cannot be closed" retry dialog.
+    expect(builderConfig.nsis.include).toBeUndefined()
+    expect(existsSync(join(
+      dirname(require.resolve('../../electron-builder.config.cjs')),
+      'build',
+      'installer.nsh'
+    ))).toBe(false)
+  })
+
   it('includes Legalwork runtime dependencies in the packaged app', () => {
     expect(builderConfig.files).toEqual(expect.arrayContaining([
       'legalwork/dist/**/*',
@@ -193,11 +206,10 @@ describe('electron-builder Legalwork packaging', () => {
   })
 
   it('includes data compliance resources in the packaged app', () => {
+    expect(builderConfig.extraResources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'vendor/ocr-runtime' })
+    ]))
     expect(builderConfig.extraResources).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        from: 'vendor/ocr-runtime',
-        to: 'ocr-runtime'
-      }),
       expect.objectContaining({
         from: '../../ocr_agent.py',
         to: 'ocr_agent.py'

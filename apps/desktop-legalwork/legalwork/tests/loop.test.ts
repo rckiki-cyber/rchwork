@@ -507,8 +507,23 @@ describe('AgentLoop', () => {
     })).toBe(false)
     expect(shouldReportToolError('mcp_node_repl_js', { error: 'native pipe startup failed' })).toBe(false)
     expect(shouldReportToolError('read', { error: "ENOENT: no such file or directory, stat '/missing'" })).toBe(false)
+    expect(shouldReportToolError('ls', { error: 'permission denied while listing: /secret' })).toBe(false)
+    expect(shouldReportToolError('read', { error: "EACCES: permission denied, open '/secret/brief.md'" })).toBe(false)
+    expect(shouldReportToolError('update_goal', {
+      error: 'cannot update goal because this thread does not have a goal'
+    })).toBe(false)
+    expect(shouldReportToolError('create_goal', {
+      error: 'cannot create a new goal because this thread already has a goal'
+    })).toBe(false)
     expect(shouldReportToolError('mcp_yuandian_case_search', {
       error: 'MCP arguments do not match the schema'
+    })).toBe(false)
+    expect(shouldReportToolError('edit', {
+      error: 'read-before-edit guard blocked edit for brief.md. Read the current file contents in this turn.'
+    })).toBe(false)
+    expect(shouldReportToolError('bash', {
+      error: 'bash session expired or the runtime restarted; rerun the original command with action="run"',
+      code: 'bash_session_not_found'
     })).toBe(false)
   })
 
@@ -1622,6 +1637,7 @@ describe('AgentLoop', () => {
 
   it('generates an explicitly requested Word file without forcing research or citation verification', async () => {
     const executed: string[] = []
+    const requests: ModelRequest[] = []
     const define = (
       name: string,
       output: unknown
@@ -1640,6 +1656,7 @@ describe('AgentLoop', () => {
       provider: 'citation-evidence-barrier',
       model: 'citation-evidence-barrier',
       async *stream(request): AsyncIterable<ModelStreamChunk> {
+        requests.push(request)
         const required = request.requiredToolName
         if (required) {
           yield {
@@ -1690,6 +1707,8 @@ describe('AgentLoop', () => {
 
     expect(status).toBe('completed')
     expect(executed).toEqual(['document_skill_execute'])
+    expect(requests[0]?.contextInstructions?.join('\n')).toContain('只能把用户明确提供')
+    expect(requests[0]?.contextInstructions?.join('\n')).toContain('不得自行补写用户未提供的案件事实')
   })
 
   it('does not inject forced retrieval batches when the model answers directly', async () => {
